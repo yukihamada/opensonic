@@ -1,0 +1,105 @@
+# Soluna Configuration for Raspberry Pi
+# Copy to /etc/soluna/config.yaml and customize
+
+device:
+  # Device name (shown in discovery)
+  name: "rpi-soluna"
+
+  # Audio device
+  # Common options:
+  #   "default"           - System default
+  #   "hw:0"              - First ALSA card
+  #   "hw:sndrpihifiberry" - HiFiBerry DAC
+  #   "plughw:0"          - ALSA with conversion
+  audio: "default"
+
+  # Network interface (empty = auto)
+  # interface: "eth0"
+
+network:
+  # Control API port
+  control_port: 8400
+
+  # RTP base port (streams use 5004, 5006, 5008, ...)
+  rtp_base: 5004
+
+  # Multicast addresses
+  multicast_audio: "239.69.0.1"
+  multicast_ptp: "224.0.1.129"
+
+  # DSCP marking for QoS (46 = EF)
+  dscp: 46
+
+audio:
+  # Sample rate in Hz
+  # Options: 44100, 48000, 88200, 96000, 176400, 192000
+  sample_rate: 48000
+
+  # Number of channels
+  channels: 2
+
+  # Bit depth
+  # Options: 16, 24, 32
+  bit_depth: 24
+
+  # Frames per packet (affects latency)
+  # Lower = less latency, more CPU
+  # Options: 12 (0.25ms), 48 (1ms), 96 (2ms), 192 (4ms)
+  frames_per_packet: 48
+
+  # Buffer packets for jitter absorption
+  buffer_packets: 8
+
+security:
+  # Enable DTLS encryption (requires OpenSSL)
+  dtls: false
+
+  # Enable device authentication
+  auth_enabled: false
+
+  # Device credentials (when auth_enabled: true)
+  # devices:
+  #   - id: "controller"
+  #     psk: "sha256:your_hashed_password"
+  #     roles: [admin]
+
+metrics:
+  # Enable Prometheus metrics endpoint
+  enabled: true
+  port: 9100
+  path: "/metrics"
+
+logging:
+  # Log level: debug, info, warn, error
+  level: info
+
+  # Log file (empty = stdout)
+  file: "/var/log/soluna/daemon.log"
+
+  # JSON format for log aggregation
+  json_format: false
+
+audit:
+  # Enable audit logging
+  enabled: true
+  file: "/var/log/soluna/audit.jsonl"
+
+  # Events to log (empty = all)
+  # events: [auth_success, auth_failure, stream_created]
+
+# Auto-routing rules (optional)
+# routing:
+#   auto_rules:
+#     - name: "auto-connect-speakers"
+#       trigger:
+#         type: device_connected
+#         pattern: "esp32-speaker-*"
+#       actions:
+#         - type: add_route
+#           source: "main:0"
+#           sink: "$device:0"
+
+# DSP plugins (optional)
+# plugins:
+#   - /usr/lib/soluna/plugins/limiter.so
+#   - /usr/lib/soluna/plugins/eq.so

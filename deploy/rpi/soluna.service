@@ -1,0 +1,43 @@
+[Unit]
+Description=Soluna Network Audio Daemon
+Documentation=https://github.com/example/soluna
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=soluna
+Group=audio
+ExecStart=/usr/bin/solunad --config /etc/soluna/config.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+
+# Performance tuning for real-time audio
+Nice=-10
+LimitRTPRIO=99
+LimitMEMLOCK=infinity
+
+# CPU affinity (optional, uncomment for specific cores)
+# CPUAffinity=2 3
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/log/soluna /var/lib/soluna
+
+# Network capabilities
+AmbientCapabilities=CAP_NET_RAW CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_BIND_SERVICE
+
+# Audio access
+SupplementaryGroups=audio
+
+# Environment
+Environment=SOLUNA_LOG_LEVEL=info
+
+[Install]
+WantedBy=multi-user.target

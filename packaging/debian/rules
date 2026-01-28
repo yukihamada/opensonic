@@ -1,0 +1,17 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 1
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DSOLUNA_BUILD_TESTS=OFF \
+		-DSOLUNA_ENABLE_AES67=ON
+
+override_dh_auto_install:
+	dh_auto_install
+	install -D -m 644 packaging/debian/soluna.service \
+		debian/soluna/lib/systemd/system/soluna.service

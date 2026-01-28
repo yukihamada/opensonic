@@ -1,0 +1,26 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "sol_i2s.c"
+        "sol_net.c"
+        "sol_clock.c"
+        "sol_ptp_follower.c"
+        "sol_rtp.c"
+        "sol_fec.c"
+        "sol_mdns.c"
+        "sol_control.c"
+        "sol_engine.c"
+        "sol_ota.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        driver
+        esp_wifi
+        esp_event
+        esp_timer
+        esp_netif
+        lwip
+        mdns
+        nvs_flash
+        esp_ota_ops
+        app_update
+)

@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Create soluna system user if it doesn't exist
+        if ! getent passwd soluna > /dev/null 2>&1; then
+            adduser --system --group --no-create-home \
+                --home /nonexistent --shell /usr/sbin/nologin \
+                soluna
+            # Add to audio group for ALSA access
+            usermod -a -G audio soluna 2>/dev/null || true
+        fi
+
+        # Reload systemd
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload || true
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

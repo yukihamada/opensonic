@@ -1,0 +1,18 @@
+Source: soluna
+Section: sound
+Priority: optional
+Maintainer: Soluna Team <soluna@example.com>
+Build-Depends: debhelper (>= 12), cmake (>= 3.16), g++ (>= 8), libasound2-dev
+Standards-Version: 4.5.1
+Homepage: https://github.com/yourname/soluna
+
+Package: soluna
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libasound2 (>= 1.1)
+Description: Open Network Audio System
+ Soluna is an open-source network audio system providing low-latency
+ audio streaming over Ethernet and WiFi. Features include PTPv2 clock
+ synchronization, channel routing with gain control, AES67 compatibility,
+ and DSP plugin support.
+ .
+ This package contains the solunad daemon and solctl CLI tool.

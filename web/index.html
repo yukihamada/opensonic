@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soluna Control</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <header>
+        <h1>Soluna</h1>
+        <span id="status" class="status disconnected">Disconnected</span>
+    </header>
+
+    <nav>
+        <button class="tab active" data-panel="devices">Devices</button>
+        <button class="tab" data-panel="streams">Streams</button>
+        <button class="tab" data-panel="routing">Routing</button>
+        <button class="tab" data-panel="meters">Meters</button>
+    </nav>
+
+    <main>
+        <section id="devices" class="panel active">
+            <h2>Devices</h2>
+            <div id="device-list" class="card-list"></div>
+        </section>
+
+        <section id="streams" class="panel">
+            <h2>Streams</h2>
+            <div class="toolbar">
+                <button id="btn-stream-create" class="btn">+ Create Stream</button>
+            </div>
+            <div id="stream-list" class="card-list"></div>
+        </section>
+
+        <section id="routing" class="panel">
+            <h2>Routing Matrix</h2>
+            <div class="toolbar">
+                <input id="route-src" placeholder="source (dev:ch)">
+                <input id="route-dst" placeholder="sink (dev:ch)">
+                <input id="route-gain" type="number" value="0" step="1" placeholder="gain dB">
+                <button id="btn-route-add" class="btn">+ Add Route</button>
+            </div>
+            <table id="route-table">
+                <thead><tr><th>Source</th><th>Sink</th><th>Gain (dB)</th><th>Muted</th><th>Actions</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <section id="meters" class="panel">
+            <h2>Level Meters</h2>
+            <div id="meter-display" class="meter-grid"></div>
+        </section>
+    </main>
+
+    <script src="/app.js"></script>
+</body>
+</html>
