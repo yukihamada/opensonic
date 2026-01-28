@@ -16,9 +16,15 @@ include(cmake/options.cmake)
 
 # Platform detection
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(OS_LINUX TRUE)
+    if(ANDROID)
+        set(OS_ANDROID TRUE)
+    else()
+        set(OS_LINUX TRUE)
+    endif()
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(OS_MACOS TRUE)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(OS_IOS TRUE)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set(OS_WINDOWS TRUE)
 endif()
@@ -39,16 +45,18 @@ endif()
 add_library(soluna_core STATIC
     # PAL - Audio
     $<$<BOOL:${OS_LINUX}>:src/pal/audio/alsa.cpp>
-    $<$<BOOL:${OS_MACOS}>:src/pal/audio/coreaudio.cpp>
+    $<$<BOOL:${OS_MACOS}>:src/pal/audio/coreaudio.mm>
+    $<$<BOOL:${OS_IOS}>:src/pal/audio/coreaudio.mm>
+    $<$<BOOL:${OS_ANDROID}>:src/pal/audio/aaudio.cpp>
     $<$<BOOL:${OS_WINDOWS}>:src/pal/audio/wasapi.cpp>
-    # PAL - Net
-    $<$<NOT:$<BOOL:${OS_WINDOWS}>>:src/pal/net/socket_posix.cpp>
+    # PAL - Net (POSIX for Linux, macOS, iOS, Android)
+    $<$<OR:$<BOOL:${OS_LINUX}>,$<BOOL:${OS_MACOS}>,$<BOOL:${OS_IOS}>,$<BOOL:${OS_ANDROID}>>:src/pal/net/socket_posix.cpp>
     $<$<BOOL:${OS_WINDOWS}>:src/pal/net/socket_win32.cpp>
-    # PAL - Time
-    $<$<NOT:$<BOOL:${OS_WINDOWS}>>:src/pal/time/clock_posix.cpp>
+    # PAL - Time (POSIX for Linux, macOS, iOS, Android)
+    $<$<OR:$<BOOL:${OS_LINUX}>,$<BOOL:${OS_MACOS}>,$<BOOL:${OS_IOS}>,$<BOOL:${OS_ANDROID}>>:src/pal/time/clock_posix.cpp>
     $<$<BOOL:${OS_WINDOWS}>:src/pal/time/clock_win32.cpp>
-    # PAL - Thread
-    $<$<NOT:$<BOOL:${OS_WINDOWS}>>:src/pal/thread/thread_posix.cpp>
+    # PAL - Thread (POSIX for Linux, macOS, iOS, Android)
+    $<$<OR:$<BOOL:${OS_LINUX}>,$<BOOL:${OS_MACOS}>,$<BOOL:${OS_IOS}>,$<BOOL:${OS_ANDROID}>>:src/pal/thread/thread_posix.cpp>
     $<$<BOOL:${OS_WINDOWS}>:src/pal/thread/thread_win32.cpp>
     # Transport
     src/transport/rtp_tx.cpp
@@ -138,14 +146,38 @@ elseif(OS_MACOS)
         ${COREAUDIO_FW} ${AUDIOTOOLBOX_FW} ${AUDIOUNIT_FW} ${COREFOUNDATION_FW}
     )
     target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_COREAUDIO=1)
+elseif(OS_IOS)
+    find_library(COREAUDIO_FW CoreAudio)
+    find_library(AUDIOTOOLBOX_FW AudioToolbox)
+    find_library(AUDIOUNIT_FW AudioUnit)
+    find_library(COREFOUNDATION_FW CoreFoundation)
+    find_library(AVFOUNDATION_FW AVFoundation)
+    target_link_libraries(soluna_core PUBLIC
+        ${COREAUDIO_FW} ${AUDIOTOOLBOX_FW} ${AUDIOUNIT_FW}
+        ${COREFOUNDATION_FW} ${AVFOUNDATION_FW}
+    )
+    target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_COREAUDIO=1)
+elseif(OS_ANDROID)
+    target_link_libraries(soluna_core PUBLIC
+        aaudio
+        OpenSLES
+        log
+    )
+    target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_AAUDIO=1)
 elseif(OS_WINDOWS)
     target_link_libraries(soluna_core PUBLIC ws2_32 ole32 avrt)
     target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_WASAPI=1)
 endif()
 
 if(NOT OS_WINDOWS)
-    target_link_libraries(soluna_core PUBLIC pthread)
-    target_link_libraries(soluna_core PUBLIC dl)
+    if(NOT OS_ANDROID)
+        # Android NDK has pthread built into libc, no separate library needed
+        target_link_libraries(soluna_core PUBLIC pthread)
+    endif()
+    if(OS_LINUX OR OS_MACOS)
+        # dl for dynamic loading (plugins)
+        target_link_libraries(soluna_core PUBLIC dl)
+    endif()
 endif()
 
 if(SOLUNA_ENABLE_AES67)
