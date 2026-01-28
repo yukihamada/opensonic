@@ -86,6 +86,64 @@ public:
     }
 
 private:
+#if TARGET_OS_MAC && !TARGET_OS_IPHONE
+    // Find a device by name, returns 0 if not found
+    static AudioDeviceID find_device_by_name(const std::string& name, bool is_input) {
+        AudioObjectPropertyAddress property_address = {
+            kAudioHardwarePropertyDevices,
+            kAudioObjectPropertyScopeGlobal,
+            kAudioObjectPropertyElementMain
+        };
+
+        UInt32 data_size = 0;
+        OSStatus status = AudioObjectGetPropertyDataSize(kAudioObjectSystemObject,
+                                                          &property_address,
+                                                          0, nullptr,
+                                                          &data_size);
+        if (status != noErr) return 0;
+
+        UInt32 device_count = data_size / sizeof(AudioDeviceID);
+        std::vector<AudioDeviceID> device_ids(device_count);
+
+        status = AudioObjectGetPropertyData(kAudioObjectSystemObject,
+                                            &property_address,
+                                            0, nullptr,
+                                            &data_size,
+                                            device_ids.data());
+        if (status != noErr) return 0;
+
+        for (AudioDeviceID dev_id : device_ids) {
+            // Get device name
+            CFStringRef name_ref = nullptr;
+            data_size = sizeof(name_ref);
+            property_address.mSelector = kAudioDevicePropertyDeviceNameCFString;
+            property_address.mScope = kAudioObjectPropertyScopeGlobal;
+
+            status = AudioObjectGetPropertyData(dev_id, &property_address,
+                                                0, nullptr, &data_size, &name_ref);
+            if (status == noErr && name_ref) {
+                char name_buf[256];
+                CFStringGetCString(name_ref, name_buf, sizeof(name_buf), kCFStringEncodingUTF8);
+                CFRelease(name_ref);
+
+                if (name == name_buf) {
+                    // Verify device has the right direction
+                    property_address.mSelector = kAudioDevicePropertyStreamConfiguration;
+                    property_address.mScope = is_input ?
+                        kAudioDevicePropertyScopeInput : kAudioDevicePropertyScopeOutput;
+                    data_size = 0;
+                    status = AudioObjectGetPropertyDataSize(dev_id, &property_address,
+                                                            0, nullptr, &data_size);
+                    if (status == noErr && data_size > sizeof(AudioBufferList)) {
+                        return dev_id;
+                    }
+                }
+            }
+        }
+        return 0;
+    }
+#endif
+
     bool open_device(const std::string& device_id, const AudioStreamConfig& config, bool capture) {
         config_ = config;
         is_capture_ = capture;
@@ -162,16 +220,27 @@ private:
 
 #if TARGET_OS_MAC && !TARGET_OS_IPHONE
         // Set device on macOS
-        if (!device_id.empty()) {
-            AudioDeviceID dev_id = static_cast<AudioDeviceID>(std::stoul(device_id));
-            status = AudioUnitSetProperty(audio_unit_,
-                                          kAudioOutputUnitProperty_CurrentDevice,
-                                          kAudioUnitScope_Global,
-                                          0,
-                                          &dev_id,
-                                          sizeof(dev_id));
-            if (status != noErr) {
-                fprintf(stderr, "CoreAudio: Failed to set device: %d\n", (int)status);
+        if (!device_id.empty() && device_id != "default") {
+            AudioDeviceID dev_id = 0;
+
+            // Try to parse as numeric ID first
+            try {
+                dev_id = static_cast<AudioDeviceID>(std::stoul(device_id));
+            } catch (const std::exception&) {
+                // Not a number, try to find by name
+                dev_id = find_device_by_name(device_id, capture);
+            }
+
+            if (dev_id != 0) {
+                status = AudioUnitSetProperty(audio_unit_,
+                                              kAudioOutputUnitProperty_CurrentDevice,
+                                              kAudioUnitScope_Global,
+                                              0,
+                                              &dev_id,
+                                              sizeof(dev_id));
+                if (status != noErr) {
+                    fprintf(stderr, "CoreAudio: Failed to set device: %d\n", (int)status);
+                }
             }
         }
 #else
