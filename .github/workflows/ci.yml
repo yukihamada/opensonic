@@ -1,0 +1,162 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            libasound2-dev
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DSOLUNA_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure --parallel 4
+
+      - name: Upload build artifacts
+        if: matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: soluna-linux-x64
+          path: |
+            build/solunad
+            build/solctl
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install cmake ninja
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DSOLUNA_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure --parallel 4
+
+      - name: Upload build artifacts
+        if: matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: soluna-macos-universal
+          path: |
+            build/solunad
+            build/solctl
+
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: |
+          cmake -B build `
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+            -DSOLUNA_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build --build-config ${{ matrix.build_type }} --output-on-failure --parallel 4
+
+      - name: Upload build artifacts
+        if: matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: soluna-windows-x64
+          path: |
+            build/Release/solunad.exe
+            build/Release/solctl.exe
+
+  build-linux-arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build in ARM64 container
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: .github/Dockerfile.arm64
+          platforms: linux/arm64
+          push: false
+          tags: soluna-arm64-build:latest
+
+      - name: Extract binaries
+        run: |
+          docker create --name extract soluna-arm64-build:latest
+          docker cp extract:/build/solunad ./solunad-arm64
+          docker cp extract:/build/solctl ./solctl-arm64
+          docker rm extract
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soluna-linux-arm64
+          path: |
+            solunad-arm64
+            solctl-arm64
+
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: sudo apt-get install -y clang-format
+
+      - name: Check formatting
+        run: |
+          find src include apps tests -name '*.cpp' -o -name '*.hpp' -o -name '*.h' | \
+            xargs clang-format --dry-run --Werror || \
+            echo "::warning::Code formatting issues found. Run clang-format to fix."
+
+      - name: Check for common issues
+        run: |
+          # Check for TODO/FIXME comments
+          if grep -rn "TODO\|FIXME" src include apps --include="*.cpp" --include="*.h"; then
+            echo "::notice::Found TODO/FIXME comments in code"
+          fi

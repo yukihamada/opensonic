@@ -1,4 +1,31 @@
 build/
+build-*/
 .cache/
 *.o
 *.a
+*.so
+*.dylib
+*.dll
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Compiled binaries
+solunad
+solctl
+*.exe
+
+# Packages
+*.deb
+*.rpm
+*.pkg
+*.msi
+*.tar.gz
+*.zip
+
+# Generated
+compile_commands.json

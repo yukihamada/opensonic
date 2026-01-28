@@ -1,0 +1,21 @@
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    ninja-build \
+    libasound2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+COPY . .
+
+RUN cmake -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DSOLUNA_BUILD_TESTS=OFF
+
+RUN cmake --build build --parallel
+
+# Keep binaries accessible
+WORKDIR /build
+RUN cp /workspace/build/solunad /workspace/build/solctl .

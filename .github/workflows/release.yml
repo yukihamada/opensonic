@@ -1,0 +1,204 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-x64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            libasound2-dev \
+            dpkg-dev
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DSOLUNA_BUILD_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Create DEB package
+        run: |
+          cd build
+          cpack -G DEB
+          mv soluna-*.deb soluna_${{ github.ref_name }}_linux_amd64.deb
+
+      - name: Create tarball
+        run: |
+          mkdir -p dist/soluna-${{ github.ref_name }}-linux-x64
+          cp build/solunad build/solctl dist/soluna-${{ github.ref_name }}-linux-x64/
+          cp README.md LICENSE dist/soluna-${{ github.ref_name }}-linux-x64/
+          cd dist && tar -czf soluna-${{ github.ref_name }}-linux-x64.tar.gz soluna-${{ github.ref_name }}-linux-x64
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: |
+            build/soluna_${{ github.ref_name }}_linux_amd64.deb
+            dist/soluna-${{ github.ref_name }}-linux-x64.tar.gz
+
+  build-linux-arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build in ARM64 container
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ubuntu:22.04 \
+            bash -c "
+              apt-get update && \
+              apt-get install -y build-essential cmake ninja-build libasound2-dev && \
+              cmake -B build -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX=/usr \
+                -DSOLUNA_BUILD_TESTS=OFF && \
+              cmake --build build --parallel && \
+              cd build && cpack -G DEB && \
+              mv soluna-*.deb soluna_${{ github.ref_name }}_linux_arm64.deb
+            "
+
+      - name: Create tarball
+        run: |
+          mkdir -p dist/soluna-${{ github.ref_name }}-linux-arm64
+          cp build/solunad build/solctl dist/soluna-${{ github.ref_name }}-linux-arm64/
+          cp README.md LICENSE dist/soluna-${{ github.ref_name }}-linux-arm64/
+          cd dist && tar -czf soluna-${{ github.ref_name }}-linux-arm64.tar.gz soluna-${{ github.ref_name }}-linux-arm64
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: |
+            build/soluna_${{ github.ref_name }}_linux_arm64.deb
+            dist/soluna-${{ github.ref_name }}-linux-arm64.tar.gz
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install cmake ninja
+
+      - name: Build for x86_64
+        run: |
+          cmake -B build-x64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DSOLUNA_BUILD_TESTS=OFF
+          cmake --build build-x64 --parallel
+
+      - name: Build for arm64
+        run: |
+          cmake -B build-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DSOLUNA_BUILD_TESTS=OFF
+          cmake --build build-arm64 --parallel
+
+      - name: Create Universal binaries
+        run: |
+          mkdir -p dist/soluna-${{ github.ref_name }}-macos-universal
+          lipo -create build-x64/solunad build-arm64/solunad \
+            -output dist/soluna-${{ github.ref_name }}-macos-universal/solunad
+          lipo -create build-x64/solctl build-arm64/solctl \
+            -output dist/soluna-${{ github.ref_name }}-macos-universal/solctl
+          cp README.md LICENSE dist/soluna-${{ github.ref_name }}-macos-universal/
+          cd dist && tar -czf soluna-${{ github.ref_name }}-macos-universal.tar.gz soluna-${{ github.ref_name }}-macos-universal
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: dist/soluna-${{ github.ref_name }}-macos-universal.tar.gz
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: |
+          cmake -B build `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DSOLUNA_BUILD_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Create ZIP
+        run: |
+          mkdir dist
+          mkdir dist/soluna-${{ github.ref_name }}-windows-x64
+          copy build\Release\solunad.exe dist\soluna-${{ github.ref_name }}-windows-x64\
+          copy build\Release\solctl.exe dist\soluna-${{ github.ref_name }}-windows-x64\
+          copy README.md dist\soluna-${{ github.ref_name }}-windows-x64\
+          copy LICENSE dist\soluna-${{ github.ref_name }}-windows-x64\
+          cd dist && Compress-Archive -Path soluna-${{ github.ref_name }}-windows-x64 -DestinationPath soluna-${{ github.ref_name }}-windows-x64.zip
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: dist/soluna-${{ github.ref_name }}-windows-x64.zip
+
+  create-release:
+    needs: [build-linux-x64, build-linux-arm64, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          echo "## Changes in ${{ github.ref_name }}" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          git log --oneline $(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo HEAD~10)..HEAD >> CHANGELOG.md 2>/dev/null || echo "Initial release" >> CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Soluna ${{ github.ref_name }}
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            artifacts/linux-x64/soluna_${{ github.ref_name }}_linux_amd64.deb
+            artifacts/linux-x64/soluna-${{ github.ref_name }}-linux-x64.tar.gz
+            artifacts/linux-arm64/soluna_${{ github.ref_name }}_linux_arm64.deb
+            artifacts/linux-arm64/soluna-${{ github.ref_name }}-linux-arm64.tar.gz
+            artifacts/macos-universal/soluna-${{ github.ref_name }}-macos-universal.tar.gz
+            artifacts/windows-x64/soluna-${{ github.ref_name }}-windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
