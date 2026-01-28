@@ -1,0 +1,221 @@
+name: Security
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Monday at 00:00 UTC
+    - cron: '0 0 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: cpp
+          queries: security-and-quality
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            libasound2-dev
+
+      - name: Build for CodeQL
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DSOLUNA_BUILD_TESTS=OFF
+          cmake --build build --parallel
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:cpp"
+
+  compiler-warnings:
+    name: Compiler Warnings Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            libasound2-dev \
+            clang
+
+      - name: Build with strict warnings (GCC)
+        run: |
+          cmake -B build-gcc -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-Wall -Wextra -Wpedantic -Werror -Wconversion -Wsign-conversion" \
+            -DSOLUNA_BUILD_TESTS=OFF
+          cmake --build build-gcc 2>&1 | tee gcc-warnings.log
+
+      - name: Build with strict warnings (Clang)
+        run: |
+          cmake -B build-clang -G Ninja \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-Wall -Wextra -Wpedantic -Werror -Wconversion" \
+            -DSOLUNA_BUILD_TESTS=OFF
+          cmake --build build-clang 2>&1 | tee clang-warnings.log
+
+      - name: Check for warnings
+        run: |
+          if grep -i "warning:" gcc-warnings.log clang-warnings.log; then
+            echo "::warning::Compiler warnings found"
+          fi
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-3.0, AGPL-3.0
+
+  secret-scanning:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog OSS
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+  static-analysis:
+    name: Static Analysis (cppcheck)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+
+      - name: Run cppcheck
+        run: |
+          cppcheck \
+            --enable=warning,style,performance,portability \
+            --error-exitcode=0 \
+            --suppress=missingIncludeSystem \
+            --inline-suppr \
+            -I include \
+            src apps \
+            2>&1 | tee cppcheck-report.txt
+
+      - name: Check for critical issues
+        run: |
+          if grep -E "(error|warning):" cppcheck-report.txt; then
+            echo "::warning::Static analysis found potential issues"
+          fi
+
+      - name: Upload cppcheck report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cppcheck-report
+          path: cppcheck-report.txt
+
+  memory-safety:
+    name: Memory Safety (AddressSanitizer)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            libasound2-dev
+
+      - name: Build with AddressSanitizer
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g" \
+            -DCMAKE_C_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
+            -DSOLUNA_BUILD_TESTS=ON
+          cmake --build build --parallel
+
+      - name: Run tests with ASan
+        run: |
+          export ASAN_OPTIONS="detect_leaks=1:abort_on_error=1"
+          ctest --test-dir build --output-on-failure --parallel 4
+        continue-on-error: true
+
+  thread-safety:
+    name: Thread Safety (ThreadSanitizer)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            libasound2-dev
+
+      - name: Build with ThreadSanitizer
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="-fsanitize=thread -g" \
+            -DCMAKE_C_FLAGS="-fsanitize=thread -g" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
+            -DSOLUNA_BUILD_TESTS=ON
+          cmake --build build --parallel
+
+      - name: Run tests with TSan
+        run: |
+          export TSAN_OPTIONS="abort_on_error=1"
+          ctest --test-dir build --output-on-failure --parallel 1
+        continue-on-error: true

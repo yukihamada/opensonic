@@ -1,0 +1,108 @@
+name: ESP32 Build
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'apps/esp32/**'
+      - '.github/workflows/esp32.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/esp32/**'
+      - '.github/workflows/esp32.yml'
+
+jobs:
+  build:
+    name: Build ESP32 Firmware
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        idf_version: ['v5.1.2', 'v5.2']
+        target: ['esp32', 'esp32s3']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ESP-IDF Build
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ matrix.idf_version }}
+          target: ${{ matrix.target }}
+          path: 'apps/esp32'
+          command: idf.py build
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soluna-esp32-${{ matrix.target }}-${{ matrix.idf_version }}
+          path: |
+            apps/esp32/build/soluna_esp32.bin
+            apps/esp32/build/soluna_esp32.elf
+            apps/esp32/build/bootloader/bootloader.bin
+            apps/esp32/build/partition_table/partition-table.bin
+
+  size-report:
+    name: Firmware Size Report
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ESP-IDF Build with size info
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: 'v5.2'
+          target: 'esp32s3'
+          path: 'apps/esp32'
+          command: |
+            idf.py build
+            idf.py size
+            idf.py size-components
+
+      - name: Generate size report
+        run: |
+          echo "## ESP32 Firmware Size Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|------|" >> $GITHUB_STEP_SUMMARY
+
+  static-analysis:
+    name: ESP32 Static Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+
+      - name: Run cppcheck on ESP32 code
+        run: |
+          cppcheck \
+            --enable=warning,style,performance \
+            --error-exitcode=0 \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            -I apps/esp32/main \
+            -I apps/esp32/components \
+            apps/esp32/main \
+            apps/esp32/components \
+            2>&1 | tee esp32-cppcheck.txt
+
+      - name: Check for issues
+        run: |
+          if grep -E "(error|warning):" esp32-cppcheck.txt; then
+            echo "::warning::ESP32 static analysis found potential issues"
+          fi
+
+      - name: Upload analysis report
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32-cppcheck-report
+          path: esp32-cppcheck.txt

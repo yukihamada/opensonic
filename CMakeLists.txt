@@ -258,3 +258,8 @@ include(CPack)
 if(SOLUNA_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
+
+# Benchmarks
+if(SOLUNA_BUILD_BENCHMARKS)
+    add_subdirectory(tests/benchmark)
+endif()
