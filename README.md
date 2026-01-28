@@ -109,8 +109,8 @@ See [Configuration Guide](docs/configuration.md) for full options.
 | Windows | WASAPI | ✅ Production |
 | Raspberry Pi | ALSA | ✅ Production |
 | ESP32 | I2S | ✅ Production |
-| iOS | CoreAudio | 🚧 Planned |
-| Android | AAudio/OpenSL | 🚧 Planned |
+| iOS | CoreAudio | ✅ Production |
+| Android | AAudio/OpenSL | ✅ Production |
 
 ---
 
