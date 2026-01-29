@@ -1,0 +1,81 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Build iOS library (soluna_core)"
+  lane :build_lib do
+    Dir.chdir("../..") do
+      sh("mkdir -p build-ios && cd build-ios && cmake .. -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0")
+      sh("cd build-ios && xcodebuild -project soluna.xcodeproj -scheme soluna_core -configuration Release -sdk iphoneos -arch arm64 build")
+    end
+  end
+
+  desc "Build the app"
+  lane :build do
+    build_lib
+
+    build_app(
+      workspace: nil,
+      project: "SolunaReceiver.xcodeproj",
+      scheme: "SolunaReceiver",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "./build",
+      output_name: "SolunaReceiver.ipa",
+      clean: true,
+      xcargs: "-allowProvisioningUpdates"
+    )
+  end
+
+  desc "Submit to TestFlight"
+  lane :beta do
+    # Ensure we have the API key
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_API_ISSUER_ID"],
+      key_content: ENV["APP_STORE_CONNECT_API_KEY_CONTENT"],
+      is_key_content_base64: true,
+      in_house: false
+    )
+
+    # Increment build number
+    increment_build_number(
+      build_number: Time.now.strftime("%Y%m%d%H%M")
+    )
+
+    # Build
+    build_lib
+
+    build_app(
+      project: "SolunaReceiver.xcodeproj",
+      scheme: "SolunaReceiver",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "./build",
+      output_name: "SolunaReceiver.ipa",
+      clean: true
+    )
+
+    # Upload to TestFlight
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+      changelog: "最新のバグ修正と機能改善"
+    )
+  end
+
+  desc "Build for local testing (no signing)"
+  lane :build_local do
+    build_lib
+
+    sh("xcodebuild -project SolunaReceiver.xcodeproj -scheme SolunaReceiver -configuration Release -sdk iphoneos -arch arm64 CODE_SIGN_IDENTITY='-' CODE_SIGNING_ALLOWED=NO build")
+  end
+
+  desc "Run tests"
+  lane :test do
+    run_tests(
+      project: "SolunaReceiver.xcodeproj",
+      scheme: "SolunaReceiver",
+      device: "iPhone 15 Pro"
+    )
+  end
+end

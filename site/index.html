@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Soluna - Open Network Audio System</title>
-    <meta name="description" content="Professional-grade network audio streaming. Free, open-source, low-latency. Available for iOS, macOS, Linux, Windows, ESP32.">
-    <meta property="og:title" content="Soluna - Open Network Audio System">
-    <meta property="og:description" content="Stream audio over your network with sub-millisecond latency. Free and open-source.">
-    <meta property="og:image" content="https://soluna.audio/og-image.png">
-    <meta property="og:url" content="https://soluna.audio">
+    <title>Soluna - オープンネットワークオーディオシステム</title>
+    <meta name="description" content="プロ品質のネットワークオーディオストリーミング。無料・オープンソース・低遅延。iOS、macOS、Linux、Windows、ESP32対応。">
+    <meta property="og:title" content="Soluna - オープンネットワークオーディオシステム">
+    <meta property="og:description" content="サブミリ秒の遅延でネットワーク越しにオーディオをストリーミング。無料でオープンソース。">
+    <meta property="og:image" content="https://soluna-audio.pages.dev/og-image.png">
+    <meta property="og:url" content="https://soluna-audio.pages.dev">
     <meta name="twitter:card" content="summary_large_image">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔊</text></svg>">
     <style>
@@ -21,7 +21,6 @@
             --text-muted: #94a3b8;
             --border: #334155;
         }
-        /* Light mode */
         [data-theme="light"] {
             --bg: #ffffff;
             --bg-secondary: #f1f5f9;
@@ -56,10 +55,10 @@
             box-sizing: border-box;
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
             background: var(--bg);
             color: var(--text);
-            line-height: 1.6;
+            line-height: 1.8;
         }
         .container {
             max-width: 1200px;
@@ -88,6 +87,7 @@
             display: flex;
             gap: 32px;
             list-style: none;
+            align-items: center;
         }
         .nav-links a {
             color: var(--text-muted);
@@ -102,7 +102,7 @@
             text-align: center;
         }
         .hero h1 {
-            font-size: 56px;
+            font-size: 48px;
             font-weight: 700;
             margin-bottom: 24px;
             background: linear-gradient(135deg, #fff, #6366f1);
@@ -111,7 +111,7 @@
             background-clip: text;
         }
         .hero p {
-            font-size: 20px;
+            font-size: 18px;
             color: var(--text-muted);
             max-width: 600px;
             margin: 0 auto 40px;
@@ -154,7 +154,7 @@
         }
         .platforms h2 {
             text-align: center;
-            font-size: 36px;
+            font-size: 32px;
             margin-bottom: 48px;
         }
         .platform-grid {
@@ -197,7 +197,7 @@
         }
         .features h2 {
             text-align: center;
-            font-size: 36px;
+            font-size: 32px;
             margin-bottom: 48px;
         }
         .feature-grid {
@@ -225,7 +225,7 @@
             text-align: center;
         }
         .cta h2 {
-            font-size: 36px;
+            font-size: 32px;
             margin-bottom: 16px;
         }
         .cta p {
@@ -283,7 +283,7 @@
         }
         @media (max-width: 768px) {
             .hero h1 {
-                font-size: 36px;
+                font-size: 32px;
             }
             .hero p {
                 font-size: 16px;
@@ -304,12 +304,12 @@
                 <span>Soluna</span>
             </a>
             <ul class="nav-links">
-                <li><a href="#download">Download</a></li>
-                <li><a href="#features">Features</a></li>
+                <li><a href="#download">ダウンロード</a></li>
+                <li><a href="#features">機能</a></li>
                 <li><a href="https://github.com/yukihamada/opensonic">GitHub</a></li>
-                <li><a href="https://github.com/yukihamada/opensonic/wiki">Docs</a></li>
+                <li><a href="https://github.com/yukihamada/opensonic/wiki">ドキュメント</a></li>
                 <li>
-                    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+                    <button class="theme-toggle" onclick="toggleTheme()" title="テーマ切替">
                         <span id="theme-icon">🌙</span>
                     </button>
                 </li>
@@ -320,14 +320,14 @@
     <main>
         <section class="hero">
             <div class="container">
-                <h1>Network Audio,<br>Made Simple</h1>
-                <p>Professional-grade audio streaming over your network. Sub-millisecond latency, sample-accurate sync, completely free and open-source.</p>
+                <h1>ネットワークオーディオを<br>シンプルに</h1>
+                <p>プロ品質のオーディオストリーミングをあなたのネットワークで。サブミリ秒の遅延、サンプル精度の同期、完全無料でオープンソース。</p>
                 <div class="buttons">
                     <a href="#download" class="btn btn-primary">
-                        Download Now
+                        ダウンロード
                     </a>
                     <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
-                        View on GitHub
+                        GitHubで見る
                     </a>
                 </div>
             </div>
@@ -335,54 +335,54 @@
 
         <section class="platforms" id="download">
             <div class="container">
-                <h2>Download</h2>
+                <h2>ダウンロード</h2>
                 <div class="platform-grid">
                     <div class="platform-card">
-                        <div class="platform-icon">🍎</div>
-                        <h3>macOS <span class="badge">READY</span></h3>
-                        <p>Build from source. Daemon (solunad) + CLI (solctl) working. CoreAudio backend.</p>
-                        <a href="https://github.com/yukihamada/opensonic#build-from-source--ソースからビルド" class="btn btn-primary">
-                            Build Instructions
+                        <div class="platform-icon">📱</div>
+                        <h3>iOS <span class="badge">TestFlight</span></h3>
+                        <p>iPhone/iPadでネットワークオーディオを受信。AES67/OSTPプロトコル対応。</p>
+                        <a href="https://testflight.apple.com/join/COMING_SOON" class="btn btn-primary">
+                            TestFlightで入手
                         </a>
                     </div>
                     <div class="platform-card">
-                        <div class="platform-icon">📱</div>
-                        <h3>iOS <span class="badge" style="background:#f59e0b">DEV</span></h3>
-                        <p>Xcode project ready. Build from source and deploy to your device via Xcode.</p>
-                        <a href="https://github.com/yukihamada/opensonic/tree/master/apps/ios" class="btn btn-secondary">
-                            View Project
+                        <div class="platform-icon">🍎</div>
+                        <h3>macOS <span class="badge">利用可能</span></h3>
+                        <p>ソースからビルド。デーモン(solunad) + CLI(solctl)が動作。CoreAudioバックエンド。</p>
+                        <a href="https://github.com/yukihamada/opensonic#build-from-source--ソースからビルド" class="btn btn-primary">
+                            ビルド手順
                         </a>
                     </div>
                     <div class="platform-card">
                         <div class="platform-icon">🐧</div>
-                        <h3>Linux <span class="badge" style="background:#64748b">SOON</span></h3>
-                        <p>ALSA backend in development. Debian/Ubuntu packages coming soon.</p>
+                        <h3>Linux <span class="badge" style="background:#64748b">準備中</span></h3>
+                        <p>ALSAバックエンド開発中。Debian/Ubuntuパッケージは近日公開。</p>
                         <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
-                            View Source
+                            ソースを見る
                         </a>
                     </div>
                     <div class="platform-card">
                         <div class="platform-icon">🪟</div>
-                        <h3>Windows <span class="badge" style="background:#64748b">SOON</span></h3>
-                        <p>WASAPI backend planned for Windows 10/11.</p>
+                        <h3>Windows <span class="badge" style="background:#64748b">準備中</span></h3>
+                        <p>Windows 10/11向けWASAPIバックエンドを計画中。</p>
                         <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
-                            View Source
+                            ソースを見る
                         </a>
                     </div>
                     <div class="platform-card">
                         <div class="platform-icon">🔌</div>
-                        <h3>ESP32 <span class="badge" style="background:#64748b">SOON</span></h3>
-                        <p>Build your own network audio receiver with affordable ESP32 hardware.</p>
+                        <h3>ESP32 <span class="badge" style="background:#64748b">準備中</span></h3>
+                        <p>安価なESP32ハードウェアで自作ネットワークオーディオレシーバー。</p>
                         <a href="https://github.com/yukihamada/opensonic/tree/master/apps/esp32" class="btn btn-secondary">
-                            View Project
+                            プロジェクトを見る
                         </a>
                     </div>
                     <div class="platform-card">
                         <div class="platform-icon">🍓</div>
-                        <h3>Raspberry Pi <span class="badge" style="background:#64748b">SOON</span></h3>
-                        <p>Turn your Pi into a network audio endpoint with HiFiBerry DAC support.</p>
+                        <h3>Raspberry Pi <span class="badge" style="background:#64748b">準備中</span></h3>
+                        <p>PiをHiFiBerry DAC対応ネットワークオーディオエンドポイントに。</p>
                         <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
-                            View Source
+                            ソースを見る
                         </a>
                     </div>
                 </div>
@@ -391,37 +391,37 @@
 
         <section class="features" id="features">
             <div class="container">
-                <h2>Features</h2>
+                <h2>機能</h2>
                 <div class="feature-grid">
                     <div class="feature">
                         <div class="feature-icon">⚡</div>
-                        <h3>Ultra-Low Latency</h3>
-                        <p>Sub-millisecond latency on wired networks. Perfect for live performance and monitoring.</p>
+                        <h3>超低遅延</h3>
+                        <p>有線ネットワークでサブミリ秒の遅延。ライブパフォーマンスやモニタリングに最適。</p>
                     </div>
                     <div class="feature">
                         <div class="feature-icon">🔄</div>
-                        <h3>PTP Synchronization</h3>
-                        <p>IEEE 1588-2008 (PTPv2) ensures sample-accurate sync across all devices.</p>
+                        <h3>PTP同期</h3>
+                        <p>IEEE 1588-2008 (PTPv2)により、全デバイス間でサンプル精度の同期を実現。</p>
                     </div>
                     <div class="feature">
                         <div class="feature-icon">📶</div>
-                        <h3>WiFi Ready</h3>
-                        <p>Adaptive streaming with FEC for reliable wireless audio.</p>
+                        <h3>WiFi対応</h3>
+                        <p>FEC付き適応ストリーミングで信頼性の高いワイヤレスオーディオ。</p>
                     </div>
                     <div class="feature">
                         <div class="feature-icon">🔗</div>
-                        <h3>AES67 Compatible</h3>
-                        <p>Interoperate with Dante, Ravenna, and other AES67 devices.</p>
+                        <h3>AES67互換</h3>
+                        <p>Dante、Ravenna等のAES67機器と相互運用可能。</p>
                     </div>
                     <div class="feature">
                         <div class="feature-icon">🌐</div>
-                        <h3>Web Control</h3>
-                        <p>Built-in web UI, REST API, and WebSocket for easy integration.</p>
+                        <h3>Web制御</h3>
+                        <p>内蔵Web UI、REST API、WebSocketで簡単に統合。</p>
                     </div>
                     <div class="feature">
                         <div class="feature-icon">🔒</div>
-                        <h3>Secure</h3>
-                        <p>Optional DTLS encryption for sensitive audio streams.</p>
+                        <h3>セキュア</h3>
+                        <p>機密性の高いオーディオストリーム向けにオプションでDTLS暗号化。</p>
                     </div>
                 </div>
             </div>
@@ -429,11 +429,11 @@
 
         <section class="cta">
             <div class="container">
-                <h2>Ready to get started?</h2>
-                <p>Join thousands of users streaming audio with Soluna.</p>
+                <h2>始める準備はできましたか？</h2>
+                <p>Solunaでオーディオストリーミングを体験しましょう。</p>
                 <div class="buttons">
-                    <a href="#download" class="btn btn-primary">Download Now</a>
-                    <a href="https://github.com/yukihamada/opensonic/wiki" class="btn btn-secondary">Read the Docs</a>
+                    <a href="#download" class="btn btn-primary">ダウンロード</a>
+                    <a href="https://github.com/yukihamada/opensonic/wiki" class="btn btn-secondary">ドキュメントを読む</a>
                 </div>
             </div>
         </section>
@@ -442,21 +442,19 @@
     <footer>
         <div class="container">
             <p>
-                Soluna is open-source software under the MIT License.<br>
+                SolunaはMITライセンスのオープンソースソフトウェアです。<br>
                 <a href="https://github.com/yukihamada/opensonic">GitHub</a> ·
                 <a href="https://github.com/yukihamada/opensonic/issues">Issues</a> ·
-                <a href="https://github.com/yukihamada/opensonic/wiki">Documentation</a>
+                <a href="https://github.com/yukihamada/opensonic/wiki">ドキュメント</a>
             </p>
         </div>
     </footer>
 
-    <!-- Mobile theme toggle -->
-    <button class="theme-toggle theme-toggle-mobile" onclick="toggleTheme()" title="Toggle theme">
+    <button class="theme-toggle theme-toggle-mobile" onclick="toggleTheme()" title="テーマ切替">
         <span id="theme-icon-mobile">🌙</span>
     </button>
 
     <script>
-        // Theme management
         function getPreferredTheme() {
             const stored = localStorage.getItem('theme');
             if (stored) return stored;
@@ -482,13 +480,11 @@
             setTheme(current === 'dark' ? 'light' : 'dark');
         }
 
-        // Initialize theme on load
         document.addEventListener('DOMContentLoaded', function() {
             const theme = getPreferredTheme();
             setTheme(theme);
         });
 
-        // Listen for system theme changes
         window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', function(e) {
             if (!localStorage.getItem('theme')) {
                 setTheme(e.matches ? 'light' : 'dark');

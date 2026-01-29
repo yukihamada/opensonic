@@ -1,0 +1,10 @@
+# App Store Connect API
+app_identifier("com.soluna.SolunaReceiver")
+apple_id(ENV["APPLE_ID"] || "your-apple-id@example.com")
+team_id(ENV["TEAM_ID"])
+
+# App Store Connect API Key (recommended for CI/CD)
+# Set these environment variables:
+# - APP_STORE_CONNECT_API_KEY_ID
+# - APP_STORE_CONNECT_API_ISSUER_ID
+# - APP_STORE_CONNECT_API_KEY_CONTENT (base64 encoded .p8 file)
