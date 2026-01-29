@@ -21,6 +21,35 @@
             --text-muted: #94a3b8;
             --border: #334155;
         }
+        /* Light mode */
+        [data-theme="light"] {
+            --bg: #ffffff;
+            --bg-secondary: #f1f5f9;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+        }
+        [data-theme="light"] .hero h1 {
+            background: linear-gradient(135deg, #0f172a, #6366f1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        @media (prefers-color-scheme: light) {
+            :root:not([data-theme="dark"]) {
+                --bg: #ffffff;
+                --bg-secondary: #f1f5f9;
+                --text: #0f172a;
+                --text-muted: #64748b;
+                --border: #e2e8f0;
+            }
+            :root:not([data-theme="dark"]) .hero h1 {
+                background: linear-gradient(135deg, #0f172a, #6366f1);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+        }
         * {
             margin: 0;
             padding: 0;
@@ -226,6 +255,32 @@
             font-weight: 600;
             margin-left: 8px;
         }
+        .theme-toggle {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .theme-toggle:hover {
+            background: var(--border);
+        }
+        .theme-toggle-mobile {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1000;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+        }
         @media (max-width: 768px) {
             .hero h1 {
                 font-size: 36px;
@@ -235,6 +290,9 @@
             }
             .nav-links {
                 display: none;
+            }
+            .theme-toggle-mobile {
+                display: flex;
             }
         }
     </style>
@@ -250,6 +308,11 @@
                 <li><a href="#features">Features</a></li>
                 <li><a href="https://github.com/yukihamada/opensonic">GitHub</a></li>
                 <li><a href="https://github.com/yukihamada/opensonic/wiki">Docs</a></li>
+                <li>
+                    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+                        <span id="theme-icon">🌙</span>
+                    </button>
+                </li>
             </ul>
         </nav>
     </header>
@@ -275,51 +338,51 @@
                 <h2>Download</h2>
                 <div class="platform-grid">
                     <div class="platform-card">
-                        <div class="platform-icon">📱</div>
-                        <h3>iOS <span class="badge">NEW</span></h3>
-                        <p>Receive network audio on your iPhone or iPad. Supports AES67 and OSTP protocols.</p>
-                        <a href="https://testflight.apple.com/join/XXXXXX" class="btn btn-primary">
-                            Download for iOS
+                        <div class="platform-icon">🍎</div>
+                        <h3>macOS <span class="badge">READY</span></h3>
+                        <p>Build from source. Daemon (solunad) + CLI (solctl) working. CoreAudio backend.</p>
+                        <a href="https://github.com/yukihamada/opensonic#build-from-source--ソースからビルド" class="btn btn-primary">
+                            Build Instructions
                         </a>
                     </div>
                     <div class="platform-card">
-                        <div class="platform-icon">🍎</div>
-                        <h3>macOS</h3>
-                        <p>Full-featured daemon for transmit and receive. Universal binary for Intel and Apple Silicon.</p>
-                        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/soluna-macos.dmg" class="btn btn-primary">
-                            Download for macOS
+                        <div class="platform-icon">📱</div>
+                        <h3>iOS <span class="badge" style="background:#f59e0b">DEV</span></h3>
+                        <p>Xcode project ready. Build from source and deploy to your device via Xcode.</p>
+                        <a href="https://github.com/yukihamada/opensonic/tree/master/apps/ios" class="btn btn-secondary">
+                            View Project
                         </a>
                     </div>
                     <div class="platform-card">
                         <div class="platform-icon">🐧</div>
-                        <h3>Linux</h3>
-                        <p>Debian/Ubuntu packages available. Supports ALSA for low-latency audio.</p>
-                        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/soluna-amd64.deb" class="btn btn-primary">
-                            Download .deb
+                        <h3>Linux <span class="badge" style="background:#64748b">SOON</span></h3>
+                        <p>ALSA backend in development. Debian/Ubuntu packages coming soon.</p>
+                        <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
+                            View Source
                         </a>
                     </div>
                     <div class="platform-card">
                         <div class="platform-icon">🪟</div>
-                        <h3>Windows</h3>
-                        <p>WASAPI backend for professional audio on Windows 10/11.</p>
-                        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/soluna-win64.zip" class="btn btn-primary">
-                            Download for Windows
+                        <h3>Windows <span class="badge" style="background:#64748b">SOON</span></h3>
+                        <p>WASAPI backend planned for Windows 10/11.</p>
+                        <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
+                            View Source
                         </a>
                     </div>
                     <div class="platform-card">
                         <div class="platform-icon">🔌</div>
-                        <h3>ESP32</h3>
+                        <h3>ESP32 <span class="badge" style="background:#64748b">SOON</span></h3>
                         <p>Build your own network audio receiver with affordable ESP32 hardware.</p>
                         <a href="https://github.com/yukihamada/opensonic/tree/master/apps/esp32" class="btn btn-secondary">
-                            View Firmware
+                            View Project
                         </a>
                     </div>
                     <div class="platform-card">
                         <div class="platform-icon">🍓</div>
-                        <h3>Raspberry Pi</h3>
+                        <h3>Raspberry Pi <span class="badge" style="background:#64748b">SOON</span></h3>
                         <p>Turn your Pi into a network audio endpoint with HiFiBerry DAC support.</p>
-                        <a href="https://github.com/yukihamada/opensonic/wiki/Raspberry-Pi" class="btn btn-secondary">
-                            Setup Guide
+                        <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
+                            View Source
                         </a>
                     </div>
                 </div>
@@ -386,5 +449,51 @@
             </p>
         </div>
     </footer>
+
+    <!-- Mobile theme toggle -->
+    <button class="theme-toggle theme-toggle-mobile" onclick="toggleTheme()" title="Toggle theme">
+        <span id="theme-icon-mobile">🌙</span>
+    </button>
+
+    <script>
+        // Theme management
+        function getPreferredTheme() {
+            const stored = localStorage.getItem('theme');
+            if (stored) return stored;
+            return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            updateThemeIcon(theme);
+        }
+
+        function updateThemeIcon(theme) {
+            const emoji = theme === 'dark' ? '🌙' : '☀️';
+            const icon = document.getElementById('theme-icon');
+            const iconMobile = document.getElementById('theme-icon-mobile');
+            if (icon) icon.textContent = emoji;
+            if (iconMobile) iconMobile.textContent = emoji;
+        }
+
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme') || getPreferredTheme();
+            setTheme(current === 'dark' ? 'light' : 'dark');
+        }
+
+        // Initialize theme on load
+        document.addEventListener('DOMContentLoaded', function() {
+            const theme = getPreferredTheme();
+            setTheme(theme);
+        });
+
+        // Listen for system theme changes
+        window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', function(e) {
+            if (!localStorage.getItem('theme')) {
+                setTheme(e.matches ? 'light' : 'dark');
+            }
+        });
+    </script>
 </body>
 </html>

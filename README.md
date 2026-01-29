@@ -28,19 +28,37 @@
 
 ## Download / ダウンロード
 
-### iOS App / iOSアプリ
+### Current Status / 現在の状況
 
-**[Download Soluna Rx for iOS](https://soluna.audio)** - Receive network audio on your iPhone/iPad
+**macOS**: ✅ Build from source (daemon `solunad` + CLI `solctl` working)
 
-iPhoneやiPadでネットワークオーディオを受信できます。
+**iOS**: 🔨 Xcode project ready, build from source
 
-### Desktop / デスクトップ
+**Other platforms**: Coming soon
 
-| Platform | Download |
-|----------|----------|
-| macOS (Universal) | [soluna-1.0.0-macos.dmg](https://github.com/yukihamada/opensonic/releases/latest) |
-| Linux (deb) | [soluna-1.0.0-amd64.deb](https://github.com/yukihamada/opensonic/releases/latest) |
-| Windows | [soluna-1.0.0-win64.zip](https://github.com/yukihamada/opensonic/releases/latest) |
+### Build from Source / ソースからビルド
+
+```bash
+git clone https://github.com/yukihamada/opensonic.git
+cd opensonic
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+# Outputs: solunad (daemon), solctl (CLI)
+```
+
+### iOS App Build / iOSアプリビルド
+
+```bash
+# Build iOS library
+cd opensonic
+mkdir build-ios && cd build-ios
+cmake .. -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
+xcodebuild -project soluna.xcodeproj -scheme soluna_core -configuration Release -sdk iphoneos
+
+# Open Xcode project
+open apps/ios/SolunaReceiver.xcodeproj
+```
 
 ---
 
@@ -123,13 +141,13 @@ See [Configuration Guide](docs/configuration.md) for full options.
 
 | Platform | Audio Backend | Status |
 |----------|---------------|--------|
-| Linux (x64/ARM) | ALSA | ✅ Production |
-| macOS | CoreAudio | ✅ Production |
-| Windows | WASAPI | ✅ Production |
-| Raspberry Pi | ALSA | ✅ Production |
-| ESP32 | I2S | ✅ Production |
-| iOS | CoreAudio | ✅ Production |
-| Android | AAudio/OpenSL | ✅ Production |
+| macOS | CoreAudio | ✅ Working (daemon + CLI) |
+| Linux (x64/ARM) | ALSA | 🔨 In Development |
+| Windows | WASAPI | 🔨 In Development |
+| Raspberry Pi | ALSA | 🔨 In Development |
+| ESP32 | I2S | 🔨 In Development |
+| iOS | CoreAudio | 🔨 In Development (UI complete) |
+| Android | AAudio/OpenSL | 📋 Planned |
 
 ---
 
