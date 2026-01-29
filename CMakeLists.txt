@@ -215,13 +215,14 @@ if(SOLUNA_ENABLE_FLAC)
     endif()
 endif()
 
-# Daemon
-add_executable(solunad apps/daemon/main.cpp)
-target_link_libraries(solunad PRIVATE soluna_core)
+# Daemon and CLI (not for iOS/Android)
+if(NOT OS_IOS AND NOT OS_ANDROID)
+    add_executable(solunad apps/daemon/main.cpp)
+    target_link_libraries(solunad PRIVATE soluna_core)
 
-# CLI
-add_executable(solctl apps/cli/main.cpp)
-target_link_libraries(solctl PRIVATE soluna_core)
+    add_executable(solctl apps/cli/main.cpp)
+    target_link_libraries(solctl PRIVATE soluna_core)
+endif()
 
 # Example plugins
 add_subdirectory(examples/plugins)
@@ -242,8 +243,10 @@ add_custom_target(web_embed DEPENDS ${WEB_EMBED_HEADER})
 add_dependencies(soluna_core web_embed)
 target_include_directories(soluna_core PUBLIC ${CMAKE_BINARY_DIR}/generated)
 
-# Install targets
-install(TARGETS solunad solctl RUNTIME DESTINATION bin)
+# Install targets (not for iOS/Android)
+if(NOT OS_IOS AND NOT OS_ANDROID)
+    install(TARGETS solunad solctl RUNTIME DESTINATION bin)
+endif()
 install(DIRECTORY include/soluna DESTINATION include)
 
 # CPack DEB support

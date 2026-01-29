@@ -1,0 +1,4 @@
+# Redirects for Cloudflare Pages
+/ios  https://testflight.apple.com/join/XXXXXX  302
+/github  https://github.com/yukihamada/opensonic  302
+/docs  https://github.com/yukihamada/opensonic/wiki  302

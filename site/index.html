@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soluna - Open Network Audio System</title>
+    <meta name="description" content="Professional-grade network audio streaming. Free, open-source, low-latency. Available for iOS, macOS, Linux, Windows, ESP32.">
+    <meta property="og:title" content="Soluna - Open Network Audio System">
+    <meta property="og:description" content="Stream audio over your network with sub-millisecond latency. Free and open-source.">
+    <meta property="og:image" content="https://soluna.audio/og-image.png">
+    <meta property="og:url" content="https://soluna.audio">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔊</text></svg>">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --bg: #0f172a;
+            --bg-secondary: #1e293b;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+        header {
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .nav-links {
+            display: flex;
+            gap: 32px;
+            list-style: none;
+        }
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover {
+            color: var(--text);
+        }
+        .hero {
+            padding: 100px 0;
+            text-align: center;
+        }
+        .hero h1 {
+            font-size: 56px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, #fff, #6366f1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero p {
+            font-size: 20px;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto 40px;
+        }
+        .buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+        .platforms {
+            padding: 80px 0;
+        }
+        .platforms h2 {
+            text-align: center;
+            font-size: 36px;
+            margin-bottom: 48px;
+        }
+        .platform-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+        }
+        .platform-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            text-align: center;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .platform-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--primary);
+        }
+        .platform-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        .platform-card h3 {
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+        .platform-card p {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+        .platform-card .btn {
+            width: 100%;
+            justify-content: center;
+        }
+        .features {
+            padding: 80px 0;
+            background: var(--bg-secondary);
+        }
+        .features h2 {
+            text-align: center;
+            font-size: 36px;
+            margin-bottom: 48px;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 32px;
+        }
+        .feature {
+            text-align: center;
+        }
+        .feature-icon {
+            font-size: 40px;
+            margin-bottom: 16px;
+        }
+        .feature h3 {
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+        .feature p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        .cta {
+            padding: 100px 0;
+            text-align: center;
+        }
+        .cta h2 {
+            font-size: 36px;
+            margin-bottom: 16px;
+        }
+        .cta p {
+            color: var(--text-muted);
+            margin-bottom: 32px;
+        }
+        footer {
+            padding: 40px 0;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            color: var(--text-muted);
+        }
+        footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+        footer a:hover {
+            color: var(--text);
+        }
+        .badge {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 36px;
+            }
+            .hero p {
+                font-size: 16px;
+            }
+            .nav-links {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <a href="/" class="logo">
+                <span>Soluna</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#download">Download</a></li>
+                <li><a href="#features">Features</a></li>
+                <li><a href="https://github.com/yukihamada/opensonic">GitHub</a></li>
+                <li><a href="https://github.com/yukihamada/opensonic/wiki">Docs</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <h1>Network Audio,<br>Made Simple</h1>
+                <p>Professional-grade audio streaming over your network. Sub-millisecond latency, sample-accurate sync, completely free and open-source.</p>
+                <div class="buttons">
+                    <a href="#download" class="btn btn-primary">
+                        Download Now
+                    </a>
+                    <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
+                        View on GitHub
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <section class="platforms" id="download">
+            <div class="container">
+                <h2>Download</h2>
+                <div class="platform-grid">
+                    <div class="platform-card">
+                        <div class="platform-icon">📱</div>
+                        <h3>iOS <span class="badge">NEW</span></h3>
+                        <p>Receive network audio on your iPhone or iPad. Supports AES67 and OSTP protocols.</p>
+                        <a href="https://testflight.apple.com/join/XXXXXX" class="btn btn-primary">
+                            Download for iOS
+                        </a>
+                    </div>
+                    <div class="platform-card">
+                        <div class="platform-icon">🍎</div>
+                        <h3>macOS</h3>
+                        <p>Full-featured daemon for transmit and receive. Universal binary for Intel and Apple Silicon.</p>
+                        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/soluna-macos.dmg" class="btn btn-primary">
+                            Download for macOS
+                        </a>
+                    </div>
+                    <div class="platform-card">
+                        <div class="platform-icon">🐧</div>
+                        <h3>Linux</h3>
+                        <p>Debian/Ubuntu packages available. Supports ALSA for low-latency audio.</p>
+                        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/soluna-amd64.deb" class="btn btn-primary">
+                            Download .deb
+                        </a>
+                    </div>
+                    <div class="platform-card">
+                        <div class="platform-icon">🪟</div>
+                        <h3>Windows</h3>
+                        <p>WASAPI backend for professional audio on Windows 10/11.</p>
+                        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/soluna-win64.zip" class="btn btn-primary">
+                            Download for Windows
+                        </a>
+                    </div>
+                    <div class="platform-card">
+                        <div class="platform-icon">🔌</div>
+                        <h3>ESP32</h3>
+                        <p>Build your own network audio receiver with affordable ESP32 hardware.</p>
+                        <a href="https://github.com/yukihamada/opensonic/tree/master/apps/esp32" class="btn btn-secondary">
+                            View Firmware
+                        </a>
+                    </div>
+                    <div class="platform-card">
+                        <div class="platform-icon">🍓</div>
+                        <h3>Raspberry Pi</h3>
+                        <p>Turn your Pi into a network audio endpoint with HiFiBerry DAC support.</p>
+                        <a href="https://github.com/yukihamada/opensonic/wiki/Raspberry-Pi" class="btn btn-secondary">
+                            Setup Guide
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="features" id="features">
+            <div class="container">
+                <h2>Features</h2>
+                <div class="feature-grid">
+                    <div class="feature">
+                        <div class="feature-icon">⚡</div>
+                        <h3>Ultra-Low Latency</h3>
+                        <p>Sub-millisecond latency on wired networks. Perfect for live performance and monitoring.</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">🔄</div>
+                        <h3>PTP Synchronization</h3>
+                        <p>IEEE 1588-2008 (PTPv2) ensures sample-accurate sync across all devices.</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">📶</div>
+                        <h3>WiFi Ready</h3>
+                        <p>Adaptive streaming with FEC for reliable wireless audio.</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">🔗</div>
+                        <h3>AES67 Compatible</h3>
+                        <p>Interoperate with Dante, Ravenna, and other AES67 devices.</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">🌐</div>
+                        <h3>Web Control</h3>
+                        <p>Built-in web UI, REST API, and WebSocket for easy integration.</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">🔒</div>
+                        <h3>Secure</h3>
+                        <p>Optional DTLS encryption for sensitive audio streams.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="cta">
+            <div class="container">
+                <h2>Ready to get started?</h2>
+                <p>Join thousands of users streaming audio with Soluna.</p>
+                <div class="buttons">
+                    <a href="#download" class="btn btn-primary">Download Now</a>
+                    <a href="https://github.com/yukihamada/opensonic/wiki" class="btn btn-secondary">Read the Docs</a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>
+                Soluna is open-source software under the MIT License.<br>
+                <a href="https://github.com/yukihamada/opensonic">GitHub</a> ·
+                <a href="https://github.com/yukihamada/opensonic/issues">Issues</a> ·
+                <a href="https://github.com/yukihamada/opensonic/wiki">Documentation</a>
+            </p>
+        </div>
+    </footer>
+</body>
+</html>

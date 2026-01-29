@@ -4,8 +4,9 @@
   <img src="docs/logo.svg" alt="Soluna Logo" width="200">
 </p>
 
-[![Build Status](https://github.com/example/soluna/actions/workflows/ci.yml/badge.svg)](https://github.com/example/soluna/actions)
+[![Build Status](https://github.com/yukihamada/opensonic/actions/workflows/ci.yml/badge.svg)](https://github.com/yukihamada/opensonic/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![iOS App](https://img.shields.io/badge/iOS-App_Store-blue.svg)](https://soluna.audio)
 
 **Soluna** is an open-source, professional-grade network audio system for low-latency, synchronized audio streaming over IP networks.
 
@@ -22,6 +23,24 @@
 - **AES67 Compatible**: Interoperates with Dante, Ravenna, etc. / AES67互換（Dante、Ravenna等と相互運用）
 - **Web Control**: REST API + WebSocket + responsive Web UI / WebベースのコントロールUI
 - **Prometheus Metrics**: Built-in operational monitoring / 運用監視用メトリクス内蔵
+
+---
+
+## Download / ダウンロード
+
+### iOS App / iOSアプリ
+
+**[Download Soluna Rx for iOS](https://soluna.audio)** - Receive network audio on your iPhone/iPad
+
+iPhoneやiPadでネットワークオーディオを受信できます。
+
+### Desktop / デスクトップ
+
+| Platform | Download |
+|----------|----------|
+| macOS (Universal) | [soluna-1.0.0-macos.dmg](https://github.com/yukihamada/opensonic/releases/latest) |
+| Linux (deb) | [soluna-1.0.0-amd64.deb](https://github.com/yukihamada/opensonic/releases/latest) |
+| Windows | [soluna-1.0.0-win64.zip](https://github.com/yukihamada/opensonic/releases/latest) |
 
 ---
 
@@ -42,7 +61,7 @@ brew install soluna
 
 **Build from source / ソースからビルド:**
 ```bash
-git clone https://github.com/example/soluna.git
+git clone https://github.com/yukihamada/opensonic.git
 cd soluna
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
