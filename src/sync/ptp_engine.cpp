@@ -126,6 +126,18 @@ pal::Timestamp PtpEngine::ptp_now() const {
     return pal::Timestamp::from_ns(corrected);
 }
 
+int64_t PtpEngine::get_media_clock_ns() const {
+    return ptp_now().to_ns();
+}
+
+uint32_t PtpEngine::media_clock_to_rtp_timestamp(int64_t media_clock_ns, uint32_t sample_rate) {
+    // Convert nanoseconds to samples, then truncate to 32-bit
+    // RTP timestamp = (media_clock_ns * sample_rate) / 1,000,000,000
+    // Use 64-bit arithmetic to avoid overflow
+    int64_t samples = (media_clock_ns * static_cast<int64_t>(sample_rate)) / 1'000'000'000LL;
+    return static_cast<uint32_t>(samples & 0xFFFFFFFFLL);
+}
+
 void PtpEngine::set_sync_callback(PtpSyncCallback cb) {
     std::lock_guard<std::mutex> lock(sync_mutex_);
     sync_callback_ = std::move(cb);

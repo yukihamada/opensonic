@@ -16,7 +16,11 @@
         <button class="tab active" data-panel="devices">Devices</button>
         <button class="tab" data-panel="streams">Streams</button>
         <button class="tab" data-panel="routing">Routing</button>
+        <button class="tab" data-panel="matrix">Matrix</button>
         <button class="tab" data-panel="meters">Meters</button>
+        <button class="tab" data-panel="stats">Stats</button>
+        <button class="tab" data-panel="security">Security</button>
+        <button class="tab" data-panel="presets">Presets</button>
     </nav>
 
     <main>
@@ -47,9 +51,116 @@
             </table>
         </section>
 
+        <section id="matrix" class="panel">
+            <h2>Routing Matrix</h2>
+            <div class="matrix-container">
+                <div id="routing-matrix" class="routing-matrix"></div>
+            </div>
+            <div class="matrix-legend">
+                <span class="legend-item"><span class="legend-active"></span> Active</span>
+                <span class="legend-item"><span class="legend-muted"></span> Muted</span>
+                <span class="legend-item"><span class="legend-inactive"></span> Inactive</span>
+            </div>
+        </section>
+
         <section id="meters" class="panel">
             <h2>Level Meters</h2>
+            <div class="meter-controls">
+                <label><input type="checkbox" id="meter-auto-refresh" checked> Auto-refresh</label>
+                <span id="meter-status" class="meter-status"></span>
+            </div>
             <div id="meter-display" class="meter-grid"></div>
+        </section>
+
+        <section id="stats" class="panel">
+            <h2>System Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Devices</div>
+                    <div class="stat-value" id="stat-devices">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Active Streams</div>
+                    <div class="stat-value" id="stat-streams">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Routes</div>
+                    <div class="stat-value" id="stat-routes">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Bandwidth</div>
+                    <div class="stat-value" id="stat-bandwidth">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">PTP Status</div>
+                    <div class="stat-value" id="stat-ptp">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">PTP Role</div>
+                    <div class="stat-value" id="stat-ptp-role">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">PTP Offset</div>
+                    <div class="stat-value" id="stat-ptp-offset">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Path Delay</div>
+                    <div class="stat-value" id="stat-ptp-delay">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Sync Count</div>
+                    <div class="stat-value" id="stat-ptp-sync-count">-</div>
+                </div>
+            </div>
+        </section>
+
+        <section id="security" class="panel">
+            <h2>Security Settings</h2>
+            <div class="security-status">
+                <div class="stat-card">
+                    <div class="stat-label">DTLS Available</div>
+                    <div class="stat-value" id="sec-dtls-available">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">DTLS Enabled</div>
+                    <div class="stat-value" id="sec-dtls-enabled">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Certificate</div>
+                    <div class="stat-value" id="sec-has-cert">-</div>
+                </div>
+            </div>
+            <div class="security-config">
+                <h3>DTLS Configuration</h3>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="sec-enable-dtls">
+                        Enable DTLS encryption
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label for="sec-cert-path">Certificate path:</label>
+                    <input type="text" id="sec-cert-path" placeholder="/path/to/cert.pem">
+                </div>
+                <div class="form-group">
+                    <label for="sec-key-path">Private key path:</label>
+                    <input type="text" id="sec-key-path" placeholder="/path/to/key.pem">
+                </div>
+                <button id="btn-security-apply" class="btn">Apply Settings</button>
+            </div>
+            <div class="security-info">
+                <h3>Certificate Information</h3>
+                <div id="cert-info" class="detail">No certificate loaded</div>
+            </div>
+        </section>
+
+        <section id="presets" class="panel">
+            <h2>Presets</h2>
+            <div class="toolbar">
+                <input id="preset-name" placeholder="Preset name">
+                <button id="btn-preset-save" class="btn">Save Current</button>
+            </div>
+            <div id="preset-list" class="card-list"></div>
         </section>
     </main>
 

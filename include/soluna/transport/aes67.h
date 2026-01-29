@@ -20,6 +20,8 @@
 #include <cstddef>
 #include <string>
 #include <vector>
+#include <functional>
+#include <memory>
 
 namespace soluna::transport {
 
@@ -108,5 +110,82 @@ bool aes67_is_standard_packet(const RtpHeader& hdr);
  * Compute SAP message ID hash from SDP text.
  */
 uint16_t aes67_sap_hash(const std::string& sdp);
+
+// ============================================================================
+// AES67 Receiver Support
+// ============================================================================
+
+/**
+ * Parsed AES67 remote session from SDP.
+ */
+struct Aes67RemoteSession {
+    std::string session_name;
+    std::string origin_address;
+    uint32_t session_id = 0;
+    uint32_t session_version = 0;
+    std::string multicast_ip;
+    uint16_t port = 0;
+    uint32_t sample_rate = 48000;
+    uint8_t channels = 1;
+    uint8_t bit_depth = 24;
+    uint8_t payload_type = kPayloadTypeL24;
+    uint32_t packet_time_us = 1000;
+    bool has_ptp_refclk = false;
+};
+
+/**
+ * Parse SDP text and extract AES67 session parameters.
+ *
+ * @param sdp       SDP text to parse
+ * @param out       Parsed session information
+ * @return          true if parsing succeeded
+ */
+bool aes67_parse_sdp(const char* sdp, Aes67RemoteSession& out);
+bool aes67_parse_sdp(const std::string& sdp, Aes67RemoteSession& out);
+
+/**
+ * SAP Listener — Receives SAP announcements and discovers AES67 sessions.
+ *
+ * Joins multicast group 224.2.127.254:9875 and invokes callback for each
+ * discovered session.
+ */
+class SapListener {
+public:
+    using SessionCallback = std::function<void(const Aes67RemoteSession& session, bool is_deletion)>;
+
+    SapListener();
+    ~SapListener();
+
+    SapListener(const SapListener&) = delete;
+    SapListener& operator=(const SapListener&) = delete;
+
+    /**
+     * Start listening for SAP announcements.
+     *
+     * @param on_session Callback invoked for each discovered session.
+     *                   is_deletion=true means session is being withdrawn.
+     * @return true if started successfully
+     */
+    bool start(SessionCallback on_session);
+
+    /**
+     * Stop listening.
+     */
+    void stop();
+
+    /**
+     * Check if listener is running.
+     */
+    bool is_running() const;
+
+    /**
+     * Get number of known sessions.
+     */
+    size_t session_count() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
 
 } // namespace soluna::transport

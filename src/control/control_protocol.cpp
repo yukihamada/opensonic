@@ -27,8 +27,16 @@ static const std::pair<CommandType, const char*> kCommandNames[] = {
     {CommandType::MeterGet,         "meter.get"},
     {CommandType::MeterSubscribe,   "meter.subscribe"},
     {CommandType::MeterUnsubscribe, "meter.unsubscribe"},
+    {CommandType::MeterGetAll,      "meter.get_all"},
     {CommandType::Status,           "status"},
     {CommandType::Version,          "version"},
+    {CommandType::SystemStats,      "system.stats"},
+    {CommandType::PresetList,       "preset.list"},
+    {CommandType::PresetSave,       "preset.save"},
+    {CommandType::PresetLoad,       "preset.load"},
+    {CommandType::PresetDelete,     "preset.delete"},
+    {CommandType::SecurityStatus,   "security.status"},
+    {CommandType::SecuritySetDtls,  "security.set_dtls"},
 };
 
 const char* command_to_string(CommandType cmd) {

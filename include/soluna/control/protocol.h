@@ -39,10 +39,22 @@ enum class CommandType {
     MeterGet,
     MeterSubscribe,
     MeterUnsubscribe,
+    MeterGetAll,
 
     // System
     Status,
     Version,
+    SystemStats,
+
+    // Preset
+    PresetList,
+    PresetSave,
+    PresetLoad,
+    PresetDelete,
+
+    // Security/DTLS
+    SecurityStatus,
+    SecuritySetDtls,
 
     Unknown,
 };

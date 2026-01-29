@@ -12,6 +12,8 @@
 #include <soluna/control/discovery.h>
 #include <soluna/control/session.h>
 #include <soluna/control/routing.h>
+#include <soluna/control/preset_manager.h>
+#include <soluna/sync/ptp_engine.h>
 
 // Placeholder — REST API implementation will use libwebsockets in Phase 7.
 // For Phase 3, the CLI communicates directly via the control protocol structs.
@@ -24,7 +26,8 @@ ControlResponse handle_command(
     const ControlRequest& req,
     Discovery& discovery,
     SessionManager& sessions,
-    RoutingMatrix& routing)
+    RoutingMatrix& routing,
+    sync::PtpEngine* ptp = nullptr)
 {
     ControlResponse resp;
     resp.id = req.id;
@@ -177,7 +180,7 @@ ControlResponse handle_command(
         }
 
         case CommandType::Version: {
-            resp.data = "{\"version\":\"0.1.0\",\"phase\":7}";
+            resp.data = "{\"version\":\"0.2.0\",\"phase\":8}";
             break;
         }
 
@@ -188,6 +191,235 @@ ControlResponse handle_command(
             resp.data = "{\"devices\":" + std::to_string(devices.size()) +
                         ",\"streams\":" + std::to_string(streams.size()) +
                         ",\"routes\":" + std::to_string(routes.size()) + "}";
+            break;
+        }
+
+        case CommandType::MeterGetAll: {
+            // Get meters for all channels
+            auto routes_list = routing.list_routes();
+            std::string json = "{\"channels\":[";
+
+            // Collect unique channels from routes
+            std::map<std::string, bool> seen;
+            std::vector<std::string> channels;
+            for (const auto& r : routes_list) {
+                auto src = r.source.to_string();
+                auto dst = r.sink.to_string();
+                if (seen.find(src) == seen.end()) {
+                    seen[src] = true;
+                    channels.push_back(src);
+                }
+                if (seen.find(dst) == seen.end()) {
+                    seen[dst] = true;
+                    channels.push_back(dst);
+                }
+            }
+
+            for (size_t i = 0; i < channels.size(); i++) {
+                if (i > 0) json += ",";
+                auto meter = routing.get_meter(ChannelId::parse(channels[i]));
+                json += "{\"channel\":\"" + channels[i] +
+                        "\",\"peak_db\":" + std::to_string(meter.peak_db) +
+                        ",\"rms_db\":" + std::to_string(meter.rms_db) +
+                        ",\"clip_count\":" + std::to_string(meter.clip_count) + "}";
+            }
+            json += "]}";
+            resp.data = json;
+            break;
+        }
+
+        case CommandType::SystemStats: {
+            // System statistics
+            auto devices = discovery.devices();
+            auto streams = sessions.list_streams();
+            auto routes_list = routing.list_routes();
+
+            // Count active streams
+            size_t active_streams = 0;
+            for (const auto& s : streams) {
+                if (s.state == StreamState::Active) active_streams++;
+            }
+
+            // Calculate approximate bandwidth (bytes/sec)
+            // Assume 48kHz, 24-bit, 48 samples/packet = 1ms packets
+            size_t bandwidth_bps = active_streams * 48000 * 3 * 8; // bits per stream
+
+            // PTP sync information
+            bool ptp_synced = false;
+            int64_t ptp_offset_ns = 0;
+            int64_t ptp_path_delay_ns = 0;
+            std::string ptp_role = "unknown";
+            uint64_t ptp_sync_count = 0;
+
+            if (ptp) {
+                auto info = ptp->sync_info();
+                ptp_synced = info.synchronized;
+                ptp_offset_ns = info.offset_ns;
+                ptp_path_delay_ns = info.path_delay_ns;
+                ptp_sync_count = info.sync_count;
+                switch (info.role) {
+                    case sync::PtpRole::Listening: ptp_role = "listening"; break;
+                    case sync::PtpRole::Master: ptp_role = "master"; break;
+                    case sync::PtpRole::Slave: ptp_role = "slave"; break;
+                }
+            }
+
+            resp.data = "{\"device_count\":" + std::to_string(devices.size()) +
+                        ",\"stream_count\":" + std::to_string(streams.size()) +
+                        ",\"active_streams\":" + std::to_string(active_streams) +
+                        ",\"route_count\":" + std::to_string(routes_list.size()) +
+                        ",\"bandwidth_bps\":" + std::to_string(bandwidth_bps) +
+                        ",\"uptime_sec\":0" +
+                        ",\"ptp_synced\":" + (ptp_synced ? "true" : "false") +
+                        ",\"ptp_offset_ns\":" + std::to_string(ptp_offset_ns) +
+                        ",\"ptp_path_delay_ns\":" + std::to_string(ptp_path_delay_ns) +
+                        ",\"ptp_role\":\"" + ptp_role + "\"" +
+                        ",\"ptp_sync_count\":" + std::to_string(ptp_sync_count) + "}";
+            break;
+        }
+
+        case CommandType::PresetList: {
+            static PresetManager presets;
+            auto list = presets.list();
+            std::string json = "{\"presets\":[";
+            for (size_t i = 0; i < list.size(); i++) {
+                if (i > 0) json += ",";
+                json += "{\"name\":\"" + list[i].name +
+                        "\",\"filename\":\"" + list[i].filename +
+                        "\",\"route_count\":" + std::to_string(list[i].route_count) +
+                        ",\"modified_time\":" + std::to_string(list[i].modified_time) + "}";
+            }
+            json += "]}";
+            resp.data = json;
+            break;
+        }
+
+        case CommandType::PresetSave: {
+            auto name = req.get_param("name");
+            if (name.empty()) {
+                resp.success = false;
+                resp.error = "name is required";
+                break;
+            }
+            static PresetManager presets;
+            resp.success = presets.save(name, routing);
+            if (resp.success) {
+                resp.data = "{\"saved\":true,\"name\":\"" + name + "\"}";
+            } else {
+                resp.error = "failed to save preset";
+            }
+            break;
+        }
+
+        case CommandType::PresetLoad: {
+            auto name = req.get_param("name");
+            if (name.empty()) {
+                resp.success = false;
+                resp.error = "name is required";
+                break;
+            }
+            static PresetManager presets;
+            if (!presets.exists(name)) {
+                resp.success = false;
+                resp.error = "preset not found";
+                break;
+            }
+            resp.success = presets.load(name, routing);
+            if (resp.success) {
+                auto routes = routing.list_routes();
+                resp.data = "{\"loaded\":true,\"name\":\"" + name +
+                            "\",\"route_count\":" + std::to_string(routes.size()) + "}";
+            } else {
+                resp.error = "failed to load preset";
+            }
+            break;
+        }
+
+        case CommandType::PresetDelete: {
+            auto name = req.get_param("name");
+            if (name.empty()) {
+                resp.success = false;
+                resp.error = "name is required";
+                break;
+            }
+            static PresetManager presets;
+            if (!presets.exists(name)) {
+                resp.success = false;
+                resp.error = "preset not found";
+                break;
+            }
+            resp.success = presets.remove(name);
+            if (resp.success) {
+                resp.data = "{\"deleted\":true,\"name\":\"" + name + "\"}";
+            } else {
+                resp.error = "failed to delete preset";
+            }
+            break;
+        }
+
+        case CommandType::SecurityStatus: {
+            // Security status - DTLS configuration and certificate info
+            // Note: In a full implementation, this would query TransportManager
+            // For now, provide a status structure that the UI can display
+            bool dtls_enabled = false;
+            bool has_cert = false;
+            bool has_key = false;
+            std::string cert_path = "";
+            std::string key_path = "";
+            std::string cert_subject = "";
+            std::string cert_expiry = "";
+
+#ifdef SOLUNA_HAS_DTLS
+            dtls_enabled = true;
+            // These would normally come from config/TransportManager
+            // Placeholder for now
+#endif
+
+            resp.data = "{\"dtls_enabled\":" + std::string(dtls_enabled ? "true" : "false") +
+                        ",\"has_certificate\":" + std::string(has_cert ? "true" : "false") +
+                        ",\"has_key\":" + std::string(has_key ? "true" : "false") +
+                        ",\"cert_path\":\"" + cert_path + "\"" +
+                        ",\"key_path\":\"" + key_path + "\"" +
+                        ",\"cert_subject\":\"" + cert_subject + "\"" +
+                        ",\"cert_expiry\":\"" + cert_expiry + "\"" +
+                        ",\"dtls_available\":" +
+#ifdef SOLUNA_HAS_DTLS
+                        "true" +
+#else
+                        "false" +
+#endif
+                        "}";
+            break;
+        }
+
+        case CommandType::SecuritySetDtls: {
+            // Enable/disable DTLS and set certificate paths
+            auto enabled_str = req.get_param("enabled");
+            auto cert_path = req.get_param("cert_path");
+            auto key_path = req.get_param("key_path");
+
+#ifndef SOLUNA_HAS_DTLS
+            resp.success = false;
+            resp.error = "DTLS not available (built without OpenSSL)";
+            break;
+#else
+            // In a full implementation, this would update TransportManager config
+            // For now, acknowledge the request
+            bool enabled = (enabled_str == "true" || enabled_str == "1");
+
+            // Validate paths if provided
+            if (enabled && (!cert_path.empty() || !key_path.empty())) {
+                if (cert_path.empty() || key_path.empty()) {
+                    resp.success = false;
+                    resp.error = "both cert_path and key_path are required when enabling DTLS";
+                    break;
+                }
+            }
+
+            resp.data = "{\"dtls_enabled\":" + std::string(enabled ? "true" : "false") +
+                        ",\"cert_path\":\"" + cert_path + "\"" +
+                        ",\"key_path\":\"" + key_path + "\"}";
+#endif
             break;
         }
 

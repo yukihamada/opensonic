@@ -41,12 +41,14 @@ static SessionManager g_sessions;
 static RoutingMatrix g_routing;
 
 // Forward declarations for handle_command
+namespace soluna::sync { class PtpEngine; }
 namespace soluna::control {
 ControlResponse handle_command(
     const ControlRequest& req,
     Discovery& discovery,
     SessionManager& sessions,
-    RoutingMatrix& routing);
+    RoutingMatrix& routing,
+    sync::PtpEngine* ptp = nullptr);
 }
 
 static void print_usage(const char* prog) {

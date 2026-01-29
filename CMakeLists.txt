@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(soluna
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "Soluna — Open Network Audio System"
     LANGUAGES C CXX
 )
@@ -84,6 +84,7 @@ add_library(soluna_core STATIC
     src/control/rest_api.cpp
     src/control/websocket_server.cpp
     src/control/auto_router.cpp
+    src/control/preset_manager.cpp
     # WiFi
     src/wifi/jitter_buffer.cpp
     src/wifi/fec_encoder.cpp
@@ -112,6 +113,8 @@ add_library(soluna_core STATIC
     $<$<BOOL:${SOLUNA_ENABLE_AES67}>:src/transport/aes67.cpp>
     # DTLS (always compiled — has internal #ifdef guards for stub)
     src/transport/dtls.cpp
+    # Transport Manager
+    src/transport/transport_manager.cpp
 )
 
 target_include_directories(soluna_core PUBLIC

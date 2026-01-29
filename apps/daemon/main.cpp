@@ -19,6 +19,8 @@
 #include <soluna/pipeline/pipeline.h>
 #include <soluna/transport/ostp.h>
 #include <soluna/transport/packet_scheduler.h>
+#include <soluna/transport/transport_manager.h>
+#include <soluna/transport/aes67.h>
 #include <soluna/config/config.h>
 
 #include <atomic>
@@ -38,6 +40,7 @@ static void signal_handler(int) {
 struct DaemonConfig {
     bool tx_mode = false;
     bool rx_mode = false;
+    bool aes67_mode = false;
     std::string audio_device;
     std::string dest_ip = soluna::kMulticastAudio;
     uint16_t dest_port = soluna::kPortRTPBase;
@@ -47,6 +50,9 @@ struct DaemonConfig {
     uint32_t ssrc = 0x4F534E43; // "OSNC"
     uint16_t stream_id = 1;
     std::string config_file;
+
+    // Security settings from config
+    soluna::config::SecurityConfig security;
 
     // Apply settings from YAML config
     void apply_yaml_config(const soluna::config::Config& cfg) {
@@ -66,6 +72,8 @@ struct DaemonConfig {
         if (cfg.audio.channels != 2) {
             channels = cfg.audio.channels;
         }
+        // Apply security settings
+        security = cfg.security;
     }
 };
 
@@ -75,11 +83,15 @@ static void print_usage(const char* prog) {
         "  --config FILE     Load configuration from YAML file\n"
         "  --tx              Transmit mode (capture → network)\n"
         "  --rx              Receive mode (network → playback)\n"
+        "  --aes67-mode      Use AES67-compatible RTP (no OSTP extensions)\n"
         "  --device DEV      Audio device (e.g., hw:0, default)\n"
         "  --dest IP:PORT    Destination (TX mode, default: 239.69.0.1:5004)\n"
         "  --port PORT       Listen port (RX mode, default: 5004)\n"
         "  --rate RATE       Sample rate (default: 48000)\n"
         "  --channels N      Channel count (default: 1)\n"
+        "  --dtls            Enable DTLS encryption\n"
+        "  --cert FILE       DTLS certificate file (PEM)\n"
+        "  --key FILE        DTLS private key file (PEM)\n"
         "  --list-devices    List available audio devices\n"
         "  --generate-config Print default configuration to stdout\n"
         "  --help            Show this help\n",
@@ -93,6 +105,14 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
             cfg.tx_mode = true;
         } else if (arg == "--rx") {
             cfg.rx_mode = true;
+        } else if (arg == "--aes67-mode") {
+            cfg.aes67_mode = true;
+        } else if (arg == "--dtls") {
+            cfg.security.dtls_enabled = true;
+        } else if (arg == "--cert" && i + 1 < argc) {
+            cfg.security.certificate_path = argv[++i];
+        } else if (arg == "--key" && i + 1 < argc) {
+            cfg.security.private_key_path = argv[++i];
         } else if (arg == "--config" && i + 1 < argc) {
             cfg.config_file = argv[++i];
         } else if (arg == "--device" && i + 1 < argc) {
@@ -198,11 +218,25 @@ static int run_tx(const DaemonConfig& cfg) {
         ring.write(conv_buf.data(), frame_count);
     });
 
-    // Network socket
-    auto socket = UdpSocket::create();
-    if (!socket) {
-        fprintf(stderr, "Error: cannot create UDP socket\n");
-        return 1;
+    // Create transport manager for optional DTLS
+    TransportManager transport_mgr(cfg.security);
+
+    // Create transport socket
+    std::unique_ptr<TransportSocket> socket;
+    if (cfg.security.dtls_enabled) {
+        printf("solunad: DTLS encryption enabled\n");
+        SocketAddress dest{cfg.dest_ip, cfg.dest_port};
+        socket = transport_mgr.establish_secure_channel(dest);
+        if (!socket) {
+            fprintf(stderr, "Error: DTLS handshake failed\n");
+            return 1;
+        }
+    } else {
+        socket = transport_mgr.create_tx_socket();
+        if (!socket) {
+            fprintf(stderr, "Error: cannot create transport socket\n");
+            return 1;
+        }
     }
     socket->set_dscp(46);
 
@@ -218,7 +252,10 @@ static int run_tx(const DaemonConfig& cfg) {
     uint32_t rtp_timestamp = 0;
     uint32_t media_ts = 0;
 
-    printf("solunad TX: %s → %s:%u (%uHz, %uch)\n",
+    const char* mode_str = cfg.aes67_mode ? "AES67" : "OSTP";
+    const char* security_str = cfg.security.dtls_enabled ? " [DTLS]" : "";
+    printf("solunad TX (%s%s): %s → %s:%u (%uHz, %uch)\n",
+        mode_str, security_str,
         cfg.audio_device.c_str(), cfg.dest_ip.c_str(), cfg.dest_port,
         cfg.sample_rate, cfg.channels);
 
@@ -231,17 +268,43 @@ static int run_tx(const DaemonConfig& cfg) {
 
         ring.read(audio_buf.data(), kFramesPerPacket);
 
-        size_t payload_size = kFramesPerPacket * frame_size;
-        uint16_t seq_lo = static_cast<uint16_t>(sequence & 0xFFFF);
-        uint16_t seq_hi = static_cast<uint16_t>((sequence >> 16) & 0xFFFF);
+        size_t pkt_size = 0;
 
-        size_t pkt_size = ostp_build_packet(
-            packet_buf.data(), packet_buf.size(),
-            cfg.ssrc, seq_lo, rtp_timestamp,
-            kPayloadTypePCM24,
-            cfg.stream_id, seq_hi, media_ts,
-            audio_buf.data(), payload_size
-        );
+        if (cfg.aes67_mode) {
+            // Build AES67-compatible RTP packet
+            uint8_t payload_type = kPayloadTypeAES67_L24;
+            size_t bytes_per_sample = 3; // 24-bit packed
+
+            // Convert to big-endian 24-bit packed
+            std::vector<uint8_t> payload(kFramesPerPacket * cfg.channels * bytes_per_sample);
+            uint8_t* out = payload.data();
+            for (size_t i = 0; i < kFramesPerPacket * cfg.channels; i++) {
+                int32_t sample = audio_buf[i];
+                *out++ = static_cast<uint8_t>((sample >> 16) & 0xFF);
+                *out++ = static_cast<uint8_t>((sample >> 8) & 0xFF);
+                *out++ = static_cast<uint8_t>(sample & 0xFF);
+            }
+
+            pkt_size = aes67_build_rtp_packet(
+                packet_buf.data(), packet_buf.size(),
+                cfg.ssrc, static_cast<uint16_t>(sequence & 0xFFFF),
+                rtp_timestamp, payload_type,
+                payload.data(), payload.size()
+            );
+        } else {
+            // Build OSTP packet
+            size_t payload_size = kFramesPerPacket * frame_size;
+            uint16_t seq_lo = static_cast<uint16_t>(sequence & 0xFFFF);
+            uint16_t seq_hi = static_cast<uint16_t>((sequence >> 16) & 0xFFFF);
+
+            pkt_size = ostp_build_packet(
+                packet_buf.data(), packet_buf.size(),
+                cfg.ssrc, seq_lo, rtp_timestamp,
+                kPayloadTypePCM24,
+                cfg.stream_id, seq_hi, media_ts,
+                audio_buf.data(), payload_size
+            );
+        }
 
         if (pkt_size > 0) {
             socket->send_to(packet_buf.data(), pkt_size, dest);
@@ -309,10 +372,13 @@ static int run_rx(const DaemonConfig& cfg) {
         s24_to_float(s24_buf.data(), buffer, samples);
     });
 
-    // Network socket
-    auto socket = UdpSocket::create();
+    // Create transport manager for optional DTLS
+    TransportManager transport_mgr(cfg.security);
+
+    // Create transport socket
+    auto socket = transport_mgr.create_rx_socket();
     if (!socket) {
-        fprintf(stderr, "Error: cannot create UDP socket\n");
+        fprintf(stderr, "Error: cannot create transport socket\n");
         return 1;
     }
 
@@ -323,12 +389,18 @@ static int run_rx(const DaemonConfig& cfg) {
     socket->join_multicast(cfg.dest_ip);
     socket->set_recv_timeout_ms(10);
 
-    printf("solunad RX: %s:%u → %s (%uHz, %uch)\n",
+    const char* mode_str = cfg.aes67_mode ? "AES67" : "Auto";
+    const char* security_str = cfg.security.dtls_enabled ? " [DTLS]" : "";
+    printf("solunad RX (%s%s): %s:%u → %s (%uHz, %uch)\n",
+        mode_str, security_str,
         cfg.dest_ip.c_str(), cfg.listen_port, cfg.audio_device.c_str(),
         cfg.sample_rate, cfg.channels);
 
     std::vector<uint8_t> recv_buf(kMaxPacketSize);
+    std::vector<int32_t> audio_buf(kMaxPayloadSize / sizeof(int32_t));
     uint64_t packets_received = 0;
+    uint64_t aes67_packets = 0;
+    uint64_t ostp_packets = 0;
     uint64_t sequence_errors = 0;
     int32_t last_seq = -1;
 
@@ -337,34 +409,83 @@ static int run_rx(const DaemonConfig& cfg) {
         int n = socket->recv_from(recv_buf.data(), recv_buf.size(), src);
         if (n <= 0) continue;
 
-        RtpHeader rtp;
-        OstpHeader ostp;
-        const uint8_t* payload = nullptr;
-        size_t payload_size = 0;
+        // Check packet type
+        if (static_cast<size_t>(n) < sizeof(RtpHeader)) continue;
 
-        if (!ostp_parse_packet(recv_buf.data(), static_cast<size_t>(n),
-                               rtp, ostp, payload, payload_size)) {
-            continue;
+        const RtpHeader* rtp_ptr = reinterpret_cast<const RtpHeader*>(recv_buf.data());
+        bool is_aes67 = aes67_is_standard_packet(*rtp_ptr);
+
+        size_t frames = 0;
+        uint32_t full_seq = 0;
+
+        if (is_aes67) {
+            // AES67 packet
+            RtpHeader rtp;
+            std::memcpy(&rtp, recv_buf.data(), sizeof(RtpHeader));
+
+            uint16_t sequence = ntohs(rtp.sequence);
+            full_seq = sequence;
+
+            const uint8_t* payload = recv_buf.data() + sizeof(RtpHeader);
+            size_t payload_size = static_cast<size_t>(n) - sizeof(RtpHeader);
+
+            // Convert payload
+            if (rtp.pt == kPayloadTypeAES67_L24) {
+                size_t samples = payload_size / 3;
+                for (size_t i = 0; i < samples && i < audio_buf.size(); i++) {
+                    int32_t sample = (static_cast<int32_t>(payload[i * 3]) << 16)
+                                   | (static_cast<int32_t>(payload[i * 3 + 1]) << 8)
+                                   | static_cast<int32_t>(payload[i * 3 + 2]);
+                    if (sample & 0x800000) sample |= 0xFF000000;
+                    audio_buf[i] = sample;
+                }
+                frames = samples / cfg.channels;
+            } else if (rtp.pt == kPayloadTypeAES67_L16) {
+                size_t samples = payload_size / 2;
+                const int16_t* src_samples = reinterpret_cast<const int16_t*>(payload);
+                for (size_t i = 0; i < samples && i < audio_buf.size(); i++) {
+                    int16_t be_sample = src_samples[i];
+                    int16_t sample = static_cast<int16_t>((be_sample >> 8) | (be_sample << 8));
+                    audio_buf[i] = static_cast<int32_t>(sample) << 8;
+                }
+                frames = samples / cfg.channels;
+            }
+
+            ring.write(audio_buf.data(), frames);
+            aes67_packets++;
+        } else {
+            // OSTP packet
+            RtpHeader rtp;
+            OstpHeader ostp;
+            const uint8_t* payload = nullptr;
+            size_t payload_size = 0;
+
+            if (!ostp_parse_packet(recv_buf.data(), static_cast<size_t>(n),
+                                   rtp, ostp, payload, payload_size)) {
+                continue;
+            }
+
+            full_seq = (static_cast<uint32_t>(ostp.sequence_ext) << 16) | rtp.sequence;
+            frames = payload_size / frame_size;
+            ring.write(payload, frames);
+            ostp_packets++;
         }
 
         // Sequence check
-        uint32_t full_seq = (static_cast<uint32_t>(ostp.sequence_ext) << 16) | rtp.sequence;
         if (last_seq >= 0) {
-            int32_t expected = last_seq + 1;
-            if (static_cast<int32_t>(full_seq) != expected) {
+            int32_t expected = (last_seq + 1) & 0xFFFF;
+            if (static_cast<int32_t>(full_seq & 0xFFFF) != expected) {
                 sequence_errors++;
             }
         }
         last_seq = static_cast<int32_t>(full_seq);
         packets_received++;
 
-        // Write audio to ring buffer
-        size_t frames = payload_size / frame_size;
-        ring.write(payload, frames);
-
         if (packets_received % 1000 == 0) {
-            printf("\rRX: %lu packets, %lu seq errors, ring: %zu/%zu",
+            printf("\rRX: %lu pkts (OSTP:%lu AES67:%lu), %lu seq errors, ring: %zu/%zu",
                 static_cast<unsigned long>(packets_received),
+                static_cast<unsigned long>(ostp_packets),
+                static_cast<unsigned long>(aes67_packets),
                 static_cast<unsigned long>(sequence_errors),
                 ring.available_read(), ring.capacity());
             fflush(stdout);
@@ -372,8 +493,10 @@ static int run_rx(const DaemonConfig& cfg) {
     }
 
     audio->stop();
-    printf("\nRX stopped. Packets: %lu, Errors: %lu\n",
+    printf("\nRX stopped. Packets: %lu (OSTP:%lu, AES67:%lu), Errors: %lu\n",
         static_cast<unsigned long>(packets_received),
+        static_cast<unsigned long>(ostp_packets),
+        static_cast<unsigned long>(aes67_packets),
         static_cast<unsigned long>(sequence_errors));
     return 0;
 }

@@ -158,6 +158,20 @@ add_executable(test_dsp_chain unit/test_dsp_chain.cpp)
 target_link_libraries(test_dsp_chain PRIVATE soluna_core GTest::gtest_main)
 gtest_discover_tests(test_dsp_chain)
 
+# v0.2.0 Integration tests
+add_executable(test_dtls_transport integration/test_dtls_transport.cpp)
+target_link_libraries(test_dtls_transport PRIVATE soluna_core GTest::gtest_main)
+if(SOLUNA_ENABLE_DTLS)
+    target_link_libraries(test_dtls_transport PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+endif()
+gtest_discover_tests(test_dtls_transport)
+
+if(SOLUNA_ENABLE_AES67)
+    add_executable(test_aes67_loopback integration/test_aes67_loopback.cpp)
+    target_link_libraries(test_aes67_loopback PRIVATE soluna_core GTest::gtest_main)
+    gtest_discover_tests(test_aes67_loopback)
+endif()
+
 # Stress tests (opt-in)
 if(SOLUNA_BUILD_STRESS_TESTS)
     add_executable(test_multichannel stress/test_multichannel.cpp)

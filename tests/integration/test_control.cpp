@@ -10,12 +10,14 @@
 #include <soluna/control/protocol.h>
 #include <gtest/gtest.h>
 
+namespace soluna::sync { class PtpEngine; }
 namespace soluna::control {
 ControlResponse handle_command(
     const ControlRequest& req,
     Discovery& discovery,
     SessionManager& sessions,
-    RoutingMatrix& routing);
+    RoutingMatrix& routing,
+    sync::PtpEngine* ptp = nullptr);
 }
 
 using namespace soluna::control;

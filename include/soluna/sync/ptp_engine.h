@@ -83,6 +83,18 @@ public:
     /** Get PTP-synchronized timestamp (local clock + offset correction). */
     pal::Timestamp ptp_now() const;
 
+    /**
+     * Get media clock timestamp in nanoseconds for AES67 RTP.
+     * This returns the current PTP-synchronized time as a 64-bit nanosecond value,
+     * suitable for deriving RTP timestamps in AES67 mode.
+     */
+    int64_t get_media_clock_ns() const;
+
+    /**
+     * Convert media clock nanoseconds to RTP timestamp at the given sample rate.
+     */
+    static uint32_t media_clock_to_rtp_timestamp(int64_t media_clock_ns, uint32_t sample_rate);
+
     /** Set callback for sync state changes. */
     void set_sync_callback(PtpSyncCallback cb);
 
