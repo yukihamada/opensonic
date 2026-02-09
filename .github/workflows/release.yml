@@ -187,7 +187,7 @@ jobs:
           git log --oneline $(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo HEAD~10)..HEAD >> CHANGELOG.md 2>/dev/null || echo "Initial release" >> CHANGELOG.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: Soluna ${{ github.ref_name }}
           body_path: CHANGELOG.md
