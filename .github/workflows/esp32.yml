@@ -35,7 +35,7 @@ jobs:
           command: idf.py build
 
       - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: soluna-esp32-${{ matrix.target }}-${{ matrix.idf_version }}
           path: |
@@ -102,7 +102,7 @@ jobs:
           fi
 
       - name: Upload analysis report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: esp32-cppcheck-report
           path: esp32-cppcheck.txt
