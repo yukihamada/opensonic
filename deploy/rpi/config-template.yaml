@@ -48,6 +48,8 @@ audio:
   frames_per_packet: 48
 
   # Buffer packets for jitter absorption
+  # Wired (Ethernet): 8 is sufficient for stable playback
+  # WiFi: increase to 16 to absorb jitter and retransmission delays
   buffer_packets: 8
 
 security:
