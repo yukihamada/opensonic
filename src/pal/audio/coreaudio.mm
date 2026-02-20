@@ -65,8 +65,6 @@ public:
             running_.store(false);
             return false;
         }
-        fprintf(stderr, "CoreAudio: started %s (unit=%p)\n",
-                is_capture_ ? "input" : "output", (void*)audio_unit_);
         return true;
     }
 
