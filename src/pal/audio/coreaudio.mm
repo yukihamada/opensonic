@@ -453,6 +453,10 @@ private:
                                           inNumberFrames,
                                           buffer_list_ptr);
         if (status != noErr) {
+            static int err_count = 0;
+            if (err_count++ < 5) {
+                fprintf(stderr, "CoreAudio: AudioUnitRender error: %d\n", (int)status);
+            }
             return status;
         }
 
