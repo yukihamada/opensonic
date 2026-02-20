@@ -1,40 +1,29 @@
 default_platform(:ios)
 
 platform :ios do
+  # プロジェクトルートへのパス
+  PROJECT_ROOT = File.expand_path("../../..", __dir__)
+  APP_IDENTIFIER = "com.soluna.SolunaReceiver"
+  APP_NAME = "Soluna Rx"
+
   desc "Build iOS library (soluna_core)"
   lane :build_lib do
-    Dir.chdir("../..") do
-      sh("mkdir -p build-ios && cd build-ios && cmake .. -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0")
-      sh("cd build-ios && xcodebuild -project soluna.xcodeproj -scheme soluna_core -configuration Release -sdk iphoneos -arch arm64 build")
+    Dir.chdir(PROJECT_ROOT) do
+      sh("mkdir -p build-ios")
+      Dir.chdir("build-ios") do
+        sh("cmake .. -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_ARCHITECTURES=arm64")
+        sh("xcodebuild -project soluna.xcodeproj -scheme soluna_core -configuration Release -sdk iphoneos build")
+      end
     end
-  end
-
-  desc "Build the app"
-  lane :build do
-    build_lib
-
-    build_app(
-      workspace: nil,
-      project: "SolunaReceiver.xcodeproj",
-      scheme: "SolunaReceiver",
-      configuration: "Release",
-      export_method: "app-store",
-      output_directory: "./build",
-      output_name: "SolunaReceiver.ipa",
-      clean: true,
-      xcargs: "-allowProvisioningUpdates"
-    )
   end
 
   desc "Submit to TestFlight"
   lane :beta do
-    # Ensure we have the API key
+    # App Store Connect API Key
     api_key = app_store_connect_api_key(
       key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
-      issuer_id: ENV["APP_STORE_CONNECT_API_ISSUER_ID"],
-      key_content: ENV["APP_STORE_CONNECT_API_KEY_CONTENT"],
-      is_key_content_base64: true,
-      in_house: false
+      issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"],
+      key_filepath: ENV["APP_STORE_CONNECT_API_KEY_PATH"]
     )
 
     # Increment build number
@@ -42,9 +31,17 @@ platform :ios do
       build_number: Time.now.strftime("%Y%m%d%H%M")
     )
 
-    # Build
+    # Build library first
     build_lib
 
+    # Get or create provisioning profile
+    sigh(
+      api_key: api_key,
+      app_identifier: APP_IDENTIFIER,
+      readonly: false
+    )
+
+    # Build app
     build_app(
       project: "SolunaReceiver.xcodeproj",
       scheme: "SolunaReceiver",
@@ -67,15 +64,6 @@ platform :ios do
   lane :build_local do
     build_lib
 
-    sh("xcodebuild -project SolunaReceiver.xcodeproj -scheme SolunaReceiver -configuration Release -sdk iphoneos -arch arm64 CODE_SIGN_IDENTITY='-' CODE_SIGNING_ALLOWED=NO build")
-  end
-
-  desc "Run tests"
-  lane :test do
-    run_tests(
-      project: "SolunaReceiver.xcodeproj",
-      scheme: "SolunaReceiver",
-      device: "iPhone 15 Pro"
-    )
+    sh("xcodebuild -project ../SolunaReceiver.xcodeproj -scheme SolunaReceiver -configuration Release -sdk iphoneos -arch arm64 CODE_SIGN_IDENTITY='-' CODE_SIGNING_ALLOWED=NO build")
   end
 end
