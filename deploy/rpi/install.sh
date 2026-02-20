@@ -154,7 +154,7 @@ create_directories() {
 install_package() {
     log_step "Installing Soluna v${SOLUNA_VERSION}..."
 
-    DEB_URL="https://github.com/example/soluna/releases/download/v${SOLUNA_VERSION}/soluna_${SOLUNA_VERSION}_${DEB_ARCH}.deb"
+    DEB_URL="https://github.com/yukihamada/opensonic/releases/download/v${SOLUNA_VERSION}/soluna_${SOLUNA_VERSION}_${DEB_ARCH}.deb"
     DEB_FILE="/tmp/soluna_${SOLUNA_VERSION}_${DEB_ARCH}.deb"
 
     log_info "Downloading from: $DEB_URL"
@@ -193,7 +193,7 @@ build_from_source() {
     TEMP_DIR=$(mktemp -d)
     cd "$TEMP_DIR"
 
-    git clone --depth 1 https://github.com/example/soluna.git
+    git clone --depth 1 https://github.com/yukihamada/opensonic.git
     cd soluna
 
     mkdir build && cd build
@@ -298,7 +298,7 @@ install_service() {
     cat > /etc/systemd/system/soluna.service << 'EOF'
 [Unit]
 Description=Soluna Network Audio Daemon
-Documentation=https://github.com/example/soluna
+Documentation=https://github.com/yukihamada/opensonic
 After=network-online.target sound.target
 Wants=network-online.target
 
