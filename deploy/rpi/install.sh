@@ -280,6 +280,8 @@ audio:
   sample_rate: 48000
   channels: 2
   bit_depth: 24
+  frames_per_packet: 48
+  buffer_packets: 8
 
 security:
   dtls: false
