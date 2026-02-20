@@ -168,28 +168,28 @@ install_package() {
 
     log_info "Downloading from: $DEB_URL"
 
+    local download_ok=false
+
     if command -v curl &>/dev/null; then
-        curl -sSL -o "$DEB_FILE" "$DEB_URL" || {
-            log_warn "Download failed, trying to build from source..."
-            build_from_source
-            return
-        }
+        curl -sSL --fail -o "$DEB_FILE" "$DEB_URL" 2>/dev/null && validate_download "$DEB_FILE" && download_ok=true
     elif command -v wget &>/dev/null; then
-        wget -q -O "$DEB_FILE" "$DEB_URL" || {
-            log_warn "Download failed, trying to build from source..."
-            build_from_source
-            return
-        }
-    else
-        log_warn "Neither curl nor wget found, building from source..."
-        build_from_source
-        return
+        wget -q -O "$DEB_FILE" "$DEB_URL" 2>/dev/null && validate_download "$DEB_FILE" && download_ok=true
     fi
 
-    dpkg -i "$DEB_FILE"
-    rm -f "$DEB_FILE"
-
-    log_info "Package installed"
+    if $download_ok; then
+        dpkg -i "$DEB_FILE" || {
+            log_warn "Package install failed, trying to build from source..."
+            rm -f "$DEB_FILE"
+            build_from_source
+            return
+        }
+        rm -f "$DEB_FILE"
+        log_info "Package installed"
+    else
+        rm -f "$DEB_FILE"
+        log_warn "Pre-built package not available, building from source..."
+        build_from_source
+    fi
 }
 
 # Build from source (fallback)
