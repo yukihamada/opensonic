@@ -279,7 +279,7 @@ private:
             return false;
         }
 
-        // Set buffer size
+        // Set buffer size on the AudioUnit
         UInt32 buffer_frames = config.frames_per_buffer;
         status = AudioUnitSetProperty(audio_unit_,
                                       kAudioUnitProperty_MaximumFramesPerSlice,
@@ -287,6 +287,39 @@ private:
                                       0,
                                       &buffer_frames,
                                       sizeof(buffer_frames));
+        if (status != noErr) {
+            fprintf(stderr, "CoreAudio: MaximumFramesPerSlice set warning: %d\n", (int)status);
+        }
+
+#if TARGET_OS_MAC && !TARGET_OS_IPHONE
+        // On macOS, also set the hardware buffer size on the device
+        if (!device_id.empty() && device_id != "default") {
+            AudioDeviceID dev_id = 0;
+            try {
+                dev_id = static_cast<AudioDeviceID>(std::stoul(device_id));
+            } catch (const std::exception&) {
+                dev_id = find_device_by_name(device_id, capture);
+            }
+            if (dev_id != 0) {
+                UInt32 hw_buf = config.frames_per_buffer;
+                AudioObjectPropertyAddress buf_addr = {
+                    kAudioDevicePropertyBufferFrameSize,
+                    kAudioObjectPropertyScopeGlobal,
+                    kAudioObjectPropertyElementMain
+                };
+                OSStatus buf_status = AudioObjectSetPropertyData(dev_id, &buf_addr,
+                    0, nullptr, sizeof(hw_buf), &hw_buf);
+                fprintf(stderr, "CoreAudio: set device buffer size to %u: %s\n",
+                        hw_buf, buf_status == noErr ? "OK" : "failed");
+
+                // Read back actual buffer size
+                UInt32 actual_buf = 0;
+                UInt32 prop_size = sizeof(actual_buf);
+                AudioObjectGetPropertyData(dev_id, &buf_addr, 0, nullptr, &prop_size, &actual_buf);
+                fprintf(stderr, "CoreAudio: actual device buffer size: %u frames\n", actual_buf);
+            }
+        }
+#endif
 
         // Set callback
         AURenderCallbackStruct callback_struct = {};
