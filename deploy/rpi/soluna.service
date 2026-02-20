@@ -1,6 +1,6 @@
 [Unit]
 Description=Soluna Network Audio Daemon
-Documentation=https://github.com/example/soluna
+Documentation=https://github.com/yukihamada/opensonic
 After=network-online.target sound.target
 Wants=network-online.target
 
