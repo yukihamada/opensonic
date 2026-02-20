@@ -202,12 +202,16 @@ build_from_source() {
     TEMP_DIR=$(mktemp -d)
     cd "$TEMP_DIR"
 
-    git clone --depth 1 https://github.com/yukihamada/opensonic.git
-    cd soluna
+    git clone --depth 1 --branch "v${SOLUNA_VERSION}" https://github.com/yukihamada/opensonic.git 2>/dev/null || \
+        git clone --depth 1 https://github.com/yukihamada/opensonic.git
 
-    mkdir build && cd build
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DSOLUNA_BUILD_TESTS=OFF
-    make -j$(nproc)
+    cd opensonic
+
+    mkdir -p build && cd build
+    cmake .. -DCMAKE_BUILD_TYPE=Release \
+             -DSOLUNA_BUILD_TESTS=OFF \
+             -DCMAKE_INSTALL_PREFIX=/usr
+    make -j"$(nproc)"
     make install
 
     cd /
