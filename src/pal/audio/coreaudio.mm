@@ -418,13 +418,24 @@ private:
         (void)ioData;
 
         auto* device = static_cast<CoreAudioDevice*>(inRefCon);
+
+        static int debug_count = 0;
+        if (debug_count++ < 3) {
+            fprintf(stderr, "CoreAudio: input_callback called (frames=%u, bus=%u)\n",
+                    (unsigned)inNumberFrames, (unsigned)inBusNumber);
+        }
+
         if (!device->running_.load()) {
             return noErr;
         }
 
-        // Prepare buffer list for render
-        AudioBufferList buffer_list;
-        buffer_list.mNumberBuffers = device->config_.channels;
+        // Prepare buffer list for render — allocate enough space for multiple buffers
+        // AudioBufferList has mBuffers[1] inline, so we need extra space for channels > 1
+        const UInt32 num_channels = device->config_.channels;
+        size_t abl_size = offsetof(AudioBufferList, mBuffers) + num_channels * sizeof(AudioBuffer);
+        std::vector<uint8_t> abl_storage(abl_size);
+        AudioBufferList* buffer_list_ptr = reinterpret_cast<AudioBufferList*>(abl_storage.data());
+        buffer_list_ptr->mNumberBuffers = num_channels;
 
         std::vector<std::vector<float>> channel_buffers(device->config_.channels);
         for (UInt32 ch = 0; ch < device->config_.channels; ch++) {
