@@ -239,8 +239,6 @@ private:
                                               sizeof(dev_id));
                 if (status != noErr) {
                     fprintf(stderr, "CoreAudio: Failed to set device %u: %d\n", dev_id, (int)status);
-                } else {
-                    fprintf(stderr, "CoreAudio: set device %u OK (capture=%d)\n", dev_id, capture);
                 }
             } else {
                 fprintf(stderr, "CoreAudio: device '%s' not found, using default\n", device_id.c_str());
