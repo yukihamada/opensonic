@@ -306,16 +306,8 @@ private:
                     kAudioObjectPropertyScopeGlobal,
                     kAudioObjectPropertyElementMain
                 };
-                OSStatus buf_status = AudioObjectSetPropertyData(dev_id, &buf_addr,
+                AudioObjectSetPropertyData(dev_id, &buf_addr,
                     0, nullptr, sizeof(hw_buf), &hw_buf);
-                fprintf(stderr, "CoreAudio: set device buffer size to %u: %s\n",
-                        hw_buf, buf_status == noErr ? "OK" : "failed");
-
-                // Read back actual buffer size
-                UInt32 actual_buf = 0;
-                UInt32 prop_size = sizeof(actual_buf);
-                AudioObjectGetPropertyData(dev_id, &buf_addr, 0, nullptr, &prop_size, &actual_buf);
-                fprintf(stderr, "CoreAudio: actual device buffer size: %u frames\n", actual_buf);
             }
         }
 #endif
