@@ -443,12 +443,6 @@ private:
 
         auto* device = static_cast<CoreAudioDevice*>(inRefCon);
 
-        static int debug_count = 0;
-        if (debug_count++ < 3) {
-            fprintf(stderr, "CoreAudio: input_callback called (frames=%u, bus=%u)\n",
-                    (unsigned)inNumberFrames, (unsigned)inBusNumber);
-        }
-
         if (!device->running_.load()) {
             return noErr;
         }
