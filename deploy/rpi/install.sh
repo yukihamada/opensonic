@@ -157,6 +157,15 @@ install_package() {
     DEB_URL="https://github.com/yukihamada/opensonic/releases/download/v${SOLUNA_VERSION}/soluna_${SOLUNA_VERSION}_${DEB_ARCH}.deb"
     DEB_FILE="/tmp/soluna_${SOLUNA_VERSION}_${DEB_ARCH}.deb"
 
+    # Validate downloaded file before installing
+    validate_download() {
+        local file="$1"
+        if [[ ! -f "$file" ]] || [[ $(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null) -lt 1024 ]]; then
+            return 1
+        fi
+        return 0
+    }
+
     log_info "Downloading from: $DEB_URL"
 
     if command -v curl &>/dev/null; then
