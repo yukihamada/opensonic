@@ -136,7 +136,7 @@ private:
                     data_size = 0;
                     status = AudioObjectGetPropertyDataSize(dev_id, &property_address,
                                                             0, nullptr, &data_size);
-                    if (status == noErr && data_size > sizeof(AudioBufferList)) {
+                    if (status == noErr && data_size >= sizeof(AudioBufferList)) {
                         return dev_id;
                     }
                 }
