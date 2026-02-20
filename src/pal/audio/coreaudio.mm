@@ -226,12 +226,8 @@ private:
             // Try to parse as numeric ID first
             try {
                 dev_id = static_cast<AudioDeviceID>(std::stoul(device_id));
-                fprintf(stderr, "CoreAudio: using numeric device ID: %u\n", dev_id);
             } catch (const std::exception&) {
-                // Not a number, try to find by name
                 dev_id = find_device_by_name(device_id, capture);
-                fprintf(stderr, "CoreAudio: found device '%s' → ID: %u\n",
-                        device_id.c_str(), dev_id);
             }
 
             if (dev_id != 0) {
