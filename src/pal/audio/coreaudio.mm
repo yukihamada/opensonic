@@ -437,12 +437,12 @@ private:
         AudioBufferList* buffer_list_ptr = reinterpret_cast<AudioBufferList*>(abl_storage.data());
         buffer_list_ptr->mNumberBuffers = num_channels;
 
-        std::vector<std::vector<float>> channel_buffers(device->config_.channels);
-        for (UInt32 ch = 0; ch < device->config_.channels; ch++) {
+        std::vector<std::vector<float>> channel_buffers(num_channels);
+        for (UInt32 ch = 0; ch < num_channels; ch++) {
             channel_buffers[ch].resize(inNumberFrames);
-            buffer_list.mBuffers[ch].mNumberChannels = 1;
-            buffer_list.mBuffers[ch].mDataByteSize = inNumberFrames * sizeof(float);
-            buffer_list.mBuffers[ch].mData = channel_buffers[ch].data();
+            buffer_list_ptr->mBuffers[ch].mNumberChannels = 1;
+            buffer_list_ptr->mBuffers[ch].mDataByteSize = inNumberFrames * sizeof(float);
+            buffer_list_ptr->mBuffers[ch].mData = channel_buffers[ch].data();
         }
 
         // Render input
@@ -451,7 +451,7 @@ private:
                                           inTimeStamp,
                                           inBusNumber,
                                           inNumberFrames,
-                                          &buffer_list);
+                                          buffer_list_ptr);
         if (status != noErr) {
             return status;
         }
