@@ -179,19 +179,26 @@ private:
             break;
         }
         case SND_PCM_FORMAT_S16_LE: {
-            // TPDF dithering: reduces quantization distortion at low levels
+            // Noise-shaped dithering: TPDF + first-order error feedback
+            // Quantization error is fed back, pushing noise above ~16kHz
+            // where human hearing is less sensitive
             auto* dst = static_cast<int16_t*>(hw_buf);
-            static uint32_t rs = 0x4D2A7F1Bu;
+            const size_t ch = config_.channels;
             for (size_t i = 0; i < samples; i++) {
-                // Two xorshift32 values for triangular PDF noise
-                rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5;
-                float d1 = static_cast<float>(rs & 0xFFFF) * (1.0f / 65536.0f);
-                rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5;
-                float d2 = static_cast<float>(rs & 0xFFFF) * (1.0f / 65536.0f);
-                float x = float_buf[i] * 32767.0f + (d1 - d2); // TPDF: [-1, +1]
-                if (x >  32767.0f) x =  32767.0f;
-                if (x < -32768.0f) x = -32768.0f;
-                dst[i] = static_cast<int16_t>(x);
+                const size_t c = i % ch;
+                // TPDF dither (two uniform = triangular distribution)
+                ns_rand_ ^= ns_rand_ << 13; ns_rand_ ^= ns_rand_ >> 17; ns_rand_ ^= ns_rand_ << 5;
+                float d1 = static_cast<float>(ns_rand_ >> 16) * (1.0f / 65536.0f);
+                ns_rand_ ^= ns_rand_ << 13; ns_rand_ ^= ns_rand_ >> 17; ns_rand_ ^= ns_rand_ << 5;
+                float d2 = static_cast<float>(ns_rand_ >> 16) * (1.0f / 65536.0f);
+                // Subtract error from previous sample (noise shaping)
+                float x = float_buf[i] * 32767.0f - ns_err_[c] + (d1 - d2);
+                float q = roundf(x);
+                if (q >  32767.0f) q =  32767.0f;
+                if (q < -32768.0f) q = -32768.0f;
+                // Store error for feedback
+                ns_err_[c] = q - float_buf[i] * 32767.0f;
+                dst[i] = static_cast<int16_t>(q);
             }
             break;
         }
