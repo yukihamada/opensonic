@@ -337,13 +337,13 @@ static int run_rx(const DaemonConfig& cfg) {
     using namespace soluna::pipeline;
     using namespace soluna::transport;
 
-    constexpr uint32_t kFramesPerPacket = 480; // 10ms packets
+    constexpr uint32_t kFramesPerPacket = 240; // 5ms packets
     const size_t frame_size = sizeof(int32_t) * cfg.channels;
 
-    // Ring buffer: 30 packets = 300ms for jitter absorption
-    constexpr uint32_t kRingPackets = 30;
-    constexpr uint32_t kPrefillPackets = 8;  // pre-fill 80ms before starting playback
-    constexpr uint32_t kRefillThreshold = 3; // re-prefill if buffer drops below 30ms
+    // Ring buffer: 40 packets = 200ms total capacity
+    constexpr uint32_t kRingPackets = 40;
+    constexpr uint32_t kPrefillPackets = 4;  // pre-fill 20ms before starting playback
+    constexpr uint32_t kRefillThreshold = 2; // re-prefill if buffer drops below 10ms
     RingBuffer ring(kFramesPerPacket * kRingPackets, frame_size);
     std::atomic<bool> prefilled{false};
 
