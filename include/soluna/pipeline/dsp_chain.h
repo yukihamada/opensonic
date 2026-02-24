@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <mutex>
+#include <cmath>
 
 namespace soluna {
 namespace pipeline {
