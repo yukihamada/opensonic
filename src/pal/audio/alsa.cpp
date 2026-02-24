@@ -178,9 +178,20 @@ private:
             break;
         }
         case SND_PCM_FORMAT_S16_LE: {
+            // TPDF dithering: reduces quantization distortion at low levels
             auto* dst = static_cast<int16_t*>(hw_buf);
-            for (size_t i = 0; i < samples; i++)
-                dst[i] = static_cast<int16_t>(float_buf[i] * 32767.0f);
+            static uint32_t rs = 0x4D2A7F1Bu;
+            for (size_t i = 0; i < samples; i++) {
+                // Two xorshift32 values for triangular PDF noise
+                rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5;
+                float d1 = static_cast<float>(rs & 0xFFFF) * (1.0f / 65536.0f);
+                rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5;
+                float d2 = static_cast<float>(rs & 0xFFFF) * (1.0f / 65536.0f);
+                float x = float_buf[i] * 32767.0f + (d1 - d2); // TPDF: [-1, +1]
+                if (x >  32767.0f) x =  32767.0f;
+                if (x < -32768.0f) x = -32768.0f;
+                dst[i] = static_cast<int16_t>(x);
+            }
             break;
         }
         default: break;
