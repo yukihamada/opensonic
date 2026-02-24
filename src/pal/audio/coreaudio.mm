@@ -432,21 +432,13 @@ private:
             return noErr;
         }
 
-        // Prepare buffer list for render — allocate enough space for multiple buffers
-        // AudioBufferList has mBuffers[1] inline, so we need extra space for channels > 1
-        const UInt32 num_channels = device->config_.channels;
-        size_t abl_size = offsetof(AudioBufferList, mBuffers) + num_channels * sizeof(AudioBuffer);
-        std::vector<uint8_t> abl_storage(abl_size);
-        AudioBufferList* buffer_list_ptr = reinterpret_cast<AudioBufferList*>(abl_storage.data());
-        buffer_list_ptr->mNumberBuffers = num_channels;
-
-        std::vector<std::vector<float>> channel_buffers(num_channels);
-        for (UInt32 ch = 0; ch < num_channels; ch++) {
-            channel_buffers[ch].resize(inNumberFrames);
-            buffer_list_ptr->mBuffers[ch].mNumberChannels = 1;
-            buffer_list_ptr->mBuffers[ch].mDataByteSize = inNumberFrames * sizeof(float);
-            buffer_list_ptr->mBuffers[ch].mData = channel_buffers[ch].data();
-        }
+        // Interleaved: single buffer with all channels
+        const size_t total_samples = inNumberFrames * device->config_.channels;
+        AudioBufferList buffer_list;
+        buffer_list.mNumberBuffers = 1;
+        buffer_list.mBuffers[0].mNumberChannels = device->config_.channels;
+        buffer_list.mBuffers[0].mDataByteSize = static_cast<UInt32>(total_samples * sizeof(float));
+        buffer_list.mBuffers[0].mData = device->conversion_buffer_.data();
 
         // Render input
         OSStatus status = AudioUnitRender(device->audio_unit_,
@@ -454,7 +446,7 @@ private:
                                           inTimeStamp,
                                           inBusNumber,
                                           inNumberFrames,
-                                          buffer_list_ptr);
+                                          &buffer_list);
         if (status != noErr) {
             static int err_count = 0;
             if (err_count++ < 5) {
@@ -463,15 +455,7 @@ private:
             return status;
         }
 
-        // Interleave to conversion buffer
-        for (UInt32 frame = 0; frame < inNumberFrames; frame++) {
-            for (UInt32 ch = 0; ch < device->config_.channels; ch++) {
-                device->conversion_buffer_[frame * device->config_.channels + ch] =
-                    channel_buffers[ch][frame];
-            }
-        }
-
-        // Call user callback with interleaved data
+        // Data is already interleaved in conversion_buffer_
         if (device->callback_) {
             device->callback_(device->conversion_buffer_.data(), inNumberFrames);
         }
