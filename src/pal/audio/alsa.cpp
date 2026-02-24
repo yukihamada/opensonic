@@ -249,6 +249,9 @@ private:
     bool is_capture_ = false;
     snd_pcm_format_t hw_format_ = SND_PCM_FORMAT_FLOAT_LE;
     int bytes_per_sample_ = 4;
+    // Noise-shaping state (per channel, up to 8ch)
+    uint32_t ns_rand_ = 0x4D2A7F1Bu;
+    float ns_err_[8] = {};
 };
 
 std::vector<AudioDeviceInfo> AudioDevice::enumerate() {
