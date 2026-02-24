@@ -27,6 +27,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 #include <cstring>
 #include <string>
 #include <vector>
