@@ -148,6 +148,33 @@ private:
         // Allocate conversion buffer
         conversion_buffer_.resize(config.frames_per_buffer * config.channels);
 
+#if TARGET_OS_MAC && !TARGET_OS_IPHONE
+        // Check microphone permission for capture mode on macOS
+        if (capture) {
+            if (@available(macOS 10.14, *)) {
+                AVAuthorizationStatus auth = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+                if (auth == AVAuthorizationStatusNotDetermined) {
+                    fprintf(stderr, "CoreAudio: Requesting microphone access...\n");
+                    dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+                    [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
+                        completionHandler:^(BOOL granted) {
+                            (void)granted;
+                            dispatch_semaphore_signal(sema);
+                        }];
+                    dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+                    auth = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+                }
+                if (auth != AVAuthorizationStatusAuthorized) {
+                    fprintf(stderr, "CoreAudio: Microphone access DENIED (status=%d).\n"
+                        "  Grant access: System Settings → Privacy & Security → Microphone → Terminal\n",
+                        (int)auth);
+                    return false;
+                }
+                fprintf(stderr, "CoreAudio: Microphone access granted\n");
+            }
+        }
+#endif
+
 #if TARGET_OS_IPHONE
         // Configure audio session for iOS
         if (!configure_ios_audio_session(capture)) {
