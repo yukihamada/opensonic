@@ -129,44 +129,90 @@ private:
         return true;
     }
 
+    // Convert hardware buffer to/from float
+    void hw_to_float(const void* hw_buf, float* float_buf, size_t samples) {
+        switch (hw_format_) {
+        case SND_PCM_FORMAT_FLOAT_LE:
+            std::memcpy(float_buf, hw_buf, samples * sizeof(float));
+            break;
+        case SND_PCM_FORMAT_S32_LE: {
+            const auto* src = static_cast<const int32_t*>(hw_buf);
+            for (size_t i = 0; i < samples; i++)
+                float_buf[i] = static_cast<float>(src[i]) / 2147483647.0f;
+            break;
+        }
+        case SND_PCM_FORMAT_S24_LE: {
+            const auto* src = static_cast<const int32_t*>(hw_buf);
+            for (size_t i = 0; i < samples; i++)
+                float_buf[i] = static_cast<float>(src[i] >> 8) / 8388607.0f;
+            break;
+        }
+        case SND_PCM_FORMAT_S16_LE: {
+            const auto* src = static_cast<const int16_t*>(hw_buf);
+            for (size_t i = 0; i < samples; i++)
+                float_buf[i] = static_cast<float>(src[i]) / 32767.0f;
+            break;
+        }
+        default: break;
+        }
+    }
+
+    void float_to_hw(const float* float_buf, void* hw_buf, size_t samples) {
+        switch (hw_format_) {
+        case SND_PCM_FORMAT_FLOAT_LE:
+            std::memcpy(hw_buf, float_buf, samples * sizeof(float));
+            break;
+        case SND_PCM_FORMAT_S32_LE: {
+            auto* dst = static_cast<int32_t*>(hw_buf);
+            for (size_t i = 0; i < samples; i++)
+                dst[i] = static_cast<int32_t>(float_buf[i] * 2147483647.0f);
+            break;
+        }
+        case SND_PCM_FORMAT_S24_LE: {
+            auto* dst = static_cast<int32_t*>(hw_buf);
+            for (size_t i = 0; i < samples; i++)
+                dst[i] = static_cast<int32_t>(float_buf[i] * 8388607.0f) << 8;
+            break;
+        }
+        case SND_PCM_FORMAT_S16_LE: {
+            auto* dst = static_cast<int16_t*>(hw_buf);
+            for (size_t i = 0; i < samples; i++)
+                dst[i] = static_cast<int16_t>(float_buf[i] * 32767.0f);
+            break;
+        }
+        default: break;
+        }
+    }
+
     void audio_loop() {
         const size_t frames = config_.frames_per_buffer;
-        const size_t buf_size = frames * config_.channels;
-        std::vector<float> float_buf(buf_size);
-        std::vector<int32_t> s32_buf(use_float_ ? 0 : buf_size);
+        const size_t samples = frames * config_.channels;
+        std::vector<float> float_buf(samples);
+        std::vector<uint8_t> hw_buf(samples * bytes_per_sample_);
 
         while (running_.load()) {
             if (is_capture_) {
-                if (use_float_) {
-                    snd_pcm_sframes_t n = snd_pcm_readi(handle_, float_buf.data(), frames);
-                    if (n == -EPIPE) { snd_pcm_prepare(handle_); continue; }
-                    if (n > 0 && callback_) {
-                        callback_(float_buf.data(), static_cast<uint32_t>(n));
+                void* read_buf = (hw_format_ == SND_PCM_FORMAT_FLOAT_LE)
+                    ? static_cast<void*>(float_buf.data()) : static_cast<void*>(hw_buf.data());
+                snd_pcm_sframes_t n = snd_pcm_readi(handle_, read_buf, frames);
+                if (n == -EPIPE) { snd_pcm_prepare(handle_); continue; }
+                if (n > 0 && callback_) {
+                    if (hw_format_ != SND_PCM_FORMAT_FLOAT_LE) {
+                        hw_to_float(hw_buf.data(), float_buf.data(),
+                            static_cast<size_t>(n) * config_.channels);
                     }
-                } else {
-                    snd_pcm_sframes_t n = snd_pcm_readi(handle_, s32_buf.data(), frames);
-                    if (n == -EPIPE) { snd_pcm_prepare(handle_); continue; }
-                    if (n > 0 && callback_) {
-                        size_t samples = static_cast<size_t>(n) * config_.channels;
-                        for (size_t i = 0; i < samples; i++) {
-                            float_buf[i] = static_cast<float>(s32_buf[i]) / 2147483647.0f;
-                        }
-                        callback_(float_buf.data(), static_cast<uint32_t>(n));
-                    }
+                    callback_(float_buf.data(), static_cast<uint32_t>(n));
                 }
             } else {
                 if (callback_) {
                     callback_(float_buf.data(), static_cast<uint32_t>(frames));
                 }
-                if (use_float_) {
+                if (hw_format_ == SND_PCM_FORMAT_FLOAT_LE) {
                     snd_pcm_sframes_t n = snd_pcm_writei(handle_, float_buf.data(), frames);
                     if (n == -EPIPE) { snd_pcm_prepare(handle_); }
                 } else {
-                    size_t samples = frames * config_.channels;
-                    for (size_t i = 0; i < samples; i++) {
-                        s32_buf[i] = static_cast<int32_t>(float_buf[i] * 2147483647.0f);
-                    }
-                    snd_pcm_sframes_t n = snd_pcm_writei(handle_, s32_buf.data(), frames);
+                    float_to_hw(float_buf.data(), hw_buf.data(), samples);
+                    snd_pcm_sframes_t n = snd_pcm_writei(handle_, hw_buf.data(), frames);
                     if (n == -EPIPE) { snd_pcm_prepare(handle_); }
                 }
             }
