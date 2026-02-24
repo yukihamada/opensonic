@@ -30,7 +30,9 @@
 
 ### Current Status / 現在の状況
 
-**macOS**: ✅ Build from source (daemon `solunad` + CLI `solctl` working)
+**macOS (TX)**: ✅ Working — `solunad --tx` with BlackHole 2ch captures system audio and streams over UDP multicast
+
+**Raspberry Pi (RX)**: ✅ Working — `solunad --rx` with ALSA/ES9038Q2M DAC confirmed on RPi 4
 
 **iOS**: 🔨 Xcode project ready, build from source
 
@@ -89,19 +91,72 @@ sudo make install
 
 ### Basic Usage / 基本的な使い方
 
-**Transmit audio / オーディオを送信:**
+**Transmit system audio from Mac (via BlackHole) / Macのシステム音声を送信:**
 ```bash
-solunad --tx --device hw:0 --dest 239.69.0.1:5004
+# Set BlackHole 2ch as macOS default output device first
+solunad --tx --device "BlackHole 2ch" --channels 2
+# → streams to 239.69.0.1:5004 (UDP multicast)
 ```
 
-**Receive audio / オーディオを受信:**
+**Receive audio on Raspberry Pi / Raspberry Piで受信:**
 ```bash
-solunad --rx --device default --port 5004
+solunad --rx --device default --channels 2
+# or specify ALSA device explicitly:
+solunad --rx --device hw:1 --channels 2
+```
+
+**Loopback test on same machine / 同一マシンでループバックテスト:**
+```bash
+solunad --tx --device "BlackHole 2ch" --channels 2 &
+solunad --rx --device "MacBook Air Speakers" --channels 2
 ```
 
 **Use config file / 設定ファイルを使用:**
 ```bash
 solunad --config /etc/soluna/config.yaml
+```
+
+---
+
+## Raspberry Pi Setup / Raspberry Piセットアップ
+
+### Build on RPi / RPiでビルド
+
+```bash
+sudo apt-get install -y libasound2-dev cmake g++
+git clone https://github.com/yukihamada/opensonic.git
+cd opensonic && mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j4
+sudo cp solunad /usr/bin/solunad
+```
+
+### Real-time Audio Optimization / リアルタイム最適化
+
+For dropout-free audio, apply these one-time settings:
+
+```bash
+# Allow solunad to set real-time scheduling without root
+sudo setcap cap_sys_nice=ep /usr/bin/solunad
+
+# Disable RT throttling (prevents SCHED_FIFO from being rate-limited)
+echo 'kernel.sched_rt_runtime_us=-1' | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+
+# Set CPU governor to performance
+echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+```
+
+With these applied, `solunad` automatically:
+- Runs the audio thread at `SCHED_FIFO` priority 80
+- Pins the audio thread to CPU core 3 (dedicated, away from IRQ/OS tasks)
+
+### Systemd Service / systemdサービス
+
+```bash
+sudo cp deploy/rpi/soluna.service /etc/systemd/system/
+sudo systemctl enable soluna
+sudo systemctl start soluna
 ```
 
 ---
@@ -141,10 +196,10 @@ See [Configuration Guide](docs/configuration.md) for full options.
 
 | Platform | Audio Backend | Status |
 |----------|---------------|--------|
-| macOS | CoreAudio | ✅ Working (daemon + CLI) |
-| Linux (x64/ARM) | ALSA | 🔨 In Development |
+| macOS | CoreAudio | ✅ Working (TX + RX, BlackHole system capture) |
+| Raspberry Pi | ALSA | ✅ Working (RX, ES9038Q2M DAC confirmed) |
+| Linux (x64/ARM) | ALSA | ✅ Working |
 | Windows | WASAPI | 🔨 In Development |
-| Raspberry Pi | ALSA | 🔨 In Development |
 | ESP32 | I2S | 🔨 In Development |
 | iOS | CoreAudio | 🔨 In Development (UI complete) |
 | Android | AAudio/OpenSL | 📋 Planned |
@@ -157,8 +212,9 @@ See [Configuration Guide](docs/configuration.md) for full options.
 |---------|--------|-------|-------|-----|----------|
 | **License** | MIT (OSS) | Proprietary | Standard | Standard | LGPL |
 | **Cost** | Free | $$$$ | Varies | Free | Free |
-| **Latency** | < 1ms | < 1ms | < 1ms | < 2ms | 5-20ms |
-| **Sync** | PTPv2 | PTPv2 | PTPv2 | gPTP | None |
+| **Latency (wired)** | ~15ms* | < 1ms | < 1ms | < 2ms | 5-20ms |
+| **Latency (WiFi)** | ~52ms* | N/A | N/A | N/A | N/A |
+| **Sync** | PTPv2 (planned) | PTPv2 | PTPv2 | gPTP | None |
 | **WiFi** | ✅ | Limited | ❌ | ❌ | ✅ |
 | **Embedded** | ESP32, RPi | Limited | ❌ | ❌ | ❌ |
 | **Max Channels** | 64 | 512 | Unlimited | 8 | 256 |
@@ -166,6 +222,8 @@ See [Configuration Guide](docs/configuration.md) for full options.
 | **Encryption** | DTLS | AES-256 | None | MACsec | None |
 | **Web UI** | ✅ | ✅ | ❌ | ❌ | ✅ |
 | **REST API** | ✅ | ❌ | ❌ | ❌ | D-Bus |
+
+*Measured: 5ms packet + 20ms jitter buffer prefill. Wired estimate; WiFi 2.4GHz measured ~52ms.
 
 ### When to use Soluna / Solunaを選ぶ場面
 
