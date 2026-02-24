@@ -145,8 +145,10 @@ elseif(OS_MACOS)
     find_library(AUDIOTOOLBOX_FW AudioToolbox)
     find_library(AUDIOUNIT_FW AudioUnit)
     find_library(COREFOUNDATION_FW CoreFoundation)
+    find_library(AVFOUNDATION_FW AVFoundation)
     target_link_libraries(soluna_core PUBLIC
-        ${COREAUDIO_FW} ${AUDIOTOOLBOX_FW} ${AUDIOUNIT_FW} ${COREFOUNDATION_FW}
+        ${COREAUDIO_FW} ${AUDIOTOOLBOX_FW} ${AUDIOUNIT_FW}
+        ${COREFOUNDATION_FW} ${AVFOUNDATION_FW}
     )
     target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_COREAUDIO=1)
 elseif(OS_IOS)
