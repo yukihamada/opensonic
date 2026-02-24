@@ -116,25 +116,42 @@ private:
     void audio_loop() {
         const size_t frames = config_.frames_per_buffer;
         const size_t buf_size = frames * config_.channels;
-        std::vector<float> buffer(buf_size);
+        std::vector<float> float_buf(buf_size);
+        std::vector<int32_t> s32_buf(use_float_ ? 0 : buf_size);
 
         while (running_.load()) {
             if (is_capture_) {
-                snd_pcm_sframes_t n = snd_pcm_readi(handle_, buffer.data(), frames);
-                if (n == -EPIPE) {
-                    snd_pcm_prepare(handle_);
-                    continue;
-                }
-                if (n > 0 && callback_) {
-                    callback_(buffer.data(), static_cast<uint32_t>(n));
+                if (use_float_) {
+                    snd_pcm_sframes_t n = snd_pcm_readi(handle_, float_buf.data(), frames);
+                    if (n == -EPIPE) { snd_pcm_prepare(handle_); continue; }
+                    if (n > 0 && callback_) {
+                        callback_(float_buf.data(), static_cast<uint32_t>(n));
+                    }
+                } else {
+                    snd_pcm_sframes_t n = snd_pcm_readi(handle_, s32_buf.data(), frames);
+                    if (n == -EPIPE) { snd_pcm_prepare(handle_); continue; }
+                    if (n > 0 && callback_) {
+                        size_t samples = static_cast<size_t>(n) * config_.channels;
+                        for (size_t i = 0; i < samples; i++) {
+                            float_buf[i] = static_cast<float>(s32_buf[i]) / 2147483647.0f;
+                        }
+                        callback_(float_buf.data(), static_cast<uint32_t>(n));
+                    }
                 }
             } else {
                 if (callback_) {
-                    callback_(buffer.data(), static_cast<uint32_t>(frames));
+                    callback_(float_buf.data(), static_cast<uint32_t>(frames));
                 }
-                snd_pcm_sframes_t n = snd_pcm_writei(handle_, buffer.data(), frames);
-                if (n == -EPIPE) {
-                    snd_pcm_prepare(handle_);
+                if (use_float_) {
+                    snd_pcm_sframes_t n = snd_pcm_writei(handle_, float_buf.data(), frames);
+                    if (n == -EPIPE) { snd_pcm_prepare(handle_); }
+                } else {
+                    size_t samples = frames * config_.channels;
+                    for (size_t i = 0; i < samples; i++) {
+                        s32_buf[i] = static_cast<int32_t>(float_buf[i] * 2147483647.0f);
+                    }
+                    snd_pcm_sframes_t n = snd_pcm_writei(handle_, s32_buf.data(), frames);
+                    if (n == -EPIPE) { snd_pcm_prepare(handle_); }
                 }
             }
         }
@@ -146,6 +163,7 @@ private:
     std::atomic<bool> running_{false};
     std::thread thread_;
     bool is_capture_ = false;
+    bool use_float_ = true;
 };
 
 std::vector<AudioDeviceInfo> AudioDevice::enumerate() {
