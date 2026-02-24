@@ -31,6 +31,10 @@
 #include <string>
 #include <vector>
 
+#ifdef __linux__
+#include <arpa/inet.h>
+#endif
+
 static std::atomic<bool> g_running{true};
 
 static void signal_handler(int) {
