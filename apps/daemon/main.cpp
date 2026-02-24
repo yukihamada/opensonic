@@ -355,8 +355,11 @@ static int run_rx(const DaemonConfig& cfg) {
     constexpr uint32_t kFramesPerPacket = 48;
     const size_t frame_size = sizeof(int32_t) * cfg.channels;
 
-    // Ring buffer: 8 packets for jitter absorption
-    RingBuffer ring(kFramesPerPacket * 8, frame_size);
+    // Ring buffer: 128 packets (128ms) for jitter absorption over WiFi/LAN
+    constexpr uint32_t kRingPackets = 128;
+    constexpr uint32_t kPrefillPackets = 64; // pre-fill 64ms before starting playback
+    RingBuffer ring(kFramesPerPacket * kRingPackets, frame_size);
+    std::atomic<bool> prefilled{false};
 
     // Audio device
     auto audio = AudioDevice::create();
