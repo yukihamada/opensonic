@@ -16,10 +16,7 @@
 
 #include <AudioToolbox/AudioToolbox.h>
 #include <AudioUnit/AudioUnit.h>
-
-#if TARGET_OS_IPHONE
 #include <AVFoundation/AVFoundation.h>
-#endif
 
 #include <atomic>
 #include <cstdio>
