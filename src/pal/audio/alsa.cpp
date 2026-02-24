@@ -76,7 +76,21 @@ private:
         snd_pcm_hw_params_any(handle_, params);
 
         snd_pcm_hw_params_set_access(handle_, params, SND_PCM_ACCESS_RW_INTERLEAVED);
-        snd_pcm_hw_params_set_format(handle_, params, SND_PCM_FORMAT_FLOAT_LE);
+
+        // Try FLOAT_LE first, fall back to S32_LE for hardware devices (e.g. I2S DACs)
+        use_float_ = true;
+        err = snd_pcm_hw_params_set_format(handle_, params, SND_PCM_FORMAT_FLOAT_LE);
+        if (err < 0) {
+            use_float_ = false;
+            err = snd_pcm_hw_params_set_format(handle_, params, SND_PCM_FORMAT_S32_LE);
+            if (err < 0) {
+                fprintf(stderr, "ALSA: no supported format (tried FLOAT_LE, S32_LE)\n");
+                snd_pcm_close(handle_);
+                handle_ = nullptr;
+                return false;
+            }
+        }
+
         snd_pcm_hw_params_set_channels(handle_, params, config.channels);
 
         unsigned int rate = config.sample_rate;
