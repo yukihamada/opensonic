@@ -4,7 +4,6 @@
 #include <alsa/asoundlib.h>
 #endif
 
-#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <atomic>
@@ -179,26 +178,19 @@ private:
             break;
         }
         case SND_PCM_FORMAT_S16_LE: {
-            // Noise-shaped dithering: TPDF + first-order error feedback
-            // Quantization error is fed back, pushing noise above ~16kHz
-            // where human hearing is less sensitive
+            // TPDF dithering: reduces quantization distortion at low levels
             auto* dst = static_cast<int16_t*>(hw_buf);
-            const size_t ch = config_.channels;
+            static uint32_t rs = 0x4D2A7F1Bu;
             for (size_t i = 0; i < samples; i++) {
-                const size_t c = i % ch;
-                // TPDF dither (two uniform = triangular distribution)
-                ns_rand_ ^= ns_rand_ << 13; ns_rand_ ^= ns_rand_ >> 17; ns_rand_ ^= ns_rand_ << 5;
-                float d1 = static_cast<float>(ns_rand_ >> 16) * (1.0f / 65536.0f);
-                ns_rand_ ^= ns_rand_ << 13; ns_rand_ ^= ns_rand_ >> 17; ns_rand_ ^= ns_rand_ << 5;
-                float d2 = static_cast<float>(ns_rand_ >> 16) * (1.0f / 65536.0f);
-                // Subtract error from previous sample (noise shaping)
-                float x = float_buf[i] * 32767.0f - ns_err_[c] + (d1 - d2);
-                float q = roundf(x);
-                if (q >  32767.0f) q =  32767.0f;
-                if (q < -32768.0f) q = -32768.0f;
-                // Store error for feedback
-                ns_err_[c] = q - float_buf[i] * 32767.0f;
-                dst[i] = static_cast<int16_t>(q);
+                // Two xorshift32 values for triangular PDF noise
+                rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5;
+                float d1 = static_cast<float>(rs & 0xFFFF) * (1.0f / 65536.0f);
+                rs ^= rs << 13; rs ^= rs >> 17; rs ^= rs << 5;
+                float d2 = static_cast<float>(rs & 0xFFFF) * (1.0f / 65536.0f);
+                float x = float_buf[i] * 32767.0f + (d1 - d2); // TPDF: [-1, +1]
+                if (x >  32767.0f) x =  32767.0f;
+                if (x < -32768.0f) x = -32768.0f;
+                dst[i] = static_cast<int16_t>(x);
             }
             break;
         }
@@ -249,9 +241,6 @@ private:
     bool is_capture_ = false;
     snd_pcm_format_t hw_format_ = SND_PCM_FORMAT_FLOAT_LE;
     int bytes_per_sample_ = 4;
-    // Noise-shaping state (per channel, up to 8ch)
-    uint32_t ns_rand_ = 0x4D2A7F1Bu;
-    float ns_err_[8] = {};
 };
 
 std::vector<AudioDeviceInfo> AudioDevice::enumerate() {
