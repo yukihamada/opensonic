@@ -248,7 +248,7 @@ static int run_tx(const DaemonConfig& cfg) {
     SocketAddress dest{cfg.dest_ip, cfg.dest_port};
 
     // TX loop
-    PacketScheduler scheduler(PacketTier::Standard, cfg.sample_rate);
+    PacketScheduler scheduler(PacketTier::LAN, cfg.sample_rate);
     scheduler.reset();
 
     std::vector<uint8_t> packet_buf(kMaxPacketSize);
