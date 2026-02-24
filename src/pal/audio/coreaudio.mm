@@ -253,11 +253,10 @@ private:
         stream_format.mSampleRate = config.sample_rate;
         stream_format.mFormatID = kAudioFormatLinearPCM;
         stream_format.mFormatFlags = kAudioFormatFlagIsFloat |
-                                     kAudioFormatFlagIsPacked |
-                                     kAudioFormatFlagIsNonInterleaved;
-        stream_format.mBytesPerPacket = sizeof(float);
+                                     kAudioFormatFlagIsPacked;
+        stream_format.mBytesPerPacket = sizeof(float) * config.channels;
         stream_format.mFramesPerPacket = 1;
-        stream_format.mBytesPerFrame = sizeof(float);
+        stream_format.mBytesPerFrame = sizeof(float) * config.channels;
         stream_format.mChannelsPerFrame = config.channels;
         stream_format.mBitsPerChannel = 32;
 
