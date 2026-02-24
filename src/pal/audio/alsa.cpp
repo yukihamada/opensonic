@@ -119,7 +119,7 @@ private:
         snd_pcm_uframes_t period = config.frames_per_buffer;
         snd_pcm_hw_params_set_period_size_near(handle_, params, &period, nullptr);
 
-        snd_pcm_uframes_t buffer_size = period * 4;
+        snd_pcm_uframes_t buffer_size = period * 2;
         snd_pcm_hw_params_set_buffer_size_near(handle_, params, &buffer_size);
 
         err = snd_pcm_hw_params(handle_, params);
