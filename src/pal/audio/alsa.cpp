@@ -225,7 +225,8 @@ private:
     std::atomic<bool> running_{false};
     std::thread thread_;
     bool is_capture_ = false;
-    bool use_float_ = true;
+    snd_pcm_format_t hw_format_ = SND_PCM_FORMAT_FLOAT_LE;
+    int bytes_per_sample_ = 4;
 };
 
 std::vector<AudioDeviceInfo> AudioDevice::enumerate() {
