@@ -5,8 +5,10 @@
 #endif
 
 #include <cstdio>
+#include <cstring>
 #include <atomic>
 #include <thread>
+#include <vector>
 
 namespace soluna::pal {
 
