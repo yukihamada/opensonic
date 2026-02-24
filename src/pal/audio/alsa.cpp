@@ -79,7 +79,8 @@ private:
 
         snd_pcm_hw_params_set_access(handle_, params, SND_PCM_ACCESS_RW_INTERLEAVED);
 
-        // Try formats in order of preference: FLOAT_LE > S32_LE > S24_LE > S16_LE
+        // Try formats: FLOAT_LE > S16_LE > S32_LE > S24_LE
+        // S16_LE is prioritized because many I2S DAC overlays only output with S16
         struct FormatOption {
             snd_pcm_format_t fmt;
             int bytes_per_sample;
@@ -87,9 +88,9 @@ private:
         };
         static const FormatOption formats[] = {
             {SND_PCM_FORMAT_FLOAT_LE, 4, "FLOAT_LE"},
+            {SND_PCM_FORMAT_S16_LE, 2, "S16_LE"},
             {SND_PCM_FORMAT_S32_LE, 4, "S32_LE"},
             {SND_PCM_FORMAT_S24_LE, 4, "S24_LE"},
-            {SND_PCM_FORMAT_S16_LE, 2, "S16_LE"},
         };
         hw_format_ = SND_PCM_FORMAT_UNKNOWN;
         for (const auto& f : formats) {
