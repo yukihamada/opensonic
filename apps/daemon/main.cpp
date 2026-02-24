@@ -363,8 +363,23 @@ static int run_rx(const DaemonConfig& cfg) {
     std::vector<float> conv_buf(kFramesPerPacket * cfg.channels);
 
     // Audio callback: ring buffer → convert → playback
+    static uint64_t sine_phase = 0;
+    bool sine_test = (std::getenv("SOLUNA_SINE_TEST") != nullptr);
     audio->start([&](float* buffer, uint32_t frame_count) {
         size_t samples = frame_count * cfg.channels;
+
+        if (sine_test) {
+            // Debug: generate 440Hz sine wave to test ALSA output
+            for (uint32_t i = 0; i < frame_count; i++) {
+                float s = 0.5f * sinf(2.0f * 3.14159265f * 440.0f * sine_phase / 48000.0f);
+                for (uint32_t ch = 0; ch < cfg.channels; ch++) {
+                    buffer[i * cfg.channels + ch] = s;
+                }
+                sine_phase++;
+            }
+            return;
+        }
+
         std::vector<int32_t> s24_buf(samples);
 
         size_t read = ring.read(s24_buf.data(), frame_count);
