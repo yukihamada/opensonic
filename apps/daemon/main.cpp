@@ -189,7 +189,7 @@ static int run_tx(const DaemonConfig& cfg) {
     using namespace soluna::pipeline;
     using namespace soluna::transport;
 
-    constexpr uint32_t kFramesPerPacket = 48; // 1ms at 48kHz
+    constexpr uint32_t kFramesPerPacket = 480; // 10ms at 48kHz — robust for home LAN/WiFi
     const size_t frame_size = sizeof(int32_t) * cfg.channels; // S24 in 32-bit container
 
     // Ring buffer: 8 packets worth
