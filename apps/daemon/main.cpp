@@ -417,15 +417,6 @@ static int run_rx(const DaemonConfig& cfg) {
                 (frame_count - read) * frame_size);
         }
         s24_to_float(s24_buf.data(), buffer, samples);
-
-        // Debug: print sample values every ~1 second
-        static uint64_t dbg_count = 0;
-        if (dbg_count++ % 1000 == 0) {
-            fprintf(stderr, "\nDBG: read=%zu/%u raw=[%d,%d,%d,%d] float=[%.6f,%.6f,%.6f,%.6f]\n",
-                read, frame_count, s24_buf[0], s24_buf[1], s24_buf[2], s24_buf[3],
-                buffer[0], buffer[1], buffer[2], buffer[3]);
-            fflush(stderr);
-        }
     });
 
     // Create transport manager for optional DTLS
