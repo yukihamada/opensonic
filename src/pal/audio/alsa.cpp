@@ -4,6 +4,7 @@
 #include <alsa/asoundlib.h>
 #endif
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <atomic>
