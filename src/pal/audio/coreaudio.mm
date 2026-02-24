@@ -405,30 +405,16 @@ private:
         (void)inBusNumber;
 
         auto* device = static_cast<CoreAudioDevice*>(inRefCon);
-        if (!device->running_.load()) {
-            // Fill with silence
-            for (UInt32 i = 0; i < ioData->mNumberBuffers; i++) {
-                std::memset(ioData->mBuffers[i].mData, 0, ioData->mBuffers[i].mDataByteSize);
-            }
+        auto* dst = static_cast<float*>(ioData->mBuffers[0].mData);
+        const size_t total_samples = inNumberFrames * device->config_.channels;
+
+        if (!device->running_.load() || !device->callback_) {
+            std::memset(dst, 0, total_samples * sizeof(float));
             return noErr;
         }
 
-        // Get interleaved data from callback
-        if (device->callback_) {
-            device->callback_(device->conversion_buffer_.data(), inNumberFrames);
-        } else {
-            std::memset(device->conversion_buffer_.data(), 0,
-                        inNumberFrames * device->config_.channels * sizeof(float));
-        }
-
-        // Deinterleave to non-interleaved buffer list
-        for (UInt32 ch = 0; ch < ioData->mNumberBuffers && ch < device->config_.channels; ch++) {
-            auto* dst = static_cast<float*>(ioData->mBuffers[ch].mData);
-            for (UInt32 frame = 0; frame < inNumberFrames; frame++) {
-                dst[frame] = device->conversion_buffer_[frame * device->config_.channels + ch];
-            }
-        }
-
+        // Interleaved: single buffer, write directly
+        device->callback_(dst, inNumberFrames);
         return noErr;
     }
 
