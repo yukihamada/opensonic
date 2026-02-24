@@ -399,6 +399,15 @@ static int run_rx(const DaemonConfig& cfg) {
             return;
         }
 
+        // Wait for prefill before starting playback to absorb jitter
+        if (!prefilled.load()) {
+            if (ring.available_read() < kFramesPerPacket * kPrefillPackets) {
+                std::memset(buffer, 0, samples * sizeof(float));
+                return;
+            }
+            prefilled.store(true);
+        }
+
         std::vector<int32_t> s24_buf(samples);
 
         size_t read = ring.read(s24_buf.data(), frame_count);
