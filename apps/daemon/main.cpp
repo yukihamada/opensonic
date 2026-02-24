@@ -398,9 +398,13 @@ static int run_rx(const DaemonConfig& cfg) {
 
         size_t read = ring.read(s24_buf.data(), frame_count);
         if (read < frame_count) {
-            // Underrun: zero-fill
+            // Underrun: zero-fill and re-trigger prefill
             std::memset(s24_buf.data() + read * cfg.channels, 0,
                 (frame_count - read) * frame_size);
+            prefilled.store(false);
+        } else if (ring.available_read() < kFramesPerPacket * kRefillThreshold) {
+            // Buffer running low — re-prefill to avoid imminent dropout
+            prefilled.store(false);
         }
         s24_to_float(s24_buf.data(), buffer, samples);
     });
