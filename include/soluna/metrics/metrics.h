@@ -15,6 +15,7 @@
 #include <vector>
 #include <map>
 #include <mutex>
+#include <memory>
 
 namespace soluna {
 namespace metrics {
