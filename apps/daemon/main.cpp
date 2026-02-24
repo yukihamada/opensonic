@@ -342,8 +342,8 @@ static int run_rx(const DaemonConfig& cfg) {
 
     // Ring buffer: 40 packets = 200ms total capacity
     constexpr uint32_t kRingPackets = 40;
-    constexpr uint32_t kPrefillPackets = 4;  // pre-fill 20ms before starting playback
-    constexpr uint32_t kRefillThreshold = 2; // re-prefill if buffer drops below 10ms
+    constexpr uint32_t kPrefillPackets = 2;  // pre-fill 10ms before starting playback
+    constexpr uint32_t kRefillThreshold = 1; // re-prefill if buffer drops below 5ms
     RingBuffer ring(kFramesPerPacket * kRingPackets, frame_size);
     std::atomic<bool> prefilled{false};
 
