@@ -77,18 +77,34 @@ private:
 
         snd_pcm_hw_params_set_access(handle_, params, SND_PCM_ACCESS_RW_INTERLEAVED);
 
-        // Try FLOAT_LE first, fall back to S32_LE for hardware devices (e.g. I2S DACs)
-        use_float_ = true;
-        err = snd_pcm_hw_params_set_format(handle_, params, SND_PCM_FORMAT_FLOAT_LE);
-        if (err < 0) {
-            use_float_ = false;
-            err = snd_pcm_hw_params_set_format(handle_, params, SND_PCM_FORMAT_S32_LE);
-            if (err < 0) {
-                fprintf(stderr, "ALSA: no supported format (tried FLOAT_LE, S32_LE)\n");
-                snd_pcm_close(handle_);
-                handle_ = nullptr;
-                return false;
+        // Try formats in order of preference: FLOAT_LE > S32_LE > S24_LE > S16_LE
+        struct FormatOption {
+            snd_pcm_format_t fmt;
+            int bytes_per_sample;
+            const char* name;
+        };
+        static const FormatOption formats[] = {
+            {SND_PCM_FORMAT_FLOAT_LE, 4, "FLOAT_LE"},
+            {SND_PCM_FORMAT_S32_LE, 4, "S32_LE"},
+            {SND_PCM_FORMAT_S24_LE, 4, "S24_LE"},
+            {SND_PCM_FORMAT_S16_LE, 2, "S16_LE"},
+        };
+        hw_format_ = SND_PCM_FORMAT_UNKNOWN;
+        for (const auto& f : formats) {
+            snd_pcm_hw_params_any(handle_, params);
+            snd_pcm_hw_params_set_access(handle_, params, SND_PCM_ACCESS_RW_INTERLEAVED);
+            if (snd_pcm_hw_params_set_format(handle_, params, f.fmt) >= 0) {
+                hw_format_ = f.fmt;
+                bytes_per_sample_ = f.bytes_per_sample;
+                fprintf(stderr, "ALSA: using format %s on '%s'\n", f.name, dev);
+                break;
             }
+        }
+        if (hw_format_ == SND_PCM_FORMAT_UNKNOWN) {
+            fprintf(stderr, "ALSA: no supported format on '%s'\n", dev);
+            snd_pcm_close(handle_);
+            handle_ = nullptr;
+            return false;
         }
 
         snd_pcm_hw_params_set_channels(handle_, params, config.channels);
