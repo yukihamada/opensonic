@@ -18,6 +18,7 @@
 #include <fstream>
 #include <set>
 #include <functional>
+#include <atomic>
 
 namespace soluna {
 namespace audit {
