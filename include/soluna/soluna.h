@@ -26,6 +26,7 @@ enum class PacketTier : uint8_t {
     Low      = 1,   // 250us, 12 samples (GbE)
     Standard = 2,   // 1ms,   48 samples (GbE, 100M)
     WiFi     = 3,   // 2-4ms, 96-192 samples (WiFi 5/6)
+    LAN      = 4,   // 10ms, 480 samples (home LAN/WiFi, robust)
 };
 
 constexpr uint32_t samples_per_packet(PacketTier tier) {
@@ -34,8 +35,9 @@ constexpr uint32_t samples_per_packet(PacketTier tier) {
         case PacketTier::Low:      return 12;
         case PacketTier::Standard: return 48;
         case PacketTier::WiFi:     return 96;
+        case PacketTier::LAN:      return 480;
     }
-    return 48;
+    return 480;
 }
 
 // Audio sample formats
