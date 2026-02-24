@@ -203,6 +203,19 @@ private:
     }
 
     void audio_loop() {
+#ifdef __linux__
+        // Real-time scheduling: prevent OS from preempting the audio thread
+        struct sched_param sp{};
+        sp.sched_priority = 80;
+        if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp) != 0) {
+            fprintf(stderr, "ALSA: SCHED_FIFO not granted (run: sudo setcap cap_sys_nice+ep solunad)\n");
+        }
+        // Pin to CPU core 3 (dedicated audio core, away from IRQ/system tasks)
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(3, &cpuset);
+        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+#endif
         const size_t frames = config_.frames_per_buffer;
         const size_t samples = frames * config_.channels;
         std::vector<float> float_buf(samples);
