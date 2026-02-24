@@ -219,6 +219,21 @@ static int run_tx(const DaemonConfig& cfg) {
     // Audio callback: capture → convert → ring buffer
     audio->start([&](float* buffer, uint32_t frame_count) {
         size_t samples = frame_count * cfg.channels;
+
+        // Debug: print captured sample values
+        static uint64_t tx_dbg = 0;
+        if (tx_dbg++ % 1000 == 0) {
+            float max_val = 0;
+            for (size_t i = 0; i < samples; i++) {
+                float a = buffer[i] < 0 ? -buffer[i] : buffer[i];
+                if (a > max_val) max_val = a;
+            }
+            fprintf(stderr, "\nTX_DBG: frames=%u peak=%.6f samples=[%.6f,%.6f,%.6f,%.6f]\n",
+                frame_count, max_val, buffer[0], buffer[1],
+                samples > 2 ? buffer[2] : 0.0f, samples > 3 ? buffer[3] : 0.0f);
+            fflush(stderr);
+        }
+
         float_to_s24(buffer, conv_buf.data(), samples);
         ring.write(conv_buf.data(), frame_count);
     });
