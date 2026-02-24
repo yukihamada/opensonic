@@ -9,6 +9,10 @@
 #include <atomic>
 #include <thread>
 #include <vector>
+#ifdef __linux__
+#include <pthread.h>
+#include <sched.h>
+#endif
 
 namespace soluna::pal {
 
