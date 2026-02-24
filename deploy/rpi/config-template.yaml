@@ -43,14 +43,15 @@ audio:
   bit_depth: 24
 
   # Frames per packet (affects latency)
-  # Lower = less latency, more CPU
-  # Options: 12 (0.25ms), 48 (1ms), 96 (2ms), 192 (4ms)
-  frames_per_packet: 48
+  # 240 (5ms) = stable on WiFi 2.4GHz (confirmed)
+  # 48  (1ms) = use only on wired GbE
+  frames_per_packet: 240
 
   # Buffer packets for jitter absorption
-  # Wired (Ethernet): 8 is sufficient for stable playback
-  # WiFi: increase to 16 to absorb jitter and retransmission delays
-  buffer_packets: 8
+  # 40 packets × 5ms = 200ms ring capacity, 4-packet prefill = 20ms
+  # WiFi 2.4GHz: 40 is confirmed stable (dropout-free)
+  # Wired GbE:   8 is sufficient
+  buffer_packets: 40
 
 security:
   # Enable DTLS encryption (requires OpenSSL)

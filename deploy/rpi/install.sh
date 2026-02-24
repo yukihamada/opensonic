@@ -306,6 +306,53 @@ EOF
     log_info "Configuration written to $CONFIG_DIR/config.yaml"
 }
 
+# Apply real-time audio optimizations
+apply_rt_optimizations() {
+    log_step "Applying real-time audio optimizations..."
+
+    # 1. Allow solunad to set SCHED_FIFO without root
+    if command -v setcap &>/dev/null; then
+        setcap cap_sys_nice=ep /usr/bin/solunad
+        log_info "setcap cap_sys_nice=ep applied to /usr/bin/solunad"
+    else
+        apt-get install -y libcap2-bin
+        setcap cap_sys_nice=ep /usr/bin/solunad
+        log_info "setcap applied"
+    fi
+
+    # 2. Disable RT throttling (prevents SCHED_FIFO starvation)
+    if ! grep -q "sched_rt_runtime_us" /etc/sysctl.conf 2>/dev/null; then
+        echo 'kernel.sched_rt_runtime_us=-1' >> /etc/sysctl.conf
+        log_info "RT throttling disabled (sched_rt_runtime_us=-1)"
+    else
+        sed -i 's/^kernel.sched_rt_runtime_us=.*/kernel.sched_rt_runtime_us=-1/' /etc/sysctl.conf
+        log_info "RT throttling setting updated"
+    fi
+    sysctl -q -w kernel.sched_rt_runtime_us=-1
+
+    # 3. CPU governor: performance mode
+    if [ -d /sys/devices/system/cpu/cpu0/cpufreq ]; then
+        echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor > /dev/null 2>&1 || true
+
+        # Persist across reboots via rc.local
+        if [ -f /etc/rc.local ]; then
+            if ! grep -q "scaling_governor" /etc/rc.local; then
+                sed -i '/^exit 0/i echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor > /dev/null 2>&1' /etc/rc.local
+            fi
+        else
+            cat > /etc/rc.local << 'RCEOF'
+#!/bin/bash
+echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor > /dev/null 2>&1
+exit 0
+RCEOF
+            chmod +x /etc/rc.local
+        fi
+        log_info "CPU governor set to performance"
+    fi
+
+    log_info "Real-time optimizations applied"
+}
+
 # Install systemd service
 install_service() {
     log_step "Installing systemd service..."
@@ -403,6 +450,7 @@ main() {
     create_user
     create_directories
     install_package
+    apply_rt_optimizations
     detect_audio_devices
     generate_config
     install_service

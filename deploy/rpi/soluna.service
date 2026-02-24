@@ -29,9 +29,9 @@ ProtectHome=yes
 PrivateTmp=yes
 ReadWritePaths=/var/log/soluna /var/lib/soluna
 
-# Network capabilities
-AmbientCapabilities=CAP_NET_RAW CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_RAW CAP_NET_BIND_SERVICE
+# Capabilities: network + real-time scheduling (SCHED_FIFO for audio thread)
+AmbientCapabilities=CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SYS_NICE
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SYS_NICE
 
 # Audio access
 SupplementaryGroups=audio
