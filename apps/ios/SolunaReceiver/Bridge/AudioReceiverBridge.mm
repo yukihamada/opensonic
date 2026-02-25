@@ -237,11 +237,11 @@ public:
         , port_(port)
         , channels_(channels)
         , volume_(1.0f)
+        , muted_(false)
         , running_(false)
         , ring_buffer_(4096, channels * sizeof(int32_t))  // ~85ms buffer at 48kHz
         , read_buffer_(256 * channels)
-    {
-    }
+    {}
 
     ~ReceiverImpl() {
         stop();
