@@ -488,6 +488,10 @@ static int run_tx(const DaemonConfig& cfg) {
 }
 
 static int run_rx(const DaemonConfig& cfg) {
+    g_cfg_channels    = cfg.channels;
+    g_cfg_sample_rate = cfg.sample_rate;
+    g_cfg_port        = cfg.listen_port;
+    snprintf(g_cfg_multicast, sizeof(g_cfg_multicast), "%s", cfg.dest_ip.c_str());
     using namespace soluna;
     using namespace soluna::pal;
     using namespace soluna::pipeline;
