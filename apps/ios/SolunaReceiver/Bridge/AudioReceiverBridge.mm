@@ -353,20 +353,12 @@ public:
 
 private:
     void receive_loop() {
+        // ONLY writes to ring_buffer_ — never reads (RingBuffer is SPSC).
+        // Drain happens exclusively in audio_callback to avoid data race.
         while (running_.load()) {
             if (rtp_receiver_) {
                 for (int i = 0; i < 10 && running_.load(); i++) {
                     if (!rtp_receiver_->receive_packet(ring_buffer_)) break;
-                }
-                // Trim buffer to target to keep latency low
-                size_t avail = ring_buffer_.available_read();
-                uint32_t target = target_fill_frames_.load();
-                while (avail > target) {
-                    size_t chunk = std::min(avail - target, drain_buf_.size() / channels_);
-                    if (chunk == 0) break;
-                    size_t drained = ring_buffer_.read(drain_buf_.data(), chunk);
-                    if (drained == 0) break;
-                    avail -= drained;
                 }
             }
             std::this_thread::sleep_for(std::chrono::microseconds(100));
