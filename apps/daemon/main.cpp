@@ -477,6 +477,12 @@ static int run_rx(const DaemonConfig& cfg) {
             prefilled.store(false);
         }
         s24_to_float(s24_buf.data(), buffer, samples);
+
+        // Apply volume / mute
+        float gain = g_rx_muted.load() ? 0.0f : g_rx_volume.load();
+        if (gain != 1.0f) {
+            for (size_t i = 0; i < samples; i++) buffer[i] *= gain;
+        }
     });
 
     // Create transport manager for optional DTLS
