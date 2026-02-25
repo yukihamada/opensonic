@@ -561,7 +561,7 @@ private:
 }
 
 - (instancetype)init {
-    return [self initWithMulticastGroup:@"239.69.0.1" port:5004 channels:1];
+    return [self initWithMulticastGroup:@"239.69.0.1" port:5004 channels:2];
 }
 
 - (instancetype)initWithMulticastGroup:(NSString *)group
