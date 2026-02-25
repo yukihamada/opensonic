@@ -462,14 +462,16 @@ private:
     std::string multicast_group_;
     uint16_t port_;
     uint32_t channels_;
-    std::atomic<float> volume_;
-    std::atomic<bool> muted_;
-    std::atomic<bool> running_;
+    std::atomic<float>    volume_;
+    std::atomic<bool>     muted_;
+    std::atomic<bool>     running_;
+    std::atomic<uint32_t> target_fill_frames_;
 
     std::unique_ptr<SimpleRtpReceiver> rtp_receiver_;
-    std::unique_ptr<pal::AudioDevice> audio_device_;
-    pipeline::RingBuffer ring_buffer_;
-    std::vector<int32_t> read_buffer_;
+    std::unique_ptr<pal::AudioDevice>  audio_device_;
+    pipeline::RingBuffer  ring_buffer_;
+    std::vector<int32_t>  read_buffer_;
+    std::vector<int32_t>  drain_buf_;  // scratch buffer for trimming excess
 
     std::thread receive_thread_;
     soluna::control::WebSocketServer ws_server_;
