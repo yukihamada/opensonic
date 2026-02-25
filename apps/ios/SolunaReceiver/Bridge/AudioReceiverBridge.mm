@@ -299,6 +299,12 @@ public:
             return false;
         }
 
+        // Start WebSocket control server on port 8400
+        ws_server_.set_message_callback([this](const std::string& msg) -> std::string {
+            return handle_ws_command(msg);
+        });
+        ws_server_.start(8400);
+
         return true;
     }
 
