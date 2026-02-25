@@ -240,8 +240,10 @@ public:
         , volume_(1.0f)
         , muted_(false)
         , running_(false)
+        , target_fill_frames_(960)  // 20ms at 48kHz default
         , ring_buffer_(4096, channels * sizeof(int32_t))  // ~85ms buffer at 48kHz
         , read_buffer_(256 * channels)
+        , drain_buf_(512)
     {}
 
     ~ReceiverImpl() {
