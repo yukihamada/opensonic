@@ -240,11 +240,12 @@ public:
         , volume_(1.0f)
         , muted_(false)
         , running_(false)
-        , target_fill_frames_(960)  // 20ms at 48kHz default
-        , prefilled_(false)
-        , ring_buffer_(8192, channels * sizeof(int32_t))  // ~170ms capacity at 48kHz
-        , read_buffer_(4096 * channels)  // sized for any frame_count iOS might give
+        , target_fill_frames_(4800)  // 100ms default — generous to absorb WiFi jitter
+        , ring_buffer_(24000, channels * sizeof(int32_t))  // 500ms capacity
+        , read_buffer_(4096 * channels)
         , drain_buf_(4096 * channels)
+        , held_sample_(channels, 0)
+        , ramp_(0.0f)
     {}
 
     ~ReceiverImpl() {
