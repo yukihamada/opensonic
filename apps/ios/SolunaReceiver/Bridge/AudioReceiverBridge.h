@@ -43,6 +43,9 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 /// Volume (0.0 - 1.0)
 @property (nonatomic, assign) float volume;
 
+/// Muted state
+@property (nonatomic, assign) BOOL muted;
+
 /// Delegate for callbacks
 @property (nonatomic, weak, nullable) id<SolunaReceiverDelegate> delegate;
 
