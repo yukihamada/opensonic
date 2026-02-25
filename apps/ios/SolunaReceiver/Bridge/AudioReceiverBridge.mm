@@ -492,6 +492,7 @@ private:
     std::atomic<bool>     muted_;
     std::atomic<bool>     running_;
     std::atomic<uint32_t> target_fill_frames_;
+    bool                  prefilled_ = false;  // audio_callback-only, no atomics needed
 
     std::unique_ptr<SimpleRtpReceiver> rtp_receiver_;
     std::unique_ptr<pal::AudioDevice>  audio_device_;
