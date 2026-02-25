@@ -1,457 +1,473 @@
 'use strict';
 
-// --- Local WebSocket (this node) ---
-let ws = null;
-let reqId = 1;
-const pending = new Map();
-let meterInterval = null;
-let statsInterval = null;
+// ── Constants ────────────────────────────────────────────────
+const DEFAULT_RECEIVERS = [
+    { name: 'RPi 1',  host: 'soluna-rpi.local:8400'  },
+    { name: 'RPi 2',  host: 'soluna-rpi2.local:8400' },
+    { name: 'iPhone', host: 'Yukis-iPhone.local:8400' },
+];
 
-function connect() {
-    const host = window.location.host || 'localhost:8400';
-    ws = new WebSocket('ws://' + host + '/ws');
-    ws.onopen = function() {
-        document.getElementById('status').textContent = 'Connected';
-        document.getElementById('status').className = 'status connected';
-        refreshAll();
-        startMeterUpdates();
-        startStatsUpdates();
-        pollTxStats();
-    };
-    ws.onclose = function() {
-        document.getElementById('status').textContent = 'Disconnected';
-        document.getElementById('status').className = 'status disconnected';
-        stopMeterUpdates();
-        stopStatsUpdates();
-        setTimeout(connect, 2000);
-    };
-    ws.onmessage = function(evt) {
+// ── State ────────────────────────────────────────────────────
+let localWs   = null;
+let localReqId = 1;
+const localPending = new Map();
+
+let receivers = loadReceivers();
+const rxConns = {};  // host → conn object
+
+// ── Local WebSocket (TX node serving this page) ──────────────
+function localConnect() {
+    const host = location.host || 'localhost:8400';
+    localWs = new WebSocket('ws://' + host + '/ws');
+    localWs.onopen  = () => { setBadge('connected');    pollTxStats(); };
+    localWs.onclose = () => { setBadge('disconnected'); setTimeout(localConnect, 3000); };
+    localWs.onerror = () => {};
+    localWs.onmessage = (evt) => {
         try {
-            const resp = JSON.parse(evt.data);
-            const cb = pending.get(resp.id);
-            if (cb) { pending.delete(resp.id); cb(resp); }
-        } catch (e) {}
+            const r = JSON.parse(evt.data);
+            const cb = localPending.get(r.id);
+            if (cb) { localPending.delete(r.id); cb(r); }
+        } catch (_) {}
     };
 }
 
-function sendCommand(command, params, callback) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    const id = reqId++;
-    if (callback) pending.set(id, callback);
-    ws.send(JSON.stringify({ id, command, params: params || {} }));
+function localSend(cmd, params, cb) {
+    if (!localWs || localWs.readyState !== WebSocket.OPEN) return;
+    const id = localReqId++;
+    if (cb) localPending.set(id, cb);
+    localWs.send(JSON.stringify({ id, command: cmd, params: params || {} }));
 }
 
-// --- Tab Navigation ---
-document.querySelectorAll('.tab').forEach(function(tab) {
-    tab.addEventListener('click', function() {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById(tab.dataset.panel).classList.add('active');
+// ── TX pill ──────────────────────────────────────────────────
+let txPktsPrev = 0;
+
+function pollTxStats() {
+    localSend('rx.stats', {}, (resp) => {
+        if (resp.success && resp.data) {
+            try {
+                const d = JSON.parse(resp.data);
+                const n    = d.packets ?? 0;
+                const live = n !== txPktsPrev;
+                txPktsPrev = n;
+                const dot   = document.getElementById('tx-dot');
+                const label = document.getElementById('tx-label');
+                const pkts  = document.getElementById('tx-pkts');
+                if (dot)   dot.className    = 'tx-dot' + (live ? ' live' : '');
+                if (label) label.textContent = d.muted ? 'TX Muted' : 'TX';
+                if (pkts)  pkts.textContent  = fmtNum(n);
+            } catch (_) {}
+        }
+    });
+    setTimeout(pollTxStats, 1000);
+}
+
+function setBadge(cls) {
+    const el = document.getElementById('ws-badge');
+    if (!el) return;
+    el.className  = 'ws-badge ' + cls;
+    el.textContent = cls === 'connected' ? '● Connected' : '● Disconnected';
+}
+
+// ── Bottom nav / panels ──────────────────────────────────────
+document.querySelectorAll('.bnav').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const panel = btn.dataset.panel;
+        document.querySelectorAll('.bnav').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('.panel-overlay').forEach(p => p.classList.add('hidden'));
+        if (panel !== 'dashboard') {
+            const el = document.getElementById('panel-' + panel);
+            if (el) el.classList.remove('hidden');
+        }
+        if (panel === 'routing') refreshRoutes();
+        if (panel === 'stats')   refreshStats();
     });
 });
 
-// --- TX Stats ---
-function pollTxStats() {
-    sendCommand('rx.stats', {}, function(resp) {
-        if (!resp.success || !resp.data) return;
-        try {
-            const d = JSON.parse(resp.data);
-            const dot = document.getElementById('tx-status-dot');
-            const text = document.getElementById('tx-status-text');
-            const pkts = document.getElementById('tx-packets');
-            if (dot) dot.className = 'dot dot-on';
-            if (text) text.textContent = d.muted ? 'Muted' : 'Active';
-            if (pkts) pkts.textContent = fmtNum(d.packets);
-        } catch (e) {}
+document.querySelectorAll('.close-panel').forEach(btn => {
+    btn.addEventListener('click', () => {
+        btn.closest('.panel-overlay').classList.add('hidden');
+        document.querySelectorAll('.bnav').forEach(b => b.classList.remove('active'));
+        const dash = document.querySelector('.bnav[data-panel="dashboard"]');
+        if (dash) dash.classList.add('active');
     });
-    setTimeout(pollTxStats, 2000);
-}
+});
 
-// --- Receiver Management ---
-const DEFAULT_RECEIVERS = [
-    { name: 'RPi 1', host: 'soluna-rpi.local:8400' },
-    { name: 'RPi 2', host: 'soluna-rpi2.local:8400' },
-];
+// ── Add receiver ─────────────────────────────────────────────
+document.getElementById('btn-add-rx').addEventListener('click', () => {
+    const name = prompt('Receiver name:');
+    if (!name) return;
+    const host = prompt('Host (e.g. device.local:8400):');
+    if (!host) return;
+    receivers.push({ name, host });
+    saveReceivers();
+    spawnCard(receivers.length - 1);
+    updateEmpty();
+});
 
-let receivers = loadReceivers();
-const rxConns = {};  // host → { ws, stats, volume, muted }
-
+// ── Receiver storage ─────────────────────────────────────────
 function loadReceivers() {
     try {
-        const s = localStorage.getItem('soluna_receivers');
+        const s = localStorage.getItem('soluna_rx_v2');
         if (s) return JSON.parse(s);
-    } catch (e) {}
-    return DEFAULT_RECEIVERS.map(r => Object.assign({}, r));
+    } catch (_) {}
+    return DEFAULT_RECEIVERS.map(r => ({ ...r }));
 }
 
 function saveReceivers() {
-    localStorage.setItem('soluna_receivers', JSON.stringify(receivers));
+    localStorage.setItem('soluna_rx_v2', JSON.stringify(receivers));
 }
 
-function renderReceivers() {
-    const list = document.getElementById('receiver-list');
-    list.innerHTML = '';
-    receivers.forEach(function(rx, idx) {
-        const card = document.createElement('div');
-        card.className = 'rx-card card';
-        card.id = 'rx-card-' + idx;
-
-        const conn = rxConns[rx.host] || { connected: false, stats: null };
-        const vol = conn.volume !== undefined ? conn.volume : 1.0;
-        const muted = conn.muted || false;
-        const volPct = Math.round(vol * 100);
-
-        card.innerHTML =
-            '<div class="card-header">' +
-                '<div class="rx-title">' +
-                    '<span class="dot ' + (conn.connected ? 'dot-on' : 'dot-off') + '"></span>' +
-                    '<strong>' + escHtml(rx.name) + '</strong>' +
-                    '<span class="rx-host">' + escHtml(rx.host) + '</span>' +
-                '</div>' +
-                '<button class="btn btn-icon btn-danger" onclick="removeReceiver(' + idx + ')" title="Remove">✕</button>' +
-            '</div>' +
-            '<div class="rx-stats">' +
-                '<div class="rx-stat"><span class="label">Packets</span><span class="value" id="rx-pkts-' + idx + '">' + (conn.stats ? fmtNum(conn.stats.packets) : '—') + '</span></div>' +
-                '<div class="rx-stat"><span class="label">Errors</span><span class="value ' + (conn.stats && conn.stats.errors > 0 ? 'warn' : '') + '" id="rx-errs-' + idx + '">' + (conn.stats ? conn.stats.errors : '—') + '</span></div>' +
-                '<div class="rx-stat"><span class="label">Buffer</span><span class="value" id="rx-buf-' + idx + '">' + (conn.stats ? fmtBuf(conn.stats.buf_fill, conn.stats.buf_cap) : '—') + '</span></div>' +
-            '</div>' +
-            '<div class="rx-controls">' +
-                '<button class="btn btn-mute ' + (muted ? 'active' : '') + '" id="rx-mute-' + idx + '" onclick="toggleMuteRx(' + idx + ')">' +
-                    (muted ? '🔇 Muted' : '🔊 Live') +
-                '</button>' +
-                '<div class="volume-row">' +
-                    '<span class="label">Vol</span>' +
-                    '<input type="range" min="0" max="100" value="' + volPct + '" ' +
-                        'class="volume-slider" id="rx-vol-' + idx + '" ' +
-                        'oninput="setVolumeRx(' + idx + ', this.value)" ' +
-                        'onchange="setVolumeRx(' + idx + ', this.value)">' +
-                    '<span class="vol-label" id="rx-vol-label-' + idx + '">' + volPct + '%</span>' +
-                '</div>' +
-            '</div>';
-
-        list.appendChild(card);
-        connectReceiver(idx);
-    });
+// ── Receiver DOM ─────────────────────────────────────────────
+function updateEmpty() {
+    const grid  = document.getElementById('rx-grid');
+    const empty = document.getElementById('rx-empty');
+    const has   = grid && grid.children.length > 0;
+    if (grid)  grid.style.display  = has ? '' : 'none';
+    if (empty) empty.style.display = has ? 'none' : '';
 }
 
+function buildCard(idx) {
+    const rx = receivers[idx];
+    const el = document.createElement('div');
+    el.className = 'rx-card';
+    el.id = 'rx-card-' + idx;
+    el.innerHTML = `
+<div class="rxc-header">
+  <div class="rxc-title">
+    <span class="rxc-indicator" id="rxc-ind-${idx}"></span>
+    <div>
+      <div class="rxc-name">${escHtml(rx.name)}</div>
+      <span class="rxc-host">${escHtml(rx.host)}</span>
+    </div>
+  </div>
+  <div class="rxc-actions">
+    <span class="rxc-badge off" id="rxc-badge-${idx}">Off</span>
+    <button class="btn-remove" id="rxc-rm-${idx}" title="Remove">✕</button>
+  </div>
+</div>
+<div class="rxc-meter"><div class="rxc-meter-fill" id="rxc-mfill-${idx}"></div></div>
+<div class="rxc-body">
+  <div class="vol-row">
+    <span class="vol-label-txt">Vol</span>
+    <input type="range" min="0" max="100" value="100" class="vol-slider" id="rxc-vol-${idx}">
+    <span class="vol-pct" id="rxc-vpct-${idx}">100%</span>
+  </div>
+  <div class="rxc-footer">
+    <div class="rxc-stats">
+      <span>Pkts&thinsp;<span class="rxc-stat-val" id="rxc-pkts-${idx}">—</span></span>
+      <span>Err&thinsp;<span class="rxc-stat-val" id="rxc-errs-${idx}">—</span></span>
+      <span>Buf&thinsp;<span class="rxc-stat-val" id="rxc-buf-${idx}">—</span></span>
+    </div>
+    <button class="btn-mute" id="rxc-mute-${idx}">🔊 Live</button>
+  </div>
+</div>`;
+
+    // Wire events after build (no inline handlers)
+    el.querySelector('#rxc-rm-' + idx).addEventListener('click', () => removeReceiver(idx));
+    el.querySelector('#rxc-mute-' + idx).addEventListener('click', () => toggleMuteRx(idx));
+    const volSlider = el.querySelector('#rxc-vol-' + idx);
+    volSlider.addEventListener('input', () => onVolInput(idx, volSlider));
+    updateSliderTrack(volSlider, 1.0);
+
+    return el;
+}
+
+function spawnCard(idx) {
+    const grid = document.getElementById('rx-grid');
+    if (!grid) return;
+    const old = document.getElementById('rx-card-' + idx);
+    if (old) old.remove();
+    grid.appendChild(buildCard(idx));
+    connectReceiver(idx);
+}
+
+function initCards() {
+    receivers.forEach((_, idx) => spawnCard(idx));
+    updateEmpty();
+}
+
+// ── Receiver WebSocket connections ───────────────────────────
 function connectReceiver(idx) {
     const rx = receivers[idx];
     if (!rx) return;
 
-    // Close existing
-    if (rxConns[rx.host] && rxConns[rx.host].ws) {
-        try { rxConns[rx.host].ws.close(); } catch (e) {}
+    const old = rxConns[rx.host];
+    if (old) {
+        if (old.polling) clearInterval(old.polling);
+        if (old.ws) try { old.ws.close(); } catch (_) {}
     }
 
-    const conn = { connected: false, ws: null, stats: null, volume: 1.0, muted: false, pingTimer: null, polling: null };
+    const conn = {
+        ws: null, connected: false,
+        stats: null, volume: 1.0, muted: false,
+        polling: null, pending: new Map(), reqId: 1, volTimer: null,
+    };
     rxConns[rx.host] = conn;
 
-    const wsUrl = 'ws://' + rx.host + '/ws';
-    let rxWs;
-    try {
-        rxWs = new WebSocket(wsUrl);
-    } catch (e) {
-        scheduleReconnect(idx);
-        return;
+    function doConnect() {
+        let ws;
+        try { ws = new WebSocket('ws://' + rx.host + '/ws'); }
+        catch (_) { setTimeout(doConnect, 6000); return; }
+        conn.ws = ws;
+
+        ws.onopen = () => {
+            conn.connected = true;
+            setCardConn(idx, true);
+            // Fetch initial state
+            rxSend(idx, 'rx.stats', {}, (r) => { if (r.success) applyStats(idx, r.data); });
+            // 500ms polling — fast enough to feel live, light enough for WiFi
+            conn.polling = setInterval(() => {
+                rxSend(idx, 'rx.stats', {}, (r) => { if (r.success) applyStats(idx, r.data); });
+            }, 500);
+        };
+        ws.onclose = () => {
+            conn.connected = false;
+            if (conn.polling) { clearInterval(conn.polling); conn.polling = null; }
+            setCardConn(idx, false);
+            setTimeout(doConnect, 5000);
+        };
+        ws.onerror = () => {};
+        ws.onmessage = (evt) => {
+            try {
+                const r = JSON.parse(evt.data);
+                const cb = conn.pending.get(r.id);
+                if (cb) { conn.pending.delete(r.id); cb(r); }
+            } catch (_) {}
+        };
     }
-    conn.ws = rxWs;
-
-    rxWs.onopen = function() {
-        conn.connected = true;
-        updateRxCard(idx);
-        // Fetch initial stats & settings
-        rxSend(idx, 'rx.stats', {}, function(resp) {
-            if (resp.success) applyRxStats(idx, resp.data);
-        });
-        // Start polling
-        conn.polling = setInterval(function() {
-            rxSend(idx, 'rx.stats', {}, function(resp) {
-                if (resp.success) applyRxStats(idx, resp.data);
-            });
-        }, 2000);
-    };
-
-    rxWs.onclose = function() {
-        conn.connected = false;
-        if (conn.polling) { clearInterval(conn.polling); conn.polling = null; }
-        updateRxCard(idx);
-        scheduleReconnect(idx);
-    };
-
-    const rxPending = new Map();
-    let rxReqId = 1;
-    conn.rxPending = rxPending;
-    conn.rxReqId = function() { return rxReqId++; };
-
-    rxWs.onmessage = function(evt) {
-        try {
-            const r = JSON.parse(evt.data);
-            const cb = rxPending.get(r.id);
-            if (cb) { rxPending.delete(r.id); cb(r); }
-        } catch (e) {}
-    };
+    doConnect();
 }
 
-function rxSend(idx, command, params, callback) {
-    const rx = receivers[idx];
-    if (!rx) return;
+function rxSend(idx, cmd, params, cb) {
+    const rx = receivers[idx]; if (!rx) return;
     const conn = rxConns[rx.host];
     if (!conn || !conn.ws || conn.ws.readyState !== WebSocket.OPEN) return;
-    const id = conn.rxReqId();
-    if (callback) conn.rxPending.set(id, callback);
-    conn.ws.send(JSON.stringify({ id, command, params: params || {} }));
+    const id = conn.reqId++;
+    if (cb) conn.pending.set(id, cb);
+    conn.ws.send(JSON.stringify({ id, command: cmd, params: params || {} }));
 }
 
-function applyRxStats(idx, dataStr) {
-    const rx = receivers[idx];
-    if (!rx) return;
-    const conn = rxConns[rx.host];
-    if (!conn) return;
+// ── Stats: surgical DOM patch (no full re-render) ────────────
+function applyStats(idx, raw) {
+    const rx = receivers[idx]; if (!rx) return;
+    const conn = rxConns[rx.host]; if (!conn) return;
     try {
-        const d = typeof dataStr === 'string' ? JSON.parse(dataStr) : dataStr;
+        const d = typeof raw === 'string' ? JSON.parse(raw) : raw;
         conn.stats = d;
         if (d.volume !== undefined) conn.volume = d.volume;
-        if (d.muted !== undefined) conn.muted = d.muted;
-        updateRxStats(idx);
-    } catch (e) {}
+        if (d.muted  !== undefined) conn.muted  = d.muted;
+        patchCard(idx);
+    } catch (_) {}
 }
 
-function updateRxStats(idx) {
-    const rx = receivers[idx];
-    if (!rx) return;
-    const conn = rxConns[rx.host];
-    if (!conn || !conn.stats) return;
+function patchCard(idx) {
+    const rx = receivers[idx]; if (!rx) return;
+    const conn = rxConns[rx.host]; if (!conn) return;
     const s = conn.stats;
 
-    const pkts = document.getElementById('rx-pkts-' + idx);
-    const errs = document.getElementById('rx-errs-' + idx);
-    const buf  = document.getElementById('rx-buf-' + idx);
-    const muteBtn = document.getElementById('rx-mute-' + idx);
-    const volSlider = document.getElementById('rx-vol-' + idx);
-    const volLabel = document.getElementById('rx-vol-label-' + idx);
+    // ── status indicators ──
+    const $badge   = document.getElementById('rxc-badge-'  + idx);
+    const $card    = document.getElementById('rx-card-'    + idx);
+    const $muteBtn = document.getElementById('rxc-mute-'   + idx);
 
-    if (pkts) pkts.textContent = fmtNum(s.packets);
-    if (errs) {
-        errs.textContent = s.errors;
-        errs.className = 'value' + (s.errors > 0 ? ' warn' : ' good');
+    if ($badge) {
+        if (!conn.connected)  { $badge.className = 'rxc-badge off';   $badge.textContent = 'Off';   }
+        else if (conn.muted)  { $badge.className = 'rxc-badge muted'; $badge.textContent = 'Muted'; }
+        else                  { $badge.className = 'rxc-badge live';  $badge.textContent = 'Live';  }
     }
-    if (buf) buf.textContent = fmtBuf(s.buf_fill, s.buf_cap);
-    if (muteBtn) {
-        muteBtn.textContent = conn.muted ? '🔇 Muted' : '🔊 Live';
-        muteBtn.className = 'btn btn-mute' + (conn.muted ? ' active' : '');
+    if ($card) {
+        $card.classList.toggle('live',       conn.connected && !conn.muted);
+        $card.classList.toggle('muted-card', conn.connected &&  conn.muted);
     }
-    if (volSlider && document.activeElement !== volSlider) {
-        volSlider.value = Math.round(conn.volume * 100);
+    if ($muteBtn) {
+        $muteBtn.className   = 'btn-mute' + (conn.muted ? ' muted' : '');
+        $muteBtn.textContent = conn.muted ? '🔇 Muted' : '🔊 Live';
     }
-    if (volLabel) volLabel.textContent = Math.round(conn.volume * 100) + '%';
+
+    if (!s) return;
+
+    // ── packets / errors ──
+    const $pkts = document.getElementById('rxc-pkts-' + idx);
+    const $errs = document.getElementById('rxc-errs-' + idx);
+    if ($pkts) $pkts.textContent = fmtNum(s.packets ?? 0);
+    if ($errs) {
+        const e = s.errors ?? 0;
+        $errs.textContent = e;
+        $errs.className   = 'rxc-stat-val' + (e > 0 ? ' err' : '');
+    }
+
+    // ── buffer meter ──
+    const cap  = s.buf_cap  ?? 0;
+    const fill = s.buf_fill ?? 0;
+    const $buf   = document.getElementById('rxc-buf-'   + idx);
+    const $mfill = document.getElementById('rxc-mfill-' + idx);
+    if ($buf)   $buf.textContent   = cap ? fill + '/' + cap : '—';
+    if ($mfill) $mfill.style.width = cap ? Math.min(100, fill / cap * 100) + '%' : '0%';
+
+    // ── volume slider (skip if user is dragging) ──
+    const $vol  = document.getElementById('rxc-vol-'  + idx);
+    const $vpct = document.getElementById('rxc-vpct-' + idx);
+    const volPct = Math.round(conn.volume * 100);
+    if ($vol && document.activeElement !== $vol) {
+        $vol.value = volPct;
+        updateSliderTrack($vol, conn.volume);
+    }
+    if ($vpct) $vpct.textContent = volPct + '%';
 }
 
-function updateRxCard(idx) {
-    const rx = receivers[idx];
-    if (!rx) return;
-    const conn = rxConns[rx.host];
-    const card = document.getElementById('rx-card-' + idx);
-    if (!card) return;
-    const dot = card.querySelector('.dot');
-    if (dot) dot.className = 'dot ' + (conn && conn.connected ? 'dot-on' : 'dot-off');
+function setCardConn(idx, on) {
+    const $ind = document.getElementById('rxc-ind-' + idx);
+    if ($ind) $ind.className = 'rxc-indicator' + (on ? ' live' : '');
+    patchCard(idx);
 }
 
-function scheduleReconnect(idx) {
-    setTimeout(function() { connectReceiver(idx); }, 5000);
+// ── Volume (debounced 50ms) ───────────────────────────────────
+function onVolInput(idx, slider) {
+    const vol  = slider.value / 100;
+    const $pct = document.getElementById('rxc-vpct-' + idx);
+    if ($pct) $pct.textContent = slider.value + '%';
+    updateSliderTrack(slider, vol);
+
+    const rx = receivers[idx]; if (!rx) return;
+    const conn = rxConns[rx.host]; if (!conn) return;
+    conn.volume = vol;
+
+    clearTimeout(conn.volTimer);
+    conn.volTimer = setTimeout(() => {
+        rxSend(idx, 'rx.set_volume', { volume: vol });
+    }, 50);
 }
 
+function updateSliderTrack(el, vol) {
+    if (!el) return;
+    const pct = Math.round(vol * 100);
+    el.style.background =
+        `linear-gradient(to right,var(--blue) 0%,var(--blue) ${pct}%,var(--s3) ${pct}%,var(--s3) 100%)`;
+}
+
+// ── Mute ─────────────────────────────────────────────────────
 function toggleMuteRx(idx) {
-    const rx = receivers[idx];
-    if (!rx) return;
-    const conn = rxConns[rx.host];
-    if (!conn) return;
+    const rx = receivers[idx]; if (!rx) return;
+    const conn = rxConns[rx.host]; if (!conn) return;
     const newMuted = !conn.muted;
-    rxSend(idx, 'rx.set_mute', { muted: newMuted }, function(resp) {
-        if (resp.success) {
-            conn.muted = newMuted;
-            updateRxStats(idx);
-        }
+    rxSend(idx, 'rx.set_mute', { muted: newMuted }, (resp) => {
+        if (resp.success) { conn.muted = newMuted; patchCard(idx); }
     });
 }
 
-function setVolumeRx(idx, pct) {
-    const vol = parseInt(pct) / 100;
-    const rx = receivers[idx];
-    if (!rx) return;
-    const conn = rxConns[rx.host];
-    if (!conn) return;
-    conn.volume = vol;
-    const label = document.getElementById('rx-vol-label-' + idx);
-    if (label) label.textContent = Math.round(vol * 100) + '%';
-    rxSend(idx, 'rx.set_volume', { volume: vol });
-}
-
-function addReceiver(name, host) {
-    receivers.push({ name, host });
-    saveReceivers();
-    renderReceivers();
-}
-
+// ── Remove ───────────────────────────────────────────────────
 function removeReceiver(idx) {
     const rx = receivers[idx];
-    if (rx && rxConns[rx.host]) {
+    if (rx) {
         const conn = rxConns[rx.host];
-        if (conn.polling) clearInterval(conn.polling);
-        if (conn.ws) try { conn.ws.close(); } catch (e) {}
-        delete rxConns[rx.host];
+        if (conn) {
+            if (conn.polling) clearInterval(conn.polling);
+            if (conn.ws) try { conn.ws.close(); } catch (_) {}
+            delete rxConns[rx.host];
+        }
     }
     receivers.splice(idx, 1);
     saveReceivers();
-    renderReceivers();
+    // Rebuild all cards (indices shifted)
+    const grid = document.getElementById('rx-grid');
+    if (grid) grid.innerHTML = '';
+    receivers.forEach((_, i) => spawnCard(i));
+    updateEmpty();
 }
 
-document.getElementById('btn-add-receiver').addEventListener('click', function() {
-    const name = prompt('Receiver name:', 'RPi 3');
-    if (!name) return;
-    const host = prompt('Host (e.g. soluna-rpi3.local:8400):', 'soluna-rpi3.local:8400');
-    if (!host) return;
-    addReceiver(name, host);
-});
-
-// --- Device List ---
-function refreshDevices() {
-    sendCommand('device.list', {}, function(resp) {
-        var list = document.getElementById('device-list');
-        list.innerHTML = '';
-        if (!resp.success || !resp.data) return;
-        try {
-            JSON.parse(resp.data).forEach(function(d) {
-                var card = document.createElement('div');
-                card.className = 'card';
-                card.innerHTML = '<h3>' + escHtml(d.name) + '</h3>' +
-                    '<div class="detail">Host: ' + escHtml(d.host) + '</div>' +
-                    '<div class="detail">In: ' + d.inputs + ' / Out: ' + d.outputs + '</div>' +
-                    '<div class="detail">' + (d.local ? 'Local' : 'Remote') + '</div>';
-                list.appendChild(card);
-            });
-        } catch (e) {}
-    });
-}
-
-// --- Routes ---
+// ── Routing panel ────────────────────────────────────────────
 function refreshRoutes() {
-    sendCommand('route.list', {}, function(resp) {
-        var tbody = document.querySelector('#route-table tbody');
+    localSend('route.list', {}, (resp) => {
+        const tbody = document.querySelector('#route-table tbody');
+        if (!tbody) return;
         tbody.innerHTML = '';
         if (!resp.success || !resp.data) return;
         try {
-            JSON.parse(resp.data).forEach(function(r) {
-                var tr = document.createElement('tr');
-                tr.innerHTML = '<td>' + escHtml(r.source) + '</td>' +
-                    '<td>' + escHtml(r.sink) + '</td>' +
-                    '<td>' + r.gain_db.toFixed(1) + '</td>' +
-                    '<td>' + (r.muted ? 'Yes' : 'No') + '</td>' +
-                    '<td>' +
-                    '<button class="btn btn-small" onclick="toggleMute(\'' + escAttr(r.source) + '\',\'' + escAttr(r.sink) + '\',' + !r.muted + ')">Mute</button> ' +
-                    '<button class="btn btn-danger btn-small" onclick="removeRoute(\'' + escAttr(r.source) + '\',\'' + escAttr(r.sink) + '\')">Remove</button>' +
-                    '</td>';
+            JSON.parse(resp.data).forEach((r) => {
+                const tr     = document.createElement('tr');
+                const srcTd  = document.createElement('td'); srcTd.textContent  = r.source;
+                const dstTd  = document.createElement('td'); dstTd.textContent  = r.sink;
+                const gainTd = document.createElement('td'); gainTd.textContent = r.gain_db.toFixed(1);
+                const muteTd = document.createElement('td'); muteTd.textContent = r.muted ? 'Yes' : 'No';
+                const actTd  = document.createElement('td');
+
+                const muteBtn = document.createElement('button');
+                muteBtn.className   = 'btn btn-sm';
+                muteBtn.textContent = r.muted ? 'Unmute' : 'Mute';
+                muteBtn.addEventListener('click', () =>
+                    localSend('route.set_mute', { source: r.source, sink: r.sink, muted: !r.muted }, refreshRoutes));
+
+                const rmBtn = document.createElement('button');
+                rmBtn.className   = 'btn btn-sm btn-danger';
+                rmBtn.textContent = 'Remove';
+                rmBtn.style.marginLeft = '0.4rem';
+                rmBtn.addEventListener('click', () =>
+                    localSend('route.remove', { source: r.source, sink: r.sink }, refreshRoutes));
+
+                actTd.appendChild(muteBtn);
+                actTd.appendChild(rmBtn);
+                tr.append(srcTd, dstTd, gainTd, muteTd, actTd);
                 tbody.appendChild(tr);
             });
-        } catch (e) {}
+        } catch (_) {}
     });
 }
 
-function removeRoute(src, dst) {
-    sendCommand('route.remove', { source: src, sink: dst }, refreshRoutes);
-}
-function toggleMute(src, dst, muted) {
-    sendCommand('route.set_mute', { source: src, sink: dst, muted: String(muted) }, refreshRoutes);
-}
-
-document.getElementById('btn-route-add').addEventListener('click', function() {
-    var src = document.getElementById('route-src').value;
-    var dst = document.getElementById('route-dst').value;
-    var gain = document.getElementById('route-gain').value;
-    if (src && dst) {
-        sendCommand('route.add', { source: src, sink: dst, gain_db: gain || '0' }, function() {
-            refreshRoutes();
-            document.getElementById('route-src').value = '';
-            document.getElementById('route-dst').value = '';
-            document.getElementById('route-gain').value = '0';
-        });
-    }
+document.getElementById('btn-route-add').addEventListener('click', () => {
+    const src  = document.getElementById('route-src').value.trim();
+    const dst  = document.getElementById('route-dst').value.trim();
+    const gain = parseFloat(document.getElementById('route-gain').value) || 0;
+    if (!src || !dst) return;
+    localSend('route.add', { source: src, sink: dst, gain_db: gain }, () => {
+        refreshRoutes();
+        document.getElementById('route-src').value  = '';
+        document.getElementById('route-dst').value  = '';
+        document.getElementById('route-gain').value = '0';
+    });
 });
 
-// --- Level Meters ---
-function startMeterUpdates() {
-    if (meterInterval) return;
-    meterInterval = setInterval(refreshMeters, 100);
-}
-function stopMeterUpdates() {
-    if (meterInterval) { clearInterval(meterInterval); meterInterval = null; }
-}
-function refreshMeters() {
-    if (!document.getElementById('meter-auto-refresh').checked) return;
-    sendCommand('meter.get_all', {}, function(resp) {
-        var display = document.getElementById('meter-display');
-        var status = document.getElementById('meter-status');
-        if (!resp.success || !resp.data) { if (status) status.textContent = 'No data'; return; }
-        try {
-            var channels = JSON.parse(resp.data).channels || [];
-            if (status) status.textContent = channels.length + ' channels';
-            display.innerHTML = '';
-            channels.forEach(function(ch) {
-                var peakPct = ((Math.max(-60, Math.min(0, ch.peak_db)) + 60) / 60) * 100;
-                var rmsPct  = ((Math.max(-60, Math.min(0, ch.rms_db))  + 60) / 60) * 100;
-                var card = document.createElement('div');
-                card.className = 'meter-card';
-                card.innerHTML =
-                    '<h4>' + escHtml(ch.channel) + '</h4>' +
-                    '<div class="meter-bar"><div class="fill" style="width:' + rmsPct + '%"></div></div>' +
-                    '<div class="meter-values">' +
-                    '<span>RMS: ' + ch.rms_db.toFixed(1) + ' dB</span>' +
-                    '<span class="meter-peak">Peak: ' + ch.peak_db.toFixed(1) + ' dB</span>' +
-                    (ch.clip_count > 0 ? '<span class="meter-clip">Clips: ' + ch.clip_count + '</span>' : '') +
-                    '</div>';
-                display.appendChild(card);
-            });
-        } catch (e) {}
-    });
-}
-
-// --- System Stats ---
-function startStatsUpdates() {
-    if (statsInterval) return;
-    refreshStats();
-    statsInterval = setInterval(refreshStats, 2000);
-}
-function stopStatsUpdates() {
-    if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
-}
+// ── Stats panel ──────────────────────────────────────────────
 function refreshStats() {
-    sendCommand('system.stats', {}, function(resp) {
+    localSend('system.stats', {}, (resp) => {
         if (!resp.success || !resp.data) return;
         try {
-            var s = JSON.parse(resp.data);
-            setVal('stat-devices', s.device_count || 0);
-            setVal('stat-streams', (s.active_streams || 0) + '/' + (s.stream_count || 0));
-            setVal('stat-routes', s.route_count || 0);
-            var bps = s.bandwidth_bps || 0;
-            setVal('stat-bandwidth', bps < 1e6 ? (bps/1000).toFixed(1)+' kbps' : (bps/1e6).toFixed(2)+' Mbps');
-            var ptpEl = document.getElementById('stat-ptp');
-            if (ptpEl) { ptpEl.textContent = s.ptp_synced ? 'Synced' : 'Not synced'; ptpEl.className = 'stat-value '+(s.ptp_synced?'good':'warn'); }
-            setVal('stat-ptp-role', s.ptp_role || 'unknown');
-            var oNs = s.ptp_offset_ns || 0;
-            setVal('stat-ptp-offset', Math.abs(oNs)<1000 ? oNs+' ns' : (oNs/1000).toFixed(1)+' µs');
-            var dNs = s.ptp_path_delay_ns || 0;
-            setVal('stat-ptp-delay', Math.abs(dNs)<1000 ? dNs+' ns' : (dNs/1000).toFixed(1)+' µs');
-        } catch (e) {}
+            const s = JSON.parse(resp.data);
+            setVal('stat-devices', s.device_count ?? 0);
+            setVal('stat-streams', (s.active_streams ?? 0) + '/' + (s.stream_count ?? 0));
+            setVal('stat-routes',  s.route_count ?? 0);
+            const bps = s.bandwidth_bps ?? 0;
+            setVal('stat-bw', bps < 1e6 ? (bps / 1000).toFixed(1) + ' kbps'
+                                        : (bps / 1e6).toFixed(2)  + ' Mbps');
+            setVal('stat-ptp',    s.ptp_synced ? 'Synced' : 'Unsynced');
+            const oNs = s.ptp_offset_ns ?? 0;
+            setVal('stat-offset', Math.abs(oNs) < 1000 ? oNs + ' ns'
+                                                       : (oNs / 1000).toFixed(1) + ' µs');
+        } catch (_) {}
     });
 }
 
-// --- Helpers ---
-function refreshAll() { refreshDevices(); refreshRoutes(); renderReceivers(); }
-function setVal(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
-function fmtNum(n) { return n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'k' : String(n||0); }
-function fmtBuf(fill, cap) { if (!cap) return '—'; return fill + '/' + cap + ' (' + Math.round(fill/cap*100) + '%)'; }
-function escHtml(s) { var d = document.createElement('div'); d.appendChild(document.createTextNode(s||'')); return d.innerHTML; }
-function escAttr(s) { return (s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+// ── Helpers ──────────────────────────────────────────────────
+function setVal(id, v) {
+    const e = document.getElementById(id);
+    if (e) e.textContent = v;
+}
 
-connect();
-setInterval(refreshAll, 10000);
+function fmtNum(n) {
+    n = n ?? 0;
+    return n >= 1e6 ? (n / 1e6).toFixed(1) + 'M'
+         : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k'
+         : String(n);
+}
+
+function escHtml(s) {
+    return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+// ── Boot ─────────────────────────────────────────────────────
+initCards();
+localConnect();
