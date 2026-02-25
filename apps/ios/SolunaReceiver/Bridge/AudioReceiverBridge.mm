@@ -81,8 +81,9 @@ public:
         , frame_size_(sample_size(config.format) * config.channels)
         , recv_buf_(transport::kMaxPacketSize)
         , audio_buf_(transport::kMaxPayloadSize / sizeof(int32_t))
-    {
-    }
+    {}
+
+    Stats stats_snapshot() const { return stats_; }
 
     bool init() {
         socket_ = pal::UdpSocket::create();
