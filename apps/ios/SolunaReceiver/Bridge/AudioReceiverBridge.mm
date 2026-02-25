@@ -301,6 +301,9 @@ public:
         }
 
         // Start WebSocket control server on port 8400
+        ws_server_.set_web_files(
+            reinterpret_cast<const soluna::control::WebFile*>(embedded_web_files),
+            embedded_web_file_count);
         ws_server_.set_message_callback([this](const std::string& msg) -> std::string {
             return handle_ws_command(msg);
         });
