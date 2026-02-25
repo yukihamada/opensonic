@@ -13,12 +13,15 @@
 #include <soluna/transport/rtp.h>
 #include <soluna/transport/ostp.h>
 #include <soluna/pipeline/ring_buffer.h>
+#include <soluna/control/websocket_server.h>
 
 #include <atomic>
 #include <thread>
 #include <memory>
 #include <cstring>
+#include <cstdio>
 #include <vector>
+#include <string>
 
 #ifdef _WIN32
 #include <winsock2.h>
