@@ -61,6 +61,152 @@ function pollTxStats() {
     setTimeout(pollTxStats, 1000);
 }
 
+// ── Monitor card (Mac local playback via TX daemon) ───────────
+let monState = { supported: false, running: false, volume: 1.0, muted: false, packets: 0, volTimer: null };
+let monPollTimer = null;
+
+function initMonitor() {
+    // Ask TX daemon if monitor is supported (only in TX mode)
+    localSend('monitor.stats', {}, (resp) => {
+        if (!resp.success || !resp.data) return;
+        try {
+            const d = JSON.parse(resp.data);
+            if (!d.supported) return;
+            // Show the monitor card
+            const card = document.getElementById('mon-card');
+            if (card) card.style.display = '';
+            // Load device list
+            localSend('monitor.list_devices', {}, (r2) => {
+                if (!r2.success || !r2.data) return;
+                try {
+                    const devs = JSON.parse(r2.data);
+                    const sel = document.getElementById('mon-dev-sel');
+                    if (!sel) return;
+                    sel.innerHTML = devs.map(name =>
+                        `<option value="${escHtml(name)}">${escHtml(name)}</option>`
+                    ).join('');
+                } catch (_) {}
+            });
+            applyMonStats(d);
+            // Poll monitor stats
+            monPollTimer = setInterval(pollMonStats, 1000);
+        } catch (_) {}
+    });
+}
+
+function pollMonStats() {
+    localSend('monitor.stats', {}, (resp) => {
+        if (resp.success && resp.data) {
+            try { applyMonStats(JSON.parse(resp.data)); } catch (_) {}
+        }
+    });
+}
+
+function applyMonStats(d) {
+    monState.running = !!d.running;
+    monState.volume  = d.volume ?? 1.0;
+    monState.muted   = !!d.muted;
+    monState.packets = d.packets ?? 0;
+    patchMonCard();
+}
+
+function patchMonCard() {
+    const $card  = document.getElementById('mon-card');
+    const $dot   = document.getElementById('mon-dot');
+    const $badge = document.getElementById('mon-badge');
+    const $btn   = document.getElementById('mon-start-btn');
+    const $vol   = document.getElementById('mon-vol');
+    const $vpct  = document.getElementById('mon-vpct');
+    const $mute  = document.getElementById('mon-mute-btn');
+
+    if (!$card) return;
+
+    $card.classList.toggle('running', monState.running);
+    if ($dot)   $dot.className    = 'mon-dot'   + (monState.running ? ' running' : '');
+    if ($badge) { $badge.className = 'mon-badge' + (monState.running ? ' running' : ''); $badge.textContent = monState.running ? 'Running' : 'Idle'; }
+    if ($btn)   { $btn.className   = 'mon-start-btn' + (monState.running ? ' running' : ''); $btn.textContent = monState.running ? '⏹ Stop' : '▶ Start'; }
+    if ($mute)  { $mute.className  = 'btn-mute' + (monState.muted ? ' muted' : ''); $mute.textContent = monState.muted ? '🔇 Muted' : '🔊 Live'; }
+
+    const volPct = Math.round(monState.volume * 100);
+    if ($vol && document.activeElement !== $vol) {
+        $vol.value = volPct;
+        updateSliderTrack($vol, monState.volume);
+    }
+    if ($vpct) $vpct.textContent = volPct + '%';
+}
+
+function buildMonitorCard() {
+    const el = document.createElement('div');
+    el.id = 'mon-card';
+    el.className = 'mon-card';
+    el.style.display = 'none';
+    el.innerHTML = `
+<div class="mon-header">
+  <div class="mon-title">
+    <span class="mon-dot" id="mon-dot"></span>
+    Mac Monitor
+  </div>
+  <div class="mon-actions">
+    <span class="mon-badge" id="mon-badge">Idle</span>
+  </div>
+</div>
+<div class="mon-body">
+  <div class="mon-dev-row">
+    <select class="mon-dev-sel" id="mon-dev-sel"><option>Loading…</option></select>
+    <button class="mon-start-btn" id="mon-start-btn">▶ Start</button>
+  </div>
+  <div class="vol-row">
+    <span class="vol-label-txt">Vol</span>
+    <input type="range" min="0" max="100" value="100" class="vol-slider" id="mon-vol">
+    <span class="vol-pct" id="mon-vpct">100%</span>
+  </div>
+  <div class="buf-row">
+    <span class="buf-label-txt">Buf</span>
+    <select class="buf-sel" id="mon-bsel">${buildBufOptions(20)}</select>
+  </div>
+  <div class="rxc-footer" style="justify-content:flex-end">
+    <button class="btn-mute" id="mon-mute-btn">🔊 Live</button>
+  </div>
+</div>`;
+
+    el.querySelector('#mon-start-btn').addEventListener('click', () => {
+        if (monState.running) {
+            localSend('monitor.stop', {});
+            monState.running = false;
+            patchMonCard();
+        } else {
+            const sel = el.querySelector('#mon-dev-sel');
+            const dev = sel ? sel.value : '';
+            localSend('monitor.start', { device: dev });
+            monState.running = true;
+            patchMonCard();
+        }
+    });
+
+    const monVol = el.querySelector('#mon-vol');
+    monVol.addEventListener('input', () => {
+        const vol = monVol.value / 100;
+        monState.volume = vol;
+        document.getElementById('mon-vpct').textContent = monVol.value + '%';
+        updateSliderTrack(monVol, vol);
+        clearTimeout(monState.volTimer);
+        monState.volTimer = setTimeout(() => localSend('monitor.set_volume', { volume: vol }), 50);
+    });
+    updateSliderTrack(monVol, 1.0);
+
+    el.querySelector('#mon-mute-btn').addEventListener('click', () => {
+        monState.muted = !monState.muted;
+        localSend('monitor.set_mute', { muted: monState.muted });
+        patchMonCard();
+    });
+
+    el.querySelector('#mon-bsel').addEventListener('change', (e) => {
+        localSend('monitor.set_buffer', { ms: parseInt(e.target.value, 10) });
+    });
+
+    return el;
+}
+
 function setBadge(cls) {
     const el = document.getElementById('ws-badge');
     if (!el) return;
