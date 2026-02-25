@@ -335,11 +335,168 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
     return true;
 }
 
+// ── Monitor thread (runs alongside TX, receives own multicast and plays locally) ──
+static void monitor_thread_fn(const DaemonConfig& cfg) {
+    using namespace soluna;
+    using namespace soluna::pal;
+    using namespace soluna::pipeline;
+    using namespace soluna::transport;
+
+    constexpr size_t kRingFrames    = 240 * 40;   // 200ms capacity
+    constexpr uint32_t kFramesPerPkt = 240;
+    const size_t frame_size = sizeof(int32_t) * cfg.channels;
+
+    while (g_running.load()) {
+        // Wait for a start request
+        std::string dev_name;
+        {
+            std::lock_guard<std::mutex> lk(g_mon_mutex);
+            if (g_mon_start_req.pending) {
+                dev_name = g_mon_start_req.device;
+                g_mon_start_req.pending = false;
+            }
+        }
+        if (dev_name.empty()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+
+        // --- Open socket ---
+        auto socket = UdpSocket::create();
+        if (!socket || !socket->bind(cfg.listen_port) ||
+            !socket->join_multicast(cfg.dest_ip)) {
+            fprintf(stderr, "Monitor: cannot bind to %s:%u\n",
+                    cfg.dest_ip.c_str(), cfg.listen_port);
+            continue;
+        }
+        socket->set_recv_timeout_ms(5);
+
+        // --- Open audio output ---
+        RingBuffer ring(kRingFrames, frame_size);
+        std::atomic<bool> prefilled{false};
+        std::vector<int32_t> cb_buf(kFramesPerPkt * cfg.channels);
+
+        auto audio = AudioDevice::create();
+        if (!audio) continue;
+
+        AudioStreamConfig acfg;
+        acfg.sample_rate    = cfg.sample_rate;
+        acfg.channels       = cfg.channels;
+        acfg.frames_per_buffer = kFramesPerPkt;
+        if (!audio->open_output(dev_name, acfg)) {
+            fprintf(stderr, "Monitor: cannot open '%s'\n", dev_name.c_str());
+            continue;
+        }
+
+        audio->start([&](float* buf, uint32_t fc) {
+            size_t samples = fc * cfg.channels;
+            if (!prefilled.load()) {
+                if (ring.available_read() < kFramesPerPkt * 4) {
+                    std::memset(buf, 0, samples * sizeof(float));
+                    return;
+                }
+                prefilled.store(true);
+            }
+            if (ring.available_read() < fc) {
+                std::memset(buf, 0, samples * sizeof(float));
+                prefilled.store(false);
+                return;
+            }
+            ring.read(cb_buf.data(), fc);
+            float gain = g_mon_muted.load() ? 0.0f : g_mon_volume.load();
+            for (size_t i = 0; i < samples; i++) {
+                float s = static_cast<float>(cb_buf[i]) / 8388608.0f;
+                buf[i] = (s > 1.0f ? 1.0f : s < -1.0f ? -1.0f : s) * gain;
+            }
+        });
+
+        g_mon_active.store(true);
+        g_mon_stop_req.store(false);
+        printf("Monitor: started on '%s'\n", dev_name.c_str());
+
+        // --- Receive loop ---
+        std::vector<uint8_t> recv_buf(kMaxPacketSize);
+        std::vector<int32_t> audio_buf(kMaxPayloadSize / sizeof(int32_t));
+
+        while (g_running.load() && !g_mon_stop_req.load()) {
+            // Check for restart request
+            {
+                std::lock_guard<std::mutex> lk(g_mon_mutex);
+                if (g_mon_start_req.pending) break;  // restart with new device
+            }
+
+            SocketAddress src;
+            int n = socket->recv_from(recv_buf.data(), recv_buf.size(), src);
+            if (n <= 0) continue;
+            if (static_cast<size_t>(n) < sizeof(RtpHeader)) continue;
+
+            const RtpHeader* rtp_ptr = reinterpret_cast<const RtpHeader*>(recv_buf.data());
+            bool is_aes67 = aes67_is_standard_packet(*rtp_ptr);
+            size_t frames = 0;
+
+            if (is_aes67) {
+                RtpHeader rtp; std::memcpy(&rtp, recv_buf.data(), sizeof(RtpHeader));
+                const uint8_t* pl = recv_buf.data() + sizeof(RtpHeader);
+                size_t pl_sz = static_cast<size_t>(n) - sizeof(RtpHeader);
+                if (rtp.pt == kPayloadTypeAES67_L24) {
+                    size_t s = pl_sz / 3;
+                    for (size_t i = 0; i < s && i < audio_buf.size(); i++) {
+                        int32_t v = (static_cast<int32_t>(pl[i*3])<<16)
+                                  | (static_cast<int32_t>(pl[i*3+1])<<8)
+                                  |  static_cast<int32_t>(pl[i*3+2]);
+                        if (v & 0x800000) v |= 0xFF000000;
+                        audio_buf[i] = v;
+                    }
+                    frames = s / cfg.channels;
+                    ring.write(audio_buf.data(), frames);
+                }
+            } else {
+                RtpHeader rtp; OstpHeader ostp;
+                const uint8_t* pl = nullptr; size_t pl_sz = 0;
+                if (ostp_parse_packet(recv_buf.data(), n, rtp, ostp, pl, pl_sz)) {
+                    frames = pl_sz / frame_size;
+                    ring.write(pl, frames);
+                }
+            }
+
+            if (frames > 0) {
+                g_mon_packets.fetch_add(1);
+                // Trim to target latency
+                size_t avail = ring.available_read();
+                uint32_t target = g_mon_target_ms.load() * (cfg.sample_rate / 1000u);
+                if (avail > target) {
+                    size_t excess = avail - target;
+                    while (excess > 0) {
+                        size_t chunk = std::min(excess, audio_buf.size() / cfg.channels);
+                        size_t dr = ring.read(audio_buf.data(), chunk);
+                        if (dr == 0) break;
+                        excess -= dr;
+                    }
+                }
+            }
+        }
+
+        g_mon_active.store(false);
+        audio->stop();
+        printf("Monitor: stopped\n");
+    }
+}
+
 static int run_tx(const DaemonConfig& cfg) {
     using namespace soluna;
     using namespace soluna::pal;
     using namespace soluna::pipeline;
     using namespace soluna::transport;
+
+    // Expose config so ws_handle can use it for monitor
+    g_cfg_channels    = cfg.channels;
+    g_cfg_sample_rate = cfg.sample_rate;
+    g_cfg_port        = cfg.dest_port;
+    snprintf(g_cfg_multicast, sizeof(g_cfg_multicast), "%s", cfg.dest_ip.c_str());
+    g_mon_supported.store(true);
+
+    // Spawn monitor management thread
+    std::thread mon_thread(monitor_thread_fn, std::cref(cfg));
 
     soluna::control::WebSocketServer ws_srv;
     start_ws_server(ws_srv);
