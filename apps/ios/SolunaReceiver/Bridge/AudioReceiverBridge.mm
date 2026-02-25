@@ -414,12 +414,11 @@ private:
         size_t frames_read = ring_buffer_.read(read_buffer_.data(), frame_count);
 
         if (frames_read > 0) {
-            // Convert S24_LE to float and apply volume
+            // Convert S24_LE to float and apply volume/mute
             const int32_t* src = read_buffer_.data();
             for (uint32_t i = 0; i < frames_read * channels_; i++) {
-                // S24_LE is stored in lower 24 bits, sign-extended
                 float sample = static_cast<float>(src[i]) / 8388608.0f;  // 2^23
-                buffer[i] = sample * vol;
+                buffer[i] = sample * gain;
             }
 
             // Fill remaining with silence if underrun
