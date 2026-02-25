@@ -387,6 +387,7 @@ static int run_tx(const DaemonConfig& cfg) {
             (static_cast<uint64_t>(kFramesPerPacket) * 1'000'000'000ULL) / cfg.sample_rate);
 
         if (sequence % 1000 == 0) {
+            g_packets.store(sequence);
             printf("\rTX: %lu packets sent", static_cast<unsigned long>(sequence));
             fflush(stdout);
         }
