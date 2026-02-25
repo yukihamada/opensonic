@@ -137,8 +137,8 @@ private:
         stats_.packets_received++;
         stats_.ostp_packets++;
 
-        // Write payload to ring buffer
-        size_t frames = payload_size / frame_size_;
+        // OSTP payload is int32_t (4 bytes/sample, native byte order) — not S24_LE 3-byte
+        size_t frames = payload_size / (sizeof(int32_t) * config_.channels);
         ring.write(payload, frames);
 
         return true;
