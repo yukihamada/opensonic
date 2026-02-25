@@ -7,6 +7,7 @@
 
 #import "AudioReceiverBridge.h"
 
+#include "web_embedded.h"
 #include <soluna/soluna.h>
 #include <soluna/pal/audio.h>
 #include <soluna/pal/net.h>
