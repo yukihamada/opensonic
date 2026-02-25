@@ -267,7 +267,7 @@ function toggleMuteRx(idx) {
     const conn = rxConns[rx.host];
     if (!conn) return;
     const newMuted = !conn.muted;
-    rxSend(idx, 'rx.set_mute', { muted: newMuted ? 'true' : 'false' }, function(resp) {
+    rxSend(idx, 'rx.set_mute', { muted: newMuted }, function(resp) {
         if (resp.success) {
             conn.muted = newMuted;
             updateRxStats(idx);
