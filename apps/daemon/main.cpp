@@ -45,6 +45,27 @@ static std::atomic<uint64_t> g_packets{0};
 static std::atomic<uint64_t> g_seq_errors{0};
 static std::atomic<size_t>   g_buf_fill{0};
 static std::atomic<size_t>   g_buf_cap{0};
+static std::atomic<uint32_t> g_buf_target_ms{20};   // target jitter buffer
+
+// Config globals (set by run_tx / run_rx so ws_handle can reference them)
+static uint32_t g_cfg_channels    = 1;
+static uint32_t g_cfg_sample_rate = 48000;
+static uint16_t g_cfg_port        = 5004;
+static char     g_cfg_multicast[64] = "239.69.0.1";
+
+// ── Monitor (TX-only local playback) ──────────────────────────────────────────
+static std::atomic<bool>     g_mon_supported{false};
+static std::atomic<bool>     g_mon_active{false};
+static std::atomic<float>    g_mon_volume{1.0f};
+static std::atomic<bool>     g_mon_muted{false};
+static std::atomic<uint64_t> g_mon_packets{0};
+static std::atomic<uint32_t> g_mon_target_ms{20};
+
+#include <mutex>
+struct MonitorReq { bool pending = false; std::string device; };
+static std::mutex     g_mon_mutex;
+static MonitorReq     g_mon_start_req;
+static std::atomic<bool> g_mon_stop_req{false};
 
 static void signal_handler(int) {
     g_running.store(false);
