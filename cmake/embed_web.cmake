@@ -92,5 +92,5 @@ string(APPEND HEADER "${FILE_ENTRIES}")
 string(APPEND HEADER "};\n\n")
 string(APPEND HEADER "static const size_t embedded_web_file_count = ${FILE_COUNT};\n")
 
-file(WRITE ${OUTPUT} ${HEADER})
+file(WRITE "${OUTPUT}" "${HEADER}")
 message(STATUS "Embedded ${FILE_COUNT} web files into ${OUTPUT}")
