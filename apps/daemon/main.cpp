@@ -252,6 +252,9 @@ static int run_tx(const DaemonConfig& cfg) {
     using namespace soluna::pipeline;
     using namespace soluna::transport;
 
+    soluna::control::WebSocketServer ws_srv;
+    start_ws_server(ws_srv);
+
     constexpr uint32_t kFramesPerPacket = 240; // 5ms at 48kHz
     const size_t frame_size = sizeof(int32_t) * cfg.channels; // S24 in 32-bit container
 
