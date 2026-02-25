@@ -22,6 +22,8 @@
 #include <soluna/transport/transport_manager.h>
 #include <soluna/transport/aes67.h>
 #include <soluna/config/config.h>
+#include <soluna/control/websocket_server.h>
+#include "web_embedded.h"
 
 #include <atomic>
 #include <csignal>
@@ -36,10 +38,71 @@
 #include <arpa/inet.h>
 #endif
 
-static std::atomic<bool> g_running{true};
+static std::atomic<bool>     g_running{true};
+static std::atomic<float>    g_rx_volume{1.0f};
+static std::atomic<bool>     g_rx_muted{false};
+static std::atomic<uint64_t> g_packets{0};
+static std::atomic<uint64_t> g_seq_errors{0};
+static std::atomic<size_t>   g_buf_fill{0};
+static std::atomic<size_t>   g_buf_cap{0};
 
 static void signal_handler(int) {
     g_running.store(false);
+}
+
+static std::string ws_handle(const std::string& msg) {
+    int id = 0;
+    auto p = msg.find("\"id\":");
+    if (p != std::string::npos) try { id = std::stoi(msg.substr(p + 5)); } catch (...) {}
+
+    std::string cmd;
+    p = msg.find("\"command\":\"");
+    if (p != std::string::npos) {
+        auto s = p + 11, e = msg.find('"', s);
+        if (e != std::string::npos) cmd = msg.substr(s, e - s);
+    }
+
+    char buf[512];
+    if (cmd == "rx.stats" || cmd == "system.stats") {
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":true,\"data\":"
+            "\"{\\\"packets\\\":%llu,\\\"errors\\\":%llu,"
+            "\\\"buf_fill\\\":%zu,\\\"buf_cap\\\":%zu,"
+            "\\\"volume\\\":%.3f,\\\"muted\\\":%s}\"}",
+            id,
+            (unsigned long long)g_packets.load(),
+            (unsigned long long)g_seq_errors.load(),
+            g_buf_fill.load(), g_buf_cap.load(),
+            (double)g_rx_volume.load(),
+            g_rx_muted.load() ? "true" : "false");
+    } else if (cmd == "rx.set_volume") {
+        p = msg.find("\"volume\":");
+        if (p != std::string::npos) {
+            try {
+                float v = std::stof(msg.substr(p + 9));
+                g_rx_volume.store(std::fmax(0.0f, std::fmin(1.0f, v)));
+            } catch (...) {}
+        }
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "rx.set_mute") {
+        p = msg.find("\"muted\":");
+        if (p != std::string::npos)
+            g_rx_muted.store(msg.substr(p + 8, 4) == "true");
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else {
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":false,\"data\":\"unknown command\"}", id);
+    }
+    return buf;
+}
+
+static void start_ws_server(soluna::control::WebSocketServer& srv) {
+    srv.set_web_files(
+        reinterpret_cast<const soluna::control::WebFile*>(embedded_web_files),
+        embedded_web_file_count);
+    srv.set_message_callback(ws_handle);
+    if (srv.start(8400))
+        printf("Web UI: http://localhost:8400\n");
 }
 
 struct DaemonConfig {
