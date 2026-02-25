@@ -19,7 +19,7 @@ const rxConns = {};  // host → conn object
 function localConnect() {
     const host = location.host || 'localhost:8400';
     localWs = new WebSocket('ws://' + host + '/ws');
-    localWs.onopen  = () => { setBadge('connected');    pollTxStats(); };
+    localWs.onopen  = () => { setBadge('connected');    pollTxStats(); initMonitor(); };
     localWs.onclose = () => { setBadge('disconnected'); setTimeout(localConnect, 3000); };
     localWs.onerror = () => {};
     localWs.onmessage = (evt) => {
