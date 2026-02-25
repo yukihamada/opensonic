@@ -83,19 +83,21 @@ static std::string ws_handle(const std::string& msg) {
         if (e != std::string::npos) cmd = msg.substr(s, e - s);
     }
 
-    char buf[512];
+    char buf[1024];
     if (cmd == "rx.stats" || cmd == "system.stats") {
         snprintf(buf, sizeof(buf),
             "{\"id\":%d,\"success\":true,\"data\":"
             "\"{\\\"packets\\\":%llu,\\\"errors\\\":%llu,"
             "\\\"buf_fill\\\":%zu,\\\"buf_cap\\\":%zu,"
-            "\\\"volume\\\":%.3f,\\\"muted\\\":%s}\"}",
+            "\\\"volume\\\":%.3f,\\\"muted\\\":%s,"
+            "\\\"buf_target_ms\\\":%u}\"}",
             id,
             (unsigned long long)g_packets.load(),
             (unsigned long long)g_seq_errors.load(),
             g_buf_fill.load(), g_buf_cap.load(),
             (double)g_rx_volume.load(),
-            g_rx_muted.load() ? "true" : "false");
+            g_rx_muted.load() ? "true" : "false",
+            g_buf_target_ms.load());
     } else if (cmd == "rx.set_volume") {
         p = msg.find("\"volume\":");
         if (p != std::string::npos) {
@@ -110,6 +112,72 @@ static std::string ws_handle(const std::string& msg) {
         if (p != std::string::npos)
             g_rx_muted.store(msg.substr(p + 8, 4) == "true");
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "rx.set_buffer") {
+        p = msg.find("\"ms\":");
+        if (p != std::string::npos) {
+            try {
+                uint32_t ms = static_cast<uint32_t>(std::stoul(msg.substr(p + 5)));
+                g_buf_target_ms.store(std::max(5u, std::min(500u, ms)));
+            } catch (...) {}
+        }
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    // ── Monitor commands (TX-mode only) ────────────────────────────────────
+    } else if (cmd == "monitor.stats") {
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":true,\"data\":"
+            "\"{\\\"supported\\\":%s,\\\"running\\\":%s,"
+            "\\\"volume\\\":%.3f,\\\"muted\\\":%s,\\\"packets\\\":%llu}\"}",
+            id,
+            g_mon_supported.load() ? "true" : "false",
+            g_mon_active.load()    ? "true" : "false",
+            (double)g_mon_volume.load(),
+            g_mon_muted.load() ? "true" : "false",
+            (unsigned long long)g_mon_packets.load());
+    } else if (cmd == "monitor.start") {
+        std::string dev;
+        p = msg.find("\"device\":\"");
+        if (p != std::string::npos) {
+            auto s = p + 10, e = msg.find('"', s);
+            if (e != std::string::npos) dev = msg.substr(s, e - s);
+        }
+        {
+            std::lock_guard<std::mutex> lk(g_mon_mutex);
+            g_mon_start_req = { true, dev };
+        }
+        g_mon_stop_req.store(false);
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "monitor.stop") {
+        g_mon_stop_req.store(true);
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "monitor.set_volume") {
+        p = msg.find("\"volume\":");
+        if (p != std::string::npos)
+            try { g_mon_volume.store(std::fmax(0.0f, std::fmin(1.0f, std::stof(msg.substr(p + 9))))); } catch (...) {}
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "monitor.set_mute") {
+        p = msg.find("\"muted\":");
+        if (p != std::string::npos)
+            g_mon_muted.store(msg.substr(p + 8, 4) == "true");
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "monitor.set_buffer") {
+        p = msg.find("\"ms\":");
+        if (p != std::string::npos)
+            try { g_mon_target_ms.store(std::max(5u, std::min(500u, (uint32_t)std::stoul(msg.substr(p + 5))))); } catch (...) {}
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "monitor.list_devices") {
+        using namespace soluna::pal;
+        auto devs = AudioDevice::enumerate();
+        char devbuf[2048];
+        int pos = snprintf(devbuf, sizeof(devbuf), "[");
+        bool first = true;
+        for (auto& d : devs) {
+            if (d.max_output_channels == 0) continue;
+            if (!first) devbuf[pos++] = ',';
+            first = false;
+            pos += snprintf(devbuf + pos, sizeof(devbuf) - pos, "\\\"%s\\\"", d.name.c_str());
+        }
+        pos += snprintf(devbuf + pos, sizeof(devbuf) - pos, "]");
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"%s\"}", id, devbuf);
     } else {
         snprintf(buf, sizeof(buf),
             "{\"id\":%d,\"success\":false,\"data\":\"unknown command\"}", id);
