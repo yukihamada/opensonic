@@ -594,6 +594,13 @@ static int run_rx(const DaemonConfig& cfg) {
         last_seq = static_cast<int32_t>(full_seq);
         packets_received++;
 
+        if (packets_received % 200 == 0) {
+            g_packets.store(packets_received);
+            g_seq_errors.store(sequence_errors);
+            g_buf_fill.store(ring.available_read());
+            g_buf_cap.store(ring.capacity());
+        }
+
         if (packets_received % 1000 == 0) {
             printf("\rRX: %lu pkts (OSTP:%lu AES67:%lu), %lu seq errors, ring: %zu/%zu",
                 static_cast<unsigned long>(packets_received),
