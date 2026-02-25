@@ -427,7 +427,24 @@ private:
         const float gain = muted_.load() ? 0.0f : volume_.load();
         const uint32_t total_samples = frame_count * channels_;
 
-        // Require full frame_count frames — output silence on underrun (no partial glitches)
+        // Drain excess frames first (latency control) — safe here because
+        // audio_callback is the ONLY consumer of ring_buffer_ (SPSC).
+        {
+            size_t avail = ring_buffer_.available_read();
+            uint32_t target = target_fill_frames_.load();
+            if (avail > target + frame_count) {
+                size_t excess = avail - target - frame_count;
+                while (excess > 0) {
+                    size_t chunk = std::min(excess, drain_buf_.size() / channels_);
+                    if (chunk == 0) break;
+                    size_t drained = ring_buffer_.read(drain_buf_.data(), chunk);
+                    if (drained == 0) break;
+                    excess -= drained;
+                }
+            }
+        }
+
+        // Underrun guard — output silence rather than garbage
         if (ring_buffer_.available_read() < frame_count) {
             std::memset(buffer, 0, total_samples * sizeof(float));
             return;
@@ -441,11 +458,9 @@ private:
 
         const int32_t* src = read_buffer_.data();
         for (uint32_t i = 0; i < frames_read * channels_; i++) {
-            float s = static_cast<float>(src[i]) / 8388608.0f;  // 2^23
-            // Clamp to prevent any out-of-range values reaching the speaker
+            float s = static_cast<float>(src[i]) / 8388607.0f;  // 2^23 - 1 (matches float_to_s24 scale)
             buffer[i] = (s > 1.0f ? 1.0f : s < -1.0f ? -1.0f : s) * gain;
         }
-        // Silence any gap (shouldn't happen but guard anyway)
         for (uint32_t i = static_cast<uint32_t>(frames_read * channels_); i < total_samples; i++) {
             buffer[i] = 0.0f;
         }
