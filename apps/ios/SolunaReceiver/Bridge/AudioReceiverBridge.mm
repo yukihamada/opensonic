@@ -389,17 +389,30 @@ private:
         if (cmd == "rx.stats" || cmd == "system.stats") {
             auto st = stats();
             size_t fill = ring_buffer_.available_read();
+            uint32_t target_ms = target_fill_frames_.load() / 48u;
             snprintf(buf, sizeof(buf),
                 "{\"id\":%d,\"success\":true,\"data\":"
                 "\"{\\\"packets\\\":%llu,\\\"errors\\\":%llu,"
                 "\\\"buf_fill\\\":%zu,\\\"buf_cap\\\":4096,"
-                "\\\"volume\\\":%.3f,\\\"muted\\\":%s}\"}",
+                "\\\"volume\\\":%.3f,\\\"muted\\\":%s,"
+                "\\\"buf_target_ms\\\":%u}\"}",
                 id,
                 (unsigned long long)st.packets_received,
                 (unsigned long long)st.sequence_errors,
                 fill,
                 (double)volume_.load(),
-                muted_.load() ? "true" : "false");
+                muted_.load() ? "true" : "false",
+                target_ms);
+        } else if (cmd == "rx.set_buffer") {
+            p = msg.find("\"ms\":");
+            if (p != std::string::npos) {
+                try {
+                    uint32_t ms = static_cast<uint32_t>(std::stoul(msg.substr(p + 5)));
+                    ms = std::max(5u, std::min(200u, ms));
+                    target_fill_frames_.store(ms * 48u);
+                } catch (...) {}
+            }
+            snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
         } else if (cmd == "rx.set_volume") {
             p = msg.find("\"volume\":");
             if (p != std::string::npos) {
