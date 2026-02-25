@@ -435,6 +435,7 @@ private:
     uint16_t port_;
     uint32_t channels_;
     std::atomic<float> volume_;
+    std::atomic<bool> muted_;
     std::atomic<bool> running_;
 
     std::unique_ptr<SimpleRtpReceiver> rtp_receiver_;
@@ -443,6 +444,7 @@ private:
     std::vector<int32_t> read_buffer_;
 
     std::thread receive_thread_;
+    soluna::control::WebSocketServer ws_server_;
 };
 
 } // anonymous namespace
