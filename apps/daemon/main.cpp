@@ -404,6 +404,9 @@ static int run_rx(const DaemonConfig& cfg) {
     using namespace soluna::pipeline;
     using namespace soluna::transport;
 
+    soluna::control::WebSocketServer ws_srv;
+    start_ws_server(ws_srv);
+
     constexpr uint32_t kFramesPerPacket = 240; // 5ms packets
     const size_t frame_size = sizeof(int32_t) * cfg.channels;
 
