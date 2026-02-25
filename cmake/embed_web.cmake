@@ -73,7 +73,8 @@ foreach(FILEPATH ${WEB_FILES})
         string(APPEND C_BYTES "\n    ${LINE}")
     endif()
 
-    string(APPEND HEADER "static const uint8_t web_${VARNAME}_data[] = {${C_BYTES}\n};\n\n")
+    string(APPEND HEADER "static const uint8_t web_${VARNAME}_data[] = {${C_BYTES}\n}")
+    string(APPEND HEADER ";\n\n")
 
     string(APPEND FILE_ENTRIES "    {\"/${FILENAME}\", \"${MIME}\", web_${VARNAME}_data, ${BYTE_COUNT}},\n")
     math(EXPR FILE_COUNT "${FILE_COUNT} + 1")
