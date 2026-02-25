@@ -284,7 +284,7 @@ function setVolumeRx(idx, pct) {
     conn.volume = vol;
     const label = document.getElementById('rx-vol-label-' + idx);
     if (label) label.textContent = Math.round(vol * 100) + '%';
-    rxSend(idx, 'rx.set_volume', { volume: String(vol.toFixed(3)) });
+    rxSend(idx, 'rx.set_volume', { volume: vol });
 }
 
 function addReceiver(name, host) {
