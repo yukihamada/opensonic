@@ -127,6 +127,23 @@ function updateEmpty() {
     if (empty) empty.style.display = has ? 'none' : '';
 }
 
+const BUF_OPTIONS = [
+    { label: '5 ms',   ms: 5   },
+    { label: '10 ms',  ms: 10  },
+    { label: '20 ms',  ms: 20  },
+    { label: '40 ms',  ms: 40  },
+    { label: '60 ms',  ms: 60  },
+    { label: '100 ms', ms: 100 },
+    { label: '150 ms', ms: 150 },
+    { label: '200 ms', ms: 200 },
+];
+
+function buildBufOptions(selectedMs) {
+    return BUF_OPTIONS.map(o =>
+        `<option value="${o.ms}"${o.ms === selectedMs ? ' selected' : ''}>${o.label}</option>`
+    ).join('');
+}
+
 function buildCard(idx) {
     const rx = receivers[idx];
     const el = document.createElement('div');
@@ -153,6 +170,10 @@ function buildCard(idx) {
     <input type="range" min="0" max="100" value="100" class="vol-slider" id="rxc-vol-${idx}">
     <span class="vol-pct" id="rxc-vpct-${idx}">100%</span>
   </div>
+  <div class="buf-row">
+    <span class="buf-label-txt">Buf</span>
+    <select class="buf-sel" id="rxc-bsel-${idx}">${buildBufOptions(20)}</select>
+  </div>
   <div class="rxc-footer">
     <div class="rxc-stats">
       <span>Pkts&thinsp;<span class="rxc-stat-val" id="rxc-pkts-${idx}">—</span></span>
@@ -164,11 +185,16 @@ function buildCard(idx) {
 </div>`;
 
     // Wire events after build (no inline handlers)
-    el.querySelector('#rxc-rm-' + idx).addEventListener('click', () => removeReceiver(idx));
+    el.querySelector('#rxc-rm-'   + idx).addEventListener('click', () => removeReceiver(idx));
     el.querySelector('#rxc-mute-' + idx).addEventListener('click', () => toggleMuteRx(idx));
     const volSlider = el.querySelector('#rxc-vol-' + idx);
     volSlider.addEventListener('input', () => onVolInput(idx, volSlider));
     updateSliderTrack(volSlider, 1.0);
+
+    const bufSel = el.querySelector('#rxc-bsel-' + idx);
+    bufSel.addEventListener('change', () => {
+        rxSend(idx, 'rx.set_buffer', { ms: parseInt(bufSel.value, 10) });
+    });
 
     return el;
 }
