@@ -340,6 +340,20 @@ function patchCard(idx) {
         updateSliderTrack($vol, conn.volume);
     }
     if ($vpct) $vpct.textContent = volPct + '%';
+
+    // ── buffer selector ──
+    const $bsel = document.getElementById('rxc-bsel-' + idx);
+    if ($bsel && document.activeElement !== $bsel && s.buf_target_ms !== undefined) {
+        // Pick the closest option
+        const ms = s.buf_target_ms;
+        let best = BUF_OPTIONS[0].ms;
+        let bestDiff = Math.abs(BUF_OPTIONS[0].ms - ms);
+        for (const o of BUF_OPTIONS) {
+            const d = Math.abs(o.ms - ms);
+            if (d < bestDiff) { bestDiff = d; best = o.ms; }
+        }
+        $bsel.value = String(best);
+    }
 }
 
 function setCardConn(idx, on) {
