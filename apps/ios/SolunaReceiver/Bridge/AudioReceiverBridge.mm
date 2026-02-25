@@ -335,14 +335,13 @@ public:
         volume_.store(std::max(0.0f, std::min(1.0f, volume)));
     }
 
-    float volume() const {
-        return volume_.load();
-    }
+    float volume() const { return volume_.load(); }
+
+    void set_muted(bool muted) { muted_.store(muted); }
+    bool is_muted() const { return muted_.load(); }
 
     SimpleRtpReceiver::Stats stats() const {
-        if (rtp_receiver_) {
-            return rtp_receiver_->stats();
-        }
+        if (rtp_receiver_) return rtp_receiver_->stats_snapshot();
         return {};
     }
 
