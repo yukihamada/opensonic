@@ -677,6 +677,23 @@ static int run_rx(const DaemonConfig& cfg) {
             ostp_packets++;
         }
 
+        // Trim ring buffer to target latency (drain excess frames)
+        {
+            size_t avail = ring.available_read();
+            uint32_t target = g_buf_target_ms.load() * (cfg.sample_rate / 1000u);
+            if (avail > target) {
+                static thread_local std::vector<int32_t> drain_buf(512);
+                size_t excess = avail - target;
+                while (excess > 0) {
+                    size_t chunk = std::min(excess, drain_buf.size() / cfg.channels);
+                    if (chunk == 0) break;
+                    size_t dr = ring.read(drain_buf.data(), chunk);
+                    if (dr == 0) break;
+                    excess -= dr;
+                }
+            }
+        }
+
         // Sequence check
         if (last_seq >= 0) {
             int32_t expected = (last_seq + 1) & 0xFFFF;
