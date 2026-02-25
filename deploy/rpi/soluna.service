@@ -1,13 +1,15 @@
 [Unit]
 Description=Soluna Network Audio Daemon
 Documentation=https://github.com/yukihamada/opensonic
-After=network-online.target sound.target
-Wants=network-online.target
+After=network.target sound.target
 
 [Service]
 Type=simple
 User=soluna
 Group=audio
+# Wait for wlan0 to have an IP before starting (needed for multicast join)
+# Does NOT block the rest of boot — only delays this service
+ExecStartPre=/bin/bash -c "for i in $(seq 1 30); do ip addr show wlan0 2>/dev/null | grep -q 'inet ' && exit 0; sleep 1; done; exit 1"
 ExecStart=/usr/bin/solunad --config /etc/soluna/config.yaml
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
