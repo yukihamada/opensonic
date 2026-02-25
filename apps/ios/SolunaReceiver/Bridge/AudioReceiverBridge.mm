@@ -435,24 +435,27 @@ private:
         const float gain = muted_.load() ? 0.0f : volume_.load();
         const uint32_t total_samples = frame_count * channels_;
 
-        // Read from ring buffer (S24_LE in 32-bit container)
-        size_t frames_read = ring_buffer_.read(read_buffer_.data(), frame_count);
-
-        if (frames_read > 0) {
-            // Convert S24_LE to float and apply volume/mute
-            const int32_t* src = read_buffer_.data();
-            for (uint32_t i = 0; i < frames_read * channels_; i++) {
-                float sample = static_cast<float>(src[i]) / 8388608.0f;  // 2^23
-                buffer[i] = sample * gain;
-            }
-
-            // Fill remaining with silence if underrun
-            for (uint32_t i = static_cast<uint32_t>(frames_read * channels_); i < total_samples; i++) {
-                buffer[i] = 0.0f;
-            }
-        } else {
-            // Buffer underrun - output silence
+        // Require full frame_count frames — output silence on underrun (no partial glitches)
+        if (ring_buffer_.available_read() < frame_count) {
             std::memset(buffer, 0, total_samples * sizeof(float));
+            return;
+        }
+
+        size_t frames_read = ring_buffer_.read(read_buffer_.data(), frame_count);
+        if (frames_read == 0) {
+            std::memset(buffer, 0, total_samples * sizeof(float));
+            return;
+        }
+
+        const int32_t* src = read_buffer_.data();
+        for (uint32_t i = 0; i < frames_read * channels_; i++) {
+            float s = static_cast<float>(src[i]) / 8388608.0f;  // 2^23
+            // Clamp to prevent any out-of-range values reaching the speaker
+            buffer[i] = (s > 1.0f ? 1.0f : s < -1.0f ? -1.0f : s) * gain;
+        }
+        // Silence any gap (shouldn't happen but guard anyway)
+        for (uint32_t i = static_cast<uint32_t>(frames_read * channels_); i < total_samples; i++) {
+            buffer[i] = 0.0f;
         }
     }
 
