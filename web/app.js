@@ -655,5 +655,13 @@ function escHtml(s) {
 }
 
 // ── Boot ─────────────────────────────────────────────────────
+// Insert monitor card above the receiver grid
+(function() {
+    const grid = document.getElementById('rx-grid');
+    if (grid && grid.parentNode) {
+        grid.parentNode.insertBefore(buildMonitorCard(), grid);
+    }
+})();
+
 initCards();
 localConnect();
