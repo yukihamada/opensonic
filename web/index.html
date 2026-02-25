@@ -8,91 +8,70 @@
 </head>
 <body>
     <header>
-        <h1>Soluna</h1>
-        <span id="status" class="status disconnected">Disconnected</span>
+        <div class="header-left">
+            <span class="logo">◈ Soluna</span>
+            <div class="tx-pill" id="tx-pill">
+                <span class="tx-dot" id="tx-dot"></span>
+                <span id="tx-label">TX —</span>
+                <span class="tx-pkts" id="tx-pkts"></span>
+            </div>
+        </div>
+        <div class="header-right">
+            <span class="ws-badge" id="ws-badge">●&nbsp;Connecting</span>
+            <button class="icon-btn" id="btn-add-rx" title="Add receiver">＋</button>
+        </div>
     </header>
 
-    <nav>
-        <button class="tab active" data-panel="dashboard">Dashboard</button>
-        <button class="tab" data-panel="devices">Devices</button>
-        <button class="tab" data-panel="routing">Routing</button>
-        <button class="tab" data-panel="meters">Meters</button>
-        <button class="tab" data-panel="stats">Stats</button>
+    <main>
+        <div id="rx-grid" class="rx-grid"></div>
+        <div id="rx-empty" class="empty-state" style="display:none">
+            <p>No receivers.<br>Click <strong>＋</strong> to add one.</p>
+        </div>
+    </main>
+
+    <nav class="bottom-nav">
+        <button class="bnav active" data-panel="dashboard">Dashboard</button>
+        <button class="bnav" data-panel="routing">Routing</button>
+        <button class="bnav" data-panel="stats">Stats</button>
     </nav>
 
-    <main>
-        <!-- Dashboard: TX status + Receivers -->
-        <section id="dashboard" class="panel active">
-            <div class="dashboard-grid">
-                <!-- TX Card -->
-                <div class="tx-card card">
-                    <div class="card-header">
-                        <h3>Transmitter</h3>
-                        <span id="tx-status-dot" class="dot dot-off"></span>
-                    </div>
-                    <div class="tx-info">
-                        <div class="info-row"><span class="label">Status</span><span id="tx-status-text" class="value">—</span></div>
-                        <div class="info-row"><span class="label">Packets sent</span><span id="tx-packets" class="value">—</span></div>
-                    </div>
-                </div>
-
-                <!-- Receivers -->
-                <div class="receivers-section">
-                    <div class="section-header">
-                        <h3>Receivers</h3>
-                        <button class="btn btn-small" id="btn-add-receiver">+ Add</button>
-                    </div>
-                    <div id="receiver-list"></div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Devices -->
-        <section id="devices" class="panel">
-            <h2>Devices</h2>
-            <div id="device-list" class="card-list"></div>
-        </section>
-
-        <!-- Routing -->
-        <section id="routing" class="panel">
+    <!-- Routing panel (hidden) -->
+    <div id="panel-routing" class="panel-overlay hidden">
+        <div class="panel-header">
             <h2>Routing</h2>
-            <div class="toolbar">
+            <button class="icon-btn close-panel">✕</button>
+        </div>
+        <div class="panel-body">
+            <div class="route-add-row">
                 <input id="route-src" placeholder="source (dev:ch)">
                 <input id="route-dst" placeholder="sink (dev:ch)">
-                <input id="route-gain" type="number" value="0" step="1" placeholder="gain dB">
-                <button id="btn-route-add" class="btn">+ Add Route</button>
+                <input id="route-gain" type="number" value="0" step="1" placeholder="dB">
+                <button id="btn-route-add" class="btn">Add</button>
             </div>
             <table id="route-table">
-                <thead><tr><th>Source</th><th>Sink</th><th>Gain (dB)</th><th>Muted</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Source</th><th>Sink</th><th>Gain</th><th>Muted</th><th></th></tr></thead>
                 <tbody></tbody>
             </table>
-        </section>
+        </div>
+    </div>
 
-        <!-- Meters -->
-        <section id="meters" class="panel">
-            <h2>Level Meters</h2>
-            <div class="meter-controls">
-                <label><input type="checkbox" id="meter-auto-refresh" checked> Auto-refresh</label>
-                <span id="meter-status" class="meter-status"></span>
-            </div>
-            <div id="meter-display" class="meter-grid"></div>
-        </section>
-
-        <!-- Stats -->
-        <section id="stats" class="panel">
-            <h2>System Statistics</h2>
+    <!-- Stats panel (hidden) -->
+    <div id="panel-stats" class="panel-overlay hidden">
+        <div class="panel-header">
+            <h2>System Stats</h2>
+            <button class="icon-btn close-panel">✕</button>
+        </div>
+        <div class="panel-body">
             <div class="stats-grid">
-                <div class="stat-card"><div class="stat-label">Devices</div><div class="stat-value" id="stat-devices">-</div></div>
-                <div class="stat-card"><div class="stat-label">Active Streams</div><div class="stat-value" id="stat-streams">-</div></div>
-                <div class="stat-card"><div class="stat-label">Routes</div><div class="stat-value" id="stat-routes">-</div></div>
-                <div class="stat-card"><div class="stat-label">Bandwidth</div><div class="stat-value" id="stat-bandwidth">-</div></div>
-                <div class="stat-card"><div class="stat-label">PTP Status</div><div class="stat-value" id="stat-ptp">-</div></div>
-                <div class="stat-card"><div class="stat-label">PTP Role</div><div class="stat-value" id="stat-ptp-role">-</div></div>
-                <div class="stat-card"><div class="stat-label">PTP Offset</div><div class="stat-value" id="stat-ptp-offset">-</div></div>
-                <div class="stat-card"><div class="stat-label">Path Delay</div><div class="stat-value" id="stat-ptp-delay">-</div></div>
+                <div class="stat-card"><div class="stat-label">Devices</div><div class="stat-val" id="stat-devices">—</div></div>
+                <div class="stat-card"><div class="stat-label">Streams</div><div class="stat-val" id="stat-streams">—</div></div>
+                <div class="stat-card"><div class="stat-label">Routes</div><div class="stat-val" id="stat-routes">—</div></div>
+                <div class="stat-card"><div class="stat-label">Bandwidth</div><div class="stat-val" id="stat-bw">—</div></div>
+                <div class="stat-card"><div class="stat-label">PTP</div><div class="stat-val" id="stat-ptp">—</div></div>
+                <div class="stat-card"><div class="stat-label">Offset</div><div class="stat-val" id="stat-offset">—</div></div>
             </div>
-        </section>
-    </main>
+        </div>
+    </div>
 
     <script src="/app.js"></script>
 </body>
