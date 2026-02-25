@@ -316,6 +316,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../include",
 					"$(SRCROOT)/../../src",
+					"$(SRCROOT)/../../build-ios/generated",
 				);
 				INFOPLIST_FILE = SolunaReceiver/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -357,6 +358,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../include",
 					"$(SRCROOT)/../../src",
+					"$(SRCROOT)/../../build-ios/generated",
 				);
 				INFOPLIST_FILE = SolunaReceiver/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
