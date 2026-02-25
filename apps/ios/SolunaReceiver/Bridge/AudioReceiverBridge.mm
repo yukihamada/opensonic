@@ -602,9 +602,15 @@ private:
 
 - (void)setVolume:(float)volume {
     _volume = std::max(0.0f, std::min(1.0f, volume));
-    if (_impl) {
-        _impl->set_volume(_volume);
-    }
+    if (_impl) _impl->set_volume(_volume);
+}
+
+- (BOOL)muted {
+    return _impl ? (BOOL)_impl->is_muted() : NO;
+}
+
+- (void)setMuted:(BOOL)muted {
+    if (_impl) _impl->set_muted((bool)muted);
 }
 
 - (SolunaReceiverStats *)currentStats {
