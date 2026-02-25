@@ -361,8 +361,53 @@ private:
         }
     }
 
+    std::string handle_ws_command(const std::string& msg) {
+        int id = 0;
+        auto p = msg.find("\"id\":");
+        if (p != std::string::npos) try { id = std::stoi(msg.substr(p + 5)); } catch (...) {}
+
+        std::string cmd;
+        p = msg.find("\"command\":\"");
+        if (p != std::string::npos) {
+            auto s = p + 11, e = msg.find('"', s);
+            if (e != std::string::npos) cmd = msg.substr(s, e - s);
+        }
+
+        char buf[512];
+        if (cmd == "rx.stats" || cmd == "system.stats") {
+            auto st = stats();
+            size_t fill = ring_buffer_.available_read();
+            snprintf(buf, sizeof(buf),
+                "{\"id\":%d,\"success\":true,\"data\":"
+                "\"{\\\"packets\\\":%llu,\\\"errors\\\":%llu,"
+                "\\\"buf_fill\\\":%zu,\\\"buf_cap\\\":4096,"
+                "\\\"volume\\\":%.3f,\\\"muted\\\":%s}\"}",
+                id,
+                (unsigned long long)st.packets_received,
+                (unsigned long long)st.sequence_errors,
+                fill,
+                (double)volume_.load(),
+                muted_.load() ? "true" : "false");
+        } else if (cmd == "rx.set_volume") {
+            p = msg.find("\"volume\":");
+            if (p != std::string::npos) {
+                try { set_volume(std::stof(msg.substr(p + 9))); } catch (...) {}
+            }
+            snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+        } else if (cmd == "rx.set_mute") {
+            p = msg.find("\"muted\":");
+            if (p != std::string::npos)
+                set_muted(msg.substr(p + 8, 4) == "true");
+            snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+        } else {
+            snprintf(buf, sizeof(buf),
+                "{\"id\":%d,\"success\":false,\"data\":\"unknown command\"}", id);
+        }
+        return buf;
+    }
+
     void audio_callback(float* buffer, uint32_t frame_count) {
-        const float vol = volume_.load();
+        const float gain = muted_.load() ? 0.0f : volume_.load();
         const uint32_t total_samples = frame_count * channels_;
 
         // Read from ring buffer (S24_LE in 32-bit container)
