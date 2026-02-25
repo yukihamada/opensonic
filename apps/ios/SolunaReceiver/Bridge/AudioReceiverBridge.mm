@@ -426,63 +426,62 @@ private:
     }
 
     void audio_callback(float* buffer, uint32_t frame_count) {
-        const float gain = muted_.load() ? 0.0f : volume_.load();
+        const float vol = muted_.load() ? 0.0f : volume_.load();
         const uint32_t total_samples = frame_count * channels_;
-        const size_t avail = ring_buffer_.available_read();
-        const uint32_t target = target_fill_frames_.load();
 
-        // ── Prefill phase: wait until target frames are buffered ──────────────
-        // This avoids draining (which causes audio discontinuities / clicks).
-        // Instead we use a "fill then play" approach: once the buffer has
-        // enough data, play continuously; on underrun, wait again.
+        // Adaptive target: always >= frame_count*4 to prevent "prefill → immediate underrun"
+        // (iOS may use frame_count=1024 even if we requested 256)
+        uint32_t target = target_fill_frames_.load();
+        const uint32_t min_target = frame_count * 4;
+        if (target < min_target) {
+            target = min_target;
+            target_fill_frames_.store(target);
+        }
+
+        const size_t avail = ring_buffer_.available_read();
+        const bool has_data = (avail >= frame_count);
+
+        // Ramp constants (audio-thread-only floats, no atomics)
+        // fade-in:  ~1000 samples ≈ 21ms  — smooth start
+        // fade-out: ~200  samples ≈ 4ms   — quick decay avoids stale hold becoming audio
+        constexpr float kFadeIn  = 0.001f;
+        constexpr float kFadeOut = 0.005f;
+
         if (!prefilled_) {
+            // Waiting for initial fill: decay ramp and output silence
             if (avail < target) {
+                ramp_ *= (1.0f - kFadeOut);
                 std::memset(buffer, 0, total_samples * sizeof(float));
                 return;
             }
             prefilled_ = true;
         }
 
-        // ── Underrun: reset prefill, output silence ────────────────────────────
-        if (avail < frame_count) {
+        if (!has_data) {
+            // Underrun: hold last sample, apply decaying ramp → smooth fade to zero
             prefilled_ = false;
-            std::memset(buffer, 0, total_samples * sizeof(float));
-            return;
-        }
-
-        // ── Ring is extremely full (>3× target)? Hard reset to avoid old data ─
-        // This only happens on pathological cases (e.g. app paused then resumed).
-        if (avail > static_cast<size_t>(target) * 3 + frame_count) {
-            // Drain everything back to target
-            size_t excess = avail - target;
-            while (excess > 0) {
-                size_t chunk = std::min(excess, drain_buf_.size() / channels_);
-                if (chunk == 0) break;
-                size_t d = ring_buffer_.read(drain_buf_.data(), chunk);
-                if (d == 0) break;
-                excess -= d;
+            for (uint32_t i = 0; i < frame_count; i++) {
+                ramp_ *= (1.0f - kFadeOut);
+                for (uint32_t ch = 0; ch < channels_; ch++) {
+                    buffer[i * channels_ + ch] = held_sample_[ch] * ramp_;
+                }
             }
-            prefilled_ = false;
-            std::memset(buffer, 0, total_samples * sizeof(float));
             return;
         }
 
-        // ── Normal read ────────────────────────────────────────────────────────
-        size_t frames_read = ring_buffer_.read(read_buffer_.data(), frame_count);
-        if (frames_read == 0) {
-            prefilled_ = false;
-            std::memset(buffer, 0, total_samples * sizeof(float));
-            return;
-        }
-
+        // Normal playback: smooth fade-in via ramp_
+        ring_buffer_.read(read_buffer_.data(), frame_count);
         const int32_t* src = read_buffer_.data();
-        for (uint32_t i = 0; i < frames_read * channels_; i++) {
-            float s = static_cast<float>(src[i]) / 8388607.0f;
-            buffer[i] = (s > 1.0f ? 1.0f : s < -1.0f ? -1.0f : s) * gain;
-        }
-        // Fill any gap (shouldn't occur but be safe)
-        for (uint32_t i = static_cast<uint32_t>(frames_read * channels_); i < total_samples; i++) {
-            buffer[i] = 0.0f;
+        for (uint32_t i = 0; i < frame_count; i++) {
+            ramp_ += kFadeIn * (vol - ramp_);
+            for (uint32_t ch = 0; ch < channels_; ch++) {
+                const uint32_t idx = i * channels_ + ch;
+                float s = static_cast<float>(src[idx]) / 8388607.0f;
+                s = s > 1.0f ? 1.0f : s < -1.0f ? -1.0f : s;
+                const float out = s * ramp_;
+                buffer[idx] = out;
+                held_sample_[ch] = out;  // cache for fade-out
+            }
         }
     }
 
@@ -493,13 +492,16 @@ private:
     std::atomic<bool>     muted_;
     std::atomic<bool>     running_;
     std::atomic<uint32_t> target_fill_frames_;
-    bool                  prefilled_ = false;  // audio_callback-only, no atomics needed
+    // audio_callback-only state (no atomics needed):
+    bool                  prefilled_ = false;
+    float                 ramp_      = 0.0f;
+    std::vector<float>    held_sample_;
 
     std::unique_ptr<SimpleRtpReceiver> rtp_receiver_;
     std::unique_ptr<pal::AudioDevice>  audio_device_;
     pipeline::RingBuffer  ring_buffer_;
     std::vector<int32_t>  read_buffer_;
-    std::vector<int32_t>  drain_buf_;  // scratch buffer for trimming excess
+    std::vector<int32_t>  drain_buf_;
 
     std::thread receive_thread_;
     soluna::control::WebSocketServer ws_server_;
