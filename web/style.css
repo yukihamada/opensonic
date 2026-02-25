@@ -458,6 +458,134 @@ th { color: var(--text3); font-weight: 500; font-size: 0.75rem; text-transform: 
 .stat-label { font-size: 0.72rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
 .stat-val { font-size: 1.4rem; font-weight: 700; color: var(--blue); font-variant-numeric: tabular-nums; }
 
+/* ── Buffer selector ───────────────────────────────── */
+.buf-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+}
+.buf-label-txt {
+    font-size: 0.72rem;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+    width: 2em;
+}
+.buf-sel {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--s2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23555b72'/%3E%3C/svg%3E") no-repeat right 0.55rem center;
+    border: 1px solid var(--border2);
+    color: var(--text);
+    padding: 0.3em 1.6em 0.3em 0.6em;
+    border-radius: var(--r-xs);
+    font-size: 0.78rem;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+.buf-sel:focus { border-color: var(--blue); }
+.buf-sel:hover { border-color: var(--border2); background-color: var(--s3); }
+
+/* ── Monitor card ──────────────────────────────────── */
+.mon-card {
+    background: var(--s1);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+    margin-bottom: 1rem;
+    animation: card-in 0.25s ease both;
+}
+.mon-card.running {
+    border-color: rgba(59,130,246,0.35);
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.12), var(--shadow-sm);
+}
+.mon-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.9rem 1rem 0.75rem;
+}
+.mon-title {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-weight: 600;
+    font-size: 0.92rem;
+}
+.mon-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--text3);
+    transition: background 0.3s, box-shadow 0.3s;
+}
+.mon-dot.running {
+    background: var(--blue);
+    box-shadow: 0 0 8px rgba(59,130,246,0.6);
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+.mon-actions { display: flex; align-items: center; gap: 0.4rem; }
+.mon-badge {
+    font-size: 0.7rem;
+    padding: 0.15em 0.55em;
+    border-radius: 999px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    border: 1px solid transparent;
+    background: var(--s2);
+    border-color: var(--border);
+    color: var(--text3);
+}
+.mon-badge.running {
+    background: rgba(59,130,246,0.15);
+    border-color: rgba(59,130,246,0.3);
+    color: var(--blue);
+}
+.mon-body { padding: 0 1rem 1rem; }
+.mon-dev-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+.mon-dev-sel {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--s2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23555b72'/%3E%3C/svg%3E") no-repeat right 0.55rem center;
+    border: 1px solid var(--border2);
+    color: var(--text);
+    padding: 0.3em 1.6em 0.3em 0.6em;
+    border-radius: var(--r-xs);
+    font-size: 0.78rem;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    min-width: 0;
+}
+.mon-dev-sel:focus { border-color: var(--blue); }
+.mon-start-btn {
+    padding: 0.35em 0.9em;
+    border-radius: var(--r-xs);
+    border: 1px solid var(--border2);
+    background: var(--s2);
+    color: var(--text2);
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+.mon-start-btn:hover { background: var(--s3); color: var(--text); }
+.mon-start-btn.running {
+    background: var(--red-d);
+    border-color: rgba(239,68,68,0.35);
+    color: var(--red);
+}
+
 /* ── Responsive ────────────────────────────────────── */
 @media (max-width: 600px) {
     .rx-grid { grid-template-columns: 1fr; }
