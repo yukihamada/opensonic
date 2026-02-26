@@ -487,21 +487,15 @@ private:
             target_fill_frames_.store(target);
         }
 
-        // ── Latency drain ─────────────────────────────────────────────────────
-        // If the buffer has grown beyond 2× target, silently discard excess frames
-        // to keep latency bounded (prevents drift on long sessions).
+        // ── Gentle latency nudge ──────────────────────────────────────────────
+        // When buffer has grown >50ms above target, silently discard 2 frames per
+        // callback (~7.8ms/s drain rate, ≈0.8% speed-up — completely inaudible).
+        // Never resets prefilled_ so playback is never interrupted.
         {
             size_t avail_now = ring_buffer_.available_read();
-            if (avail_now > static_cast<size_t>(target) * 2 + frame_count) {
-                size_t excess = avail_now - target - frame_count;
-                while (excess > 0) {
-                    size_t chunk = std::min(excess, drain_buf_.size() / channels_);
-                    if (chunk == 0) break;
-                    size_t dr = ring_buffer_.read(drain_buf_.data(), chunk);
-                    if (dr == 0) break;
-                    excess = (excess > dr) ? excess - dr : 0;
-                }
-                prefilled_ = false;  // force re-prefill for smooth restart
+            const size_t hi_watermark = static_cast<size_t>(target) + 2400; // +50ms
+            if (prefilled_ && avail_now > hi_watermark + 2) {
+                ring_buffer_.read(drain_buf_.data(), 2);
             }
         }
 
