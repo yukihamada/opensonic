@@ -41,6 +41,10 @@
 #include <arpa/inet.h>
 #endif
 
+#ifdef __APPLE__
+#include "../plugin/soluna_shm.h"
+#endif
+
 static std::atomic<bool>     g_running{true};
 static std::atomic<float>    g_rx_volume{1.0f};
 static std::atomic<bool>     g_rx_muted{false};
