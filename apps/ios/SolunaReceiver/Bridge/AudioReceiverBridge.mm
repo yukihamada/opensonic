@@ -240,7 +240,7 @@ public:
         , volume_(1.0f)
         , muted_(false)
         , running_(false)
-        , target_fill_frames_(4800)  // 100ms default — generous to absorb WiFi jitter
+        , target_fill_frames_(1920)  // 40ms default — good for WiFi without over-buffering
         , ring_buffer_(24000, channels * sizeof(int32_t))  // 500ms capacity
         , read_buffer_(4096 * channels)
         , drain_buf_(4096 * channels)
