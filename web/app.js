@@ -420,15 +420,45 @@ function rxSend(idx, cmd, params, cb) {
     conn.ws.send(JSON.stringify({ id, command: cmd, params: params || {} }));
 }
 
+// ── Packet-loss history (30s, one sample/500ms = 60 samples) ─
+const LOSS_HISTORY_LEN = 60;
+
+function recordLoss(conn, dropped) {
+    if (!conn.lossHistory) conn.lossHistory = [];
+    conn.lossHistory.push(dropped ?? 0);
+    if (conn.lossHistory.length > LOSS_HISTORY_LEN) conn.lossHistory.shift();
+}
+
+function renderLossSvg(history, width, height) {
+    if (!history || history.length < 2) return '';
+    const max = Math.max(...history, 1);
+    const w = width, h = height;
+    const pts = history.map((v, i) => {
+        const x = Math.round(i / (history.length - 1) * w);
+        const y = Math.round(h - (v / max) * h);
+        return `${x},${y}`;
+    });
+    const line = `M${pts.join('L')}`;
+    const fill = `${line}L${w},${h}L0,${h}Z`;
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+        <path d="${fill}" fill="rgba(239,68,68,0.12)"/>
+        <path d="${line}" fill="none" stroke="var(--red)" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>`;
+}
+
 // ── Stats: surgical DOM patch (no full re-render) ────────────
 function applyStats(idx, raw) {
     const rx = receivers[idx]; if (!rx) return;
     const conn = rxConns[rx.host]; if (!conn) return;
     try {
         const d = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        const prevDropped = conn.stats ? (conn.stats.errors ?? 0) : 0;
         conn.stats = d;
         if (d.volume !== undefined) conn.volume = d.volume;
         if (d.muted  !== undefined) conn.muted  = d.muted;
+        // Record incremental drop count for sparkline
+        const curDropped = d.errors ?? 0;
+        recordLoss(conn, Math.max(0, curDropped - prevDropped));
         patchCard(idx);
     } catch (_) {}
 }
