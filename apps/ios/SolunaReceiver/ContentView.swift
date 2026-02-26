@@ -78,6 +78,14 @@ struct ContentView: View {
                 // Volume control
                 volumeControl
 
+                // Mac speaker controls (when macHost is configured)
+                if !macHost.isEmpty {
+                    macControls
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                Spacer(minLength: 0)
+
             }
             .padding()
             .navigationTitle("Soluna Rx")
