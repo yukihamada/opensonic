@@ -226,6 +226,11 @@ if(NOT OS_IOS AND NOT OS_ANDROID)
     target_link_libraries(solctl PRIVATE soluna_core)
 endif()
 
+# Soluna CoreAudio virtual device plugin (macOS only)
+if(OS_MACOS)
+    add_subdirectory(apps/plugin)
+endif()
+
 # Example plugins
 add_subdirectory(examples/plugins)
 
