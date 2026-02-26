@@ -131,16 +131,32 @@ private:
             return false;
         }
 
-        // Sequence check
+        // Sequence check — returns gap count (positive = missing packets)
         uint32_t full_seq = (static_cast<uint32_t>(ostp.sequence_ext) << 16) | rtp.sequence;
-        check_sequence(full_seq);
+        int32_t gap = check_sequence(full_seq);
 
         stats_.packets_received++;
         stats_.ostp_packets++;
 
         // OSTP payload is int32_t (4 bytes/sample, native byte order) — not S24_LE 3-byte
         size_t frames = payload_size / (sizeof(int32_t) * config_.channels);
+
+        // PLC: conceal gaps of ≤2 packets by repeating the last known frame
+        if (gap > 0 && gap <= 2 && frames > 0 && !last_frame_.empty()) {
+            for (int32_t i = 0; i < gap; i++) {
+                ring.write(last_frame_.data(), frames);
+            }
+            stats_.packets_concealed += static_cast<uint64_t>(gap);
+        }
+
         ring.write(payload, frames);
+
+        // Save last frame for PLC
+        if (frames > 0) {
+            last_frame_.assign(
+                reinterpret_cast<const int32_t*>(payload),
+                reinterpret_cast<const int32_t*>(payload) + frames * config_.channels);
+        }
 
         return true;
     }
