@@ -8,6 +8,7 @@
 
 import Foundation
 import SwiftUI
+import Darwin
 
 // MARK: - Bonjour Discovery
 
@@ -15,7 +16,7 @@ private final class BonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetSe
     private let browser = NetServiceBrowser()
     private var resolving: [NetService] = []
 
-    /// Called on the main thread when a service is resolved to (name, hostName, port).
+    /// Called on the main thread with (displayName, ipAddress).
     var onFound: (String, String) -> Void = { _, _ in }
 
     func start() {
@@ -34,14 +35,39 @@ private final class BonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetSe
     }
 
     func netServiceDidResolveAddress(_ sender: NetService) {
-        guard let host = sender.hostName else { return }
         let name = sender.name
+        // Prefer raw IPv4 address for reliable WS connection; fall back to hostName
+        let host = ipv4Address(from: sender) ?? sender.hostName ?? ""
         resolving.removeAll { $0 == sender }
+        guard !host.isEmpty else { return }
         DispatchQueue.main.async { self.onFound(name, host) }
     }
 
     func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
         resolving.removeAll { $0 == sender }
+    }
+
+    // Extract the first IPv4 address from a resolved NetService
+    private func ipv4Address(from service: NetService) -> String? {
+        guard let addresses = service.addresses else { return nil }
+        for data in addresses {
+            let result = data.withUnsafeBytes { ptr -> String? in
+                guard let base = ptr.baseAddress else { return nil }
+                let ss = base.assumingMemoryBound(to: sockaddr_storage.self).pointee
+                guard ss.ss_family == UInt8(AF_INET) else { return nil }
+                var sin = sockaddr_in()
+                withUnsafeMutableBytes(of: &sin) { dst in
+                    dst.copyMemory(from: UnsafeRawBufferPointer(start: base,
+                                                                count: MemoryLayout<sockaddr_in>.size))
+                }
+                var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+                var addr = sin.sin_addr
+                inet_ntop(AF_INET, &addr, &buf, socklen_t(INET_ADDRSTRLEN))
+                return String(cString: buf)
+            }
+            if let ip = result { return ip }
+        }
+        return nil
     }
 }
 
