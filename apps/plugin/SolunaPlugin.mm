@@ -189,7 +189,7 @@ static OSStatus Soluna_Initialize(AudioServerPlugInDriverRef inDriver,
     // The driver only opens an already-existing SHM.  If solunad is not yet running,
     // DoIOOperation will retry lazily every ~100ms.
     if (soluna_shm_open(&drv->mShm, O_RDWR) == 0 &&
-        soluna_shm_validate(&drv->mShm)) {
+        soluna_shm_validate(&drv->mShm) == 0) {
         atomic_store(&drv->mShmReady, true);
         fprintf(stderr, "[Soluna] Initialized, SHM attached (%s)\n", SOLUNA_SHM_NAME);
     } else {
