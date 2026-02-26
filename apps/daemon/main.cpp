@@ -206,6 +206,9 @@ static std::string ws_handle(const std::string& msg) {
         if (p != std::string::npos)
             try { g_mon_target_ms.store(std::max(5u, std::min(500u, (uint32_t)std::stoul(msg.substr(p + 5))))); } catch (...) {}
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "time.ping") {
+        // RTT measurement — client records t1 before sending, measures t4-t1 on response
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"{\\\"pong\\\":true}\"}", id);
     } else if (cmd == "monitor.set_delay") {
         p = msg.find("\"ms\":");
         if (p != std::string::npos)
