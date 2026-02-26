@@ -43,6 +43,8 @@
 
 #ifdef __APPLE__
 #include "../plugin/soluna_shm.h"
+#include <dns_sd.h>
+#include <sys/select.h>
 #endif
 
 static std::atomic<bool>     g_running{true};
