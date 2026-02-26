@@ -782,8 +782,21 @@ static int run_tx(const DaemonConfig& cfg) {
         }
     }
 
-    audio->stop();
     printf("\nTX stopped. Total packets: %lu\n", static_cast<unsigned long>(sequence));
+
+#ifdef __APPLE__
+    if (use_shm) {
+        if (shm_reader_thread.joinable())
+            shm_reader_thread.join();
+        if (speaker_audio)
+            speaker_audio->stop();
+        soluna_shm_close(&shm_map);
+    } else
+#endif
+    {
+        audio->stop();
+    }
+
     g_mon_stop_req.store(true);
     mon_thread.join();
     return 0;
