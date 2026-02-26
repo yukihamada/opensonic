@@ -32,7 +32,9 @@
 #include <cstdlib>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
