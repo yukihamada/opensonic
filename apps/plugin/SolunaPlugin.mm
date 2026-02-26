@@ -20,6 +20,7 @@
 #import <pthread.h>
 #import <sched.h>
 
+#include <math.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
