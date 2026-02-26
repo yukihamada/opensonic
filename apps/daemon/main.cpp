@@ -286,6 +286,8 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
             cfg.config_file = argv[++i];
         } else if (arg == "--device" && i + 1 < argc) {
             cfg.audio_device = argv[++i];
+        } else if (arg == "--speaker" && i + 1 < argc) {
+            cfg.local_speaker_device = argv[++i];
         } else if (arg == "--dest" && i + 1 < argc) {
             std::string dest = argv[++i];
             auto colon = dest.rfind(':');
