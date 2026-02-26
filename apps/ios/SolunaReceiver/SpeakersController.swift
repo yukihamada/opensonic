@@ -137,6 +137,9 @@ final class SpeakersController: ObservableObject {
 
     private func attach(_ s: Speaker) {
         let d = DaemonClient()
+        d.onSyncLatency = { [weak self] ms in
+            self?.audioReceiver?.bufferMs = UInt32(ms)
+        }
         d.connect(host: s.host)
         clients[s.id] = d
     }
