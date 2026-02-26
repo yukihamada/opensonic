@@ -189,6 +189,7 @@ final class DaemonClient: ObservableObject {
             if let v = d["volume"] as? Double { monitorVolume = Float(v) }
             monitorMuted     = d["muted"]     as? Bool ?? false
             monitorPackets   = UInt64(d["packets"] as? Int ?? 0)
+            if let delay = d["delay_ms"] as? Int { monitorDelayMs = delay }
         } else if d["tunnel_url"] != nil {
             // system.info
             tunnelURL = d["tunnel_url"] as? String ?? ""
