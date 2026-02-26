@@ -46,19 +46,18 @@
 
 /* ── Header ───────────────────────────────────────────────────────────────── */
 
-#pragma pack(push, 1)
 typedef struct SolunaShmHeader {
     uint32_t magic;               /* SOLUNA_SHM_MAGIC                  */
     uint32_t version;             /* SOLUNA_SHM_VERSION                */
     uint32_t capacity;            /* frames in ring                    */
     uint32_t channels;            /* interleaved channel count         */
     uint32_t sample_rate;         /* samples per second                */
-    uint32_t _pad0;               /* alignment                         */
+    uint32_t _pad0;               /* pad to 8-byte boundary for u64    */
+    /* offsets 24/32 → naturally 8-byte aligned, no packing needed */
     volatile uint64_t write_pos;  /* monotonic frame counter (writer)  */
     volatile uint64_t read_pos;   /* monotonic frame counter (reader)  */
     uint8_t  _pad1[24];           /* pad to 64 bytes total             */
 } SolunaShmHeader;
-#pragma pack(pop)
 
 /* compile-time size check */
 typedef char _soluna_shm_header_size_check[sizeof(SolunaShmHeader) == 64 ? 1 : -1];
