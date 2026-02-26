@@ -417,7 +417,7 @@ static OSStatus Soluna_GetPropertyDataSize(AudioServerPlugInDriverRef inDriver,
         case kAudioObjectPropertyOwner:       *outDataSize = sizeof(AudioObjectID); return noErr;
         case kAudioObjectPropertyName:
         case kAudioObjectPropertyManufacturer:*outDataSize = sizeof(CFStringRef); return noErr;
-        case kAudioObjectPropertyOwnedObjects:*outDataSize = sizeof(AudioObjectID); return noErr;
+        case kAudioObjectPropertyOwnedObjects:*outDataSize = 2 * sizeof(AudioObjectID); return noErr;
         case kAudioDevicePropertyDeviceUID:
         case kAudioDevicePropertyModelUID:    *outDataSize = sizeof(CFStringRef); return noErr;
         case kAudioDevicePropertyTransportType:   *outDataSize = sizeof(UInt32); return noErr;
@@ -432,7 +432,7 @@ static OSStatus Soluna_GetPropertyDataSize(AudioServerPlugInDriverRef inDriver,
         case kAudioDevicePropertyLatency:
         case kAudioDevicePropertySafetyOffset:    *outDataSize = sizeof(UInt32); return noErr;
         case kAudioDevicePropertyStreams:          *outDataSize = sizeof(AudioObjectID); return noErr;
-        case kAudioObjectPropertyControlList:      *outDataSize = 0; return noErr;
+        case kAudioObjectPropertyControlList:      *outDataSize = sizeof(AudioObjectID); return noErr;
         case kAudioDevicePropertyNominalSampleRate:*outDataSize = sizeof(Float64); return noErr;
         case kAudioDevicePropertyAvailableNominalSampleRates:
             *outDataSize = sizeof(AudioValueRange); return noErr;
