@@ -815,7 +815,7 @@ static OSStatus Soluna_DoIOOperation(AudioServerPlugInDriverRef  inDriver,
         uint32_t cnt = atomic_fetch_add(&sRetryCounter, 1u);
         if ((cnt & 0x1FFF) == 0) {  // every 8192 calls ≈ 85ms @ 512-frame buffers
             if (soluna_shm_open(&drv->mShm, O_RDWR) == 0 &&
-                soluna_shm_validate(&drv->mShm)) {
+                soluna_shm_validate(&drv->mShm) == 0) {
                 atomic_store(&drv->mShmReady, true);
                 fprintf(stderr, "[Soluna] SHM attached\n");
             }
