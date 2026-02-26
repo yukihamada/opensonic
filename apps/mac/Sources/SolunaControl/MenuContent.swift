@@ -111,7 +111,40 @@ struct MenuContent: View {
                         Divider().padding(.horizontal, 16)
                     }
 
+                    // ── Tunnel URL ────────────────────────
+                    if !d.tunnelURL.isEmpty {
+                        Divider().padding(.horizontal, 16)
+                        section("Internet URL") {
+                            HStack(spacing: 6) {
+                                Image(systemName: "globe")
+                                    .foregroundStyle(.blue)
+                                    .frame(width: 16)
+                                Text(d.tunnelURL
+                                    .replacingOccurrences(of: "https://", with: "")
+                                    .replacingOccurrences(of: "http://", with: ""))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Button {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(d.tunnelURL, forType: .string)
+                                } label: {
+                                    Image(systemName: "doc.on.doc")
+                                        .foregroundStyle(.blue)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Copy tunnel URL for iPhone")
+                            }
+                            Text("Paste this in iPhone Settings → Mac IP")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+
                     // ── Connection ────────────────────────
+                    Divider().padding(.horizontal, 16)
                     section("Connection") {
                         if editingHost {
                             HStack {

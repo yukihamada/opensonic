@@ -2,8 +2,8 @@
 //  DaemonClient.swift
 //  SolunaReceiver / SolunaControl
 //
-//  WebSocket client for solunad (ws://<host>:8400/ws)
-//  Used by both the iOS receiver app and the macOS control app.
+//  WebSocket client for solunad (ws://<host>:8400/ws or wss://<tunnel-url>/ws)
+//  Supports local IP and internet tunnel (cloudflared / ngrok).
 //
 
 import Foundation
@@ -14,8 +14,9 @@ final class DaemonClient: ObservableObject {
     // MARK: - Published State
 
     @Published private(set) var isConnected = false
+    @Published private(set) var tunnelURL   = ""   // from system.info
 
-    // monitor (TX-mode Mac speaker)
+    // monitor speaker (TX-mode)
     @Published private(set) var monitorSupported = false
     @Published private(set) var monitorRunning   = false
     @Published              var monitorVolume: Float = 1.0
@@ -23,34 +24,32 @@ final class DaemonClient: ObservableObject {
     @Published private(set) var monitorPackets: UInt64 = 0
     @Published              var monitorBufferMs: Int = 20
 
-    // available output devices on Mac
+    // available output devices
     @Published private(set) var devices: [String] = []
     @Published              var selectedDevice = ""
 
     // MARK: - Private
 
-    private var task:    URLSessionWebSocketTask?
-    private let session = URLSession(configuration: .default)
-    private var msgId   = 0
-    private var timer:   Timer?
+    private var task:         URLSessionWebSocketTask?
+    private let session =     URLSession(configuration: .default)
+    private var msgId   =     0
+    private var timer:        Timer?
+    private var retryTimer:   Timer?
+    private var lastHost =    ""
 
     // MARK: - Connection
 
+    /// Connect to a solunad daemon.
+    /// - host: IP address, hostname, or tunnel domain (e.g. abc.trycloudflare.com)
     func connect(host: String) {
         guard !host.isEmpty else { return }
         disconnect()
-        guard let url = URL(string: "ws://\(host):8400/ws") else { return }
-        task = session.webSocketTask(with: url)
-        task?.resume()
-        isConnected = true
-        receiveLoop()
-        fetchAll()
-        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.fetchAll() }
-        }
+        lastHost = host
+        _connect(host: host)
     }
 
     func disconnect() {
+        retryTimer?.invalidate(); retryTimer = nil
         timer?.invalidate(); timer = nil
         task?.cancel(with: .goingAway, reason: nil); task = nil
         isConnected = false
@@ -86,9 +85,43 @@ final class DaemonClient: ObservableObject {
 
     // MARK: - Private helpers
 
+    private func _connect(host: String) {
+        guard let url = makeWSURL(host: host) else { return }
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest = 10
+        let s = URLSession(configuration: cfg)
+        task = s.webSocketTask(with: url)
+        task?.resume()
+        isConnected = true
+        receiveLoop()
+        fetchAll()
+        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.fetchAll() }
+        }
+    }
+
+    /// Build WebSocket URL from user input:
+    ///   - Raw IP / hostname (e.g. "192.168.1.10") → ws://host:8400/ws
+    ///   - Domain with dots not containing port (e.g. "abc.trycloudflare.com") → wss://host/ws
+    ///   - Already a ws:// or wss:// URL → use as-is
+    private func makeWSURL(host: String) -> URL? {
+        let h = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        if h.hasPrefix("ws://") || h.hasPrefix("wss://") {
+            return URL(string: h.hasSuffix("/ws") ? h : h + "/ws")
+        }
+        // Strip trailing slash / path
+        let bare = h.components(separatedBy: "/").first ?? h
+        // If it looks like a public domain (contains a dot and isn't a raw IP with port)
+        let isIP = bare.allSatisfy({ $0.isNumber || $0 == "." || $0 == ":" })
+        let scheme = isIP ? "ws" : "wss"
+        let portStr = isIP ? ":8400" : ""
+        return URL(string: "\(scheme)://\(bare)\(portStr)/ws")
+    }
+
     private func fetchAll() {
         send(#"{"id":\#(nextId()),"command":"monitor.stats"}"#)
         send(#"{"id":\#(nextId()),"command":"monitor.list_devices"}"#)
+        send(#"{"id":\#(nextId()),"command":"system.info"}"#)
     }
 
     private func nextId() -> Int { msgId += 1; return msgId }
@@ -108,8 +141,16 @@ final class DaemonClient: ObservableObject {
                 self.receiveLoop()
             case .failure:
                 Task { @MainActor [weak self] in
-                    self?.isConnected = false
-                    self?.timer?.invalidate()
+                    guard let self else { return }
+                    self.isConnected = false
+                    self.timer?.invalidate()
+                    // Auto-reconnect after 5s
+                    self.retryTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in
+                        Task { @MainActor [weak self] in
+                            guard let self, !self.lastHost.isEmpty else { return }
+                            self._connect(host: self.lastHost)
+                        }
+                    }
                 }
             }
         }
@@ -131,15 +172,19 @@ final class DaemonClient: ObservableObject {
             return
         }
 
-        // stats → JSON object
+        // stats / info → JSON object
         guard let d = try? JSONSerialization.jsonObject(with: inner) as? [String: Any] else { return }
 
         if d["supported"] != nil {
+            // monitor.stats
             monitorSupported = d["supported"] as? Bool ?? false
             monitorRunning   = d["running"]   as? Bool ?? false
             if let v = d["volume"] as? Double { monitorVolume = Float(v) }
             monitorMuted     = d["muted"]     as? Bool ?? false
             monitorPackets   = UInt64(d["packets"] as? Int ?? 0)
+        } else if d["tunnel_url"] != nil {
+            // system.info
+            tunnelURL = d["tunnel_url"] as? String ?? ""
         }
     }
 }
