@@ -464,18 +464,6 @@ static void monitor_thread_fn(const DaemonConfig& cfg) {
 
             if (frames > 0) {
                 g_mon_packets.fetch_add(1);
-                // Trim to target latency
-                size_t avail = ring.available_read();
-                uint32_t target = g_mon_target_ms.load() * (cfg.sample_rate / 1000u);
-                if (avail > target) {
-                    size_t excess = avail - target;
-                    while (excess > 0) {
-                        size_t chunk = std::min(excess, audio_buf.size() / cfg.channels);
-                        size_t dr = ring.read(audio_buf.data(), chunk);
-                        if (dr == 0) break;
-                        excess -= dr;
-                    }
-                }
             }
         }
 
