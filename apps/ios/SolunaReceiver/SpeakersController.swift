@@ -125,6 +125,19 @@ final class SpeakersController: ObservableObject {
 
     func client(for id: UUID) -> DaemonClient? { clients[id] }
 
+    /// True if at least one remote speaker is connected
+    var anyConnected: Bool { clients.values.contains { $0.isConnected } }
+
+    /// Set volume on all connected remote speakers
+    func setAllVolume(_ v: Float) {
+        clients.values.forEach { $0.setMonitorVolume(v) }
+    }
+
+    /// Mute/unmute all connected remote speakers
+    func setAllMute(_ m: Bool) {
+        clients.values.forEach { $0.setMonitorMute(m) }
+    }
+
     // MARK: - Private
 
     private func addDiscovered(name: String, host: String) {
