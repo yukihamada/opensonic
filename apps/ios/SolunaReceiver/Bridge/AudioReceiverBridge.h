@@ -21,6 +21,7 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 @interface SolunaReceiverStats : NSObject
 @property (nonatomic, readonly) uint64_t packetsReceived;
 @property (nonatomic, readonly) uint64_t packetsDropped;
+@property (nonatomic, readonly) uint64_t packetsConcealed;
 @property (nonatomic, readonly) uint64_t sequenceErrors;
 @property (nonatomic, readonly) uint64_t aes67Packets;
 @property (nonatomic, readonly) uint64_t ostpPackets;
