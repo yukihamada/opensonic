@@ -218,19 +218,17 @@ static std::string ws_handle(const std::string& msg) {
     } else if (cmd == "system.info") {
         std::string turl;
         { std::lock_guard<std::mutex> lk(g_tunnel_mutex); turl = g_tunnel_url; }
-        // Escape tunnel URL for JSON
-        std::string turl_esc;
-        for (char c : turl) { if (c == '"') turl_esc += '\\"'; else turl_esc += c; }
-        snprintf(buf, sizeof(buf),
-            "{"id":%d,"success":true,"data":"
-            ""{\\"tunnel_url\\":\\"%s\\","
-            "\\"multicast\\":\\"%s\\","
-            "\\"port\\":%u,"
-            "\\"channels\\":%u,"
-            "\\"sample_rate\\":%u}"}",
-            id, turl_esc.c_str(),
-            g_cfg_multicast, g_cfg_port,
-            g_cfg_channels, g_cfg_sample_rate);
+        // Build JSON manually to avoid escaping nightmares
+        char info[512];
+        snprintf(info, sizeof(info),
+            "{\"tunnel_url\":\"%s\","
+            "\"multicast\":\"%s\","
+            "\"port\":%u,"
+            "\"channels\":%u,"
+            "\"sample_rate\":%u}",
+            turl.c_str(), g_cfg_multicast,
+            g_cfg_port, g_cfg_channels, g_cfg_sample_rate);
+        snprintf(buf, sizeof(buf), "{"id":%d,"success":true,"data":"%s"}", id, info);
     } else {
         snprintf(buf, sizeof(buf),
             "{"id":%d,"success":false,"data":"unknown command"}", id);
@@ -323,6 +321,8 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
             cfg.rx_mode = true;
         } else if (arg == "--aes67-mode") {
             cfg.aes67_mode = true;
+        } else if (arg == "--tunnel") {
+            cfg.tunnel = true;
         } else if (arg == "--dtls") {
             cfg.security.dtls_enabled = true;
         } else if (arg == "--cert" && i + 1 < argc) {
