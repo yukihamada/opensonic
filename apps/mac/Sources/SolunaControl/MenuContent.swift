@@ -328,6 +328,12 @@ struct MenuContent: View {
         : "speaker.wave.2.fill"
     }
 
+    private var phoneVolumeIcon: String {
+        d.phoneVolume < 0.01 ? "speaker.fill"
+        : d.phoneVolume < 0.5 ? "speaker.wave.1.fill"
+        : "speaker.wave.2.fill"
+    }
+
     private func formatNum(_ n: UInt64) -> String {
         n >= 1_000_000 ? String(format: "%.1fM", Double(n)/1_000_000)
         : n >= 1_000   ? String(format: "%.1fK", Double(n)/1_000)
