@@ -7,9 +7,12 @@ import SwiftUI
 
 struct MenuContent: View {
     @EnvironmentObject private var d: DaemonClient
-    @AppStorage("macHost") private var host = "localhost"
-    @State private var editingHost = false
-    @State private var hostInput = ""
+    @AppStorage("macHost")   private var host      = "localhost"
+    @AppStorage("phoneHost") private var phoneHost = ""
+    @State private var editingHost      = false
+    @State private var hostInput        = ""
+    @State private var editingPhoneHost = false
+    @State private var phoneHostInput   = ""
 
     var body: some View {
         VStack(spacing: 0) {
