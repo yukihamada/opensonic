@@ -222,6 +222,118 @@ struct ContentView: View {
         .padding(.bottom, 24)
     }
 
+    // MARK: - Mac Controls
+
+    private var macControls: some View {
+        VStack(spacing: 0) {
+            Divider()
+                .padding(.horizontal)
+                .padding(.bottom, 16)
+
+            VStack(spacing: 14) {
+                // Header
+                HStack {
+                    Text("MAC SPEAKERS")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(daemon.isConnected ? Color.green : Color.gray)
+                            .frame(width: 6, height: 6)
+                        Text(daemon.isConnected ? "Connected" : "Offline")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                // Speakers on/off
+                Toggle(isOn: Binding(
+                    get: { daemon.monitorRunning },
+                    set: { on in
+                        if on {
+                            daemon.startMonitor(device: daemon.selectedDevice.isEmpty
+                                ? (daemon.devices.first ?? "default")
+                                : daemon.selectedDevice)
+                        } else {
+                            daemon.stopMonitor()
+                        }
+                    }
+                )) {
+                    Label("Speakers", systemImage: "hifispeaker.2.fill")
+                }
+                .disabled(!daemon.isConnected)
+
+                if daemon.monitorRunning {
+                    // Volume
+                    HStack(spacing: 10) {
+                        Button(action: { daemon.setMonitorMute(!daemon.monitorMuted) }) {
+                            Image(systemName: daemon.monitorMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                .foregroundColor(daemon.monitorMuted ? .red : .secondary)
+                                .frame(width: 24)
+                        }
+                        Slider(value: Binding(
+                            get: { daemon.monitorVolume },
+                            set: { daemon.setMonitorVolume($0) }
+                        ), in: 0...1)
+                        Text("\(Int(daemon.monitorVolume * 100))%")
+                            .font(.caption.monospacedDigit())
+                            .foregroundColor(.secondary)
+                            .frame(width: 36)
+                    }
+
+                    // Device picker
+                    if daemon.devices.count > 1 {
+                        Picker("Device", selection: Binding(
+                            get: { daemon.selectedDevice },
+                            set: { d in
+                                daemon.selectedDevice = d
+                                daemon.startMonitor(device: d)
+                            }
+                        )) {
+                            ForEach(daemon.devices, id: \.self) { Text($0).tag($0) }
+                        }
+                        .pickerStyle(.menu)
+                        .font(.subheadline)
+                    }
+                }
+
+                // Buffer
+                HStack {
+                    Text("Buffer")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Stepper(
+                        "\(daemon.monitorBufferMs) ms",
+                        value: Binding(
+                            get: { daemon.monitorBufferMs },
+                            set: { daemon.setMonitorBuffer($0) }
+                        ),
+                        in: 5...200, step: 5
+                    )
+                    .font(.subheadline)
+                }
+                .disabled(!daemon.isConnected)
+
+                // Packets (info only)
+                if daemon.monitorPackets > 0 {
+                    HStack {
+                        Text("Packets")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(formatNumber(daemon.monitorPackets))
+                            .font(.caption.monospacedDigit())
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+        }
+    }
+
     // MARK: - Computed Properties
 
     private var statusColor: Color {
