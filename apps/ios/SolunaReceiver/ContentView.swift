@@ -114,9 +114,12 @@ struct ContentView: View {
             }
             .onAppear {
                 loadSavedSettings()
-                if autoConnect {
-                    receiver.start()
-                }
+                if autoConnect { receiver.start() }
+                if !macHost.isEmpty { daemon.connect(host: macHost) }
+            }
+            .onChange(of: macHost) { host in
+                daemon.disconnect()
+                if !host.isEmpty { daemon.connect(host: host) }
             }
         }
     }
