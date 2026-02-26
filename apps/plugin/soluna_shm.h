@@ -83,19 +83,37 @@ typedef struct SolunaShmMap {
 extern "C" {
 #endif
 
+/** Returns the backing-file path: $TMPDIR/soluna_audio.shm */
+static inline const char* soluna_shm_path(void)
+{
+    static char _buf[512];
+    static int  _init = 0;
+    if (!_init) {
+        const char* tmp = getenv("TMPDIR");
+        if (!tmp || tmp[0] == '\0') tmp = "/tmp/";
+        /* $TMPDIR on macOS ends with '/', so just append the filename */
+        snprintf(_buf, sizeof(_buf), "%s%s", tmp, SOLUNA_SHM_FILENAME);
+        _init = 1;
+    }
+    return _buf;
+}
+
 /**
- * Open (or create) the SHM segment.
- * mode: O_RDWR | O_CREAT  for plugin (writer)
- *       O_RDWR             for daemon  (reader)
+ * Open (or create) the SHM backing file and mmap it.
+ * flags: O_RDWR | O_CREAT  — solunad (daemon, no sandbox) creates
+ *        O_RDWR             — driver plugin opens existing file
  * Returns 0 on success, -1 on error.
  */
 static inline int soluna_shm_open(SolunaShmMap* m, int flags)
 {
-    int fd = shm_open(SOLUNA_SHM_NAME, flags, 0666);  /* world-rw: solunad (yuki) reads, driver (_coreaudiod) writes */
+    /* Use open() on a $TMPDIR file — shm_open is blocked by the CoreAudio
+     * driver sandbox (Core-Audio-Driver-Service.helper denies ipc-posix-shm*
+     * but allows file-read* / write* on TMPDIR). */
+    int fd = open(soluna_shm_path(), flags, 0666);
     if (fd < 0) return -1;
 
     if (flags & O_CREAT) {
-        /* Force 0666 regardless of umask so other users (solunad) can access */
+        /* Force 0666 regardless of umask so the driver process can open it */
         fchmod(fd, 0666);
         if (ftruncate(fd, (off_t)SOLUNA_SHM_BYTES) < 0) {
             close(fd);
