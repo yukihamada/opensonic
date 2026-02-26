@@ -106,6 +106,7 @@ struct ContentView: View {
                 if newValue != nil { showingError = true }
             }
             .onAppear {
+                speakers.audioReceiver = receiver
                 loadSavedSettings()
                 if autoConnect { receiver.start() }
             }
