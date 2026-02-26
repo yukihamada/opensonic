@@ -179,6 +179,7 @@ struct SettingsView: View {
         tempMulticastGroup = "239.69.0.1"
         tempPort = "5004"
         tempChannels = 1
+        tempMacHost = ""
         autoConnect = false
 
         // Haptic feedback
