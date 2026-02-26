@@ -60,6 +60,21 @@ struct SettingsView: View {
                     }
                 }
 
+                Section(
+                    header: Text("Mac Control"),
+                    footer: Text("IP address of the Mac running solunad. Enables speaker and buffer controls.")
+                ) {
+                    HStack {
+                        Image(systemName: "desktopcomputer")
+                            .foregroundColor(.purple)
+                            .frame(width: 28)
+                        TextField("Mac IP (e.g. 192.168.1.10)", text: $tempMacHost)
+                            .keyboardType(.decimalPad)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                    }
+                }
+
                 Section(header: Text("Behavior")) {
                     Toggle(isOn: $autoConnect) {
                         HStack {
