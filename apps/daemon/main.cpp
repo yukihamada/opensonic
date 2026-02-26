@@ -263,16 +263,19 @@ static std::string ws_handle(const std::string& msg) {
         p = msg.find("\"volume\":");
         if (p != std::string::npos)
             try { g_mon_volume.store(std::fmax(0.0f, std::fmin(1.0f, std::stof(msg.substr(p + 9))))); } catch (...) {}
+        persist_config_save();
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
     } else if (cmd == "monitor.set_mute") {
         p = msg.find("\"muted\":");
         if (p != std::string::npos)
             g_mon_muted.store(msg.substr(p + 8, 4) == "true");
+        persist_config_save();
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
     } else if (cmd == "monitor.set_buffer") {
         p = msg.find("\"ms\":");
         if (p != std::string::npos)
             try { g_mon_target_ms.store(std::max(5u, std::min(500u, (uint32_t)std::stoul(msg.substr(p + 5))))); } catch (...) {}
+        persist_config_save();
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
     } else if (cmd == "time.ping") {
         // RTT measurement — client records t1 before sending, measures t4-t1 on response
@@ -281,6 +284,7 @@ static std::string ws_handle(const std::string& msg) {
         p = msg.find("\"ms\":");
         if (p != std::string::npos)
             try { g_speaker_delay_ms.store(std::min(500u, (uint32_t)std::stoul(msg.substr(p + 5)))); } catch (...) {}
+        persist_config_save();
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
     } else if (cmd == "monitor.list_devices") {
         using namespace soluna::pal;
