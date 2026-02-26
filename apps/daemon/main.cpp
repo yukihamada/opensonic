@@ -561,11 +561,13 @@ static int run_tx(const DaemonConfig& cfg) {
     std::thread shm_reader_thread;
 
     if (use_shm) {
-        // solunad owns the SHM lifecycle: create it here so the driver
-        // (which runs sandboxed as _coreaudiod) can open it without O_CREAT.
-        soluna_shm_unlink();  // remove stale SHM if any
+        // Open (or create) the SHM backing file.
+        // We do NOT unlink first: if the CoreAudio driver already has this
+        // file mmap-ed, removing + recreating it would give the driver an
+        // orphan mapping.  Using O_RDWR|O_CREAT on the same path reuses the
+        // existing inode, so the driver's live mmap sees the reset header.
         if (soluna_shm_open(&shm_map, O_RDWR | O_CREAT) != 0) {
-            fprintf(stderr, "Error: cannot create Soluna SHM (%s): %s\n",
+            fprintf(stderr, "Error: cannot open Soluna SHM (%s): %s\n",
                             soluna_shm_path(), strerror(errno));
             return 1;
         }
