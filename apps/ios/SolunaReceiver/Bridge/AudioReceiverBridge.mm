@@ -566,6 +566,7 @@ private:
 @interface SolunaAudioReceiver () {
     std::unique_ptr<ReceiverImpl> _impl;
     NSTimer *_statsTimer;
+    uint32_t _bufferTargetMs;
 }
 @end
 
