@@ -47,7 +47,16 @@ final class AudioReceiver: ObservableObject {
     /// Current volume (0.0 - 1.0)
     @Published var volume: Float = 1.0 {
         didSet {
-            receiver.volume = volume
+            if !isMuted {
+                receiver.volume = volume
+            }
+        }
+    }
+
+    /// Mute state — preserves volume level
+    @Published var isMuted: Bool = false {
+        didSet {
+            receiver.volume = isMuted ? 0 : volume
         }
     }
 
