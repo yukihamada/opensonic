@@ -928,6 +928,18 @@ static OSStatus Soluna_DoIOOperation(AudioServerPlugInDriverRef  inDriver,
         return noErr;
 
     SolunaDriver* drv = (SolunaDriver*)inDriver;
+
+    // Debug: log first 3 calls to confirm DoIOOperation is being invoked
+    { static _Atomic(uint32_t) sDbgCnt = 0;
+      uint32_t n = atomic_fetch_add(&sDbgCnt, 1u);
+      if (n < 3) {
+          FILE* f = fopen("/tmp/soluna_driver.log", "a");
+          if (f) { fprintf(f, "DoIOOperation#%u shmReady=%d frames=%u\n",
+                           n, (int)atomic_load(&drv->mShmReady), inIOBufferFrameSize);
+                   fclose(f); }
+      }
+    }
+
     if (!atomic_load(&drv->mShmReady)) {
         // Lazily retry attaching to SHM created by solunad (~every 100ms)
         static _Atomic(uint32_t) sRetryCounter = 0;
