@@ -680,6 +680,9 @@ static int run_tx(const DaemonConfig& cfg) {
     snprintf(g_cfg_multicast, sizeof(g_cfg_multicast), "%s", cfg.dest_ip.c_str());
     g_mon_supported.store(true);
 
+    // Restore persisted settings (volume, delay, mute, buffer)
+    persist_config_load();
+
     // Spawn monitor management thread
     std::thread mon_thread(monitor_thread_fn, std::cref(cfg));
 
