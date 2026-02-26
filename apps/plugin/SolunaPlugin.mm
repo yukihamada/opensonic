@@ -717,6 +717,47 @@ static OSStatus Soluna_GetPropertyData(AudioServerPlugInDriverRef inDriver,
         }
         }
         break;
+
+    // ── Volume control properties ──
+    case kSolunaVolumeID: {
+        SolunaDriver* drv = (SolunaDriver*)inDriver;
+        switch (inAddress->mSelector) {
+        case kAudioObjectPropertyBaseClass:
+            *outDataSize = sizeof(AudioClassID);
+            *((AudioClassID*)outData) = kAudioObjectClassID;
+            return noErr;
+        case kAudioObjectPropertyClass:
+            *outDataSize = sizeof(AudioClassID);
+            *((AudioClassID*)outData) = kAudioLevelControlClassID;
+            return noErr;
+        case kAudioObjectPropertyOwner:
+            *outDataSize = sizeof(AudioObjectID);
+            *((AudioObjectID*)outData) = kSolunaDeviceID;
+            return noErr;
+        case kAudioObjectPropertyName:
+            *outDataSize = sizeof(CFStringRef);
+            *((CFStringRef*)outData) = CFSTR("Master Volume");
+            return noErr;
+        case kAudioObjectPropertyOwnedObjects:
+            *outDataSize = 0;
+            return noErr;
+        case kAudioLevelControlPropertyScalarValue:
+            *outDataSize = sizeof(Float32);
+            *((Float32*)outData) = drv->mVolume;
+            return noErr;
+        case kAudioLevelControlPropertyDecibelValue:
+            *outDataSize = sizeof(Float32);
+            *((Float32*)outData) = (drv->mVolume <= 0.0f)
+                ? kVolMin_dB : 20.0f * log10f(drv->mVolume);
+            return noErr;
+        case kAudioLevelControlPropertyDecibelRange:
+            *outDataSize = sizeof(AudioValueRange);
+            ((AudioValueRange*)outData)->mMinimum = kVolMin_dB;
+            ((AudioValueRange*)outData)->mMaximum = kVolMax_dB;
+            return noErr;
+        }
+        break;
+    }
     }
     return kAudioHardwareUnknownPropertyError;
 }
