@@ -143,7 +143,11 @@ final class DaemonClient: ObservableObject {
             switch result {
             case .success(let message):
                 if case .string(let text) = message {
-                    Task { @MainActor [weak self] in self?.parse(text) }
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.isConnected = true   // mark connected on first real response
+                        self.parse(text)
+                    }
                 }
                 self.receiveLoop()
             case .failure:
