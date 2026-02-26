@@ -315,7 +315,8 @@ struct ContentView: View {
         let port = defaults.integer(forKey: "port")
         if port > 0 { receiver.port = UInt16(port) }
         let channels = defaults.integer(forKey: "channels")
-        if channels > 0 { receiver.channels = UInt32(channels) }
+        // Soluna transmits stereo (2ch); only apply if explicitly set to ≥2
+        if channels >= 2 { receiver.channels = UInt32(channels) }
     }
 
     private func formatNumber(_ value: UInt64) -> String {
