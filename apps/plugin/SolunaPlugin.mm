@@ -773,10 +773,35 @@ static OSStatus Soluna_SetPropertyData(AudioServerPlugInDriverRef inDriver,
                                         UInt32 inDataSize,
                                         const void* inData)
 {
-    (void)inDriver; (void)inObjectID; (void)inClientPID;
-    (void)inAddress; (void)inQualifierDataSize; (void)inQualifierData;
-    (void)inDataSize; (void)inData;
-    // We accept format changes silently (only one format supported anyway)
+    (void)inClientPID; (void)inQualifierDataSize; (void)inQualifierData; (void)inDataSize;
+
+    if (inObjectID == kSolunaVolumeID) {
+        SolunaDriver* drv = (SolunaDriver*)inDriver;
+        Float32 v = 1.0f;
+        if (inAddress->mSelector == kAudioLevelControlPropertyScalarValue) {
+            v = *((const Float32*)inData);
+        } else if (inAddress->mSelector == kAudioLevelControlPropertyDecibelValue) {
+            Float32 dB = *((const Float32*)inData);
+            v = powf(10.0f, dB / 20.0f);
+        } else {
+            return noErr;
+        }
+        if (v < 0.0f) v = 0.0f;
+        if (v > 1.0f) v = 1.0f;
+        drv->mVolume = v;
+
+        // Notify the HAL that the scalar value changed
+        if (drv->mHost) {
+            AudioObjectPropertyAddress addr = {
+                kAudioLevelControlPropertyScalarValue,
+                kAudioObjectPropertyScopeGlobal,
+                kAudioObjectPropertyElementMain
+            };
+            drv->mHost->PropertiesChanged(drv->mHost, kSolunaVolumeID, 1, &addr);
+        }
+        return noErr;
+    }
+    // Accept format changes silently (only one format supported)
     return noErr;
 }
 
