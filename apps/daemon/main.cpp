@@ -377,7 +377,8 @@ static void monitor_thread_fn(const DaemonConfig& cfg) {
         // --- Open audio output ---
         RingBuffer ring(kRingFrames, frame_size);
         std::atomic<bool> prefilled{false};
-        std::vector<int32_t> cb_buf(kFramesPerPkt * cfg.channels);
+        // cb_buf must be large enough for any fc CoreAudio may use (up to 4096)
+        std::vector<int32_t> cb_buf(4096 * cfg.channels);
 
         auto audio = AudioDevice::create();
         if (!audio) continue;
@@ -393,8 +394,27 @@ static void monitor_thread_fn(const DaemonConfig& cfg) {
 
         audio->start([&](float* buf, uint32_t fc) {
             size_t samples = fc * cfg.channels;
+
+            // Latency trim: if ring has grown beyond target, skip excess from reader side
+            {
+                uint32_t target = g_mon_target_ms.load() * (cfg.sample_rate / 1000u);
+                const uint32_t min_target = fc * 4;
+                if (target < min_target) target = min_target;
+                size_t avail = ring.available_read();
+                if (avail > target + fc) {
+                    size_t excess = avail - target - fc;
+                    // Discard in chunks, staying within cb_buf capacity
+                    while (excess > 0) {
+                        size_t chunk = std::min(excess, cb_buf.size() / cfg.channels);
+                        size_t dr = ring.read(cb_buf.data(), chunk);
+                        if (dr == 0) break;
+                        excess = (excess > dr) ? excess - dr : 0;
+                    }
+                }
+            }
+
             if (!prefilled.load()) {
-                if (ring.available_read() < kFramesPerPkt * 4) {
+                if (ring.available_read() < fc * 4) {
                     std::memset(buf, 0, samples * sizeof(float));
                     return;
                 }
