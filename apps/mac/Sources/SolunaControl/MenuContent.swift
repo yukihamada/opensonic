@@ -303,7 +303,10 @@ struct MenuContent: View {
             }
         }
         .frame(width: 280)
-        .onAppear { d.connect(host: host) }
+        .onAppear {
+            d.connect(host: host)
+            if !phoneHost.isEmpty { d.connectPhone(host: phoneHost) }
+        }
     }
 
     // MARK: - Helpers
