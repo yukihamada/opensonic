@@ -158,7 +158,7 @@ struct SettingsView: View {
     private func resetToDefaults() {
         tempMulticastGroup = "239.69.0.1"
         tempPort = "5004"
-        tempChannels = 1
+        tempChannels = 2
         autoConnect = false
 
         // Haptic feedback
