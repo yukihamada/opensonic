@@ -15,10 +15,12 @@ struct SettingsView: View {
     @AppStorage("port") private var port = 5004
     @AppStorage("channels") private var channels = 1
     @AppStorage("autoConnect") private var autoConnect = false
+    @AppStorage("macHost")     private var macHost     = ""
 
     @State private var tempMulticastGroup: String = ""
     @State private var tempPort: String = ""
     @State private var tempChannels: Int = 1
+    @State private var tempMacHost: String = ""
     @State private var showingResetAlert = false
 
     var body: some View {
