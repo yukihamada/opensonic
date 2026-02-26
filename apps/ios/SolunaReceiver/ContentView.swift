@@ -399,6 +399,23 @@ private struct RemoteSpeakerRow: View {
             }
             .disabled(!daemon.isConnected)
 
+            // Speaker delay (for sync with receivers)
+            HStack(spacing: 10) {
+                Image(systemName: "timer")
+                    .foregroundColor(.secondary)
+                    .frame(width: 24)
+                Slider(value: Binding(
+                    get: { Double(daemon.monitorDelayMs) },
+                    set: { daemon.setMonitorDelay(Int($0)) }
+                ), in: 0...200, step: 5)
+                .accentColor(.secondary)
+                Text("\(daemon.monitorDelayMs)ms")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .frame(width: 44)
+            }
+            .disabled(!daemon.isConnected)
+
             // Remove button
             HStack {
                 Spacer()
