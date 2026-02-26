@@ -820,9 +820,6 @@ static OSStatus Soluna_DoIOOperation(AudioServerPlugInDriverRef  inDriver,
 
 // ── vtable ────────────────────────────────────────────────────────────────────
 
-// Forward declaration so factory can reference it
-static AudioServerPlugInDriverInterface gSolunaInterface;
-
 static AudioServerPlugInDriverInterface gSolunaInterface = {
     /* _reserved                     */ nullptr,
     /* QueryInterface                */ Soluna_QueryInterface,
