@@ -547,15 +547,141 @@ static int run_tx(const DaemonConfig& cfg) {
         return 1;
     }
 
-    // Conversion buffer (float from ALSA → S24 for network)
-    std::vector<int32_t> conv_buf(kFramesPerPacket * cfg.channels);
+    // ── SHM (soluna virtual device) path ────────────────────────────────────
+#ifdef __APPLE__
+    const bool use_shm = (cfg.audio_device == "soluna");
+#else
+    const bool use_shm = false;
+#endif
 
-    // Audio callback: capture → convert → ring buffer
-    audio->start([&](float* buffer, uint32_t frame_count) {
-        size_t samples = frame_count * cfg.channels;
-        float_to_s24(buffer, conv_buf.data(), samples);
-        ring.write(conv_buf.data(), frame_count);
-    });
+    // Speaker ring for local playback (SHM mode)
+    constexpr size_t kSpeakerRingFrames = 4096;
+    RingBuffer speaker_ring(kSpeakerRingFrames, sizeof(float) * cfg.channels);
+
+    // SHM state (populated below if use_shm)
+#ifdef __APPLE__
+    SolunaShmMap shm_map{};
+    std::atomic<bool> shm_open_ok{false};
+    std::unique_ptr<AudioDevice> speaker_audio;
+    std::thread shm_reader_thread;
+
+    if (use_shm) {
+        // Open shared memory written by Soluna.driver
+        if (soluna_shm_open(&shm_map, O_RDWR) != 0) {
+            fprintf(stderr, "Error: cannot open Soluna SHM (%s). "
+                            "Is Soluna.driver installed and 'Soluna' selected as output?\n",
+                            SOLUNA_SHM_NAME);
+            return 1;
+        }
+        if (soluna_shm_validate(&shm_map) != 0) {
+            fprintf(stderr, "Error: Soluna SHM magic mismatch — "
+                            "driver version mismatch or not initialized\n");
+            soluna_shm_close(&shm_map);
+            return 1;
+        }
+        shm_open_ok.store(true);
+
+        // ── Local speaker output ────────────────────────────────────────────
+        std::atomic<bool> sp_prefilled{false};
+        speaker_audio = AudioDevice::create();
+        if (!speaker_audio) {
+            fprintf(stderr, "Warning: cannot create speaker audio device\n");
+        } else {
+            AudioStreamConfig sp_cfg;
+            sp_cfg.sample_rate      = cfg.sample_rate;
+            sp_cfg.channels         = cfg.channels;
+            sp_cfg.frames_per_buffer = kFramesPerPacket;
+            sp_cfg.format = SampleFormat::S24_LE; // driver uses float32 for output
+
+            if (!speaker_audio->open_output(cfg.local_speaker_device, sp_cfg)) {
+                fprintf(stderr, "Warning: cannot open speaker '%s'\n",
+                        cfg.local_speaker_device.c_str());
+                speaker_audio.reset();
+            } else {
+                const size_t sp_channels = cfg.channels;
+                speaker_audio->start([&sp_prefilled, &speaker_ring, sp_channels,
+                                      &cfg](float* buf, uint32_t fc) {
+                    size_t samples = fc * sp_channels;
+                    if (!sp_prefilled.load()) {
+                        if (speaker_ring.available_read() < fc * 4) {
+                            std::memset(buf, 0, samples * sizeof(float));
+                            return;
+                        }
+                        sp_prefilled.store(true);
+                    }
+                    // speaker_ring stores float frames as raw bytes
+                    // We borrow the int32_t ring interface but store floats
+                    if (speaker_ring.available_read() < fc) {
+                        std::memset(buf, 0, samples * sizeof(float));
+                        sp_prefilled.store(false);
+                        return;
+                    }
+                    // Read float frames directly into output buffer
+                    speaker_ring.read(reinterpret_cast<int32_t*>(buf), fc);
+                    // Apply monitor gain
+                    float gain = g_mon_muted.load() ? 0.0f : g_mon_volume.load();
+                    if (gain != 1.0f) {
+                        for (size_t i = 0; i < samples; i++) buf[i] *= gain;
+                    }
+                });
+                printf("solunad SHM: local speaker '%s' opened\n",
+                       cfg.local_speaker_device.empty()
+                           ? "(default)" : cfg.local_speaker_device.c_str());
+            }
+        }
+
+        // ── SHM reader thread ───────────────────────────────────────────────
+        // Reads float32 frames from SHM, converts to S24 for TX ring,
+        // and also feeds the speaker ring.
+        shm_reader_thread = std::thread([&]() {
+            constexpr uint32_t kReadChunk = 256; // frames per iteration
+            std::vector<float>   flt_buf(kReadChunk * cfg.channels);
+            std::vector<int32_t> s24_buf(kReadChunk * cfg.channels);
+
+            while (g_running.load()) {
+                uint32_t avail = (uint32_t)soluna_shm_available_read(&shm_map);
+                if (avail < kReadChunk) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(500));
+                    continue;
+                }
+                uint32_t rd = soluna_shm_read(&shm_map, flt_buf.data(), kReadChunk);
+                if (rd == 0) continue;
+
+                // float32 → S24 → TX ring
+                float_to_s24(flt_buf.data(), s24_buf.data(), rd * cfg.channels);
+                ring.write(s24_buf.data(), rd);
+
+                // float32 → speaker ring (stores float frames via int32_t alias)
+                static_assert(sizeof(float) == sizeof(int32_t),
+                              "float/int32_t size mismatch");
+                speaker_ring.write(
+                    reinterpret_cast<const int32_t*>(flt_buf.data()), rd);
+            }
+        });
+
+        printf("solunad TX (SHM): Soluna.driver → %s:%u (%uHz, %uch)\n",
+               cfg.dest_ip.c_str(), cfg.dest_port,
+               cfg.sample_rate, cfg.channels);
+    } else
+#endif
+    {
+        // ── Normal audio input path ─────────────────────────────────────────
+        if (!audio->open_input(cfg.audio_device, audio_cfg)) {
+            fprintf(stderr, "Error: cannot open audio input device '%s'\n",
+                    cfg.audio_device.c_str());
+            return 1;
+        }
+
+        // Conversion buffer (float from input → S24 for network)
+        std::vector<int32_t> conv_buf(kFramesPerPacket * cfg.channels);
+
+        // Audio callback: capture → convert → ring buffer
+        audio->start([&](float* buffer, uint32_t frame_count) {
+            size_t samples = frame_count * cfg.channels;
+            float_to_s24(buffer, conv_buf.data(), samples);
+            ring.write(conv_buf.data(), frame_count);
+        });
+    }
 
     // Create transport manager for optional DTLS
     TransportManager transport_mgr(cfg.security);
