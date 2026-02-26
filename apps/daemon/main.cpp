@@ -79,6 +79,72 @@ static std::mutex     g_mon_mutex;
 static MonitorReq     g_mon_start_req;
 static std::atomic<bool> g_mon_stop_req{false};
 
+// ── Persistent config (~/.config/solunad/config.json) ────────────────────────
+
+static std::string persist_config_path() {
+    const char* home = getenv("HOME");
+    if (!home) home = "/tmp";
+    return std::string(home) + "/.config/solunad/config.json";
+}
+
+static void persist_config_save() {
+    std::string path = persist_config_path();
+    // Ensure directory exists
+    std::string dir = path.substr(0, path.rfind('/'));
+    std::string mkdir_cmd = "mkdir -p '" + dir + "'";
+    ::system(mkdir_cmd.c_str());
+
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+        "{\"speaker_delay_ms\":%u,"
+        "\"monitor_volume\":%.3f,"
+        "\"monitor_muted\":%s,"
+        "\"monitor_buffer_ms\":%u}\n",
+        g_speaker_delay_ms.load(),
+        (double)g_mon_volume.load(),
+        g_mon_muted.load() ? "true" : "false",
+        g_mon_target_ms.load());
+
+    std::ofstream f(path);
+    if (f.is_open()) f << buf;
+}
+
+static void persist_config_load() {
+    std::ifstream f(persist_config_path());
+    if (!f.is_open()) return;
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    std::string json = ss.str();
+
+    // Parse simple key:value pairs without external JSON library
+    auto get_uint = [&](const char* key, uint32_t def) -> uint32_t {
+        std::string k = std::string("\"") + key + "\":";
+        auto pos = json.find(k);
+        if (pos == std::string::npos) return def;
+        try { return (uint32_t)std::stoul(json.substr(pos + k.size())); } catch (...) { return def; }
+    };
+    auto get_float = [&](const char* key, float def) -> float {
+        std::string k = std::string("\"") + key + "\":";
+        auto pos = json.find(k);
+        if (pos == std::string::npos) return def;
+        try { return std::stof(json.substr(pos + k.size())); } catch (...) { return def; }
+    };
+    auto get_bool = [&](const char* key, bool def) -> bool {
+        std::string k = std::string("\"") + key + "\":";
+        auto pos = json.find(k);
+        if (pos == std::string::npos) return def;
+        auto vpos = pos + k.size();
+        return json.substr(vpos, 4) == "true";
+    };
+
+    g_speaker_delay_ms.store(std::min(500u, get_uint("speaker_delay_ms", 40)));
+    g_mon_volume.store(std::max(0.0f, std::min(1.0f, get_float("monitor_volume", 1.0f))));
+    g_mon_muted.store(get_bool("monitor_muted", false));
+    g_mon_target_ms.store(std::max(5u, std::min(500u, get_uint("monitor_buffer_ms", 20))));
+
+    fprintf(stderr, "[config] Loaded from %s\n", persist_config_path().c_str());
+}
+
 // ── Tunnel (cloudflared / ngrok) ──────────────────────────────────────────────
 static std::mutex  g_tunnel_mutex;
 static std::string g_tunnel_url;   // set by tunnel_thread_fn when URL is known
