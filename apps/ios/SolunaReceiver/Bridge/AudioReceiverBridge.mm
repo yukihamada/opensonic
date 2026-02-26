@@ -424,6 +424,50 @@ private:
             if (p != std::string::npos)
                 set_muted(msg.substr(p + 8, 4) == "true");
             snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+
+        // ── monitor.* aliases (Mac DaemonClient compatibility) ──────────
+        } else if (cmd == "monitor.stats") {
+            auto st = stats();
+            uint32_t bms = target_fill_frames_.load() / 48u;
+            snprintf(buf, sizeof(buf),
+                "{\"id\":%d,\"success\":true,\"data\":"
+                "\"{\\\"supported\\\":true,\\\"running\\\":true,"
+                "\\\"volume\\\":%.3f,\\\"muted\\\":%s,"
+                "\\\"packets\\\":%llu,\\\"buf_ms\\\":%u}\"}",
+                id,
+                (double)volume_.load(),
+                muted_.load() ? "true" : "false",
+                (unsigned long long)st.packets_received,
+                bms);
+        } else if (cmd == "monitor.set_volume") {
+            p = msg.find("\"volume\":");
+            if (p != std::string::npos) {
+                try { set_volume(std::stof(msg.substr(p + 9))); } catch (...) {}
+            }
+            snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+        } else if (cmd == "monitor.set_mute") {
+            p = msg.find("\"muted\":");
+            if (p != std::string::npos)
+                set_muted(msg.substr(p + 8, 4) == "true");
+            snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+        } else if (cmd == "monitor.set_buffer") {
+            p = msg.find("\"ms\":");
+            if (p != std::string::npos) {
+                try {
+                    uint32_t ms = static_cast<uint32_t>(std::stoul(msg.substr(p + 5)));
+                    set_buffer_ms(ms);
+                } catch (...) {}
+            }
+            snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+        } else if (cmd == "monitor.list_devices") {
+            snprintf(buf, sizeof(buf),
+                "{\"id\":%d,\"success\":true,\"data\":\"[]\"}",
+                id);
+        } else if (cmd == "system.info") {
+            snprintf(buf, sizeof(buf),
+                "{\"id\":%d,\"success\":true,\"data\":"
+                "\"{\\\"tunnel_url\\\":\\\"\\\"}\"}",
+                id);
         } else {
             snprintf(buf, sizeof(buf),
                 "{\"id\":%d,\"success\":false,\"data\":\"unknown command\"}", id);
