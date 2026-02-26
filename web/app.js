@@ -320,6 +320,14 @@ function buildCard(idx) {
     <span class="buf-label-txt">Buf</span>
     <select class="buf-sel" id="rxc-bsel-${idx}">${buildBufOptions(20)}</select>
   </div>
+  <div class="delay-bar-row" id="rxc-delay-row-${idx}" style="display:none">
+    <span class="buf-label-txt">Dly</span>
+    <div class="delay-bar-wrap">
+      <div class="delay-bar-fill" id="rxc-dbar-${idx}"></div>
+    </div>
+    <span class="rxc-stat-val" id="rxc-delay-${idx}" style="font-size:0.72rem;min-width:3em;text-align:right">—</span>
+  </div>
+  <div class="loss-sparkline" id="rxc-spark-${idx}"></div>
   <div class="rxc-footer">
     <div class="rxc-stats">
       <span>Pkts&thinsp;<span class="rxc-stat-val" id="rxc-pkts-${idx}">—</span></span>
