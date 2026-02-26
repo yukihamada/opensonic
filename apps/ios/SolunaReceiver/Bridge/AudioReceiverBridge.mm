@@ -596,6 +596,7 @@ private:
 @implementation SolunaReceiverStats {
     uint64_t _packetsReceived;
     uint64_t _packetsDropped;
+    uint64_t _packetsConcealed;
     uint64_t _sequenceErrors;
     uint64_t _aes67Packets;
     uint64_t _ostpPackets;
@@ -604,20 +605,22 @@ private:
 - (instancetype)initWithStats:(const SimpleRtpReceiver::Stats&)stats {
     self = [super init];
     if (self) {
-        _packetsReceived = stats.packets_received;
-        _packetsDropped = stats.packets_dropped;
-        _sequenceErrors = stats.sequence_errors;
-        _aes67Packets = stats.aes67_packets;
-        _ostpPackets = stats.ostp_packets;
+        _packetsReceived  = stats.packets_received;
+        _packetsDropped   = stats.packets_dropped;
+        _packetsConcealed = stats.packets_concealed;
+        _sequenceErrors   = stats.sequence_errors;
+        _aes67Packets     = stats.aes67_packets;
+        _ostpPackets      = stats.ostp_packets;
     }
     return self;
 }
 
-- (uint64_t)packetsReceived { return _packetsReceived; }
-- (uint64_t)packetsDropped { return _packetsDropped; }
-- (uint64_t)sequenceErrors { return _sequenceErrors; }
-- (uint64_t)aes67Packets { return _aes67Packets; }
-- (uint64_t)ostpPackets { return _ostpPackets; }
+- (uint64_t)packetsReceived  { return _packetsReceived; }
+- (uint64_t)packetsDropped   { return _packetsDropped; }
+- (uint64_t)packetsConcealed { return _packetsConcealed; }
+- (uint64_t)sequenceErrors   { return _sequenceErrors; }
+- (uint64_t)aes67Packets     { return _aes67Packets; }
+- (uint64_t)ostpPackets      { return _ostpPackets; }
 
 @end
 
