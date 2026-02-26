@@ -74,6 +74,36 @@ static std::mutex     g_mon_mutex;
 static MonitorReq     g_mon_start_req;
 static std::atomic<bool> g_mon_stop_req{false};
 
+// ── Tunnel (cloudflared / ngrok) ──────────────────────────────────────────────
+static std::mutex  g_tunnel_mutex;
+static std::string g_tunnel_url;   // set by tunnel_thread_fn when URL is known
+
+static void tunnel_thread_fn() {
+    FILE* pipe = popen("cloudflared tunnel --url http://localhost:8400 2>&1", "r");
+    if (!pipe) pipe = popen("ngrok http 8400 --log=stdout 2>&1", "r");
+    if (!pipe) { fprintf(stderr, "[tunnel] Neither cloudflared nor ngrok found\n"); return; }
+    char line[512];
+    while (fgets(line, sizeof(line), pipe)) {
+        std::string s(line);
+        for (const char* pat : {"https://", "http://"}) {
+            auto pos = s.find(pat);
+            if (pos == std::string::npos) continue;
+            auto end = s.find_first_of(" \t\n\r|", pos + 8);
+            std::string url = s.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+            if (url.size() > 12 && url.find("localhost") == std::string::npos) {
+                std::lock_guard<std::mutex> lk(g_tunnel_mutex);
+                if (g_tunnel_url != url) {
+                    g_tunnel_url = url;
+                    fprintf(stderr, "\n[tunnel] Public URL: %s\n", url.c_str());
+                    fprintf(stderr, "[tunnel] Share this URL with your iPhone\n\n");
+                }
+                break;
+            }
+        }
+    }
+    pclose(pipe);
+}
+
 static void signal_handler(int) {
     g_running.store(false);
 }
@@ -185,9 +215,25 @@ static std::string ws_handle(const std::string& msg) {
         }
         pos += snprintf(devbuf + pos, sizeof(devbuf) - pos, "]");
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"%s\"}", id, devbuf);
+    } else if (cmd == "system.info") {
+        std::string turl;
+        { std::lock_guard<std::mutex> lk(g_tunnel_mutex); turl = g_tunnel_url; }
+        // Escape tunnel URL for JSON
+        std::string turl_esc;
+        for (char c : turl) { if (c == '"') turl_esc += '\\"'; else turl_esc += c; }
+        snprintf(buf, sizeof(buf),
+            "{"id":%d,"success":true,"data":"
+            ""{\\"tunnel_url\\":\\"%s\\","
+            "\\"multicast\\":\\"%s\\","
+            "\\"port\\":%u,"
+            "\\"channels\\":%u,"
+            "\\"sample_rate\\":%u}"}",
+            id, turl_esc.c_str(),
+            g_cfg_multicast, g_cfg_port,
+            g_cfg_channels, g_cfg_sample_rate);
     } else {
         snprintf(buf, sizeof(buf),
-            "{\"id\":%d,\"success\":false,\"data\":\"unknown command\"}", id);
+            "{"id":%d,"success":false,"data":"unknown command"}", id);
     }
     return buf;
 }
@@ -205,6 +251,7 @@ struct DaemonConfig {
     bool tx_mode = false;
     bool rx_mode = false;
     bool aes67_mode = false;
+    bool tunnel = false;  // start cloudflared/ngrok tunnel
     std::string audio_device;
     std::string dest_ip = soluna::kMulticastAudio;
     uint16_t dest_port = soluna::kPortRTPBase;

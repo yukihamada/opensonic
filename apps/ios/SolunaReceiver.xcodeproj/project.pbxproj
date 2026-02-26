@@ -69,6 +69,7 @@
 				2A0002 /* ContentView.swift */,
 				2A0008 /* SettingsView.swift */,
 				2A0003 /* AudioReceiver.swift */,
+				2A0020 /* DaemonClient.swift */,
 				5A0010 /* Bridge */,
 				2A0009 /* Assets.xcassets */,
 				2A0007 /* Info.plist */,
@@ -179,6 +180,7 @@
 				1A0002 /* ContentView.swift in Sources */,
 				1A0005 /* SettingsView.swift in Sources */,
 				1A0003 /* AudioReceiver.swift in Sources */,
+				1A0020 /* DaemonClient.swift in Sources */,
 				1A0004 /* AudioReceiverBridge.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
