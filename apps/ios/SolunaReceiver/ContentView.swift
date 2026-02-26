@@ -15,6 +15,8 @@ struct ContentView: View {
     @State private var showAddSpeaker   = false
     @State private var newSpeakerName   = ""
     @State private var newSpeakerHost   = ""
+    @State private var masterVolume: Float = 1.0
+    @State private var masterMuted = false
 
     @AppStorage("autoConnect") private var autoConnect = false
 
