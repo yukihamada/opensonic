@@ -464,6 +464,20 @@ static OSStatus Soluna_GetPropertyDataSize(AudioServerPlugInDriverRef inDriver,
             *outDataSize = sizeof(AudioStreamRangedDescription); return noErr;
         }
         break;
+
+    // ── Volume control ──
+    case kSolunaVolumeID:
+        switch (inAddress->mSelector) {
+        case kAudioObjectPropertyBaseClass:
+        case kAudioObjectPropertyClass:          *outDataSize = sizeof(AudioClassID); return noErr;
+        case kAudioObjectPropertyOwner:          *outDataSize = sizeof(AudioObjectID); return noErr;
+        case kAudioObjectPropertyName:           *outDataSize = sizeof(CFStringRef); return noErr;
+        case kAudioObjectPropertyOwnedObjects:   *outDataSize = 0; return noErr;
+        case kAudioLevelControlPropertyScalarValue:
+        case kAudioLevelControlPropertyDecibelValue: *outDataSize = sizeof(Float32); return noErr;
+        case kAudioLevelControlPropertyDecibelRange: *outDataSize = sizeof(AudioValueRange); return noErr;
+        }
+        break;
     }
     return kAudioHardwareUnknownPropertyError;
 }
