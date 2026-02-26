@@ -244,14 +244,32 @@ private:
 
 #if TARGET_OS_MAC && !TARGET_OS_IPHONE
         // Set device on macOS
-        if (!device_id.empty() && device_id != "default") {
+        {
             AudioDeviceID dev_id = 0;
 
-            // Try to parse as numeric ID first
-            try {
-                dev_id = static_cast<AudioDeviceID>(std::stoul(device_id));
-            } catch (const std::exception&) {
-                dev_id = find_device_by_name(device_id, capture);
+            if (!device_id.empty() && device_id != "default") {
+                // Explicit device requested — parse as ID or name
+                try {
+                    dev_id = static_cast<AudioDeviceID>(std::stoul(device_id));
+                } catch (const std::exception&) {
+                    dev_id = find_device_by_name(device_id, capture);
+                }
+                if (dev_id == 0) {
+                    fprintf(stderr, "CoreAudio: device '%s' not found, using system default\n", device_id.c_str());
+                }
+            }
+
+            if (dev_id == 0 && !capture) {
+                // For output with no explicit device: use DefaultSystemOutputDevice
+                // (avoids feedback loop when a virtual device like Soluna is the
+                //  DefaultOutputDevice but not the physical speakers)
+                AudioObjectPropertyAddress addr = {
+                    kAudioHardwarePropertyDefaultSystemOutputDevice,
+                    kAudioObjectPropertyScopeGlobal,
+                    kAudioObjectPropertyElementMain
+                };
+                UInt32 sz = sizeof(dev_id);
+                AudioObjectGetPropertyData(kAudioObjectSystemObject, &addr, 0, nullptr, &sz, &dev_id);
             }
 
             if (dev_id != 0) {
@@ -264,8 +282,6 @@ private:
                 if (status != noErr) {
                     fprintf(stderr, "CoreAudio: Failed to set device %u: %d\n", dev_id, (int)status);
                 }
-            } else {
-                fprintf(stderr, "CoreAudio: device '%s' not found, using default\n", device_id.c_str());
             }
         }
 #else
