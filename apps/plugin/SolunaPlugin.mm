@@ -572,6 +572,10 @@ static OSStatus Soluna_GetPropertyData(AudioServerPlugInDriverRef inDriver,
             *((CFStringRef*)outData) = CFSTR("Soluna");
             return noErr;
         case kAudioObjectPropertyOwnedObjects:
+            *outDataSize = 2 * sizeof(AudioObjectID);
+            ((AudioObjectID*)outData)[0] = kSolunaStreamID;
+            ((AudioObjectID*)outData)[1] = kSolunaVolumeID;
+            return noErr;
         case kAudioDevicePropertyStreams:
             *outDataSize = sizeof(AudioObjectID);
             *((AudioObjectID*)outData) = kSolunaStreamID;
