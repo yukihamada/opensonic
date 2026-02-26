@@ -372,6 +372,10 @@ static OSStatus Soluna_IsPropertySettable(AudioServerPlugInDriverRef inDriver,
         if (inAddress->mSelector == kAudioStreamPropertyVirtualFormat ||
             inAddress->mSelector == kAudioStreamPropertyPhysicalFormat)
             *outIsSettable = true;
+    } else if (inObjectID == kSolunaVolumeID) {
+        if (inAddress->mSelector == kAudioLevelControlPropertyScalarValue ||
+            inAddress->mSelector == kAudioLevelControlPropertyDecibelValue)
+            *outIsSettable = true;
     }
     return noErr;
 }
