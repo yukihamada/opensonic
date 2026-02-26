@@ -538,6 +538,24 @@ function patchCard(idx) {
         }
         $bsel.value = String(best);
     }
+
+    // ── delay bar ──
+    const delayMs = s.buf_target_ms ?? 0;
+    const $delayRow = document.getElementById('rxc-delay-row-' + idx);
+    const $dbar = document.getElementById('rxc-dbar-' + idx);
+    const $delayVal = document.getElementById('rxc-delay-' + idx);
+    if ($delayRow && delayMs > 0) {
+        $delayRow.style.display = '';
+        const pct = Math.min(100, delayMs / 200 * 100);
+        if ($dbar) $dbar.style.width = pct + '%';
+        if ($delayVal) $delayVal.textContent = delayMs + 'ms';
+    }
+
+    // ── loss sparkline ──
+    const $spark = document.getElementById('rxc-spark-' + idx);
+    if ($spark && conn.lossHistory && conn.lossHistory.some(v => v > 0)) {
+        $spark.innerHTML = renderLossSvg(conn.lossHistory, $spark.offsetWidth || 240, 28);
+    }
 }
 
 function setCardConn(idx, on) {
