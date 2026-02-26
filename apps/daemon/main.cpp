@@ -69,6 +69,7 @@ static std::atomic<float>    g_mon_volume{1.0f};
 static std::atomic<bool>     g_mon_muted{false};
 static std::atomic<uint64_t> g_mon_packets{0};
 static std::atomic<uint32_t> g_mon_target_ms{20};
+static std::atomic<uint32_t> g_speaker_delay_ms{0};  // extra delay to sync with receivers
 
 #include <mutex>
 struct MonitorReq { bool pending = false; std::string device; };
