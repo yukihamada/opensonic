@@ -133,8 +133,9 @@ final class AudioReceiver: ObservableObject {
     }
 
     fileprivate func handleStatsUpdate(_ stats: SolunaReceiverStats) {
-        self.packetsReceived = stats.packetsReceived
-        self.packetsDropped = stats.packetsDropped
+        self.packetsReceived  = stats.packetsReceived
+        self.packetsDropped   = stats.packetsDropped
+        self.packetsConcealed = stats.packetsConcealed
     }
 
     fileprivate func handleError(_ error: Error) {
