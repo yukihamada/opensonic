@@ -937,6 +937,14 @@ static OSStatus Soluna_DoIOOperation(AudioServerPlugInDriverRef  inDriver,
         return noErr;
     }
 
+    // Apply volume scaling in-place before forwarding to SHM
+    float vol = drv->mVolume;
+    if (vol < 1.0f) {
+        float* buf = (float*)ioMainBuffer;
+        uint32_t n  = inIOBufferFrameSize * kChannels;
+        for (uint32_t i = 0; i < n; i++) buf[i] *= vol;
+    }
+
     soluna_shm_write(&drv->mShm,
                      (const float*)ioMainBuffer,
                      inIOBufferFrameSize);
