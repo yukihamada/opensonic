@@ -98,7 +98,7 @@ final class DaemonClient: ObservableObject {
         let s = URLSession(configuration: cfg)
         task = s.webSocketTask(with: url)
         task?.resume()
-        isConnected = true
+        // isConnected is set true only after the first message arrives (in receiveLoop)
         receiveLoop()
         fetchAll()
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
