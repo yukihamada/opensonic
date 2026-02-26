@@ -793,6 +793,7 @@ static OSStatus Soluna_EndIOOperation(AudioServerPlugInDriverRef inDriver,
 // ── DoIOOperation ─────────────────────────────────────────────────────────────
 
 static OSStatus Soluna_DoIOOperation(AudioServerPlugInDriverRef  inDriver,
+                                      AudioObjectID               inDeviceObjectID,
                                       AudioObjectID               inStreamObjectID,
                                       UInt32                      inClientID,
                                       UInt32                      inOperationID,
@@ -801,7 +802,8 @@ static OSStatus Soluna_DoIOOperation(AudioServerPlugInDriverRef  inDriver,
                                       void*                       ioMainBuffer,
                                       void*                       ioSecondaryBuffer)
 {
-    (void)inStreamObjectID; (void)inClientID; (void)inIOCycleInfo; (void)ioSecondaryBuffer;
+    (void)inDeviceObjectID; (void)inStreamObjectID; (void)inClientID;
+    (void)inIOCycleInfo; (void)ioSecondaryBuffer;
 
     if (inOperationID != kAudioServerPlugInIOOperationWriteMix)
         return noErr;
