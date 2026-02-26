@@ -846,8 +846,6 @@ static AudioServerPlugInDriverInterface gSolunaInterface = {
     /* EndIOOperation                */ Soluna_EndIOOperation,
 };
 
-static AudioServerPlugInDriverInterface* gSolunaInterfacePtr = &gSolunaInterface;
-
 // ── Factory ───────────────────────────────────────────────────────────────────
 
 extern "C" void* SolunaPlugin_Create(CFAllocatorRef allocator, CFUUIDRef typeUUID)
@@ -860,7 +858,8 @@ extern "C" void* SolunaPlugin_Create(CFAllocatorRef allocator, CFUUIDRef typeUUI
     SolunaDriver* drv = (SolunaDriver*)calloc(1, sizeof(SolunaDriver));
     if (!drv) return nullptr;
 
-    drv->mInterface    = &gSolunaInterfacePtr;
+    // mInterface must point directly to the vtable struct (IUnknown single-pointer pattern)
+    drv->mInterface    = &gSolunaInterface;
     drv->mRefCount     = 1;
     atomic_store(&drv->mIOClientCount, 0u);
     atomic_store(&drv->mIORunning,     false);
