@@ -204,8 +204,13 @@ static OSStatus Soluna_Initialize(AudioServerPlugInDriverRef inDriver,
         atomic_store(&drv->mShmReady, true);
         fprintf(stderr, "[Soluna] Initialized, SHM attached (%s)\n", soluna_shm_path());
     } else {
-        fprintf(stderr, "[Soluna] Initialized, SHM not yet available (start solunad)\n");
+        fprintf(stderr, "[Soluna] Initialized, SHM not yet available (errno=%d)\n", errno);
     }
+    // Debug: write to a world-writable log so we can confirm loading
+    { FILE* f = fopen("/tmp/soluna_driver.log", "a");
+      if (f) { fprintf(f, "Initialize: shmReady=%d path=%s\n",
+                       (int)atomic_load(&drv->mShmReady), soluna_shm_path());
+               fclose(f); } }
     return noErr;
 }
 
