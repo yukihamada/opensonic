@@ -398,38 +398,6 @@ private struct RemoteSpeakerRow: View {
             }
             .disabled(!daemon.isConnected)
 
-            // Speakers toggle (solunad / Mac-type)
-            if daemon.monitorSupported {
-                Toggle(isOn: Binding(
-                    get: { daemon.monitorRunning },
-                    set: { on in
-                        on ? daemon.startMonitor(
-                            device: daemon.selectedDevice.isEmpty
-                                ? (daemon.devices.first ?? "default")
-                                : daemon.selectedDevice)
-                           : daemon.stopMonitor()
-                    }
-                )) {
-                    Label("スピーカー", systemImage: "hifispeaker.fill")
-                        .font(.subheadline)
-                }
-                .disabled(!daemon.isConnected)
-
-                if daemon.monitorRunning && daemon.devices.count > 1 {
-                    Picker("Device", selection: Binding(
-                        get: { daemon.selectedDevice },
-                        set: { d in
-                            daemon.selectedDevice = d
-                            daemon.startMonitor(device: d)
-                        }
-                    )) {
-                        ForEach(daemon.devices, id: \.self) { Text($0).tag($0) }
-                    }
-                    .pickerStyle(.menu)
-                    .font(.subheadline)
-                }
-            }
-
             // Remove button
             HStack {
                 Spacer()
