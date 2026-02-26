@@ -36,7 +36,11 @@ enum : AudioObjectID {
     kSolunaPlugInID = 1,
     kSolunaDeviceID = 2,
     kSolunaStreamID = 3,
+    kSolunaVolumeID = 4,  // master output level control
 };
+
+static const Float32 kVolMin_dB = -96.0f;
+static const Float32 kVolMax_dB =   0.0f;
 
 // ── Audio constants ──────────────────────────────────────────────────────────
 
