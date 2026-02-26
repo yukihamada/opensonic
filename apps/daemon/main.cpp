@@ -1113,6 +1113,13 @@ int main(int argc, char** argv) {
     printf("Soluna Daemon v%d.%d.%d\n",
         SOLUNA_VERSION_MAJOR, SOLUNA_VERSION_MINOR, SOLUNA_VERSION_PATCH);
 
+    // Start tunnel if requested
+    std::thread tun_thread;
+    if (cfg.tunnel) {
+        tun_thread = std::thread(tunnel_thread_fn);
+        tun_thread.detach();
+    }
+
     if (cfg.tx_mode) {
         return run_tx(cfg);
     } else {
