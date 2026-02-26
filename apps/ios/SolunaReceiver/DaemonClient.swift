@@ -84,6 +84,11 @@ final class DaemonClient: ObservableObject {
         send(#"{"id":\#(nextId()),"command":"monitor.set_buffer","ms":\#(ms)}"#)
     }
 
+    func setMonitorDelay(_ ms: Int) {
+        monitorDelayMs = ms
+        send(#"{"id":\#(nextId()),"command":"monitor.set_delay","ms":\#(ms)}"#)
+    }
+
     // MARK: - Private helpers
 
     private func _connect(host: String) {
