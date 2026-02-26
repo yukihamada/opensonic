@@ -13,7 +13,7 @@ struct SettingsView: View {
 
     @AppStorage("multicastGroup") private var multicastGroup = "239.69.0.1"
     @AppStorage("port") private var port = 5004
-    @AppStorage("channels") private var channels = 1
+    @AppStorage("channels") private var channels = 2
     @AppStorage("autoConnect") private var autoConnect = false
     @State private var tempMulticastGroup: String = ""
     @State private var tempPort: String = ""
