@@ -71,6 +71,7 @@ public:
     struct Stats {
         uint64_t packets_received = 0;
         uint64_t packets_dropped = 0;
+        uint64_t packets_concealed = 0;
         uint64_t sequence_errors = 0;
         uint64_t aes67_packets = 0;
         uint64_t ostp_packets = 0;
