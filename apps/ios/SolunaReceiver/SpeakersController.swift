@@ -88,6 +88,9 @@ final class SpeakersController: ObservableObject {
     // NOT @Published — each RemoteSpeakerRow observes its daemon directly
     var clients: [UUID: DaemonClient] = [:]
 
+    /// Set by ContentView so auto-sync can update the local jitter buffer.
+    weak var audioReceiver: AudioReceiver?
+
     private static let storageKey = "soluna_speakers_v1"
     private let discovery = BonjourDiscovery()
 
