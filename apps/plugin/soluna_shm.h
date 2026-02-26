@@ -87,6 +87,8 @@ static inline int soluna_shm_open(SolunaShmMap* m, int flags)
     if (fd < 0) return -1;
 
     if (flags & O_CREAT) {
+        /* Force 0666 regardless of umask so other users (solunad) can access */
+        fchmod(fd, 0666);
         if (ftruncate(fd, (off_t)SOLUNA_SHM_BYTES) < 0) {
             close(fd);
             return -1;
