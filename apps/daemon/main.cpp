@@ -247,6 +247,37 @@ static void start_ws_server(soluna::control::WebSocketServer& srv) {
         printf("Web UI: http://localhost:8400\n");
 }
 
+#ifdef __APPLE__
+static DNSServiceRef g_mdns = nullptr;
+static void start_mdns_advertisement() {
+    uint16_t netport = htons(8400);
+    DNSServiceErrorType err = DNSServiceRegister(
+        &g_mdns, 0, 0,
+        "Soluna",          // service instance name
+        "_soluna._tcp",    // service type
+        nullptr,           // domain  (default = .local)
+        nullptr,           // host    (default = this machine)
+        netport,
+        0, nullptr,        // TXT record (none)
+        nullptr, nullptr); // callback (none needed)
+    if (err != kDNSServiceErr_NoError) {
+        fprintf(stderr, "[mdns] DNSServiceRegister failed: %d\n", err);
+        return;
+    }
+    // Pump the mDNS socket in a background thread
+    std::thread([] {
+        int fd = DNSServiceRefSockFD(g_mdns);
+        while (g_mdns && fd >= 0) {
+            fd_set r; FD_ZERO(&r); FD_SET(fd, &r);
+            struct timeval tv{1, 0};
+            if (select(fd + 1, &r, nullptr, nullptr, &tv) > 0)
+                DNSServiceProcessResult(g_mdns);
+        }
+    }).detach();
+    printf("[mdns] Advertising _soluna._tcp on port 8400\n");
+}
+#endif
+
 struct DaemonConfig {
     bool tx_mode = false;
     bool rx_mode = false;
