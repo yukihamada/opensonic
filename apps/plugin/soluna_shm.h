@@ -83,7 +83,7 @@ extern "C" {
  */
 static inline int soluna_shm_open(SolunaShmMap* m, int flags)
 {
-    int fd = shm_open(SOLUNA_SHM_NAME, flags, 0600);
+    int fd = shm_open(SOLUNA_SHM_NAME, flags, 0666);  /* world-rw: solunad (yuki) reads, driver (_coreaudiod) writes */
     if (fd < 0) return -1;
 
     if (flags & O_CREAT) {
