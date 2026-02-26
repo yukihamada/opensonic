@@ -200,6 +200,74 @@ final class DaemonClient: ObservableObject {
         }
     }
 
+    private func _connectPhone(host: String) {
+        guard let url = makeWSURL(host: host) else { return }
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest = 10
+        let s = URLSession(configuration: cfg)
+        phoneTask = s.webSocketTask(with: url)
+        phoneTask?.resume()
+        phoneConnected = true
+        receiveLoopPhone()
+        fetchAllPhone()
+        phoneTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.fetchAllPhone() }
+        }
+    }
+
+    private func fetchAllPhone() {
+        sendPhone(#"{"id":\#(nextPhoneId()),"command":"monitor.stats"}"#)
+    }
+
+    private func nextPhoneId() -> Int { phoneMsgId += 1; return phoneMsgId }
+
+    private func sendPhone(_ msg: String) {
+        phoneTask?.send(.string(msg)) { _ in }
+    }
+
+    private func receiveLoopPhone() {
+        phoneTask?.receive { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let message):
+                if case .string(let text) = message {
+                    Task { @MainActor [weak self] in self?.parsePhone(text) }
+                }
+                self.receiveLoopPhone()
+            case .failure:
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.phoneConnected = false
+                    self.phoneTimer?.invalidate()
+                    self.phoneRetryTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in
+                        Task { @MainActor [weak self] in
+                            guard let self, !self.lastPhoneHost.isEmpty else { return }
+                            self._connectPhone(host: self.lastPhoneHost)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func parsePhone(_ text: String) {
+        guard
+            let data  = text.data(using: .utf8),
+            let json  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let ok    = json["success"] as? Bool, ok,
+            let raw   = json["data"] as? String, !raw.isEmpty,
+            let inner = raw.data(using: .utf8),
+            let d     = try? JSONSerialization.jsonObject(with: inner) as? [String: Any]
+        else { return }
+
+        if d["supported"] != nil {
+            if let v  = d["volume"]  as? Double { phoneVolume  = Float(v) }
+            phoneMuted   = d["muted"]   as? Bool ?? false
+            phonePackets = UInt64(d["packets"] as? Int ?? 0)
+            if let ms = d["buf_ms"] as? Int     { phoneBufferMs = ms }
+        }
+    }
+
     private func parse(_ text: String) {
         guard
             let data    = text.data(using: .utf8),
