@@ -566,7 +566,7 @@ static int run_tx(const DaemonConfig& cfg) {
         soluna_shm_unlink();  // remove stale SHM if any
         if (soluna_shm_open(&shm_map, O_RDWR | O_CREAT) != 0) {
             fprintf(stderr, "Error: cannot create Soluna SHM (%s): %s\n",
-                            SOLUNA_SHM_NAME, strerror(errno));
+                            soluna_shm_path(), strerror(errno));
             return 1;
         }
         soluna_shm_init_header(&shm_map);
@@ -577,7 +577,7 @@ static int run_tx(const DaemonConfig& cfg) {
         }
         shm_open_ok.store(true);
         fprintf(stderr, "[solunad] SHM created (%s, %zu bytes)\n",
-                SOLUNA_SHM_NAME, (size_t)SOLUNA_SHM_BYTES);
+                soluna_shm_path(), (size_t)SOLUNA_SHM_BYTES);
 
         // ── Local speaker output ────────────────────────────────────────────
         std::atomic<bool> sp_prefilled{false};
