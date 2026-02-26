@@ -156,6 +156,7 @@ struct SettingsView: View {
         tempMulticastGroup = multicastGroup
         tempPort = String(port)
         tempChannels = channels
+        tempMacHost = macHost
     }
 
     private func saveSettings() {
