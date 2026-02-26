@@ -620,7 +620,8 @@ static OSStatus Soluna_GetPropertyData(AudioServerPlugInDriverRef inDriver,
             *((UInt32*)outData) = 0;
             return noErr;
         case kAudioObjectPropertyControlList:
-            *outDataSize = 0;
+            *outDataSize = sizeof(AudioObjectID);
+            *((AudioObjectID*)outData) = kSolunaVolumeID;
             return noErr;
         case kAudioDevicePropertyNominalSampleRate:
             *outDataSize = sizeof(Float64);
