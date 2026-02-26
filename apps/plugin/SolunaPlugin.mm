@@ -53,7 +53,7 @@ static const uint64_t kZeroTSPeriod     = 8192; // ~170ms @ 48kHz
 // ── Driver struct ─────────────────────────────────────────────────────────────
 
 struct SolunaDriver {
-    AudioServerPlugInDriverInterface**  mInterface;  // must be first
+    AudioServerPlugInDriverInterface*   mInterface;  // must be first (single pointer → vtable struct)
 
     CFUUIDRef                           mTypeUUID;
     CFUUIDRef                           mFactoryUUID;
