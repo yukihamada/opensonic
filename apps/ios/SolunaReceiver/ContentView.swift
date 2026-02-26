@@ -347,6 +347,52 @@ struct ContentView: View {
     }
 }
 
+// MARK: - MasterVolumeRow
+
+private struct MasterVolumeRow: View {
+    @Binding var volume: Float
+    @Binding var muted: Bool
+    let onVolumeChange: (Float) -> Void
+    let onMuteChange: (Bool) -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "speaker.wave.3")
+                    .foregroundColor(.blue)
+                    .frame(width: 20)
+                Text("All Speakers")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.blue)
+                Spacer()
+            }
+            HStack(spacing: 10) {
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    muted.toggle()
+                    onMuteChange(muted)
+                }) {
+                    Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .foregroundColor(muted ? .red : .blue)
+                        .frame(width: 24)
+                        .contentShape(Rectangle())
+                }
+                Slider(value: $volume, in: 0...1)
+                    .accentColor(.blue)
+                    .onChange(of: volume) { v in
+                        if muted { muted = false; onMuteChange(false) }
+                        onVolumeChange(v)
+                    }
+                Text(muted ? "Mute" : "\(Int(volume * 100))%")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(muted ? .red : .blue)
+                    .frame(width: 44)
+            }
+        }
+        .padding(.vertical, 10)
+    }
+}
+
 // MARK: - SpeakerRow (header + content)
 
 private struct SpeakerRow<Content: View>: View {
