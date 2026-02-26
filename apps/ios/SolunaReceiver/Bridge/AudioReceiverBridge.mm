@@ -632,7 +632,7 @@ private:
         _port = port;
         _channels = channels;
         _volume = 1.0f;
-        _bufferTargetMs = 100;
+        _bufferTargetMs = 40;
         _state = SolunaReceiverStateStopped;
     }
     return self;
