@@ -72,6 +72,7 @@
 				2A0008 /* SettingsView.swift */,
 				2A0003 /* AudioReceiver.swift */,
 				2A0020 /* DaemonClient.swift */,
+				2A0030 /* SpeakersController.swift */,
 				5A0010 /* Bridge */,
 				2A0009 /* Assets.xcassets */,
 				2A0007 /* Info.plist */,
