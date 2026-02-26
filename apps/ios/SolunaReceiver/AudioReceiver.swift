@@ -61,7 +61,7 @@ final class AudioReceiver: ObservableObject {
     }
 
     /// Jitter buffer target in ms (5–200 ms, default 100 ms)
-    @Published var bufferMs: UInt32 = 100 {
+    @Published var bufferMs: UInt32 = 40 {
         didSet {
             receiver.bufferTargetMs = bufferMs
         }
