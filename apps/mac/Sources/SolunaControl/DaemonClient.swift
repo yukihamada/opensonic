@@ -96,6 +96,37 @@ final class DaemonClient: ObservableObject {
         send(#"{"id":\#(nextId()),"command":"monitor.set_buffer","ms":\#(ms)}"#)
     }
 
+    // MARK: - Phone Receiver commands
+
+    func connectPhone(host: String) {
+        guard !host.isEmpty else { return }
+        disconnectPhone()
+        lastPhoneHost = host
+        _connectPhone(host: host)
+    }
+
+    func disconnectPhone() {
+        phoneRetryTimer?.invalidate(); phoneRetryTimer = nil
+        phoneTimer?.invalidate(); phoneTimer = nil
+        phoneTask?.cancel(with: .goingAway, reason: nil); phoneTask = nil
+        phoneConnected = false
+    }
+
+    func setPhoneVolume(_ v: Float) {
+        phoneVolume = v
+        sendPhone(#"{"id":\#(nextPhoneId()),"command":"monitor.set_volume","volume":\#(String(format:"%.3f",v))}"#)
+    }
+
+    func setPhoneMute(_ m: Bool) {
+        phoneMuted = m
+        sendPhone(#"{"id":\#(nextPhoneId()),"command":"monitor.set_mute","muted":\#(m ? "true" : "false")}"#)
+    }
+
+    func setPhoneBuffer(_ ms: Int) {
+        phoneBufferMs = ms
+        sendPhone(#"{"id":\#(nextPhoneId()),"command":"monitor.set_buffer","ms":\#(ms)}"#)
+    }
+
     // MARK: - Private helpers
 
     private func _connect(host: String) {
