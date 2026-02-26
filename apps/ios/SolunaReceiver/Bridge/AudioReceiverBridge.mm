@@ -225,18 +225,21 @@ private:
         return true;
     }
 
-    void check_sequence(uint32_t full_seq) {
+    // Returns the gap (missing packet count > 0) or 0 if in sequence
+    int32_t check_sequence(uint32_t full_seq) {
+        int32_t gap = 0;
         if (stats_.last_sequence >= 0) {
             int32_t expected = stats_.last_sequence + 1;
             if (static_cast<int32_t>(full_seq) != expected) {
                 stats_.sequence_errors++;
-                int32_t gap = static_cast<int32_t>(full_seq) - expected;
+                gap = static_cast<int32_t>(full_seq) - expected;
                 if (gap > 0) {
                     stats_.packets_dropped += static_cast<uint64_t>(gap);
                 }
             }
         }
         stats_.last_sequence = static_cast<int32_t>(full_seq);
+        return gap;
     }
 
     Config config_;
