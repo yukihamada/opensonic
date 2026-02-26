@@ -111,10 +111,11 @@ final class DaemonClient: ObservableObject {
         }
         // Strip trailing slash / path
         let bare = h.components(separatedBy: "/").first ?? h
-        // If it looks like a public domain (contains a dot and isn't a raw IP with port)
+        // Local: raw IP (digits/dots/colons) or .local mDNS hostname → ws:// with port
         let isIP = bare.allSatisfy({ $0.isNumber || $0 == "." || $0 == ":" })
-        let scheme = isIP ? "ws" : "wss"
-        let portStr = isIP ? ":8400" : ""
+        let isLocal = isIP || bare.lowercased().hasSuffix(".local")
+        let scheme  = isLocal ? "ws"   : "wss"
+        let portStr = isLocal ? ":8400" : ""
         return URL(string: "\(scheme)://\(bare)\(portStr)/ws")
     }
 
