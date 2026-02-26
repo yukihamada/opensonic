@@ -29,6 +29,59 @@ struct MenuContent: View {
 
             ScrollView {
                 VStack(spacing: 0) {
+                    // ── Volume ────────────────────────────
+                    section("Volume") {
+                        // Mute + slider + step buttons
+                        HStack(spacing: 6) {
+                            // Mute toggle
+                            Button(action: { d.setMonitorMute(!d.monitorMuted) }) {
+                                Image(systemName: d.monitorMuted ? "speaker.slash.fill" : volumeIcon)
+                                    .foregroundStyle(d.monitorMuted ? .red : .primary)
+                                    .frame(width: 18)
+                            }
+                            .buttonStyle(.plain)
+                            .help(d.monitorMuted ? "Unmute" : "Mute")
+
+                            // −10%
+                            Button(action: {
+                                if d.monitorMuted { d.setMonitorMute(false) }
+                                d.setMonitorVolume(max(0, d.monitorVolume - 0.1))
+                            }) {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+
+                            Slider(value: Binding(
+                                get: { d.monitorVolume },
+                                set: { v in
+                                    if d.monitorMuted { d.setMonitorMute(false) }
+                                    d.setMonitorVolume(v)
+                                }
+                            ), in: 0...1)
+                            .controlSize(.small)
+
+                            // +10%
+                            Button(action: {
+                                if d.monitorMuted { d.setMonitorMute(false) }
+                                d.setMonitorVolume(min(1, d.monitorVolume + 0.1))
+                            }) {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+
+                            Text(d.monitorMuted ? "Mute" : "\(Int(d.monitorVolume * 100))%")
+                                .monospacedDigit()
+                                .font(.caption)
+                                .foregroundStyle(d.monitorMuted ? .red : .secondary)
+                                .frame(width: 36, alignment: .trailing)
+                        }
+                        .disabled(!d.isConnected)
+                    }
+
+                    Divider().padding(.horizontal, 16)
+
                     // ── Speakers ──────────────────────────
                     section("Speakers") {
                         Toggle("Mac speakers", isOn: Binding(
@@ -42,45 +95,19 @@ struct MenuContent: View {
                         ))
                         .disabled(!d.isConnected)
 
-                        if d.monitorRunning || !d.devices.isEmpty {
-                            // Volume
-                            HStack(spacing: 8) {
-                                Button(action: { d.setMonitorMute(!d.monitorMuted) }) {
-                                    Image(systemName: d.monitorMuted
-                                          ? "speaker.slash.fill"
-                                          : volumeIcon)
-                                        .foregroundStyle(d.monitorMuted ? .red : .secondary)
-                                        .frame(width: 18)
+                        // Device picker (always visible when devices loaded)
+                        if d.devices.count > 1 {
+                            Picker("Device", selection: Binding(
+                                get: { d.selectedDevice },
+                                set: { dev in
+                                    d.selectedDevice = dev
+                                    if d.monitorRunning { d.startMonitor(device: dev) }
                                 }
-                                .buttonStyle(.plain)
-
-                                Slider(value: Binding(
-                                    get: { d.monitorVolume },
-                                    set: { d.setMonitorVolume($0) }
-                                ), in: 0...1)
-                                .controlSize(.small)
-
-                                Text("\(Int(d.monitorVolume * 100))%")
-                                    .monospacedDigit()
-                                    .font(.caption)
-                                    .frame(width: 32, alignment: .trailing)
+                            )) {
+                                ForEach(d.devices, id: \.self) { Text($0).tag($0) }
                             }
-                            .disabled(!d.monitorRunning)
-
-                            // Device picker
-                            if d.devices.count > 1 {
-                                Picker("Device", selection: Binding(
-                                    get: { d.selectedDevice },
-                                    set: { dev in
-                                        d.selectedDevice = dev
-                                        if d.monitorRunning { d.startMonitor(device: dev) }
-                                    }
-                                )) {
-                                    ForEach(d.devices, id: \.self) { Text($0).tag($0) }
-                                }
-                                .labelsHidden()
-                                .controlSize(.small)
-                            }
+                            .labelsHidden()
+                            .controlSize(.small)
                         }
                     }
 
