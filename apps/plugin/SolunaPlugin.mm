@@ -192,8 +192,9 @@ static ULONG Soluna_Release(void* inDriver)
 static OSStatus Soluna_Initialize(AudioServerPlugInDriverRef inDriver,
                                    AudioServerPlugInHostRef   inHost)
 {
-    (void)inHost;
     if (!inDriver) return kAudioHardwareIllegalOperationError;
+    SolunaDriver* drv = (SolunaDriver*)inDriver;
+    drv->mHost = inHost;
     SolunaDriver* drv = (SolunaDriver*)inDriver;
 
     // SHM is created by solunad (which runs as the login user and has no sandbox).
