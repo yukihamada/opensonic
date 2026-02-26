@@ -435,8 +435,7 @@ private:
         const float vol = muted_.load() ? 0.0f : volume_.load();
         const uint32_t total_samples = frame_count * channels_;
 
-        // Adaptive target: always >= frame_count*4 to prevent "prefill → immediate underrun"
-        // (iOS may use frame_count=1024 even if we requested 256)
+        // Adaptive target: always >= frame_count*4 to prevent immediate underrun
         uint32_t target = target_fill_frames_.load();
         const uint32_t min_target = frame_count * 4;
         if (target < min_target) {
@@ -444,17 +443,31 @@ private:
             target_fill_frames_.store(target);
         }
 
+        // ── Latency drain ─────────────────────────────────────────────────────
+        // If the buffer has grown beyond 2× target, silently discard excess frames
+        // to keep latency bounded (prevents drift on long sessions).
+        {
+            size_t avail_now = ring_buffer_.available_read();
+            if (avail_now > static_cast<size_t>(target) * 2 + frame_count) {
+                size_t excess = avail_now - target - frame_count;
+                while (excess > 0) {
+                    size_t chunk = std::min(excess, drain_buf_.size() / channels_);
+                    if (chunk == 0) break;
+                    size_t dr = ring_buffer_.read(drain_buf_.data(), chunk);
+                    if (dr == 0) break;
+                    excess = (excess > dr) ? excess - dr : 0;
+                }
+                prefilled_ = false;  // force re-prefill for smooth restart
+            }
+        }
+
         const size_t avail = ring_buffer_.available_read();
         const bool has_data = (avail >= frame_count);
 
-        // Ramp constants (audio-thread-only floats, no atomics)
-        // fade-in:  ~1000 samples ≈ 21ms  — smooth start
-        // fade-out: ~200  samples ≈ 4ms   — quick decay avoids stale hold becoming audio
         constexpr float kFadeIn  = 0.001f;
         constexpr float kFadeOut = 0.005f;
 
         if (!prefilled_) {
-            // Waiting for initial fill: decay ramp and output silence
             if (avail < target) {
                 ramp_ *= (1.0f - kFadeOut);
                 std::memset(buffer, 0, total_samples * sizeof(float));
@@ -464,7 +477,6 @@ private:
         }
 
         if (!has_data) {
-            // Underrun: hold last sample, apply decaying ramp → smooth fade to zero
             prefilled_ = false;
             for (uint32_t i = 0; i < frame_count; i++) {
                 ramp_ *= (1.0f - kFadeOut);
@@ -475,7 +487,7 @@ private:
             return;
         }
 
-        // Normal playback: smooth fade-in via ramp_
+        // Normal playback with soft limiter to prevent clipping
         ring_buffer_.read(read_buffer_.data(), frame_count);
         const int32_t* src = read_buffer_.data();
         for (uint32_t i = 0; i < frame_count; i++) {
@@ -483,10 +495,12 @@ private:
             for (uint32_t ch = 0; ch < channels_; ch++) {
                 const uint32_t idx = i * channels_ + ch;
                 float s = static_cast<float>(src[idx]) / 8388607.0f;
-                s = s > 1.0f ? 1.0f : s < -1.0f ? -1.0f : s;
+                // Soft limiter: tanh-style knee at ±0.9 to prevent hard clipping
+                if (s > 0.9f)       s = 0.9f + 0.1f * std::tanh((s - 0.9f) * 5.0f);
+                else if (s < -0.9f) s = -0.9f + 0.1f * std::tanh((s + 0.9f) * 5.0f);
                 const float out = s * ramp_;
                 buffer[idx] = out;
-                held_sample_[ch] = out;  // cache for fade-out
+                held_sample_[ch] = out;
             }
         }
     }
