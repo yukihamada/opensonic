@@ -997,6 +997,7 @@ extern "C" void* SolunaPlugin_Create(CFAllocatorRef allocator, CFUUIDRef typeUUI
     atomic_store(&drv->mIOClientCount, 0u);
     atomic_store(&drv->mIORunning,     false);
     atomic_store(&drv->mShmReady,      false);
+    drv->mVolume = 1.0f;
 
     pthread_mutex_init(&drv->mTSMutex, nullptr);
 
