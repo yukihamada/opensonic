@@ -169,6 +169,7 @@ struct ContentView: View {
 
     private var volumeControl: some View {
         VStack(spacing: 10) {
+            // Volume row
             HStack(spacing: 12) {
                 // Mute toggle (tap the speaker icon)
                 Button(action: {
@@ -215,6 +216,24 @@ struct ContentView: View {
                 Text(receiver.isMuted ? "Mute" : "\(Int(receiver.volume * 100))%")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(receiver.isMuted ? .red : .secondary)
+                    .frame(width: 44)
+            }
+
+            // Latency row
+            HStack(spacing: 12) {
+                Image(systemName: "waveform.path.ecg")
+                    .foregroundColor(.secondary)
+                    .frame(width: 28)
+
+                Slider(value: Binding(
+                    get: { Double(receiver.bufferMs) },
+                    set: { receiver.bufferMs = UInt32($0) }
+                ), in: 5...200, step: 5)
+                .accentColor(.secondary)
+
+                Text("\(receiver.bufferMs)ms")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.secondary)
                     .frame(width: 44)
             }
         }
