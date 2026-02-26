@@ -195,7 +195,6 @@ static OSStatus Soluna_Initialize(AudioServerPlugInDriverRef inDriver,
     if (!inDriver) return kAudioHardwareIllegalOperationError;
     SolunaDriver* drv = (SolunaDriver*)inDriver;
     drv->mHost = inHost;
-    SolunaDriver* drv = (SolunaDriver*)inDriver;
 
     // SHM is created by solunad (which runs as the login user and has no sandbox).
     // The driver only opens an already-existing SHM.  If solunad is not yet running,
