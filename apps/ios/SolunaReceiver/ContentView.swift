@@ -119,6 +119,17 @@ struct ContentView: View {
 
     private var speakersSection: some View {
         VStack(spacing: 0) {
+            // ── Master volume (shown when ≥2 speakers are connected) ─────
+            if speakers.speakers.count >= 1 && speakers.anyConnected {
+                MasterVolumeRow(
+                    volume: $masterVolume,
+                    muted: $masterMuted,
+                    onVolumeChange: { v in speakers.setAllVolume(v) },
+                    onMuteChange:   { m in speakers.setAllMute(m) }
+                )
+                Divider().padding(.horizontal, 16)
+            }
+
             // ── iPhone (local receiver) ──────────────────────────────────
             SpeakerRow(label: "iPhone", icon: "iphone", isConnected: receiver.state == .receiving) {
                 // Volume + mute
