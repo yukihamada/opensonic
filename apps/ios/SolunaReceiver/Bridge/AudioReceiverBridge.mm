@@ -348,6 +348,12 @@ public:
     void set_muted(bool muted) { muted_.store(muted); }
     bool is_muted() const { return muted_.load(); }
 
+    void set_buffer_ms(uint32_t ms) {
+        ms = std::max(5u, std::min(200u, ms));
+        target_fill_frames_.store(ms * 48u);
+    }
+    uint32_t buffer_ms() const { return target_fill_frames_.load() / 48u; }
+
     SimpleRtpReceiver::Stats stats() const {
         if (rtp_receiver_) return rtp_receiver_->stats_snapshot();
         return {};
