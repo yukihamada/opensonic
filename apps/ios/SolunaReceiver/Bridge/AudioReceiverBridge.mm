@@ -696,6 +696,15 @@ private:
     if (_impl) _impl->set_muted((bool)muted);
 }
 
+- (uint32_t)bufferTargetMs {
+    return _impl ? _impl->buffer_ms() : _bufferTargetMs;
+}
+
+- (void)setBufferTargetMs:(uint32_t)ms {
+    _bufferTargetMs = std::max(5u, std::min(200u, ms));
+    if (_impl) _impl->set_buffer_ms(_bufferTargetMs);
+}
+
 - (SolunaReceiverStats *)currentStats {
     if (_impl) {
         auto stats = _impl->stats();
