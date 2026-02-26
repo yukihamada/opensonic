@@ -4,6 +4,8 @@
 //
 //  WebSocket client for solunad (ws://<host>:8400/ws or wss://<tunnel-url>/ws)
 //  Supports local IP and internet tunnel (cloudflared / ngrok).
+//  Auto-sync: measures WS RTT to estimate one-way audio latency, then sets
+//  Mac speaker delay and iPhone jitter buffer to match.
 //
 
 import Foundation
@@ -14,7 +16,7 @@ final class DaemonClient: ObservableObject {
     // MARK: - Published State
 
     @Published private(set) var isConnected = false
-    @Published private(set) var tunnelURL   = ""   // from system.info
+    @Published private(set) var tunnelURL   = ""
 
     // monitor speaker (TX-mode)
     @Published private(set) var monitorSupported = false
@@ -25,23 +27,29 @@ final class DaemonClient: ObservableObject {
     @Published              var monitorBufferMs: Int = 20
     @Published              var monitorDelayMs:  Int = 0
 
+    /// Measured one-way latency (ms). Drives auto-sync. 0 = not yet measured.
+    @Published private(set) var measuredLatencyMs: Int = 0
+
     // available output devices
     @Published private(set) var devices: [String] = []
     @Published              var selectedDevice = ""
 
+    /// Called when auto-sync completes with the measured latency (ms).
+    /// Use this to update the local AudioReceiver's jitter buffer.
+    var onSyncLatency: ((Int) -> Void)?
+
     // MARK: - Private
 
-    private var task:         URLSessionWebSocketTask?
-    private let session =     URLSession(configuration: .default)
-    private var msgId   =     0
-    private var timer:        Timer?
-    private var retryTimer:   Timer?
-    private var lastHost =    ""
+    private var task:          URLSessionWebSocketTask?
+    private var msgId    =     0
+    private var timer:         Timer?
+    private var syncTimer:     Timer?
+    private var retryTimer:    Timer?
+    private var lastHost =     ""
+    private var pingStartTime: Date?
 
     // MARK: - Connection
 
-    /// Connect to a solunad daemon.
-    /// - host: IP address, hostname, or tunnel domain (e.g. abc.trycloudflare.com)
     func connect(host: String) {
         guard !host.isEmpty else { return }
         disconnect()
@@ -51,9 +59,11 @@ final class DaemonClient: ObservableObject {
 
     func disconnect() {
         retryTimer?.invalidate(); retryTimer = nil
-        timer?.invalidate(); timer = nil
+        syncTimer?.invalidate();  syncTimer  = nil
+        timer?.invalidate();      timer      = nil
         task?.cancel(with: .goingAway, reason: nil); task = nil
         isConnected = false
+        measuredLatencyMs = 0
     }
 
     // MARK: - Monitor commands
@@ -89,6 +99,18 @@ final class DaemonClient: ObservableObject {
         send(#"{"id":\#(nextId()),"command":"monitor.set_delay","ms":\#(ms)}"#)
     }
 
+    // MARK: - Auto-sync
+
+    /// Send a WS ping to measure round-trip time.
+    /// On reply: one_way = RTT/2 + safety margin.
+    /// - Sets Mac speaker delay via monitor.set_delay
+    /// - Calls onSyncLatency to update iPhone jitter buffer
+    func performSync() {
+        guard isConnected else { return }
+        pingStartTime = Date()
+        send(#"{"id":\#(nextId()),"command":"time.ping"}"#)
+    }
+
     // MARK: - Private helpers
 
     private func _connect(host: String) {
@@ -98,29 +120,30 @@ final class DaemonClient: ObservableObject {
         let s = URLSession(configuration: cfg)
         task = s.webSocketTask(with: url)
         task?.resume()
-        // isConnected is set true only after the first message arrives (in receiveLoop)
         receiveLoop()
         fetchAll()
+        // Poll stats every 3s
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.fetchAll() }
         }
+        // Auto-sync: first ping after 1s, then every 30s
+        Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.performSync() }
+        }
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.performSync() }
+        }
     }
 
-    /// Build WebSocket URL from user input:
-    ///   - Raw IP / hostname (e.g. "192.168.1.10") → ws://host:8400/ws
-    ///   - Domain with dots not containing port (e.g. "abc.trycloudflare.com") → wss://host/ws
-    ///   - Already a ws:// or wss:// URL → use as-is
     private func makeWSURL(host: String) -> URL? {
         let h = host.trimmingCharacters(in: .whitespacesAndNewlines)
         if h.hasPrefix("ws://") || h.hasPrefix("wss://") {
             return URL(string: h.hasSuffix("/ws") ? h : h + "/ws")
         }
-        // Strip trailing slash / path
         let bare = h.components(separatedBy: "/").first ?? h
-        // Local: raw IP (digits/dots/colons) or .local mDNS hostname → ws:// with port
-        let isIP = bare.allSatisfy({ $0.isNumber || $0 == "." || $0 == ":" })
+        let isIP   = bare.allSatisfy({ $0.isNumber || $0 == "." || $0 == ":" })
         let isLocal = isIP || bare.lowercased().hasSuffix(".local")
-        let scheme  = isLocal ? "ws"   : "wss"
+        let scheme  = isLocal ? "ws"  : "wss"
         let portStr = isLocal ? ":8400" : ""
         return URL(string: "\(scheme)://\(bare)\(portStr)/ws")
     }
@@ -145,7 +168,7 @@ final class DaemonClient: ObservableObject {
                 if case .string(let text) = message {
                     Task { @MainActor [weak self] in
                         guard let self else { return }
-                        self.isConnected = true   // mark connected on first real response
+                        self.isConnected = true
                         self.parse(text)
                     }
                 }
@@ -155,7 +178,7 @@ final class DaemonClient: ObservableObject {
                     guard let self else { return }
                     self.isConnected = false
                     self.timer?.invalidate()
-                    // Auto-reconnect after 5s
+                    self.syncTimer?.invalidate()
                     self.retryTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in
                         Task { @MainActor [weak self] in
                             guard let self, !self.lastHost.isEmpty else { return }
@@ -183,17 +206,30 @@ final class DaemonClient: ObservableObject {
             return
         }
 
-        // stats / info → JSON object
         guard let d = try? JSONSerialization.jsonObject(with: inner) as? [String: Any] else { return }
 
-        if d["supported"] != nil {
+        if d["pong"] != nil {
+            // time.ping response — compute RTT and apply auto-sync
+            guard let t1 = pingStartTime else { return }
+            pingStartTime = nil
+            let rttMs = (Date().timeIntervalSince1970 - t1.timeIntervalSince1970) * 1000
+            // one-way delay = RTT/2; add 15ms safety margin; minimum 20ms
+            let latency = max(20, Int(rttMs / 2) + 15)
+            measuredLatencyMs = latency
+            // Apply to Mac speaker delay (this DaemonClient is connected to solunad)
+            setMonitorDelay(latency)
+            // Apply to iPhone jitter buffer via callback
+            onSyncLatency?(latency)
+
+        } else if d["supported"] != nil {
             // monitor.stats
             monitorSupported = d["supported"] as? Bool ?? false
             monitorRunning   = d["running"]   as? Bool ?? false
             if let v = d["volume"] as? Double { monitorVolume = Float(v) }
-            monitorMuted     = d["muted"]     as? Bool ?? false
-            monitorPackets   = UInt64(d["packets"] as? Int ?? 0)
+            monitorMuted   = d["muted"]   as? Bool ?? false
+            monitorPackets = UInt64(d["packets"] as? Int ?? 0)
             if let delay = d["delay_ms"] as? Int { monitorDelayMs = delay }
+
         } else if d["tunnel_url"] != nil {
             // system.info
             tunnelURL = d["tunnel_url"] as? String ?? ""
