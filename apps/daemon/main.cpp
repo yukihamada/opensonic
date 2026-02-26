@@ -215,6 +215,10 @@ struct DaemonConfig {
     uint16_t stream_id = 1;
     std::string config_file;
 
+    // Local speaker device for SHM (soluna) TX mode.
+    // Empty string = system default output.
+    std::string local_speaker_device;
+
     // Security settings from config
     soluna::config::SecurityConfig security;
 
