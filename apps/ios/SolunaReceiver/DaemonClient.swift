@@ -23,6 +23,7 @@ final class DaemonClient: ObservableObject {
     @Published              var monitorMuted      = false
     @Published private(set) var monitorPackets: UInt64 = 0
     @Published              var monitorBufferMs: Int = 20
+    @Published              var monitorDelayMs:  Int = 0
 
     // available output devices
     @Published private(set) var devices: [String] = []
