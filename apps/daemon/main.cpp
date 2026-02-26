@@ -714,10 +714,12 @@ static int run_tx(const DaemonConfig& cfg) {
 
     const char* mode_str = cfg.aes67_mode ? "AES67" : "OSTP";
     const char* security_str = cfg.security.dtls_enabled ? " [DTLS]" : "";
-    printf("solunad TX (%s%s): %s → %s:%u (%uHz, %uch)\n",
-        mode_str, security_str,
-        cfg.audio_device.c_str(), cfg.dest_ip.c_str(), cfg.dest_port,
-        cfg.sample_rate, cfg.channels);
+    if (!use_shm) {
+        printf("solunad TX (%s%s): %s → %s:%u (%uHz, %uch)\n",
+            mode_str, security_str,
+            cfg.audio_device.c_str(), cfg.dest_ip.c_str(), cfg.dest_port,
+            cfg.sample_rate, cfg.channels);
+    }
 
     while (g_running.load()) {
         scheduler.wait_next();
