@@ -185,16 +185,16 @@ static OSStatus Soluna_Initialize(AudioServerPlugInDriverRef inDriver,
     if (!inDriver) return kAudioHardwareIllegalOperationError;
     SolunaDriver* drv = (SolunaDriver*)inDriver;
 
-    // Create / open shared memory
-    soluna_shm_unlink(); // clean slate
-    if (soluna_shm_open(&drv->mShm, O_RDWR | O_CREAT) != 0) {
-        fprintf(stderr, "[Soluna] Failed to create SHM\n");
-        return kAudioHardwareUnspecifiedError;
+    // SHM is created by solunad (which runs as the login user and has no sandbox).
+    // The driver only opens an already-existing SHM.  If solunad is not yet running,
+    // DoIOOperation will retry lazily every ~100ms.
+    if (soluna_shm_open(&drv->mShm, O_RDWR) == 0 &&
+        soluna_shm_validate(&drv->mShm)) {
+        atomic_store(&drv->mShmReady, true);
+        fprintf(stderr, "[Soluna] Initialized, SHM attached (%s)\n", SOLUNA_SHM_NAME);
+    } else {
+        fprintf(stderr, "[Soluna] Initialized, SHM not yet available (start solunad)\n");
     }
-    soluna_shm_init_header(&drv->mShm);
-    atomic_store(&drv->mShmReady, true);
-
-    fprintf(stderr, "[Soluna] Initialized, SHM ready (%s)\n", SOLUNA_SHM_NAME);
     return noErr;
 }
 
