@@ -184,6 +184,7 @@
 				1A0005 /* SettingsView.swift in Sources */,
 				1A0003 /* AudioReceiver.swift in Sources */,
 				1A0020 /* DaemonClient.swift in Sources */,
+				1A0030 /* SpeakersController.swift in Sources */,
 				1A0004 /* AudioReceiverBridge.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
