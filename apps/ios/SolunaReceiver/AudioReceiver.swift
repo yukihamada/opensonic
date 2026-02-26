@@ -44,6 +44,9 @@ final class AudioReceiver: ObservableObject {
     /// Number of packets dropped
     @Published private(set) var packetsDropped: UInt64 = 0
 
+    /// Number of packets concealed by PLC
+    @Published private(set) var packetsConcealed: UInt64 = 0
+
     /// Current volume (0.0 - 1.0)
     @Published var volume: Float = 1.0 {
         didSet {
