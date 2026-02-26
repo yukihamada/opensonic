@@ -247,6 +247,7 @@ private:
     std::unique_ptr<pal::UdpSocket> socket_;
     std::vector<uint8_t> recv_buf_;
     std::vector<int32_t> audio_buf_;
+    std::vector<int32_t> last_frame_;  // PLC: last received frame for concealment
     Stats stats_;
 };
 
