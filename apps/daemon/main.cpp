@@ -228,10 +228,10 @@ static std::string ws_handle(const std::string& msg) {
             "\"sample_rate\":%u}",
             turl.c_str(), g_cfg_multicast,
             g_cfg_port, g_cfg_channels, g_cfg_sample_rate);
-        snprintf(buf, sizeof(buf), "{"id":%d,"success":true,"data":"%s"}", id, info);
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"%s\"}", id, info);
     } else {
         snprintf(buf, sizeof(buf),
-            "{"id":%d,"success":false,"data":"unknown command"}", id);
+            "{\"id\":%d,\"success\":false,\"data\":\"unknown command\"}", id);
     }
     return buf;
 }
