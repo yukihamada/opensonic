@@ -561,20 +561,23 @@ static int run_tx(const DaemonConfig& cfg) {
     std::thread shm_reader_thread;
 
     if (use_shm) {
-        // Open shared memory written by Soluna.driver
-        if (soluna_shm_open(&shm_map, O_RDWR) != 0) {
-            fprintf(stderr, "Error: cannot open Soluna SHM (%s). "
-                            "Is Soluna.driver installed and 'Soluna' selected as output?\n",
-                            SOLUNA_SHM_NAME);
+        // solunad owns the SHM lifecycle: create it here so the driver
+        // (which runs sandboxed as _coreaudiod) can open it without O_CREAT.
+        soluna_shm_unlink();  // remove stale SHM if any
+        if (soluna_shm_open(&shm_map, O_RDWR | O_CREAT) != 0) {
+            fprintf(stderr, "Error: cannot create Soluna SHM (%s): %s\n",
+                            SOLUNA_SHM_NAME, strerror(errno));
             return 1;
         }
+        soluna_shm_init_header(&shm_map);
         if (soluna_shm_validate(&shm_map) != 0) {
-            fprintf(stderr, "Error: Soluna SHM magic mismatch — "
-                            "driver version mismatch or not initialized\n");
+            fprintf(stderr, "Error: Soluna SHM init failed\n");
             soluna_shm_close(&shm_map);
             return 1;
         }
         shm_open_ok.store(true);
+        fprintf(stderr, "[solunad] SHM created (%s, %zu bytes)\n",
+                SOLUNA_SHM_NAME, (size_t)SOLUNA_SHM_BYTES);
 
         // ── Local speaker output ────────────────────────────────────────────
         std::atomic<bool> sp_prefilled{false};
