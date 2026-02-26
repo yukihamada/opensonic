@@ -155,18 +155,53 @@ struct ContentView: View {
     }
 
     private var volumeControl: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             HStack(spacing: 12) {
-                Image(systemName: volumeIcon)
-                    .foregroundColor(.secondary)
-                    .frame(width: 24)
+                // Mute toggle (tap the speaker icon)
+                Button(action: {
+                    let g = UIImpactFeedbackGenerator(style: .light)
+                    g.impactOccurred()
+                    receiver.isMuted.toggle()
+                }) {
+                    Image(systemName: receiver.isMuted ? "speaker.slash.fill" : volumeIcon)
+                        .foregroundColor(receiver.isMuted ? .red : .secondary)
+                        .frame(width: 28)
+                        .contentShape(Rectangle())
+                }
+
+                // Volume -10%
+                Button(action: {
+                    let g = UIImpactFeedbackGenerator(style: .light)
+                    g.impactOccurred()
+                    if receiver.isMuted { receiver.isMuted = false }
+                    receiver.volume = max(0, receiver.volume - 0.1)
+                }) {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                }
 
                 Slider(value: $receiver.volume, in: 0...1)
-                    .accentColor(statusColor)
+                    .accentColor(receiver.isMuted ? .gray : statusColor)
+                    .onChange(of: receiver.volume) { _ in
+                        if receiver.isMuted { receiver.isMuted = false }
+                    }
 
-                Text("\(Int(receiver.volume * 100))%")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.secondary)
+                // Volume +10%
+                Button(action: {
+                    let g = UIImpactFeedbackGenerator(style: .light)
+                    g.impactOccurred()
+                    if receiver.isMuted { receiver.isMuted = false }
+                    receiver.volume = min(1, receiver.volume + 0.1)
+                }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                }
+
+                Text(receiver.isMuted ? "Mute" : "\(Int(receiver.volume * 100))%")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(receiver.isMuted ? .red : .secondary)
                     .frame(width: 44)
             }
         }
