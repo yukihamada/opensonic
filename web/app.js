@@ -167,6 +167,9 @@ function buildMonitorCard() {
   <div class="rxc-footer" style="justify-content:flex-end">
     <button class="btn-mute" id="mon-mute-btn">🔊 Live</button>
   </div>
+  <div id="mon-sync-row" style="display:none;font-size:0.72rem;color:var(--text3);padding-top:0.4rem">
+    🔄 Last sync: <span id="mon-sync-val">—</span>
+  </div>
 </div>`;
 
     el.querySelector('#mon-start-btn').addEventListener('click', () => {
