@@ -28,6 +28,13 @@ final class DaemonClient: ObservableObject {
     @Published private(set) var devices: [String] = []
     @Published              var selectedDevice = ""
 
+    // phone receiver (rx-mode)
+    @Published private(set) var phoneConnected = false
+    @Published              var phoneVolume: Float = 1.0
+    @Published              var phoneMuted      = false
+    @Published private(set) var phonePackets: UInt64 = 0
+    @Published              var phoneBufferMs: Int = 100
+
     // MARK: - Private
 
     private var task:         URLSessionWebSocketTask?
@@ -36,6 +43,12 @@ final class DaemonClient: ObservableObject {
     private var timer:        Timer?
     private var retryTimer:   Timer?
     private var lastHost =    ""
+
+    private var phoneTask:       URLSessionWebSocketTask?
+    private var phoneMsgId =     0
+    private var phoneTimer:      Timer?
+    private var phoneRetryTimer: Timer?
+    private var lastPhoneHost =  ""
 
     // MARK: - Connection
 
