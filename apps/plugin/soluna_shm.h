@@ -84,19 +84,10 @@ typedef struct SolunaShmMap {
 extern "C" {
 #endif
 
-/** Returns the backing-file path: $TMPDIR/soluna_audio.shm */
+/** Returns the backing-file path. */
 static inline const char* soluna_shm_path(void)
 {
-    static char _buf[512];
-    static int  _init = 0;
-    if (!_init) {
-        const char* tmp = getenv("TMPDIR");
-        if (!tmp || tmp[0] == '\0') tmp = "/tmp/";
-        /* $TMPDIR on macOS ends with '/', so just append the filename */
-        snprintf(_buf, sizeof(_buf), "%s%s", tmp, SOLUNA_SHM_FILENAME);
-        _init = 1;
-    }
-    return _buf;
+    return SOLUNA_SHM_PATH;
 }
 
 /**
