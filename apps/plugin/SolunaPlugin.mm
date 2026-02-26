@@ -81,6 +81,12 @@ struct SolunaDriver {
     SolunaShmMap                        mShm;
     _Atomic(bool)                       mShmReady;
 
+    // Volume control (0.0–1.0 linear scalar)
+    Float32                             mVolume;
+
+    // Host ref for property-change notifications
+    AudioServerPlugInHostRef            mHost;
+
     // Format
     AudioStreamBasicDescription         mFormat;
 };
