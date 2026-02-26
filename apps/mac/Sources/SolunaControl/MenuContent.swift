@@ -141,6 +141,90 @@ struct MenuContent: View {
                         Divider().padding(.horizontal, 16)
                     }
 
+                    // ── iPhone Receiver ───────────────────
+                    Divider().padding(.horizontal, 16)
+                    section("iPhone Receiver") {
+                        // Phone host row
+                        if editingPhoneHost {
+                            HStack {
+                                TextField("iPhone IP / tunnel", text: $phoneHostInput)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.callout)
+                                Button("Connect") {
+                                    phoneHost = phoneHostInput
+                                    editingPhoneHost = false
+                                    d.disconnectPhone()
+                                    if !phoneHost.isEmpty { d.connectPhone(host: phoneHost) }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            }
+                        } else {
+                            HStack {
+                                Text(phoneHost.isEmpty ? "Not configured" : phoneHost)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(d.phoneConnected ? Color.green : Color.gray)
+                                        .frame(width: 6, height: 6)
+                                }
+                                Button("Edit") {
+                                    phoneHostInput = phoneHost
+                                    editingPhoneHost = true
+                                }
+                                .controlSize(.small)
+                            }
+                        }
+
+                        if d.phoneConnected {
+                            // Volume + mute
+                            HStack(spacing: 6) {
+                                Button(action: { d.setPhoneMute(!d.phoneMuted) }) {
+                                    Image(systemName: d.phoneMuted ? "speaker.slash.fill" : phoneVolumeIcon)
+                                        .foregroundStyle(d.phoneMuted ? .red : .primary)
+                                        .frame(width: 18)
+                                }
+                                .buttonStyle(.plain)
+                                .help(d.phoneMuted ? "Unmute iPhone" : "Mute iPhone")
+
+                                Slider(value: Binding(
+                                    get: { d.phoneVolume },
+                                    set: { v in
+                                        if d.phoneMuted { d.setPhoneMute(false) }
+                                        d.setPhoneVolume(v)
+                                    }
+                                ), in: 0...1)
+                                .controlSize(.small)
+
+                                Text(d.phoneMuted ? "Mute" : "\(Int(d.phoneVolume * 100))%")
+                                    .monospacedDigit()
+                                    .font(.caption)
+                                    .foregroundStyle(d.phoneMuted ? .red : .secondary)
+                                    .frame(width: 36, alignment: .trailing)
+                            }
+
+                            // Buffer
+                            HStack {
+                                Text("\(d.phoneBufferMs) ms")
+                                    .monospacedDigit()
+                                    .frame(width: 44, alignment: .leading)
+                                Slider(value: Binding(
+                                    get: { Double(d.phoneBufferMs) },
+                                    set: { d.setPhoneBuffer(Int($0)) }
+                                ), in: 5...200, step: 5)
+                                .controlSize(.small)
+                            }
+
+                            if d.phonePackets > 0 {
+                                statRow("Packets", value: formatNum(d.phonePackets))
+                            }
+                        }
+                    }
+
                     // ── Tunnel URL ────────────────────────
                     if !d.tunnelURL.isEmpty {
                         Divider().padding(.horizontal, 16)
