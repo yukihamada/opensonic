@@ -210,6 +210,35 @@ function buildMonitorCard() {
     return el;
 }
 
+// ── Auto-sync RTT (Web UI) ────────────────────────────────────
+let pingT1 = null;
+
+function doSyncPing() {
+    if (!localWs || localWs.readyState !== WebSocket.OPEN) return;
+    pingT1 = performance.now();
+    localSend('time.ping', {}, (resp) => {
+        if (!resp.success || !resp.data) return;
+        try {
+            const d = JSON.parse(resp.data);
+            if (!d.pong || !pingT1) return;
+            const rttMs = Math.round(performance.now() - pingT1);
+            pingT1 = null;
+            monState.lastRtt = rttMs;
+            monState.lastSyncAt = new Date();
+            const $row = document.getElementById('mon-sync-row');
+            const $val = document.getElementById('mon-sync-val');
+            if ($row) $row.style.display = '';
+            if ($val) $val.textContent = `RTT ${rttMs}ms · ${monState.lastSyncAt.toLocaleTimeString()}`;
+        } catch (_) {}
+    });
+}
+
+// Ping once connected, then every 30s
+function startSyncPolling() {
+    setTimeout(doSyncPing, 1500);
+    setInterval(doSyncPing, 30000);
+}
+
 function setBadge(cls) {
     const el = document.getElementById('ws-badge');
     if (!el) return;
