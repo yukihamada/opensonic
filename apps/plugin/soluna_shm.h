@@ -141,10 +141,10 @@ static inline void soluna_shm_close(SolunaShmMap* m)
     }
 }
 
-/** Remove (unlink) the SHM object from the filesystem. */
+/** Remove the backing file from the filesystem. */
 static inline void soluna_shm_unlink(void)
 {
-    shm_unlink(SOLUNA_SHM_NAME);
+    unlink(soluna_shm_path());
 }
 
 /** Initialise header fields (plugin calls this after O_CREAT). */
