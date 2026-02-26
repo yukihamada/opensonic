@@ -9,10 +9,12 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var receiver = AudioReceiver()
+    @StateObject private var daemon   = DaemonClient()
     @State private var showingSettings = false
     @State private var showingError = false
 
     @AppStorage("autoConnect") private var autoConnect = false
+    @AppStorage("macHost")     private var macHost     = ""
 
     var body: some View {
         NavigationView {
