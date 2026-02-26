@@ -813,7 +813,7 @@ static OSStatus Soluna_DoIOOperation(AudioServerPlugInDriverRef  inDriver,
         // Lazily retry attaching to SHM created by solunad (~every 100ms)
         static _Atomic(uint32_t) sRetryCounter = 0;
         uint32_t cnt = atomic_fetch_add(&sRetryCounter, 1u);
-        if ((cnt & 0x1FFF) == 0) {  // every 8192 calls ≈ 85ms @ 512-frame buffers
+        if ((cnt & 0xFF) == 0) {  // every 256 calls ≈ 2-3s at 93 IO cycles/sec
             if (soluna_shm_open(&drv->mShm, O_RDWR) == 0 &&
                 soluna_shm_validate(&drv->mShm) == 0) {
                 atomic_store(&drv->mShmReady, true);
