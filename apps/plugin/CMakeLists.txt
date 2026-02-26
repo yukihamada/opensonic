@@ -34,6 +34,7 @@ target_compile_options(Soluna PRIVATE
 )
 
 # Install target (requires sudo)
+# MODULE libraries need LIBRARY DESTINATION; BUNDLE is for macOS app bundles (.app)
 install(TARGETS Soluna
-    BUNDLE DESTINATION "/Library/Audio/Plug-Ins/HAL"
+    LIBRARY DESTINATION "/Library/Audio/Plug-Ins/HAL"
 )
