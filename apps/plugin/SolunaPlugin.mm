@@ -937,7 +937,11 @@ static OSStatus Soluna_DoIOOperation(AudioServerPlugInDriverRef  inDriver,
     { static _Atomic(uint32_t) sDbgCnt = 0;
       uint32_t n = atomic_fetch_add(&sDbgCnt, 1u);
       if (n < 3) {
-          FILE* f = fopen("/tmp/soluna_driver.log", "a");
+          char dbgpath[512];
+          const char* t2 = getenv("TMPDIR");
+          if (!t2 || !t2[0]) t2 = "/tmp/";
+          snprintf(dbgpath, sizeof(dbgpath), "%ssoluna_driver.log", t2);
+          FILE* f = fopen(dbgpath, "a");
           if (f) { fprintf(f, "DoIOOperation#%u shmReady=%d frames=%u\n",
                            n, (int)atomic_load(&drv->mShmReady), inIOBufferFrameSize);
                    fclose(f); }
