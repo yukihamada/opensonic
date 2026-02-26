@@ -335,6 +335,20 @@ static Boolean Soluna_HasProperty(AudioServerPlugInDriverRef  inDriver,
             return true;
         }
         return false;
+
+    case kSolunaVolumeID:
+        switch (inAddress->mSelector) {
+        case kAudioObjectPropertyBaseClass:
+        case kAudioObjectPropertyClass:
+        case kAudioObjectPropertyOwner:
+        case kAudioObjectPropertyName:
+        case kAudioObjectPropertyOwnedObjects:
+        case kAudioLevelControlPropertyScalarValue:
+        case kAudioLevelControlPropertyDecibelValue:
+        case kAudioLevelControlPropertyDecibelRange:
+            return true;
+        }
+        return false;
     }
     return false;
 }
