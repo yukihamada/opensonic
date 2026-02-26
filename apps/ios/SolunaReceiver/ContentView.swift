@@ -414,6 +414,12 @@ private struct RemoteSpeakerRow: View {
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(.secondary)
                     .frame(width: 44)
+                if daemon.measuredLatencyMs > 0 {
+                    Text("🔄\(daemon.measuredLatencyMs)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.green)
+                        .frame(width: 48)
+                }
             }
             .disabled(!daemon.isConnected)
 
