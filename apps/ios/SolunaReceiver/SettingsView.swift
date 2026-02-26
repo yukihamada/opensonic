@@ -138,14 +138,12 @@ struct SettingsView: View {
         tempMulticastGroup = multicastGroup
         tempPort = String(port)
         tempChannels = channels
-        tempMacHost = macHost
     }
 
     private func saveSettings() {
         multicastGroup = tempMulticastGroup.isEmpty ? "239.69.0.1" : tempMulticastGroup
         port = Int(tempPort) ?? 5004
         channels = tempChannels
-        macHost = tempMacHost
 
         // Apply to receiver
         receiver.multicastGroup = multicastGroup
