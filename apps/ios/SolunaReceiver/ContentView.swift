@@ -216,7 +216,6 @@ struct ContentView: View {
                     showAddSpeaker = false
                 }
                 .disabled(newSpeakerHost.isEmpty)
-                .fontWeight(.semibold)
             )
         }
     }
