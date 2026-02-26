@@ -12,8 +12,6 @@ set_target_properties(Soluna PROPERTIES
     BUNDLE_EXTENSION            "driver"
     OUTPUT_NAME                 "Soluna"
     MACOSX_BUNDLE_INFO_PLIST    "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist"
-    # Suppress default -dynamiclib, use -bundle instead
-    LINK_FLAGS                  "-Wl,-bundle_loader,/usr/sbin/coreaudiod"
 )
 
 target_include_directories(Soluna PRIVATE
