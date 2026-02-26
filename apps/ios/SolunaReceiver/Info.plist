@@ -58,10 +58,10 @@
     <key>NSLocalNetworkUsageDescription</key>
     <string>Soluna Rx needs access to the local network to receive audio streams from other devices.</string>
 
-    <!-- Bonjour services (optional, for future discovery) -->
+    <!-- Bonjour services used for auto-discovery -->
     <key>NSBonjourServices</key>
     <array>
-        <string>_soluna._udp</string>
+        <string>_soluna._tcp</string>
     </array>
 </dict>
 </plist>
