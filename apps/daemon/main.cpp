@@ -690,11 +690,16 @@ static int run_tx(const DaemonConfig& cfg) {
                 speaker_audio.reset();
             } else {
                 const size_t sp_channels = cfg.channels;
+                const uint32_t sp_rate = cfg.sample_rate;
                 speaker_audio->start([&sp_prefilled, &speaker_ring, sp_channels,
-                                      &cfg](float* buf, uint32_t fc) {
+                                      sp_rate](float* buf, uint32_t fc) {
                     size_t samples = fc * sp_channels;
+                    // Prefill = max(4 callbacks, configured delay)
+                    const uint32_t delay_frames = std::max(
+                        fc * 4u,
+                        g_speaker_delay_ms.load() * (sp_rate / 1000u));
                     if (!sp_prefilled.load()) {
-                        if (speaker_ring.available_read() < fc * 4) {
+                        if (speaker_ring.available_read() < delay_frames) {
                             std::memset(buf, 0, samples * sizeof(float));
                             return;
                         }
