@@ -624,6 +624,7 @@ private:
         _channels
     );
     _impl->set_volume(_volume);
+    _impl->set_buffer_ms(_bufferTargetMs);
 
     if (!_impl->start()) {
         _impl.reset();
