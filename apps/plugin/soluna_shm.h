@@ -35,12 +35,13 @@
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-/* NOTE: We use a regular file in $TMPDIR instead of POSIX SHM (/dev/shm)
- * because the CoreAudio driver host (Core-Audio-Driver-Service.helper) runs
- * inside a sandbox that denies ipc-posix-shm* but allows file-read* / write*
- * on (param "TMPDIR").  The helper has ServiceType=Application +
- * JoinExistingSession=true, so $TMPDIR is the same user session as solunad. */
-#define SOLUNA_SHM_FILENAME   "soluna_audio.shm"
+/* We use a file in /private/var/db/soluna/ as shared memory backing.
+ * This path is writable for the CoreAudio driver sandbox
+ * (sandbox profile explicitly allows file-read* file-write* on /private/var/db)
+ * AND is accessible to solunad (running as the login user).
+ * The directory must be created with 0777 by install.sh:
+ *   sudo mkdir -p /private/var/db/soluna && sudo chmod 0777 /private/var/db/soluna */
+#define SOLUNA_SHM_PATH   "/private/var/db/soluna/soluna_audio.shm"
 #define SOLUNA_SHM_MAGIC      0x534F4C55u  /* "SOLU" */
 #define SOLUNA_SHM_VERSION    1u
 
