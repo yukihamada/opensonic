@@ -542,11 +542,6 @@ static int run_tx(const DaemonConfig& cfg) {
     audio_cfg.frames_per_buffer = kFramesPerPacket;
     audio_cfg.format = SampleFormat::S24_LE;
 
-    if (!audio->open_input(cfg.audio_device, audio_cfg)) {
-        fprintf(stderr, "Error: cannot open audio input device '%s'\n", cfg.audio_device.c_str());
-        return 1;
-    }
-
     // ── SHM (soluna virtual device) path ────────────────────────────────────
 #ifdef __APPLE__
     const bool use_shm = (cfg.audio_device == "soluna");
