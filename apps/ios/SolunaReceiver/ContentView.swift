@@ -228,7 +228,14 @@ struct ContentView: View {
             HStack(spacing: 24) {
                 statItem(value: formatNumber(receiver.packetsReceived), label: "Received", color: .green)
                 if receiver.packetsDropped > 0 {
-                    statItem(value: formatNumber(receiver.packetsDropped), label: "Dropped", color: .orange)
+                    let dropPct = receiver.packetsReceived > 0
+                        ? String(format: "%.1f%%", Double(receiver.packetsDropped) / Double(receiver.packetsReceived) * 100)
+                        : "—"
+                    statItem(value: dropPct, label: "Drop%", color: .orange)
+                }
+                statItem(value: "\(receiver.bufferMs)ms", label: "Buffer", color: .secondary)
+                if receiver.packetsConcealed > 0 {
+                    statItem(value: formatNumber(receiver.packetsConcealed), label: "PLC", color: .yellow)
                 }
             }
             Text("\(receiver.multicastGroup):\(receiver.port)")
