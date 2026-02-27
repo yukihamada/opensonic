@@ -14,6 +14,18 @@ build-*/
 *.swo
 *~
 
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+
+# macOS
+.DS_Store
+
+# Fastlane
+fastlane/report.xml
+
 # Compiled binaries
 solunad
 solctl
