@@ -21,7 +21,7 @@ BlackHole や Multi-Output Device の手動設定は不要です。Soluna とい
 Soluna.driver  （CoreAudio HAL プラグイン）
        ↓ 共有メモリ（$TMPDIR/soluna_audio.shm）
 solunad --tx --device soluna
-   ├── UDP マルチキャスト → iPhone / Raspberry Pi
+   ├── UDP マルチキャスト → iPhone / Raspberry Pi / Linux
    └── CoreAudio 出力    → Mac 本体スピーカー（低遅延）
 ```
 
@@ -32,8 +32,10 @@ solunad --tx --device soluna
 | プラットフォーム | 役割 | 状態 |
 |----------------|------|------|
 | macOS | 送信（TX） | ✅ 動作確認済み — Soluna 仮想デバイス経由でシステム音声を配信 |
+| macOS | コントロール | ✅ Menu bar アプリ（SolunaControl）で手軽に操作 |
 | Raspberry Pi | 受信（RX） | ✅ 動作確認済み — ALSA / ES9038Q2M DAC 確認 |
-| iPhone (iOS) | 受信（RX） | 🔨 開発中 |
+| Linux | 受信（RX） | ✅ `soluna-rx` CLI レシーバー（ALSA / pipe 出力） |
+| iPhone (iOS) | 受信（RX） | ✅ Soluna Receiver アプリ（App Store / TestFlight） |
 | ESP32 | 受信（RX） | 🔨 開発中 |
 
 ---
@@ -62,7 +64,7 @@ bash apps/plugin/install.sh
 
 **システム設定 → サウンド → 出力** で **Soluna** を選択。
 
-### 4. solunad を起動
+### 4. solunad を起動（手動）
 
 ```bash
 ./build/solunad --tx --device soluna --speaker ""
@@ -71,22 +73,54 @@ bash apps/plugin/install.sh
 - `--speaker ""` : デフォルトデバイス（Mac スピーカー）で同時再生
 - `--speaker "BlackHole 2ch"` : 別の出力デバイスを指定する場合
 
-音楽を再生すると、Mac スピーカーと UDP マルチキャスト（239.69.0.1:5004）の両方に流れます。
+### 4b. solunad をログイン時に自動起動（推奨）
+
+```bash
+bash apps/daemon/install-service.sh
+```
+
+Mac ログイン時に自動起動し、`/tmp/solunad.log` にログを出力します。
+
+```bash
+launchctl print gui/$UID/io.soluna.daemon   # 状態確認
+launchctl stop  gui/$UID/io.soluna.daemon   # 停止
+launchctl start gui/$UID/io.soluna.daemon   # 開始
+launchctl bootout gui/$UID/io.soluna.daemon # アンインストール
+```
 
 ---
 
-## クイックスタート（Raspberry Pi RX）
+## macOS Menu bar アプリ（SolunaControl）
+
+`apps/macos/SolunaControl/` に Xcode プロジェクトがあります。ビルドすると Menu bar に Soluna アイコンが常駐し、音量・遅延の調整や接続状態確認を手軽に行えます。
+
+---
+
+## クイックスタート（Raspberry Pi / Linux RX）
+
+### soluna-rx（軽量スタンドアロン受信機）
+
+soluna_core に依存しない単一バイナリ。ALSA または stdout パイプ出力に対応します。
 
 ```bash
-sudo apt-get install -y libasound2-dev cmake g++
-git clone https://github.com/yukihamada/opensonic.git
-cd opensonic && mkdir build && cd build
+# ビルド（Linux のみ自動ビルド）
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j4
-sudo cp solunad /usr/bin/solunad
 
-# 受信開始
-solunad --rx --device default --channels 2
+# ALSA 出力
+./soluna-rx --output alsa --device default
+
+# パイプ出力（aplay などに渡す）
+./soluna-rx --output pipe | aplay -f S16_LE -r 48000 -c 2
+
+# オプション
+./soluna-rx --help
+#   --group <ip>      マルチキャストグループ（デフォルト: 239.69.0.1）
+#   --port <n>        UDPポート（デフォルト: 5004）
+#   --channels <n>    チャンネル数（デフォルト: 2）
+#   --output alsa     ALSA 出力（デフォルト）
+#   --output pipe     raw S16LE を stdout へ
+#   --device <name>   ALSA デバイス名（デフォルト: default）
 ```
 
 ### リアルタイム最適化（ドロップアウト対策）
@@ -103,12 +137,61 @@ sudo sysctl -p
 echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 ```
 
-### systemd サービス
+### systemd サービス（RPi 受信専用）
 
 ```bash
 sudo cp deploy/rpi/soluna.service /etc/systemd/system/
 sudo systemctl enable --now soluna
 ```
+
+---
+
+## iPhone アプリ（Soluna Receiver）
+
+`apps/ios/` に Xcode プロジェクトがあります。
+
+### 主な機能
+
+- **Bonjour 自動検出** — 同一ネットワーク上の solunad を自動検出・接続
+- **グローバル遅延コントロール** — 全スピーカー（iPhone + リモート全台）を同一遅延に同期
+- **一括音量・ミュート** — 全スピーカーを一度に制御
+- **PLC（パケットロス補間）** — 最大 2 パケット欠落を前フレームで補完
+- **リアルタイム統計** — 受信パケット数・ドロップ率・バッファ量・PLC 回数を表示
+- **自動同期** — WebSocket RTT 計測でリモートスピーカーの遅延を自動最適化
+
+### セットアップ
+
+```bash
+cd apps/ios
+open SolunaReceiver.xcodeproj
+# Xcode でビルド & 実行
+```
+
+---
+
+## 設定の永続化
+
+solunad は起動時に `~/.config/solunad/config.json` を読み込み、音量・ミュート・遅延設定を復元します。WebSocket 経由で設定が変更されると自動保存されます。
+
+```json
+{
+  "speaker_delay_ms": 40,
+  "monitor_volume": 1.0,
+  "monitor_muted": false,
+  "monitor_buffer_ms": 20
+}
+```
+
+---
+
+## Web UI
+
+solunad 起動中は `http://localhost:8400` でダッシュボードにアクセスできます。
+
+- 各スピーカーの遅延バー表示
+- 30 秒パケットロス履歴（スパークライン）
+- 自動同期 RTT 計測結果
+- 音量・遅延・ミュートの一括コントロール
 
 ---
 
@@ -165,7 +248,10 @@ cmake .. \
 | ネットワーク配信 | ✅ | ✅ | ✅ | ❌ |
 | Mac スピーカー同時再生 | ✅ | ❌ | ❌ | 設定が複雑 |
 | WiFi 対応 | ✅ | 限定的 | ❌ | N/A |
-| 組み込み（RPi/ESP32）| ✅ | ❌ | ❌ | N/A |
+| 組み込み（RPi/Linux）| ✅ | ❌ | ❌ | N/A |
+| iPhone 受信 | ✅ | ❌ | ❌ | N/A |
+| 自動起動（launchd） | ✅ | — | — | N/A |
+| Web UI | ✅ | ✅ | ❌ | N/A |
 
 ---
 
@@ -196,6 +282,14 @@ ls -la $TMPDIR/soluna_audio.shm
 ### Raspberry Pi でドロップアウトが発生する
 
 「リアルタイム最適化」セクションの `setcap` と `sched_rt_runtime_us` 設定を適用してください。
+
+### solunad が Mac 再起動後に起動しない
+
+`install-service.sh` を実行して launchd への登録を確認してください。
+
+```bash
+launchctl print gui/$UID/io.soluna.daemon
+```
 
 ---
 
