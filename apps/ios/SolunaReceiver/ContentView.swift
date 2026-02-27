@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var newHost        = ""
     @State private var masterVolume: Float = 1.0
     @State private var masterMuted    = false
+    @State private var masterDelayMs: Int = 40
 
     @AppStorage("autoConnect") private var autoConnect = false
 
