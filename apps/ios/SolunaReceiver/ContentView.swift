@@ -409,7 +409,7 @@ private struct RemoteSpeakerRow: View {
                     Spacer()
                     if daemon.measuredLatencyMs > 0 {
                         Text("\(daemon.measuredLatencyMs)ms")
-                            .font(.system(size: 11, design: .monospaced, weight: .medium))
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .foregroundColor(.green)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
