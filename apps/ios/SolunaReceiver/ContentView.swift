@@ -326,6 +326,7 @@ private struct MasterRow: View {
 
 private struct LocalSpeakerRow: View {
     @ObservedObject var receiver: AudioReceiver
+    @State private var showDelay = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -348,19 +349,41 @@ private struct LocalSpeakerRow: View {
                         if receiver.isMuted { receiver.isMuted = false }
                     }
 
-                HStack(spacing: 6) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(.tertiaryLabel))
-                    Slider(value: Binding(
-                        get: { Double(receiver.bufferMs) },
-                        set: { receiver.bufferMs = UInt32($0) }
-                    ), in: 5...200, step: 5)
-                    .accentColor(Color(.tertiaryLabel))
-                    Text("\(receiver.bufferMs)ms")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(Color(.tertiaryLabel))
-                        .frame(width: 38, alignment: .trailing)
+                // Delay (jitter buffer) — collapsible
+                Button {
+                    withAnimation(.spring(response: 0.3)) { showDelay.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "timer")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(.tertiaryLabel))
+                        Text("Delay")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color(.tertiaryLabel))
+                        Spacer()
+                        Text("\(receiver.bufferMs)ms")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Color(.tertiaryLabel))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(Color(.quaternaryLabel))
+                            .rotationEffect(.degrees(showDelay ? 90 : 0))
+                    }
+                }
+
+                if showDelay {
+                    HStack(spacing: 6) {
+                        Slider(value: Binding(
+                            get: { Double(receiver.bufferMs) },
+                            set: { receiver.bufferMs = UInt32($0) }
+                        ), in: 5...200, step: 5)
+                        .accentColor(.orange)
+                        Text("\(receiver.bufferMs)ms")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
         }
