@@ -144,12 +144,16 @@ struct ContentView: View {
 
             Divider().padding(.horizontal, 16)
 
-            // Master volume
+            // Master volume + delay
             if speakers.anyConnected {
                 MasterRow(volume: $masterVolume, muted: $masterMuted) { v in
                     speakers.setAllVolume(v)
                 } onMute: { m in
                     speakers.setAllMute(m)
+                }
+                Divider().padding(.horizontal, 16)
+                MasterDelayRow(delayMs: $masterDelayMs) { ms in
+                    speakers.setAllDelay(ms)
                 }
                 Divider().padding(.horizontal, 16)
             }
