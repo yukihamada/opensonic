@@ -2,188 +2,169 @@
 //  ContentView.swift
 //  SolunaReceiver
 //
-//  Main UI for Soluna network audio receiver
-//
 
 import SwiftUI
+
+// MARK: - Root
 
 struct ContentView: View {
     @StateObject private var receiver = AudioReceiver()
     @StateObject private var speakers = SpeakersController()
-    @State private var showingSettings  = false
-    @State private var showingError     = false
-    @State private var showAddSpeaker   = false
-    @State private var newSpeakerName   = ""
-    @State private var newSpeakerHost   = ""
+    @State private var showSettings   = false
+    @State private var showAddSpeaker = false
+    @State private var newName        = ""
+    @State private var newHost        = ""
     @State private var masterVolume: Float = 1.0
-    @State private var masterMuted = false
+    @State private var masterMuted    = false
 
     @AppStorage("autoConnect") private var autoConnect = false
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 24) {
-                Spacer()
-
-                // ── Status indicator ───────────────────────────────────────
-                VStack(spacing: 16) {
-                    ZStack {
-                        Circle()
-                            .fill(statusGradient)
-                            .frame(width: 160, height: 160)
-                            .shadow(color: statusColor.opacity(0.5), radius: 20)
-
-                        Circle()
-                            .fill(Color(.systemBackground))
-                            .frame(width: 140, height: 140)
-
-                        Button(action: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                togglePlayback()
-                            }
-                        }) {
-                            Image(systemName: buttonIcon)
-                                .font(.system(size: 50))
-                                .foregroundColor(buttonColor)
-                                .offset(x: receiver.isPlaying ? 0 : 4)
-                        }
-                        .disabled(receiver.state == .connecting)
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    heroSection
+                    if receiver.state == .receiving || receiver.packetsReceived > 0 {
+                        statsRow
+                            .transition(.move(edge: .top).combined(with: .opacity))
                     }
-
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(statusColor)
-                            .frame(width: 8, height: 8)
-                        Text(receiver.state.rawValue)
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                    }
-
-                    if receiver.state == .error {
-                        Text("Tap to retry")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.top, 4)
-                    }
+                    speakersCard
                 }
-
-                // ── Stats ──────────────────────────────────────────────────
-                if receiver.state == .receiving || receiver.packetsReceived > 0 {
-                    statsCard
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-
-                Spacer()
-
-                // ── Speakers ───────────────────────────────────────────────
-                speakersSection
-
-                Spacer(minLength: 0)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
             }
-            .padding()
-            .navigationTitle("Soluna Rx")
-            .navigationBarItems(trailing:
-                Button(action: { showingSettings = true }) {
-                    Image(systemName: "gearshape")
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Soluna")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gearshape")
+                            .symbolVariant(.none)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-            )
-            .sheet(isPresented: $showingSettings) {
-                SettingsView(receiver: receiver)
             }
-            .sheet(isPresented: $showAddSpeaker, onDismiss: {
-                newSpeakerName = ""
-                newSpeakerHost = ""
-            }) {
+            .sheet(isPresented: $showSettings) { SettingsView(receiver: receiver) }
+            .sheet(isPresented: $showAddSpeaker, onDismiss: { newName = ""; newHost = "" }) {
                 addSpeakerSheet
-            }
-            .alert(isPresented: $showingError) {
-                Alert(
-                    title: Text("Connection Error"),
-                    message: Text(receiver.errorMessage ?? "Failed to connect to audio stream."),
-                    primaryButton: .default(Text("Settings")) { showingSettings = true },
-                    secondaryButton: .cancel()
-                )
-            }
-            .onChange(of: receiver.errorMessage) { newValue in
-                if newValue != nil { showingError = true }
             }
             .onAppear {
                 speakers.audioReceiver = receiver
                 loadSavedSettings()
                 if autoConnect { receiver.start() }
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: receiver.state)
         }
     }
 
-    // MARK: - Speakers section
+    // MARK: - Hero
 
-    private var speakersSection: some View {
+    private var heroSection: some View {
+        VStack(spacing: 20) {
+            // Play button
+            Button(action: togglePlayback) {
+                ZStack {
+                    Circle()
+                        .fill(heroButtonBg)
+                        .frame(width: 100, height: 100)
+                        .shadow(color: heroAccent.opacity(0.3), radius: 16, y: 4)
+
+                    if receiver.state == .connecting {
+                        ProgressView()
+                            .scaleEffect(1.3)
+                            .tint(heroAccent)
+                    } else {
+                        Image(systemName: heroIcon)
+                            .font(.system(size: 36, weight: .semibold))
+                            .foregroundStyle(heroAccent)
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                }
+            }
+            .disabled(receiver.state == .connecting)
+            .sensoryFeedback(.impact(flexibility: .soft), trigger: receiver.state)
+
+            // Status pill
+            Label {
+                Text(receiver.state.rawValue)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(heroAccent)
+            } icon: {
+                Circle()
+                    .fill(heroAccent)
+                    .frame(width: 7, height: 7)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(heroAccent.opacity(0.1), in: Capsule())
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 28)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    // MARK: - Stats
+
+    private var statsRow: some View {
+        HStack(spacing: 8) {
+            StatPill(
+                value: formatNum(receiver.packetsReceived),
+                label: "pkts",
+                color: .green
+            )
+            if receiver.packetsDropped > 0 {
+                let pct = receiver.packetsReceived > 0
+                    ? String(format: "%.1f%%", Double(receiver.packetsDropped) / Double(receiver.packetsReceived) * 100)
+                    : "—"
+                StatPill(value: pct, label: "drop", color: .orange)
+            }
+            StatPill(value: "\(receiver.bufferMs)ms", label: "buf", color: .secondary)
+            if receiver.packetsConcealed > 0 {
+                StatPill(value: formatNum(receiver.packetsConcealed), label: "plc", color: .yellow)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Speakers card
+
+    private var speakersCard: some View {
         VStack(spacing: 0) {
-            // ── Master volume (shown when ≥2 speakers are connected) ─────
-            if speakers.speakers.count >= 1 && speakers.anyConnected {
-                MasterVolumeRow(
-                    volume: $masterVolume,
-                    muted: $masterMuted,
-                    onVolumeChange: { v in speakers.setAllVolume(v) },
-                    onMuteChange:   { m in speakers.setAllMute(m) }
-                )
+            // Section header
+            HStack {
+                Text("Speakers")
+                    .font(.headline)
+                Spacer()
+                Button(action: { showAddSpeaker = true }) {
+                    Image(systemName: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.blue)
+                        .frame(width: 28, height: 28)
+                        .background(Color(.tertiarySystemFill), in: Circle())
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+
+            Divider().padding(.horizontal, 16)
+
+            // Master volume (when remotes connected)
+            if speakers.anyConnected {
+                MasterRow(volume: $masterVolume, muted: $masterMuted) { v in
+                    speakers.setAllVolume(v)
+                } onMute: { m in
+                    speakers.setAllMute(m)
+                }
                 Divider().padding(.horizontal, 16)
             }
 
-            // ── iPhone (local receiver) ──────────────────────────────────
-            SpeakerRow(label: "iPhone", icon: "iphone", isConnected: receiver.state == .receiving) {
-                // Volume + mute
-                HStack(spacing: 10) {
-                    Button(action: {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        receiver.isMuted.toggle()
-                    }) {
-                        Image(systemName: receiver.isMuted ? "speaker.slash.fill" : localVolumeIcon)
-                            .foregroundColor(receiver.isMuted ? .red : .secondary)
-                            .frame(width: 24)
-                            .contentShape(Rectangle())
-                    }
-                    Button(action: {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        if receiver.isMuted { receiver.isMuted = false }
-                        receiver.volume = max(0, receiver.volume - 0.1)
-                    }) {
-                        Image(systemName: "minus.circle.fill").foregroundColor(.secondary)
-                    }
-                    Slider(value: $receiver.volume, in: 0...1)
-                        .onChange(of: receiver.volume) { _ in
-                            if receiver.isMuted { receiver.isMuted = false }
-                        }
-                    Button(action: {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        if receiver.isMuted { receiver.isMuted = false }
-                        receiver.volume = min(1, receiver.volume + 0.1)
-                    }) {
-                        Image(systemName: "plus.circle.fill").foregroundColor(.secondary)
-                    }
-                    Text(receiver.isMuted ? "Mute" : "\(Int(receiver.volume * 100))%")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(receiver.isMuted ? .red : .secondary)
-                        .frame(width: 44)
-                }
-                // Latency
-                HStack(spacing: 10) {
-                    Image(systemName: "waveform.path.ecg")
-                        .foregroundColor(.secondary)
-                        .frame(width: 24)
-                    Slider(value: Binding(
-                        get: { Double(receiver.bufferMs) },
-                        set: { receiver.bufferMs = UInt32($0) }
-                    ), in: 5...200, step: 5)
-                    .accentColor(.secondary)
-                    Text("\(receiver.bufferMs)ms")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .frame(width: 44)
-                }
-            }
+            // Local iPhone row
+            LocalSpeakerRow(receiver: receiver)
 
-            // ── Remote speakers ──────────────────────────────────────────
+            // Remote speakers
             ForEach(speakers.speakers) { speaker in
                 if let daemon = speakers.client(for: speaker.id) {
                     Divider().padding(.horizontal, 16)
@@ -195,133 +176,77 @@ struct ContentView: View {
                 }
             }
 
-            // ── Add speaker ──────────────────────────────────────────────
             Divider().padding(.horizontal, 16)
+
+            // Add button
             Button(action: { showAddSpeaker = true }) {
-                Label("スピーカーを追加", systemImage: "plus.circle")
+                Label("Add Speaker", systemImage: "plus.circle.fill")
                     .font(.subheadline)
-                    .foregroundColor(.blue)
+                    .foregroundStyle(.blue)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
             }
-            .padding(.vertical, 12)
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    // MARK: - Add Speaker sheet
+    // MARK: - Add speaker sheet
 
     private var addSpeakerSheet: some View {
-        NavigationView {
+        NavigationStack {
             Form {
-                Section(header: Text("接続先")) {
-                    TextField("名前 (例: Mac, リビング)", text: $newSpeakerName)
-                    TextField("IP アドレス / ホスト", text: $newSpeakerHost)
+                Section("接続先") {
+                    TextField("名前（例: Mac, リビング）", text: $newName)
+                    TextField("IPアドレス / ホスト", text: $newHost)
                         .keyboardType(.URL)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
                 }
             }
             .navigationTitle("スピーカーを追加")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("キャンセル") { showAddSpeaker = false },
-                trailing: Button("追加") {
-                    speakers.add(name: newSpeakerName, host: newSpeakerHost)
-                    showAddSpeaker = false
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("キャンセル") { showAddSpeaker = false }
                 }
-                .disabled(newSpeakerHost.isEmpty)
-            )
-        }
-    }
-
-    // MARK: - Stats card
-
-    private var statsCard: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 24) {
-                statItem(value: formatNumber(receiver.packetsReceived), label: "Received", color: .green)
-                if receiver.packetsDropped > 0 {
-                    let dropPct = receiver.packetsReceived > 0
-                        ? String(format: "%.1f%%", Double(receiver.packetsDropped) / Double(receiver.packetsReceived) * 100)
-                        : "—"
-                    statItem(value: dropPct, label: "Drop%", color: .orange)
-                }
-                statItem(value: "\(receiver.bufferMs)ms", label: "Buffer", color: .secondary)
-                if receiver.packetsConcealed > 0 {
-                    statItem(value: formatNumber(receiver.packetsConcealed), label: "PLC", color: .yellow)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("追加") {
+                        speakers.add(name: newName, host: newHost)
+                        showAddSpeaker = false
+                    }
+                    .disabled(newHost.isEmpty)
                 }
             }
-            Text("\(receiver.multicastGroup):\(receiver.port)")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.top, 4)
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(16)
-    }
-
-    private func statItem(value: String, label: String, color: Color) -> some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.system(.title, design: .monospaced))
-                .fontWeight(.bold)
-                .foregroundColor(color)
-            Text(label)
-                .font(.caption)
-                .foregroundColor(.secondary)
         }
     }
 
-    // MARK: - Computed Properties
+    // MARK: - Computed
 
-    private var statusColor: Color {
+    private var heroAccent: Color {
         switch receiver.state {
         case .receiving:  return .green
         case .connecting: return .orange
         case .error:      return .red
-        case .stopped:    return .gray
-        }
-    }
-
-    private var statusGradient: LinearGradient {
-        LinearGradient(
-            colors: [statusColor.opacity(0.3), statusColor.opacity(0.1)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    private var buttonIcon: String {
-        switch receiver.state {
-        case .receiving:  return "stop.fill"
-        case .connecting: return "ellipsis"
-        case .error:      return "arrow.clockwise"
-        case .stopped:    return "play.fill"
-        }
-    }
-
-    private var buttonColor: Color {
-        switch receiver.state {
-        case .receiving:  return .red
-        case .connecting: return .orange
-        case .error:      return .blue
         case .stopped:    return .blue
         }
     }
 
-    private var localVolumeIcon: String {
-        receiver.volume < 0.33 ? "speaker.fill"
-        : receiver.volume < 0.66 ? "speaker.wave.1.fill"
-        : "speaker.wave.3.fill"
+    private var heroButtonBg: some ShapeStyle {
+        heroAccent.opacity(0.12)
     }
 
-    // MARK: - Methods
+    private var heroIcon: String {
+        switch receiver.state {
+        case .receiving: return "stop.fill"
+        case .error:     return "arrow.clockwise"
+        default:         return "play.fill"
+        }
+    }
+
+    // MARK: - Helpers
 
     private func togglePlayback() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         if receiver.state == .error {
-            showingError = false
             receiver.start()
         } else {
             receiver.toggle()
@@ -329,94 +254,160 @@ struct ContentView: View {
     }
 
     private func loadSavedSettings() {
-        let defaults = UserDefaults.standard
-        if let group = defaults.string(forKey: "multicastGroup"), !group.isEmpty {
-            receiver.multicastGroup = group
-        }
-        let port = defaults.integer(forKey: "port")
+        let d = UserDefaults.standard
+        if let g = d.string(forKey: "multicastGroup"), !g.isEmpty { receiver.multicastGroup = g }
+        let port = d.integer(forKey: "port")
         if port > 0 { receiver.port = UInt16(port) }
-        let channels = defaults.integer(forKey: "channels")
-        // Soluna transmits stereo (2ch); only apply if explicitly set to ≥2
-        if channels >= 2 { receiver.channels = UInt32(channels) }
+        let ch = d.integer(forKey: "channels")
+        if ch >= 2 { receiver.channels = UInt32(ch) }
     }
 
-    private func formatNumber(_ value: UInt64) -> String {
-        value >= 1_000_000 ? String(format: "%.1fM", Double(value) / 1_000_000)
-        : value >= 1_000   ? String(format: "%.1fK", Double(value) / 1_000)
-        : "\(value)"
+    private func formatNum(_ n: UInt64) -> String {
+        n >= 1_000_000 ? String(format: "%.1fM", Double(n) / 1_000_000)
+        : n >= 1_000   ? String(format: "%.1fK", Double(n) / 1_000)
+        : "\(n)"
     }
 }
 
-// MARK: - MasterVolumeRow
+// MARK: - StatPill
 
-private struct MasterVolumeRow: View {
+private struct StatPill: View {
+    let value: String
+    let label: String
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(.subheadline, design: .monospaced, weight: .semibold))
+                .foregroundStyle(color == .secondary ? Color.secondary : color)
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(color == .secondary ? Color(.tertiarySystemFill) : color.opacity(0.1),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+// MARK: - MasterRow
+
+private struct MasterRow: View {
     @Binding var volume: Float
     @Binding var muted: Bool
-    let onVolumeChange: (Float) -> Void
-    let onMuteChange: (Bool) -> Void
+    let onVolume: (Float) -> Void
+    let onMute: (Bool) -> Void
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "speaker.wave.3")
-                    .foregroundColor(.blue)
-                    .frame(width: 20)
-                Text("All Speakers")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.blue)
-                Spacer()
+        HStack(spacing: 12) {
+            Button {
+                muted.toggle()
+                onMute(muted)
+            } label: {
+                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.3.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(muted ? .red : .blue)
+                    .frame(width: 32, height: 32)
+                    .background(muted ? Color.red.opacity(0.1) : Color.blue.opacity(0.1), in: Circle())
             }
-            HStack(spacing: 10) {
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    muted.toggle()
-                    onMuteChange(muted)
-                }) {
-                    Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                        .foregroundColor(muted ? .red : .blue)
-                        .frame(width: 24)
-                        .contentShape(Rectangle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text("All Speakers")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(muted ? "Muted" : "\(Int(volume * 100))%")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(muted ? .red : .secondary)
                 }
                 Slider(value: $volume, in: 0...1)
-                    .accentColor(.blue)
-                    .onChange(of: volume) { v in
-                        if muted { muted = false; onMuteChange(false) }
-                        onVolumeChange(v)
+                    .tint(.blue)
+                    .onChange(of: volume) { _, v in
+                        if muted { muted = false; onMute(false) }
+                        onVolume(v)
                     }
-                Text(muted ? "Mute" : "\(Int(volume * 100))%")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(muted ? .red : .blue)
-                    .frame(width: 44)
             }
         }
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 }
 
-// MARK: - SpeakerRow (header + content)
+// MARK: - LocalSpeakerRow
 
-private struct SpeakerRow<Content: View>: View {
-    let label: String
-    let icon: String
-    let isConnected: Bool
-    @ViewBuilder let content: () -> Content
+private struct LocalSpeakerRow: View {
+    @ObservedObject var receiver: AudioReceiver
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .foregroundColor(.secondary)
-                    .frame(width: 20)
-                Text(label)
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
+        HStack(spacing: 12) {
+            // Status + icon
+            ZStack(alignment: .bottomTrailing) {
+                Image(systemName: "iphone")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, height: 32)
                 Circle()
-                    .fill(isConnected ? Color.green : Color.gray)
-                    .frame(width: 7, height: 7)
+                    .fill(receiver.state == .receiving ? Color.green : Color(.systemFill))
+                    .frame(width: 8, height: 8)
+                    .overlay(Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: 1.5))
             }
-            content()
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("This iPhone")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Button {
+                        receiver.isMuted.toggle()
+                    } label: {
+                        Image(systemName: receiver.isMuted ? "speaker.slash.fill" : volumeIcon)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(receiver.isMuted ? .red : .secondary)
+                            .frame(width: 28, height: 28)
+                            .background(receiver.isMuted ? Color.red.opacity(0.1) : Color(.tertiarySystemFill),
+                                        in: Circle())
+                    }
+                    Text(receiver.isMuted ? "Muted" : "\(Int(receiver.volume * 100))%")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(receiver.isMuted ? .red : .secondary)
+                        .frame(width: 42, alignment: .trailing)
+                }
+
+                Slider(value: $receiver.volume, in: 0...1)
+                    .tint(.primary)
+                    .onChange(of: receiver.volume) { _, _ in
+                        if receiver.isMuted { receiver.isMuted = false }
+                    }
+
+                // Buffer slider
+                HStack(spacing: 6) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Slider(value: Binding(
+                        get: { Double(receiver.bufferMs) },
+                        set: { receiver.bufferMs = UInt32($0) }
+                    ), in: 5...200, step: 5)
+                    .tint(.tertiary)
+                    Text("\(receiver.bufferMs)ms")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 38, alignment: .trailing)
+                }
+            }
         }
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+
+    private var volumeIcon: String {
+        receiver.volume < 0.01 ? "speaker.fill"
+        : receiver.volume < 0.5 ? "speaker.wave.1.fill"
+        : "speaker.wave.3.fill"
     }
 }
 
@@ -426,26 +417,56 @@ private struct RemoteSpeakerRow: View {
     let name: String
     @ObservedObject var daemon: DaemonClient
     let onRemove: () -> Void
+    @State private var showDelay = false
 
     var body: some View {
-        SpeakerRow(
-            label: name,
-            icon: "hifispeaker.2.fill",
-            isConnected: daemon.isConnected
-        ) {
-            // Volume + mute
-            HStack(spacing: 10) {
-                Button(action: { daemon.setMonitorMute(!daemon.monitorMuted) }) {
-                    Image(systemName: daemon.monitorMuted ? "speaker.slash.fill" : remoteVolumeIcon)
-                        .foregroundColor(daemon.monitorMuted ? .red : .secondary)
-                        .frame(width: 24)
+        HStack(spacing: 12) {
+            // Icon + status
+            ZStack(alignment: .bottomTrailing) {
+                Image(systemName: "hifispeaker.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(daemon.isConnected ? Color.primary : Color(.tertiaryLabel))
+                    .frame(width: 32, height: 32)
+                Circle()
+                    .fill(daemon.isConnected ? Color.green : Color(.systemFill))
+                    .frame(width: 8, height: 8)
+                    .overlay(Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: 1.5))
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(daemon.isConnected ? .primary : .secondary)
+                    Spacer()
+
+                    // Auto-sync badge
+                    if daemon.measuredLatencyMs > 0 {
+                        Text("\(daemon.measuredLatencyMs)ms")
+                            .font(.system(size: 11, design: .monospaced, weight: .medium))
+                            .foregroundStyle(.green)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.green.opacity(0.1), in: Capsule())
+                    }
+
+                    Button {
+                        daemon.setMonitorMute(!daemon.monitorMuted)
+                    } label: {
+                        Image(systemName: daemon.monitorMuted ? "speaker.slash.fill" : remoteVolumeIcon)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(daemon.monitorMuted ? .red : .secondary)
+                            .frame(width: 28, height: 28)
+                            .background(daemon.monitorMuted ? Color.red.opacity(0.1) : Color(.tertiarySystemFill),
+                                        in: Circle())
+                    }
+                    Text(daemon.monitorMuted ? "Muted" : "\(Int(daemon.monitorVolume * 100))%")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(daemon.monitorMuted ? .red : .secondary)
+                        .frame(width: 42, alignment: .trailing)
                 }
-                Button(action: {
-                    if daemon.monitorMuted { daemon.setMonitorMute(false) }
-                    daemon.setMonitorVolume(max(0, daemon.monitorVolume - 0.1))
-                }) {
-                    Image(systemName: "minus.circle.fill").foregroundColor(.secondary)
-                }
+                .disabled(!daemon.isConnected)
+
                 Slider(value: Binding(
                     get: { daemon.monitorVolume },
                     set: { v in
@@ -453,59 +474,63 @@ private struct RemoteSpeakerRow: View {
                         daemon.setMonitorVolume(v)
                     }
                 ), in: 0...1)
-                Button(action: {
-                    if daemon.monitorMuted { daemon.setMonitorMute(false) }
-                    daemon.setMonitorVolume(min(1, daemon.monitorVolume + 0.1))
-                }) {
-                    Image(systemName: "plus.circle.fill").foregroundColor(.secondary)
-                }
-                Text(daemon.monitorMuted ? "Mute" : "\(Int(daemon.monitorVolume * 100))%")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(daemon.monitorMuted ? .red : .secondary)
-                    .frame(width: 44)
-            }
-            .disabled(!daemon.isConnected)
+                .tint(daemon.isConnected ? .blue : .secondary)
+                .disabled(!daemon.isConnected)
 
-            // Speaker delay (for sync with receivers)
-            HStack(spacing: 10) {
-                Image(systemName: "timer")
-                    .foregroundColor(.secondary)
-                    .frame(width: 24)
-                Slider(value: Binding(
-                    get: { Double(daemon.monitorDelayMs) },
-                    set: { daemon.setMonitorDelay(Int($0)) }
-                ), in: 0...200, step: 5)
-                .accentColor(.secondary)
-                Text("\(daemon.monitorDelayMs)ms")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .frame(width: 44)
-                if daemon.measuredLatencyMs > 0 {
-                    Text("🔄\(daemon.measuredLatencyMs)")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.green)
-                        .frame(width: 48)
+                // Delay row (tap chevron to expand)
+                Button {
+                    withAnimation(.spring(response: 0.3)) { showDelay.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "timer")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                        Text("Delay")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.tertiary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.quaternary)
+                            .rotationEffect(.degrees(showDelay ? 90 : 0))
+                    }
                 }
-            }
-            .disabled(!daemon.isConnected)
 
-            // Remove button
-            HStack {
-                Spacer()
-                Button(action: onRemove) {
-                    Label("削除", systemImage: "trash")
-                        .font(.caption)
-                        .foregroundColor(.red)
+                if showDelay {
+                    HStack(spacing: 6) {
+                        Slider(value: Binding(
+                            get: { Double(daemon.monitorDelayMs) },
+                            set: { daemon.setMonitorDelay(Int($0)) }
+                        ), in: 0...200, step: 5)
+                        .tint(.orange)
+                        Text("\(daemon.monitorDelayMs)ms")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                    .disabled(!daemon.isConnected)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                // Remove
+                HStack {
+                    Spacer()
+                    Button(role: .destructive, action: onRemove) {
+                        Label("削除", systemImage: "trash")
+                            .font(.caption)
+                            .foregroundStyle(.red.opacity(0.7))
+                    }
                 }
             }
         }
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
     }
 
     private var remoteVolumeIcon: String {
         daemon.monitorVolume < 0.01 ? "speaker.fill"
         : daemon.monitorVolume < 0.5 ? "speaker.wave.1.fill"
-        : "speaker.wave.2.fill"
+        : "speaker.wave.3.fill"
     }
 }
 
