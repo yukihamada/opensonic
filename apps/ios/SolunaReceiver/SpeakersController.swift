@@ -138,6 +138,13 @@ final class SpeakersController: ObservableObject {
         clients.values.forEach { $0.setMonitorMute(m) }
     }
 
+    /// Set delay on ALL speakers simultaneously (iPhone jitter buffer + all remotes).
+    /// This is the master sync control — one slider keeps every output in lockstep.
+    func setAllDelay(_ ms: Int) {
+        audioReceiver?.bufferMs = UInt32(max(5, min(200, ms)))
+        clients.values.forEach { $0.setMonitorDelay(ms) }
+    }
+
     // MARK: - Private
 
     private func addDiscovered(name: String, host: String) {
