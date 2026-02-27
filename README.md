@@ -92,7 +92,13 @@ launchctl bootout gui/$UID/io.soluna.daemon # アンインストール
 
 ## macOS Menu bar アプリ（SolunaControl）
 
-`apps/macos/SolunaControl/` に Xcode プロジェクトがあります。ビルドすると Menu bar に Soluna アイコンが常駐し、音量・遅延の調整や接続状態確認を手軽に行えます。
+`apps/mac/` に Swift Package Manager プロジェクトがあります。ビルドすると Menu bar に Soluna アイコンが常駐し、音量・遅延の調整や接続状態確認を手軽に行えます。
+
+```bash
+cd apps/mac
+swift build -c release
+# または Xcode で open Package.swift してビルド
+```
 
 ---
 
