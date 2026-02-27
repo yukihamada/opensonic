@@ -182,7 +182,7 @@ final class DaemonClient: ObservableObject {
                 if case .string(let text) = message {
                     Task { @MainActor [weak self] in self?.parse(text) }
                 }
-                self.receiveLoop()
+                Task { @MainActor [weak self] in self?.receiveLoop() }
             case .failure:
                 Task { @MainActor [weak self] in
                     guard let self else { return }
