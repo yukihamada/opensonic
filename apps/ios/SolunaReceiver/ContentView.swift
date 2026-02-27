@@ -385,7 +385,6 @@ private struct RemoteSpeakerRow: View {
     let name: String
     @ObservedObject var daemon: DaemonClient
     let onRemove: () -> Void
-    @State private var showDelay = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -423,41 +422,6 @@ private struct RemoteSpeakerRow: View {
                 ), in: 0...1)
                 .accentColor(daemon.isConnected ? .blue : .secondary)
                 .disabled(!daemon.isConnected)
-
-                // Delay toggle
-                Button {
-                    withAnimation(.spring(response: 0.3)) { showDelay.toggle() }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "timer")
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(.tertiaryLabel))
-                        Text("Delay")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(.tertiaryLabel))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(Color(.quaternaryLabel))
-                            .rotationEffect(.degrees(showDelay ? 90 : 0))
-                    }
-                }
-
-                if showDelay {
-                    HStack(spacing: 6) {
-                        Slider(value: Binding(
-                            get: { Double(daemon.monitorDelayMs) },
-                            set: { daemon.setMonitorDelay(Int($0)) }
-                        ), in: 0...200, step: 5)
-                        .accentColor(.orange)
-                        Text("\(daemon.monitorDelayMs)ms")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.secondary)
-                            .frame(width: 38, alignment: .trailing)
-                    }
-                    .disabled(!daemon.isConnected)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
 
                 HStack {
                     Spacer()
