@@ -327,6 +327,46 @@ private struct MasterRow: View {
     }
 }
 
+// MARK: - MasterDelayRow
+
+private struct MasterDelayRow: View {
+    @Binding var delayMs: Int
+    let onDelay: (Int) -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "timer")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.orange)
+                .frame(width: 32, height: 32)
+                .background(Color.orange.opacity(0.1))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Global Delay")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text("\(delayMs)ms")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(.orange)
+                }
+                Slider(value: Binding(
+                    get: { Double(delayMs) },
+                    set: { ms in
+                        delayMs = Int(ms)
+                        onDelay(delayMs)
+                    }
+                ), in: 5...200, step: 5)
+                .accentColor(.orange)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+}
+
 // MARK: - LocalSpeakerRow
 
 private struct LocalSpeakerRow: View {
