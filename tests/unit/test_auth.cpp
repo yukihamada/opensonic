@@ -8,6 +8,8 @@
 #include <soluna/security/auth.h>
 #include <soluna/security/acl.h>
 #include <soluna/security/token.h>
+#include <cctype>
+#include <set>
 
 using namespace soluna;
 using namespace soluna::security;
@@ -288,6 +290,25 @@ TEST(TokenTest, Generate) {
     EXPECT_NE(token1, token2);
 }
 
+TEST(TokenTest, GenerateUniqueness) {
+    // Generate 20 tokens and verify all are distinct (collision probability ~0 with CSPRNG)
+    const int N = 20;
+    std::set<std::string> tokens;
+    for (int i = 0; i < N; i++) {
+        tokens.insert(Token::generate(32));
+    }
+    EXPECT_EQ(static_cast<int>(tokens.size()), N);
+}
+
+TEST(TokenTest, GenerateCharset) {
+    // All characters should be alphanumeric (a-z A-Z 0-9)
+    std::string token = Token::generate(256);
+    for (char c : token) {
+        EXPECT_TRUE(std::isalnum(static_cast<unsigned char>(c)))
+            << "Non-alphanumeric char: " << c;
+    }
+}
+
 TEST(TokenTest, GenerateBase64) {
     std::string token = Token::generate_base64(24);
     EXPECT_FALSE(token.empty());
@@ -295,6 +316,15 @@ TEST(TokenTest, GenerateBase64) {
     // URL-safe base64 should not contain + or /
     EXPECT_EQ(token.find('+'), std::string::npos);
     EXPECT_EQ(token.find('/'), std::string::npos);
+}
+
+TEST(TokenTest, GenerateBase64Uniqueness) {
+    const int N = 20;
+    std::set<std::string> tokens;
+    for (int i = 0; i < N; i++) {
+        tokens.insert(Token::generate_base64(24));
+    }
+    EXPECT_EQ(static_cast<int>(tokens.size()), N);
 }
 
 TEST(TokenTest, SHA256) {

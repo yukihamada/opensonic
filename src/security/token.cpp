@@ -5,11 +5,16 @@
  */
 
 #include <soluna/security/token.h>
-#include <random>
 #include <sstream>
 #include <iomanip>
-#include <algorithm>
 #include <cstring>
+#include <stdexcept>
+#ifdef _WIN32
+#  include <windows.h>
+#  include <bcrypt.h>
+#else
+#  include <cstdio>
+#endif
 
 // Use OpenSSL if available, otherwise fallback to simple implementation
 #ifdef SOLUNA_HAS_DTLS
@@ -119,11 +124,25 @@ std::string Token::generate(size_t length) {
         result += charset[bytes[i] % (sizeof(charset) - 1)];
     }
 #else
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dist(0, sizeof(charset) - 2);
+    // CSPRNG fallback: /dev/urandom on POSIX, BCryptGenRandom on Windows
+    std::vector<uint8_t> bytes(length);
+#ifdef _WIN32
+    if (BCryptGenRandom(NULL, bytes.data(), static_cast<ULONG>(length),
+                        BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
+        throw std::runtime_error("Token::generate: BCryptGenRandom failed");
+    }
+#else
+    {
+        FILE* urnd = fopen("/dev/urandom", "rb");
+        if (!urnd || fread(bytes.data(), 1, length, urnd) != length) {
+            if (urnd) fclose(urnd);
+            throw std::runtime_error("Token::generate: failed to read /dev/urandom");
+        }
+        fclose(urnd);
+    }
+#endif
     for (size_t i = 0; i < length; i++) {
-        result += charset[dist(gen)];
+        result += charset[bytes[i] % (sizeof(charset) - 1)];
     }
 #endif
 
@@ -137,12 +156,23 @@ std::string Token::generate_base64(size_t bytes) {
 #if HAS_OPENSSL
     RAND_bytes(reinterpret_cast<unsigned char*>(&raw[0]), static_cast<int>(bytes));
 #else
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dist(0, 255);
-    for (size_t i = 0; i < bytes; i++) {
-        raw[i] = static_cast<char>(dist(gen));
+    // CSPRNG fallback: /dev/urandom on POSIX, BCryptGenRandom on Windows
+#ifdef _WIN32
+    if (BCryptGenRandom(NULL, reinterpret_cast<PUCHAR>(&raw[0]),
+                        static_cast<ULONG>(bytes),
+                        BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
+        throw std::runtime_error("Token::generate_base64: BCryptGenRandom failed");
     }
+#else
+    {
+        FILE* urnd = fopen("/dev/urandom", "rb");
+        if (!urnd || fread(&raw[0], 1, bytes, urnd) != bytes) {
+            if (urnd) fclose(urnd);
+            throw std::runtime_error("Token::generate_base64: failed to read /dev/urandom");
+        }
+        fclose(urnd);
+    }
+#endif
 #endif
 
     return base64url_encode(raw);
