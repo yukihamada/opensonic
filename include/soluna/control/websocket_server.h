@@ -74,9 +74,15 @@ public:
     bool is_running() const;
 
     /**
-     * Broadcast a message to all connected WebSocket clients.
+     * Broadcast a text message to all connected WebSocket clients.
      */
     void broadcast(const std::string& message);
+
+    /**
+     * Broadcast a binary frame to all connected WebSocket clients.
+     * Used for raw audio streaming (PCM S16LE).
+     */
+    void broadcast_binary(const uint8_t* data, size_t len);
 
     /**
      * Get number of connected WebSocket clients.
