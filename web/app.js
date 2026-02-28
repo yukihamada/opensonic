@@ -22,7 +22,9 @@ function localConnect() {
     localWs.onopen  = () => { setBadge('connected');    pollTxStats(); initMonitor(); startSyncPolling(); };
     localWs.onclose = () => { setBadge('disconnected'); setTimeout(localConnect, 3000); };
     localWs.onerror = () => {};
+    localWs.binaryType = 'arraybuffer';
     localWs.onmessage = (evt) => {
+        if (evt.data instanceof ArrayBuffer) { baHandleChunk(evt.data); return; }
         try {
             const r = JSON.parse(evt.data);
             const cb = localPending.get(r.id);
