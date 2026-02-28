@@ -744,6 +744,80 @@ function escHtml(s) {
         .replace(/"/g, '&quot;');
 }
 
+// ── Browser Audio Receiver ────────────────────────────────────
+let baCtx       = null;
+let baPlayAt    = 0;
+let baActive    = false;
+let baSampleRate = 48000;
+let baChannels   = 2;
+let baPkts       = 0;
+
+function baStart() {
+    if (baActive) return;
+    baCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: baSampleRate });
+    baPlayAt = baCtx.currentTime + 0.12; // 120ms initial buffer
+    baActive = true;
+    baPkts = 0;
+    localSend('audio.subscribe', {}, (r) => {
+        if (r.success && r.data) {
+            try {
+                const d = JSON.parse(r.data);
+                baSampleRate = d.sample_rate || 48000;
+                baChannels   = d.channels    || 2;
+            } catch (_) {}
+        }
+    });
+    document.getElementById('ba-btn').classList.add('ba-playing');
+    document.getElementById('ba-icon').textContent = '■';
+    document.getElementById('ba-label').textContent = 'Listening…';
+    document.getElementById('ba-stats').style.display = '';
+}
+
+function baStop() {
+    if (!baActive) return;
+    baActive = false;
+    localSend('audio.unsubscribe', {}, null);
+    if (baCtx) { baCtx.close(); baCtx = null; }
+    document.getElementById('ba-btn').classList.remove('ba-playing');
+    document.getElementById('ba-icon').textContent = '▶';
+    document.getElementById('ba-label').textContent = 'Click to listen';
+    document.getElementById('ba-stats').style.display = 'none';
+}
+
+function baHandleChunk(buf) {
+    if (!baCtx || !baActive) return;
+    const s16 = new Int16Array(buf);
+    const numFrames = (s16.length / baChannels) | 0;
+    if (numFrames <= 0) return;
+
+    const audioBuf = baCtx.createBuffer(baChannels, numFrames, baSampleRate);
+    for (let ch = 0; ch < baChannels; ch++) {
+        const out = audioBuf.getChannelData(ch);
+        for (let i = 0; i < numFrames; i++)
+            out[i] = s16[i * baChannels + ch] / 32768.0;
+    }
+
+    const src = baCtx.createBufferSource();
+    src.buffer = audioBuf;
+    src.connect(baCtx.destination);
+
+    const now = baCtx.currentTime;
+    if (baPlayAt < now + 0.02) baPlayAt = now + 0.08; // re-sync if falling behind
+    src.start(baPlayAt);
+    baPlayAt += audioBuf.duration;
+
+    baPkts++;
+    const bufMs = Math.round((baPlayAt - baCtx.currentTime) * 1000);
+    document.getElementById('ba-stat-buf').textContent  = `buf ${bufMs}ms`;
+    document.getElementById('ba-stat-pkts').textContent = `pkts ${baPkts}`;
+}
+
+function baInit() {
+    const btn = document.getElementById('ba-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => baActive ? baStop() : baStart());
+}
+
 // ── Boot ─────────────────────────────────────────────────────
 // Insert monitor card above the receiver grid
 (function() {
