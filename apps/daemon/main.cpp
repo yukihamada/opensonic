@@ -79,6 +79,10 @@ static std::mutex     g_mon_mutex;
 static MonitorReq     g_mon_start_req;
 static std::atomic<bool> g_mon_stop_req{false};
 
+// ── Browser audio streaming ───────────────────────────────────────────────────
+static std::atomic<bool> g_audio_streaming{false};
+static soluna::control::WebSocketServer* g_ws_server_ptr = nullptr;
+
 // ── Persistent config (~/.config/solunad/config.json) ────────────────────────
 
 static std::string persist_config_path() {
