@@ -889,15 +889,23 @@ static int run_tx(const DaemonConfig& cfg) {
             size_t samples = frame_count * cfg.channels;
             float_to_s24(buffer, conv_buf.data(), samples);
             ring.write(conv_buf.data(), frame_count);
-            // Browser audio streaming
+            // Browser audio streaming (batched, same as SHM path)
             if (g_audio_streaming.load() && g_ws_server_ptr) {
-                thread_local std::vector<int16_t> ws_s16;
-                ws_s16.resize(samples);
+                constexpr uint32_t kWsChunkFrames = 960;
+                thread_local std::vector<int16_t> ws_accum;
+                thread_local uint32_t ws_accum_frames = 0;
+                size_t prev = ws_accum.size();
+                ws_accum.resize(prev + samples);
                 for (size_t i = 0; i < samples; i++)
-                    ws_s16[i] = static_cast<int16_t>(buffer[i] * 32767.0f);
-                g_ws_server_ptr->broadcast_binary(
-                    reinterpret_cast<const uint8_t*>(ws_s16.data()),
-                    ws_s16.size() * sizeof(int16_t));
+                    ws_accum[prev + i] = static_cast<int16_t>(buffer[i] * 32767.0f);
+                ws_accum_frames += frame_count;
+                if (ws_accum_frames >= kWsChunkFrames) {
+                    g_ws_server_ptr->broadcast_binary(
+                        reinterpret_cast<const uint8_t*>(ws_accum.data()),
+                        ws_accum.size() * sizeof(int16_t));
+                    ws_accum.clear();
+                    ws_accum_frames = 0;
+                }
             }
         });
     }
