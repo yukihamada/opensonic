@@ -840,6 +840,17 @@ static int run_tx(const DaemonConfig& cfg) {
                 float_to_s24(flt_buf.data(), s24_buf.data(), rd * cfg.channels);
                 ring.write(s24_buf.data(), rd);
 
+                // float32 → browser audio (S16LE over WebSocket binary)
+                if (g_audio_streaming.load() && g_ws_server_ptr) {
+                    thread_local std::vector<int16_t> ws_s16;
+                    ws_s16.resize(rd * cfg.channels);
+                    for (uint32_t i = 0; i < rd * cfg.channels; i++)
+                        ws_s16[i] = static_cast<int16_t>(flt_buf[i] * 32767.0f);
+                    g_ws_server_ptr->broadcast_binary(
+                        reinterpret_cast<const uint8_t*>(ws_s16.data()),
+                        ws_s16.size() * sizeof(int16_t));
+                }
+
                 // float32 → speaker ring (stores float frames via int32_t alias)
                 static_assert(sizeof(float) == sizeof(int32_t),
                               "float/int32_t size mismatch");
