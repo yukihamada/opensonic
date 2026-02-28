@@ -44,21 +44,37 @@
         </div>
         <div class="panel-body">
             <div class="browser-audio-card">
+                <!-- Play / status row -->
                 <div class="ba-hero">
                     <button id="ba-btn" class="ba-play-btn" title="Listen in browser">
                         <span id="ba-icon">▶</span>
                     </button>
                     <div class="ba-status">
                         <div id="ba-label">Click to listen</div>
-                        <div id="ba-stats" class="ba-stat-row" style="display:none">
-                            <span id="ba-stat-buf">buf —</span>
-                            <span id="ba-stat-pkts">pkts 0</span>
-                        </div>
+                        <div id="ba-fmt" class="ba-fmt">48 kHz · Stereo</div>
                     </div>
                 </div>
-                <div class="ba-info">
-                    <p>Streams audio from this solunad directly in your browser via WebSocket.</p>
-                    <p>No app install needed — works on any device with a browser.</p>
+
+                <!-- VU meter -->
+                <canvas id="ba-vu" class="ba-vu" width="600" height="28"></canvas>
+
+                <!-- Controls (hidden until playing) -->
+                <div id="ba-controls" class="ba-controls" style="display:none">
+                    <div class="ba-ctrl-row">
+                        <span class="ba-ctrl-label">Volume</span>
+                        <input type="range" id="ba-volume" class="ba-slider" min="0" max="1" step="0.02" value="1">
+                        <span id="ba-vol-val" class="ba-mono">100%</span>
+                    </div>
+                    <div class="ba-ctrl-row">
+                        <span class="ba-ctrl-label">Buffer</span>
+                        <span id="ba-buf-val" class="ba-mono">—</span>
+                        <span class="ba-ctrl-label" style="margin-left:16px">Chunks</span>
+                        <span id="ba-pkt-val" class="ba-mono">0</span>
+                    </div>
+                </div>
+
+                <div class="ba-hint">
+                    <p>Share <code id="ba-url">http://localhost:8400</code> to listen on any device.</p>
                 </div>
             </div>
         </div>
