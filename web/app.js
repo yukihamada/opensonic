@@ -829,3 +829,4 @@ function baInit() {
 
 initCards();
 localConnect();
+baInit();
