@@ -36,6 +36,34 @@
         <button class="bnav" data-panel="stats">Stats</button>
     </nav>
 
+    <!-- Browser audio panel (hidden) -->
+    <div id="panel-browser" class="panel-overlay hidden">
+        <div class="panel-header">
+            <h2>Browser Audio</h2>
+            <button class="icon-btn close-panel">✕</button>
+        </div>
+        <div class="panel-body">
+            <div class="browser-audio-card">
+                <div class="ba-hero">
+                    <button id="ba-btn" class="ba-play-btn" title="Listen in browser">
+                        <span id="ba-icon">▶</span>
+                    </button>
+                    <div class="ba-status">
+                        <div id="ba-label">Click to listen</div>
+                        <div id="ba-stats" class="ba-stat-row" style="display:none">
+                            <span id="ba-stat-buf">buf —</span>
+                            <span id="ba-stat-pkts">pkts 0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ba-info">
+                    <p>Streams audio from this solunad directly in your browser via WebSocket.</p>
+                    <p>No app install needed — works on any device with a browser.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Routing panel (hidden) -->
     <div id="panel-routing" class="panel-overlay hidden">
         <div class="panel-header">
