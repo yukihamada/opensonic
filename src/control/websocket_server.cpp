@@ -258,37 +258,6 @@ std::vector<uint8_t> ws_build_text_frame(const std::string& text) {
     return frame;
 }
 
-std::vector<uint8_t> ws_build_binary_frame(const uint8_t* data, size_t len) {
-    std::vector<uint8_t> frame;
-    frame.push_back(0x82); // FIN + binary opcode
-
-    if (len < 126) {
-        frame.push_back(static_cast<uint8_t>(len));
-    } else if (len <= 65535) {
-        frame.push_back(126);
-        frame.push_back(static_cast<uint8_t>(len >> 8));
-        frame.push_back(static_cast<uint8_t>(len & 0xFF));
-    } else {
-        frame.push_back(127);
-        for (int i = 7; i >= 0; i--) {
-            frame.push_back(static_cast<uint8_t>((len >> (i * 8)) & 0xFF));
-        }
-    }
-
-    frame.insert(frame.end(), data, data + len);
-    return frame;
-}
-
-void WebSocketServer::broadcast_binary(const uint8_t* data, size_t len) {
-    auto frame = ws_build_binary_frame(data, len);
-    std::lock_guard<std::mutex> lock(impl_->clients_mutex);
-    for (auto& c : impl_->clients) {
-        if (c.is_websocket && c.fd != INVALID_SOCKET) {
-            impl_->send_all(c.fd, frame.data(), frame.size());
-        }
-    }
-}
-
 WsFrame ws_parse_frame(const uint8_t* data, size_t len, size_t& consumed) {
     WsFrame frame;
     consumed = 0;
