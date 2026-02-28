@@ -745,48 +745,74 @@ function escHtml(s) {
 }
 
 // ── Browser Audio Receiver ────────────────────────────────────
-let baCtx       = null;
-let baPlayAt    = 0;
-let baActive    = false;
+let baCtx        = null;
+let baGain       = null;
+let baAnalyser   = null;
+let baPlayAt     = 0;
+let baActive     = false;
 let baSampleRate = 48000;
 let baChannels   = 2;
 let baPkts       = 0;
+let baVuRaf      = null;
+let baPeakHold   = 0;
+let baPeakTimer  = 0;
 
-function baStart() {
-    if (baActive) return;
-    baCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: baSampleRate });
-    baPlayAt = baCtx.currentTime + 0.12; // 120ms initial buffer
-    baActive = true;
-    baPkts = 0;
+// Target ahead-of-time buffer, adapts to network jitter
+let baTargetBuf  = 0.08; // 80ms start
+
+function baSubscribe() {
     localSend('audio.subscribe', {}, (r) => {
         if (r.success && r.data) {
             try {
                 const d = JSON.parse(r.data);
-                baSampleRate = d.sample_rate || 48000;
-                baChannels   = d.channels    || 2;
+                if (d.sample_rate) baSampleRate = d.sample_rate;
+                if (d.channels)    baChannels   = d.channels;
+                document.getElementById('ba-fmt').textContent =
+                    `${(baSampleRate/1000).toFixed(1)} kHz · ${baChannels === 1 ? 'Mono' : 'Stereo'}`;
             } catch (_) {}
         }
     });
+}
+
+function baStart() {
+    if (baActive) return;
+    baCtx      = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: baSampleRate });
+    baGain     = baCtx.createGain();
+    baAnalyser = baCtx.createAnalyser();
+    baAnalyser.fftSize = 512;
+    baAnalyser.smoothingTimeConstant = 0.6;
+    baGain.connect(baAnalyser);
+    baAnalyser.connect(baCtx.destination);
+    baPlayAt  = baCtx.currentTime + baTargetBuf;
+    baActive  = true;
+    baPkts    = 0;
+    baSubscribe();
     document.getElementById('ba-btn').classList.add('ba-playing');
     document.getElementById('ba-icon').textContent = '■';
     document.getElementById('ba-label').textContent = 'Listening…';
-    document.getElementById('ba-stats').style.display = '';
+    document.getElementById('ba-controls').style.display = '';
+    baDrawVU();
+    // Show URL hint
+    const urlEl = document.getElementById('ba-url');
+    if (urlEl) urlEl.textContent = location.origin;
 }
 
 function baStop() {
     if (!baActive) return;
     baActive = false;
     localSend('audio.unsubscribe', {}, null);
-    if (baCtx) { baCtx.close(); baCtx = null; }
+    if (baVuRaf) { cancelAnimationFrame(baVuRaf); baVuRaf = null; }
+    if (baCtx)   { baCtx.close(); baCtx = null; baGain = null; baAnalyser = null; }
     document.getElementById('ba-btn').classList.remove('ba-playing');
     document.getElementById('ba-icon').textContent = '▶';
     document.getElementById('ba-label').textContent = 'Click to listen';
-    document.getElementById('ba-stats').style.display = 'none';
+    document.getElementById('ba-controls').style.display = 'none';
+    baClearVU();
 }
 
 function baHandleChunk(buf) {
     if (!baCtx || !baActive) return;
-    const s16 = new Int16Array(buf);
+    const s16       = new Int16Array(buf);
     const numFrames = (s16.length / baChannels) | 0;
     if (numFrames <= 0) return;
 
@@ -799,23 +825,96 @@ function baHandleChunk(buf) {
 
     const src = baCtx.createBufferSource();
     src.buffer = audioBuf;
-    src.connect(baCtx.destination);
+    src.connect(baGain);
 
     const now = baCtx.currentTime;
-    if (baPlayAt < now + 0.02) baPlayAt = now + 0.08; // re-sync if falling behind
+    // Adaptive re-sync: if too far behind, reset ahead; if too far ahead, nudge back
+    if      (baPlayAt < now + 0.015)          baPlayAt = now + baTargetBuf;
+    else if (baPlayAt > now + baTargetBuf * 3) baPlayAt = now + baTargetBuf;
     src.start(baPlayAt);
     baPlayAt += audioBuf.duration;
 
     baPkts++;
-    const bufMs = Math.round((baPlayAt - baCtx.currentTime) * 1000);
-    document.getElementById('ba-stat-buf').textContent  = `buf ${bufMs}ms`;
-    document.getElementById('ba-stat-pkts').textContent = `pkts ${baPkts}`;
+    const bufMs = Math.round((baPlayAt - now) * 1000);
+    document.getElementById('ba-buf-val').textContent = `${bufMs} ms`;
+    document.getElementById('ba-pkt-val').textContent = baPkts;
+
+    // Adaptive target: shrink toward 60ms if stable, grow if stressed
+    if (bufMs > 0 && bufMs < baTargetBuf * 1000 * 0.7)
+        baTargetBuf = Math.min(0.15, baTargetBuf + 0.005);
+    else if (bufMs > baTargetBuf * 1000 * 1.5)
+        baTargetBuf = Math.max(0.04, baTargetBuf - 0.002);
+}
+
+function baDrawVU() {
+    const canvas = document.getElementById('ba-vu');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+
+    if (!baAnalyser || !baActive) { baClearVU(); return; }
+
+    const data = new Uint8Array(baAnalyser.frequencyBinCount);
+    baAnalyser.getByteTimeDomainData(data);
+
+    // RMS level
+    let sumSq = 0;
+    for (const v of data) { const s = (v - 128) / 128; sumSq += s * s; }
+    const rms   = Math.sqrt(sumSq / data.length);
+    const level = Math.min(1, rms * 4);
+
+    // Peak hold
+    if (level > baPeakHold) { baPeakHold = level; baPeakTimer = 40; }
+    else if (baPeakTimer > 0) baPeakTimer--;
+    else baPeakHold = Math.max(0, baPeakHold - 0.015);
+
+    ctx.clearRect(0, 0, W, H);
+
+    // BG track
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.roundRect(0, 0, W, H, 4);
+    ctx.fill();
+
+    // Level gradient bar
+    const gr = ctx.createLinearGradient(0, 0, W, 0);
+    gr.addColorStop(0,    '#10b981');
+    gr.addColorStop(0.65, '#f59e0b');
+    gr.addColorStop(1,    '#ef4444');
+    ctx.fillStyle = gr;
+    ctx.roundRect(0, 0, W * level, H, 4);
+    ctx.fill();
+
+    // Peak marker
+    const px = W * baPeakHold;
+    ctx.fillStyle = baPeakHold > 0.9 ? '#ef4444' : 'rgba(255,255,255,0.8)';
+    ctx.fillRect(Math.max(0, px - 2), 0, 2, H);
+
+    baVuRaf = requestAnimationFrame(baDrawVU);
+}
+
+function baClearVU() {
+    const canvas = document.getElementById('ba-vu');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.roundRect(0, 0, canvas.width, canvas.height, 4);
+    ctx.fill();
 }
 
 function baInit() {
     const btn = document.getElementById('ba-btn');
     if (!btn) return;
     btn.addEventListener('click', () => baActive ? baStop() : baStart());
+
+    const vol = document.getElementById('ba-volume');
+    if (vol) {
+        vol.addEventListener('input', () => {
+            if (baGain) baGain.gain.value = parseFloat(vol.value);
+            document.getElementById('ba-vol-val').textContent = Math.round(vol.value * 100) + '%';
+        });
+    }
+    baClearVU();
 }
 
 // ── Boot ─────────────────────────────────────────────────────
