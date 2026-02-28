@@ -304,6 +304,16 @@ static std::string ws_handle(const std::string& msg) {
         }
         pos += snprintf(devbuf + pos, sizeof(devbuf) - pos, "]");
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"%s\"}", id, devbuf);
+    // ── Browser audio streaming ─────────────────────────────────────────────
+    } else if (cmd == "audio.subscribe") {
+        g_audio_streaming.store(true);
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":true,\"data\":"
+            "\"{\\\"sample_rate\\\":%u,\\\"channels\\\":%u}\"}",
+            id, g_cfg_sample_rate, g_cfg_channels);
+    } else if (cmd == "audio.unsubscribe") {
+        g_audio_streaming.store(false);
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
     } else if (cmd == "system.info") {
         std::string turl;
         { std::lock_guard<std::mutex> lk(g_tunnel_mutex); turl = g_tunnel_url; }
