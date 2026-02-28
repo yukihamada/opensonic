@@ -336,6 +336,7 @@ static std::string ws_handle(const std::string& msg) {
 }
 
 static void start_ws_server(soluna::control::WebSocketServer& srv) {
+    g_ws_server_ptr = &srv;
     srv.set_web_files(
         reinterpret_cast<const soluna::control::WebFile*>(embedded_web_files),
         embedded_web_file_count);
