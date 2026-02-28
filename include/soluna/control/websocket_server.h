@@ -125,6 +125,11 @@ std::string ws_accept_key(const std::string& client_key);
 std::vector<uint8_t> ws_build_text_frame(const std::string& text);
 
 /**
+ * Build a WebSocket binary frame (opcode 0x02).
+ */
+std::vector<uint8_t> ws_build_binary_frame(const uint8_t* data, size_t len);
+
+/**
  * Parse a WebSocket frame.
  * Returns payload text for text frames, empty on error or non-text.
  */
