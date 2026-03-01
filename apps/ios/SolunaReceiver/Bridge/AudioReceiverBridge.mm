@@ -405,6 +405,9 @@ public:
         return health_.load(std::memory_order_relaxed);
     }
 
+    void set_network_disabled(bool d) { network_disabled_.store(d); }
+    bool is_network_disabled() const { return network_disabled_.load(); }
+
     // ── Relay support ──────────────────────────────────────────────────────
 
     void set_relay_callback(std::function<void(const uint8_t*, size_t)> cb) {
