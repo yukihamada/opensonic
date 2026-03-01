@@ -291,7 +291,7 @@ static std::string ws_handle(const std::string& msg) {
     } else if (cmd == "monitor.set_buffer") {
         p = msg.find("\"ms\":");
         if (p != std::string::npos)
-            try { g_mon_target_ms.store(std::max(5u, std::min(500u, (uint32_t)std::stoul(msg.substr(p + 5))))); } catch (...) {}
+            try { g_mon_target_ms.store(std::max(5u, std::min(2000u, (uint32_t)std::stoul(msg.substr(p + 5))))); } catch (...) {}
         persist_config_save();
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
     } else if (cmd == "time.ping") {
