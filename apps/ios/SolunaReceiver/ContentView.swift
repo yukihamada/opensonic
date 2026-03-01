@@ -54,6 +54,10 @@ struct ContentView: View {
                 speakers.audioReceiver = receiver
                 loadSavedSettings()
                 if autoConnect { receiver.start() }
+                // Apply global RX delay from server once connected
+                Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
+                    Task { @MainActor in speakers.applyServerRxDelay() }
+                }
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: receiver.state.rawValue)
         }
