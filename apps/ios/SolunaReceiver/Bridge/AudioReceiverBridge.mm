@@ -401,6 +401,17 @@ public:
         return {};
     }
 
+    // ── Relay support ──────────────────────────────────────────────────────
+
+    void set_relay_callback(std::function<void(const uint8_t*, size_t)> cb) {
+        relay_callback_ = std::move(cb);
+        if (rtp_receiver_) rtp_receiver_->relay_callback = relay_callback_;
+    }
+
+    void inject_raw_packet(const uint8_t* data, size_t len) {
+        if (rtp_receiver_) rtp_receiver_->inject_raw_packet(data, len, ring_buffer_);
+    }
+
 private:
     void receive_loop() {
         // ONLY writes to ring_buffer_ — never reads (RingBuffer is SPSC).
