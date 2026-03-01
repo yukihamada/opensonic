@@ -819,4 +819,25 @@ private:
     }
 }
 
+// ── P2P Relay ───────────────────────────────────────────────────────────────
+
+- (void)setRelayCallback:(nullable void(^)(NSData *))callback {
+    if (_impl) {
+        if (callback) {
+            _impl->set_relay_callback([callback](const uint8_t* data, size_t len) {
+                NSData *packet = [NSData dataWithBytes:data length:len];
+                callback(packet);
+            });
+        } else {
+            _impl->set_relay_callback(nullptr);
+        }
+    }
+}
+
+- (void)injectRawPacket:(NSData *)data {
+    if (_impl && data.length > 0) {
+        _impl->inject_raw_packet(static_cast<const uint8_t*>(data.bytes), data.length);
+    }
+}
+
 @end
