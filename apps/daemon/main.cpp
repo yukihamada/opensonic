@@ -300,7 +300,13 @@ static std::string ws_handle(const std::string& msg) {
     } else if (cmd == "monitor.set_delay") {
         p = msg.find("\"ms\":");
         if (p != std::string::npos)
-            try { g_speaker_delay_ms.store(std::min(500u, (uint32_t)std::stoul(msg.substr(p + 5)))); } catch (...) {}
+            try { g_speaker_delay_ms.store(std::min(2000u, (uint32_t)std::stoul(msg.substr(p + 5)))); } catch (...) {}
+        persist_config_save();
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "rx.set_global_delay") {
+        p = msg.find("\"ms\":");
+        if (p != std::string::npos)
+            try { g_rx_delay_ms.store(std::min(2000u, (uint32_t)std::stoul(msg.substr(p + 5)))); } catch (...) {}
         persist_config_save();
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
     } else if (cmd == "monitor.list_devices") {
