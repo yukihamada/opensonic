@@ -121,6 +121,7 @@ function applyMonStats(d) {
     monState.muted     = !!d.muted;
     monState.packets   = d.packets ?? 0;
     monState.underruns = d.underruns ?? 0;
+    monState.rxDelayMs = d.rx_delay_ms ?? 0;
     patchMonCard();
 }
 
