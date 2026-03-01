@@ -60,6 +60,65 @@ struct ContentView: View {
         .navigationViewStyle(.stack)
     }
 
+    // MARK: - Relay Banner
+
+    @ViewBuilder
+    private var relayBanner: some View {
+        switch relay.role {
+        case .relay:
+            HStack(spacing: 8) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .foregroundColor(.green)
+                Text("\(relay.connectedPeerCount) 台に中継中")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(.green)
+                Spacer()
+                Text("Relay")
+                    .font(.caption2)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.green.opacity(0.15))
+                    .foregroundColor(.green)
+                    .clipShape(Capsule())
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.green.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .transition(.move(edge: .top).combined(with: .opacity))
+
+        case .peer(let source):
+            HStack(spacing: 8) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .foregroundColor(.orange)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("中継受信中")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(.orange)
+                    Text(source)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Text("Peer")
+                    .font(.caption2)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.15))
+                    .foregroundColor(.orange)
+                    .clipShape(Capsule())
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.orange.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .transition(.move(edge: .top).combined(with: .opacity))
+
+        case .direct:
+            EmptyView()
+        }
+    }
+
     // MARK: - Hero
 
     private var heroSection: some View {
