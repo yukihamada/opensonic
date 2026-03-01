@@ -133,6 +133,37 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
+    // MARK: - Relay role evaluation
+
+    /// Called 6 sec after start; re-evaluates every stats update if needed.
+    private func evaluateRelayRole() async {
+        let relay = PeerRelayManager.shared
+        let total = packetsReceived + packetsDropped
+        guard total > 0 else { return }
+
+        let lossRate = Double(packetsDropped) / Double(total)
+        let peers    = relay.connectedPeerCount
+
+        switch relay.role {
+        case .direct:
+            if lossRate < 0.05, peers > 0 {
+                // Good connection + peers nearby → become relay
+                relay.promoteToRelay()
+            } else if lossRate > 0.30, peers > 0 {
+                // Bad connection + peers nearby → let a peer relay feed us
+                // We'll receive via MCSession (already joined) — wait for packets
+                // promoteToPeer is called by PeerRelayManager when it gets packets
+            }
+        case .relay:
+            if lossRate > 0.20 {
+                // Our own connection degraded; step down
+                relay.demoteToDirectWithMessage(nil)
+            }
+        case .peer:
+            break  // Managed by MCSessionDelegate
+        }
+    }
+
     // MARK: - Internal delegate handling
 
     fileprivate func handleStateChange(_ newState: SolunaReceiverState) {
