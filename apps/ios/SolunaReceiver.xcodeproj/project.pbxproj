@@ -14,11 +14,13 @@
 		1A0005 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0008 /* SettingsView.swift */; };
 		1A0020 /* DaemonClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0020 /* DaemonClient.swift */; };
 		1A0030 /* SpeakersController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0030 /* SpeakersController.swift */; };
+		1A0040 /* PeerRelayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0040 /* PeerRelayManager.swift */; };
 		1A0006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2A0009 /* Assets.xcassets */; };
 		1A0010 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0010 /* CoreAudio.framework */; };
 		1A0011 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0011 /* AudioToolbox.framework */; };
 		1A0013 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0013 /* AVFoundation.framework */; };
 		1A0014 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0014 /* CoreFoundation.framework */; };
+		1A0015 /* MultipeerConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0015 /* MultipeerConnectivity.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
