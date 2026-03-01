@@ -141,8 +141,15 @@ final class SpeakersController: ObservableObject {
     /// Set delay on ALL speakers simultaneously (iPhone jitter buffer + all remotes).
     /// This is the master sync control — one slider keeps every output in lockstep.
     func setAllDelay(_ ms: Int) {
-        audioReceiver?.bufferMs = UInt32(max(5, min(200, ms)))
+        audioReceiver?.bufferMs = UInt32(max(5, min(2000, ms)))
         clients.values.forEach { $0.setMonitorDelay(ms) }
+    }
+
+    /// Apply the global RX delay from the first connected daemon to the local AudioReceiver.
+    /// Call periodically when rxDelayMs > 0 to keep iPhone buffer in sync with server setting.
+    func applyServerRxDelay() {
+        guard let rxMs = clients.values.first(where: { $0.isConnected && $0.rxDelayMs > 0 })?.rxDelayMs else { return }
+        audioReceiver?.bufferMs = UInt32(rxMs)
     }
 
     // MARK: - Private
