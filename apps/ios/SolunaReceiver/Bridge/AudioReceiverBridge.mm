@@ -96,10 +96,18 @@ public:
         return true;
     }
 
+    // Relay callback: invoked with raw bytes for every received packet
+    std::function<void(const uint8_t*, size_t)> relay_callback;
+
     bool receive_packet(pipeline::RingBuffer& ring) {
         pal::SocketAddress src;
         int received = socket_->recv_from_nonblock(recv_buf_.data(), recv_buf_.size(), src);
         if (received <= 0) return false;
+
+        // Forward raw bytes to nearby peers when in relay mode
+        if (relay_callback) {
+            relay_callback(recv_buf_.data(), static_cast<size_t>(received));
+        }
 
         // Check if this is an AES67 packet or OSTP packet
         bool is_aes67 = false;
