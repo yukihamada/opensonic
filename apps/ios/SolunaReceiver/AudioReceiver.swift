@@ -177,6 +177,7 @@ final class AudioReceiver: ObservableObject {
         self.packetsReceived  = stats.packetsReceived
         self.packetsDropped   = stats.packetsDropped
         self.packetsConcealed = stats.packetsConcealed
+        self.deviceHealth     = receiver.deviceHealth
     }
 
     fileprivate func handleError(_ error: Error) {
