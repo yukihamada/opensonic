@@ -72,6 +72,10 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 /// Current device health (good / stressed / silenced)
 @property (nonatomic, readonly) SolunaDeviceHealth deviceHealth;
 
+/// When YES, the receive loop ignores multicast packets.
+/// Audio only arrives via -injectRawPacket: (peer relay mode).
+@property (nonatomic, assign) BOOL networkDisabled;
+
 /// Singleton instance
 + (instancetype)sharedInstance;
 
