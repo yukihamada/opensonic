@@ -242,14 +242,16 @@ static std::string ws_handle(const std::string& msg) {
             "{\"id\":%d,\"success\":true,\"data\":"
             "\"{\\\"supported\\\":%s,\\\"running\\\":%s,"
             "\\\"volume\\\":%.3f,\\\"muted\\\":%s,"
-            "\\\"packets\\\":%llu,\\\"delay_ms\\\":%u}\"}",
+            "\\\"packets\\\":%llu,\\\"delay_ms\\\":%u,"
+            "\\\"underruns\\\":%llu}\"}",
             id,
             g_mon_supported.load() ? "true" : "false",
             g_mon_active.load()    ? "true" : "false",
             (double)g_mon_volume.load(),
             g_mon_muted.load() ? "true" : "false",
             (unsigned long long)g_mon_packets.load(),
-            g_speaker_delay_ms.load());
+            g_speaker_delay_ms.load(),
+            (unsigned long long)g_mon_underruns.load());
     } else if (cmd == "monitor.start") {
         std::string dev;
         p = msg.find("\"device\":\"");
