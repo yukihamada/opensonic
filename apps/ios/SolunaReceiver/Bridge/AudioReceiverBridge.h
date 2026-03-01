@@ -79,6 +79,18 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 /// Get current statistics
 - (SolunaReceiverStats *)currentStats;
 
+// ── P2P Relay ──────────────────────────────────────────────────────────────
+
+/// Set callback invoked for every raw RTP/OSTP packet received from the network.
+/// Used in relay mode to forward packets to nearby peers via MultipeerConnectivity.
+/// Pass nil to disable. Thread-safe.
+- (void)setRelayCallback:(nullable void(^)(NSData * _Nonnull rawPacket))callback;
+
+/// Inject a raw RTP/OSTP packet received from a relay peer.
+/// The packet is parsed and fed directly into the audio ring buffer,
+/// bypassing the UDP socket. Thread-safe.
+- (void)injectRawPacket:(NSData * _Nonnull)data;
+
 @end
 
 NS_ASSUME_NONNULL_END
