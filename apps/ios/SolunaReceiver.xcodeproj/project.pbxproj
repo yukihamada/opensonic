@@ -53,6 +53,7 @@
 				1A0011 /* AudioToolbox.framework in Frameworks */,
 				1A0013 /* AVFoundation.framework in Frameworks */,
 				1A0014 /* CoreFoundation.framework in Frameworks */,
+				1A0015 /* MultipeerConnectivity.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
