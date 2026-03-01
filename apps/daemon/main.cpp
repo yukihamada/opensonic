@@ -80,8 +80,11 @@ static MonitorReq     g_mon_start_req;
 static std::atomic<bool> g_mon_stop_req{false};
 
 // ── Browser audio streaming ───────────────────────────────────────────────────
-static std::atomic<bool> g_audio_streaming{false};
+static std::atomic<bool>     g_audio_streaming{false};
 static soluna::control::WebSocketServer* g_ws_server_ptr = nullptr;
+
+// ── Monitor speaker underrun counter ─────────────────────────────────────────
+static std::atomic<uint64_t> g_mon_underruns{0};
 
 // ── Persistent config (~/.config/solunad/config.json) ────────────────────────
 
