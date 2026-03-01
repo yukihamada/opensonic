@@ -15,9 +15,11 @@ struct SettingsView: View {
     @AppStorage("port") private var port = 5004
     @AppStorage("channels") private var channels = 2
     @AppStorage("autoConnect") private var autoConnect = false
+    @AppStorage("channel") private var channel = "soluna"
     @State private var tempMulticastGroup: String = ""
     @State private var tempPort: String = ""
     @State private var tempChannels: Int = 1
+    @State private var tempChannel: String = ""
     @State private var showingResetAlert = false
 
     var body: some View {
