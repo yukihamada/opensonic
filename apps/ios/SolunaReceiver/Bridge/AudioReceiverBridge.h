@@ -9,6 +9,13 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// Device health state based on underrun rate
+typedef NS_ENUM(NSInteger, SolunaDeviceHealth) {
+    SolunaDeviceHealthGood     = 0,  ///< Functioning normally
+    SolunaDeviceHealthStressed = 1,  ///< High underrun rate, buffer auto-increased
+    SolunaDeviceHealthSilenced = 2,  ///< Silenced to prevent noise (extreme underruns)
+};
+
 /// Receiver state enumeration
 typedef NS_ENUM(NSInteger, SolunaReceiverState) {
     SolunaReceiverStateStopped = 0,
