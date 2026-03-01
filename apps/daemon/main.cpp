@@ -109,11 +109,13 @@ static void persist_config_save() {
         "{\"speaker_delay_ms\":%u,"
         "\"monitor_volume\":%.3f,"
         "\"monitor_muted\":%s,"
-        "\"monitor_buffer_ms\":%u}\n",
+        "\"monitor_buffer_ms\":%u,"
+        "\"rx_delay_ms\":%u}\n",
         g_speaker_delay_ms.load(),
         (double)g_mon_volume.load(),
         g_mon_muted.load() ? "true" : "false",
-        g_mon_target_ms.load());
+        g_mon_target_ms.load(),
+        g_rx_delay_ms.load());
 
     std::ofstream f(path);
     if (f.is_open()) f << buf;
