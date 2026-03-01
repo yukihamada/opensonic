@@ -430,13 +430,20 @@ function connectReceiver(idx) {
     };
     rxConns[rx.host] = conn;
 
+    conn.retryDelay = 1000; // exponential backoff per-connection
+
     function doConnect() {
         let ws;
         try { ws = new WebSocket('ws://' + rx.host + '/ws'); }
-        catch (_) { setTimeout(doConnect, 6000); return; }
+        catch (_) {
+            setTimeout(doConnect, conn.retryDelay);
+            conn.retryDelay = Math.min(conn.retryDelay * 2, 30000);
+            return;
+        }
         conn.ws = ws;
 
         ws.onopen = () => {
+            conn.retryDelay = 1000;
             conn.connected = true;
             setCardConn(idx, true);
             // Fetch initial state
@@ -450,7 +457,8 @@ function connectReceiver(idx) {
             conn.connected = false;
             if (conn.polling) { clearInterval(conn.polling); conn.polling = null; }
             setCardConn(idx, false);
-            setTimeout(doConnect, 5000);
+            setTimeout(doConnect, conn.retryDelay);
+            conn.retryDelay = Math.min(conn.retryDelay * 2, 30000);
         };
         ws.onerror = () => {};
         ws.onmessage = (evt) => {
