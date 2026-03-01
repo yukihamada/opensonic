@@ -27,6 +27,9 @@ final class DaemonClient: ObservableObject {
     @Published              var monitorBufferMs: Int = 20
     @Published              var monitorDelayMs:  Int = 0
 
+    /// Global RX delay (ms) pushed by solunad to all iOS receivers. 0 = use local setting.
+    @Published private(set) var rxDelayMs: Int = 0
+
     /// Measured one-way latency (ms). Drives auto-sync. 0 = not yet measured.
     @Published private(set) var measuredLatencyMs: Int = 0
 
