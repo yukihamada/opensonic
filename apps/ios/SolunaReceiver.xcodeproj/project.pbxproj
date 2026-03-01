@@ -192,6 +192,7 @@
 				1A0003 /* AudioReceiver.swift in Sources */,
 				1A0020 /* DaemonClient.swift in Sources */,
 				1A0030 /* SpeakersController.swift in Sources */,
+				1A0040 /* PeerRelayManager.swift in Sources */,
 				1A0004 /* AudioReceiverBridge.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
