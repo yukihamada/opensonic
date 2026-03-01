@@ -92,6 +92,7 @@
 				2A0011 /* AudioToolbox.framework */,
 				2A0013 /* AVFoundation.framework */,
 				2A0014 /* CoreFoundation.framework */,
+				2A0015 /* MultipeerConnectivity.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
