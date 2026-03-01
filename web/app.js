@@ -16,11 +16,22 @@ let receivers = loadReceivers();
 const rxConns = {};  // host → conn object
 
 // ── Local WebSocket (TX node serving this page) ──────────────
+let localRetryDelay = 1000; // exponential backoff: 1→2→4→8→…→30s
+
 function localConnect() {
     const host = location.host || 'localhost:8400';
     localWs = new WebSocket('ws://' + host + '/ws');
-    localWs.onopen  = () => { setBadge('connected'); pollTxStats(); initMonitor(); startSyncPolling(); if (baActive) baSubscribe(); };
-    localWs.onclose = () => { setBadge('disconnected'); setTimeout(localConnect, 3000); };
+    localWs.onopen  = () => {
+        localRetryDelay = 1000;
+        setBadge('connected');
+        pollTxStats(); initMonitor(); startSyncPolling();
+        if (baActive) baSubscribe();
+    };
+    localWs.onclose = () => {
+        setBadge('disconnected');
+        setTimeout(localConnect, localRetryDelay);
+        localRetryDelay = Math.min(localRetryDelay * 2, 30000);
+    };
     localWs.onerror = () => {};
     localWs.binaryType = 'arraybuffer';
     localWs.onmessage = (evt) => {
