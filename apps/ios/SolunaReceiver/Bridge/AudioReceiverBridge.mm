@@ -624,6 +624,7 @@ private:
 
         if (!has_data) {
             prefilled_ = false;
+            record_underrun_now();
             for (uint32_t i = 0; i < frame_count; i++) {
                 ramp_ *= (1.0f - kFadeOut);
                 for (uint32_t ch = 0; ch < channels_; ch++) {
