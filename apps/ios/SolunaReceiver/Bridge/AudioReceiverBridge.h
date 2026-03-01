@@ -66,8 +66,11 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 /// Number of channels (default: 1)
 @property (nonatomic, assign) uint32_t channels;
 
-/// Jitter buffer target in milliseconds (5–200 ms, default 100 ms)
+/// Jitter buffer target in milliseconds (5–2000 ms, default 40 ms)
 @property (nonatomic, assign) uint32_t bufferTargetMs;
+
+/// Current device health (good / stressed / silenced)
+@property (nonatomic, readonly) SolunaDeviceHealth deviceHealth;
 
 /// Singleton instance
 + (instancetype)sharedInstance;
