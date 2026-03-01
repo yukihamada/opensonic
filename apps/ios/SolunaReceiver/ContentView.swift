@@ -420,7 +420,7 @@ private struct MasterDelayRow: View {
                         delayMs = Int(ms)
                         onDelay(delayMs)
                     }
-                ), in: 5...200, step: 5)
+                ), in: 0...2000, step: 10)
                 .accentColor(.orange)
             }
         }
