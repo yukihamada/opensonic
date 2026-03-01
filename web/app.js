@@ -190,6 +190,12 @@ function buildMonitorCard() {
   <div class="rxc-footer" style="justify-content:flex-end">
     <button class="btn-mute" id="mon-mute-btn">🔊 Live</button>
   </div>
+  <div class="buf-row" style="margin-top:0.5rem">
+    <span class="buf-label-txt">iPhone Delay</span>
+    <input type="range" min="0" max="2000" step="10" value="0" class="vol-slider" id="mon-rx-delay-sl" style="flex:1">
+    <span class="vol-pct" id="mon-rx-delay-val">0ms</span>
+    <button class="btn-sm" id="mon-rx-delay-btn" style="margin-left:6px">Set</button>
+  </div>
   <div id="mon-sync-row" style="display:none;font-size:0.72rem;color:var(--text3);padding-top:0.4rem">
     🔄 Last sync: <span id="mon-sync-val">—</span>
   </div>
