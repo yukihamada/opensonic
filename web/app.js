@@ -116,10 +116,11 @@ function pollMonStats() {
 }
 
 function applyMonStats(d) {
-    monState.running = !!d.running;
-    monState.volume  = d.volume ?? 1.0;
-    monState.muted   = !!d.muted;
-    monState.packets = d.packets ?? 0;
+    monState.running   = !!d.running;
+    monState.volume    = d.volume ?? 1.0;
+    monState.muted     = !!d.muted;
+    monState.packets   = d.packets ?? 0;
+    monState.underruns = d.underruns ?? 0;
     patchMonCard();
 }
 
