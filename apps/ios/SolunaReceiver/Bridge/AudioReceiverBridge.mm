@@ -391,7 +391,7 @@ public:
     bool is_muted() const { return muted_.load(); }
 
     void set_buffer_ms(uint32_t ms) {
-        ms = std::max(5u, std::min(200u, ms));
+        ms = std::max(5u, std::min(2000u, ms));
         target_fill_frames_.store(ms * 48u);
     }
     uint32_t buffer_ms() const { return target_fill_frames_.load() / 48u; }
