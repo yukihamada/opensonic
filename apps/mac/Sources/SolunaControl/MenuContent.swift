@@ -325,13 +325,13 @@ struct MenuContent: View {
     private var volumeIcon: String {
         d.monitorVolume < 0.01 ? "speaker.fill"
         : d.monitorVolume < 0.5 ? "speaker.wave.1.fill"
-        : "speaker.wave.2.fill"
+        : "speaker.wave.3.fill"
     }
 
     private var phoneVolumeIcon: String {
         d.phoneVolume < 0.01 ? "speaker.fill"
         : d.phoneVolume < 0.5 ? "speaker.wave.1.fill"
-        : "speaker.wave.2.fill"
+        : "speaker.wave.3.fill"
     }
 
     private func formatNum(_ n: UInt64) -> String {
