@@ -806,6 +806,7 @@ static int run_tx(const DaemonConfig& cfg) {
                     if (speaker_ring.available_read() < fc) {
                         std::memset(buf, 0, samples * sizeof(float));
                         sp_prefilled.store(false);
+                        g_mon_underruns.fetch_add(1, std::memory_order_relaxed);
                         return;
                     }
                     // Read float frames directly into output buffer
