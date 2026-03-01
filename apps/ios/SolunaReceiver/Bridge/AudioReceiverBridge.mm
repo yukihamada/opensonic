@@ -583,7 +583,8 @@ private:
     }
 
     void audio_callback(float* buffer, uint32_t frame_count) {
-        const float vol = muted_.load() ? 0.0f : volume_.load();
+        const float vol = (muted_.load() || health_silenced_.load(std::memory_order_relaxed))
+                          ? 0.0f : volume_.load();
         const uint32_t total_samples = frame_count * channels_;
 
         // Adaptive target: always >= frame_count*4 to prevent immediate underrun
