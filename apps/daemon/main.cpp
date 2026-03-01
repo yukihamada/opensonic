@@ -147,10 +147,11 @@ static void persist_config_load() {
         return json.substr(vpos, 4) == "true";
     };
 
-    g_speaker_delay_ms.store(std::min(500u, get_uint("speaker_delay_ms", 40)));
+    g_speaker_delay_ms.store(std::min(2000u, get_uint("speaker_delay_ms", 40)));
     g_mon_volume.store(std::max(0.0f, std::min(1.0f, get_float("monitor_volume", 1.0f))));
     g_mon_muted.store(get_bool("monitor_muted", false));
-    g_mon_target_ms.store(std::max(5u, std::min(500u, get_uint("monitor_buffer_ms", 20))));
+    g_mon_target_ms.store(std::max(5u, std::min(2000u, get_uint("monitor_buffer_ms", 20))));
+    g_rx_delay_ms.store(std::min(2000u, get_uint("rx_delay_ms", 0)));
 
     fprintf(stderr, "[config] Loaded from %s\n", persist_config_path().c_str());
 }
