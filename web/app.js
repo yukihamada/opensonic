@@ -147,6 +147,14 @@ function patchMonCard() {
         updateSliderTrack($vol, monState.volume);
     }
     if ($vpct) $vpct.textContent = volPct + '%';
+
+    const $ur = document.getElementById('mon-underrun-row');
+    const $urv = document.getElementById('mon-underrun-val');
+    if ($ur && $urv) {
+        const u = monState.underruns ?? 0;
+        $ur.style.display = u > 0 ? '' : 'none';
+        $urv.textContent = u;
+    }
 }
 
 function buildMonitorCard() {
