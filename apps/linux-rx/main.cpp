@@ -87,6 +87,8 @@ static snd_pcm_t* alsa_open(const char* device, unsigned rate, unsigned channels
 static void alsa_write(snd_pcm_t* pcm, const int16_t* buf, snd_pcm_uframes_t frames) {
     snd_pcm_sframes_t n = snd_pcm_writei(pcm, buf, frames);
     if (n == -EPIPE) {
+        // Underrun: brief pause then recover to avoid tight retry loop
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
         snd_pcm_prepare(pcm);
         snd_pcm_writei(pcm, buf, frames);
     }
