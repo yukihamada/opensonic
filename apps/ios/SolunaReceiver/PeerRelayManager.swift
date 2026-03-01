@@ -2,17 +2,18 @@
 //  PeerRelayManager.swift
 //  SolunaReceiver
 //
-//  P2P audio relay using MultipeerConnectivity.
+//  Discovery-first P2P audio relay using MultipeerConnectivity.
+//
+//  Flow:
+//    1. User taps Play → scanForPeers(channel:) browses for 3 sec
+//    2. If a peer on the same channel is found → connect, enter .peer mode
+//       (audio arrives via MCSession → injectRawPacket, multicast disabled)
+//    3. If no peer found → AudioReceiver starts multicast, then
+//       becomeDirectRelay() advertises so others can connect
 //
 //  Roles:
-//    .direct — normal UDP multicast reception (no peers)
-//    .relay  — receiving from solunad AND forwarding raw packets to peers nearby
-//    .peer   — receiving audio from a relay iPhone (solunad unreachable / high loss)
-//
-//  Auto-role selection (triggered by AudioReceiver every 5 sec):
-//    • loss < 5 %  AND peers exist  → become relay
-//    • loss > 30 % AND relay found  → become peer
-//    • relay lost                   → fall back to .direct
+//    .direct  — receiving from multicast + forwarding raw packets to peers
+//    .peer    — receiving from a relay iPhone (multicast disabled)
 //
 
 import Foundation
@@ -21,10 +22,17 @@ import UIKit
 
 // MARK: - Role
 
-enum RelayRole {
-    case direct          // Normal UDP path
-    case relay           // Forwarding to peers
+enum RelayRole: Equatable {
+    case direct          // Normal UDP path + relay to connected peers
     case peer(String)    // Receiving from relay (stores relay display name)
+
+    static func == (lhs: RelayRole, rhs: RelayRole) -> Bool {
+        switch (lhs, rhs) {
+        case (.direct, .direct): return true
+        case (.peer(let a), .peer(let b)): return a == b
+        default: return false
+        }
+    }
 }
 
 // MARK: - Manager
@@ -41,55 +49,82 @@ final class PeerRelayManager: NSObject, ObservableObject {
 
     @Published private(set) var role: RelayRole = .direct
     @Published private(set) var connectedPeerCount: Int = 0
-
-    // Raw-packet injection sink — set by AudioReceiver when we switch to peer mode
-    var onRelayPacket: ((Data) -> Void)?
+    @Published private(set) var isScanning: Bool = false
+    @Published private(set) var channel: String = ""
 
     private var session: MCSession?
     private var advertiser: MCNearbyServiceAdvertiser?
     private var browser: MCNearbyServiceBrowser?
+    private var scanTimer: Timer?
+    private var scanCompletion: ((Bool) -> Void)?
 
     private override init() { super.init() }
 
-    // MARK: - Lifecycle
+    // MARK: - Phase 1: Scan for nearby peers (before starting multicast)
 
-    func start() {
-        let s = MCSession(peer: myPeerID,
-                          securityIdentity: nil,
-                          encryptionPreference: .none)
-        s.delegate = self
-        session = s
+    /// Browse for nearby peers on the given channel. Returns `true` if a peer was found and connected.
+    func scanForPeers(channel: String, timeout: TimeInterval = 3) async -> Bool {
+        self.channel = channel
+        stop()
 
+        return await withCheckedContinuation { continuation in
+            let s = MCSession(peer: myPeerID,
+                              securityIdentity: nil,
+                              encryptionPreference: .none)
+            s.delegate = self
+            session = s
+
+            isScanning = true
+
+            scanCompletion = { found in
+                continuation.resume(returning: found)
+            }
+
+            // Browse for peers advertising the same channel
+            let br = MCNearbyServiceBrowser(peer: myPeerID, serviceType: serviceType)
+            br.delegate = self
+            br.startBrowsingForPeers()
+            browser = br
+
+            // If no relay found within timeout → not found
+            scanTimer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isScanning else { return }
+                    self.isScanning = false
+                    let cb = self.scanCompletion
+                    self.scanCompletion = nil
+                    cb?(false)
+                }
+            }
+        }
+    }
+
+    // MARK: - Phase 2a: Become direct relay (multicast receiver + forwarding)
+
+    /// Call after multicast reception is stable. Starts advertising on this channel
+    /// and enables raw-packet forwarding to connected peers.
+    func becomeDirectRelay() {
+        role = .direct
+        isScanning = false
+
+        // Advertise with channel so new peers can find us
+        let info: [String: String] = ["ch": channel]
         let adv = MCNearbyServiceAdvertiser(peer: myPeerID,
-                                            discoveryInfo: nil,
+                                            discoveryInfo: info,
                                             serviceType: serviceType)
         adv.delegate = self
         adv.startAdvertisingPeer()
         advertiser = adv
 
-        let br = MCNearbyServiceBrowser(peer: myPeerID, serviceType: serviceType)
-        br.delegate = self
-        br.startBrowsingForPeers()
-        browser = br
-    }
+        // Also keep browsing for new peers (they might arrive later)
+        if browser == nil {
+            let br = MCNearbyServiceBrowser(peer: myPeerID, serviceType: serviceType)
+            br.delegate = self
+            br.startBrowsingForPeers()
+            browser = br
+        }
 
-    func stop() {
-        advertiser?.stopAdvertisingPeer()
-        browser?.stopBrowsingForPeers()
-        session?.disconnect()
-        session    = nil
-        advertiser = nil
-        browser    = nil
-        role = .direct
-        connectedPeerCount = 0
-    }
-
-    // MARK: - Role control (called from AudioReceiver)
-
-    /// Promote to relay: activate raw-packet forwarding on the bridge
-    func promoteToRelay() {
-        guard case .direct = role else { return }
-        role = .relay
+        // Forward every received packet to connected peers
         SolunaAudioReceiver.sharedInstance().setRelayCallback { [weak self] data in
             Task { @MainActor [weak self] in
                 self?.broadcastPacket(data)
@@ -97,17 +132,40 @@ final class PeerRelayManager: NSObject, ObservableObject {
         }
     }
 
-    /// Promote to peer mode (receiving from relayName)
-    func promoteToPeer(relayName: String) {
+    // MARK: - Phase 2b: Enter peer mode (auto, called when scan finds a relay)
+
+    private func enterPeerMode(relayName: String) {
         role = .peer(relayName)
-        // Stop own raw-packet forwarding
-        SolunaAudioReceiver.sharedInstance().setRelayCallback(nil)
+        isScanning = false
+        scanTimer?.invalidate()
+
+        // Disable multicast — audio arrives only via injectRawPacket
+        SolunaAudioReceiver.sharedInstance().networkDisabled = true
+
+        let cb = scanCompletion
+        scanCompletion = nil
+        cb?(true)
     }
 
-    /// Fall back to direct UDP reception
-    func demoteToDirectWithMessage(_ message: String?) {
+    // MARK: - Lifecycle
+
+    func stop() {
+        scanTimer?.invalidate(); scanTimer = nil
+        advertiser?.stopAdvertisingPeer(); advertiser = nil
+        browser?.stopBrowsingForPeers(); browser = nil
+        session?.disconnect(); session = nil
+
         role = .direct
+        connectedPeerCount = 0
+        isScanning = false
+
+        // Resume any pending scan
+        let cb = scanCompletion
+        scanCompletion = nil
+        cb?(false)
+
         SolunaAudioReceiver.sharedInstance().setRelayCallback(nil)
+        SolunaAudioReceiver.sharedInstance().networkDisabled = false
     }
 
     // MARK: - Broadcast (relay → peers)
@@ -128,23 +186,28 @@ extension PeerRelayManager: MCSessionDelegate {
         Task { @MainActor in
             self.connectedPeerCount = session.connectedPeers.count
 
+            if state == .connected && self.isScanning {
+                // Found and connected to a relay during scan → enter peer mode
+                self.enterPeerMode(relayName: peerID.displayName)
+            }
+
             if state == .notConnected {
-                // If our relay peer disconnected, fall back
+                // If our relay disconnected → fall back to direct multicast
                 if case .peer(let name) = self.role, name == peerID.displayName {
-                    self.demoteToDirectWithMessage("リレー接続が切れました。直接受信に切り替えます。")
+                    self.role = .direct
+                    SolunaAudioReceiver.sharedInstance().networkDisabled = false
+                    // Re-start as direct relay (multicast should still be running)
+                    self.becomeDirectRelay()
                 }
             }
         }
     }
 
-    // Received a relay packet from a peer (we are in .peer mode)
+    // Received audio data from relay peer
     nonisolated func session(_ session: MCSession,
                              didReceive data: Data,
                              fromPeer peerID: MCPeerID) {
-        Task { @MainActor in
-            guard case .peer = self.role else { return }
-            SolunaAudioReceiver.sharedInstance().injectRawPacket(data)
-        }
+        SolunaAudioReceiver.sharedInstance().injectRawPacket(data)
     }
 
     nonisolated func session(_ session: MCSession,
@@ -173,8 +236,7 @@ extension PeerRelayManager: MCNearbyServiceAdvertiserDelegate {
                                 withContext context: Data?,
                                 invitationHandler: @escaping (Bool, MCSession?) -> Void) {
         Task { @MainActor in
-            // Accept: either we are a relay (add this device as listener),
-            // or we allow them to connect so we can become their peer
+            // Auto-accept: no sender permission needed
             invitationHandler(true, self.session)
         }
     }
@@ -188,10 +250,12 @@ extension PeerRelayManager: MCNearbyServiceBrowserDelegate {
                              foundPeer peerID: MCPeerID,
                              withDiscoveryInfo info: [String: String]?) {
         Task { @MainActor in
+            // Only connect to peers on the same channel
+            guard let info, info["ch"] == self.channel else { return }
             guard let session = self.session else { return }
-            // Invite if we haven't seen this peer yet
+
             if !session.connectedPeers.contains(peerID) {
-                browser.invitePeer(peerID, to: session, withContext: nil, timeout: 30)
+                browser.invitePeer(peerID, to: session, withContext: nil, timeout: 10)
             }
         }
     }
@@ -200,7 +264,9 @@ extension PeerRelayManager: MCNearbyServiceBrowserDelegate {
                              lostPeer peerID: MCPeerID) {
         Task { @MainActor in
             if case .peer(let name) = self.role, name == peerID.displayName {
-                self.demoteToDirectWithMessage(nil)
+                self.role = .direct
+                SolunaAudioReceiver.sharedInstance().networkDisabled = false
+                self.becomeDirectRelay()
             }
         }
     }
