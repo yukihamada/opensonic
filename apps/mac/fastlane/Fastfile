@@ -1,0 +1,71 @@
+default_platform(:mac)
+
+platform :mac do
+  PROJECT     = "SolunaControl.xcodeproj"
+  SCHEME      = "SolunaControl"
+  BUNDLE_ID   = "com.soluna.SolunaControl"
+  BUILD_DIR   = File.expand_path("./build")
+
+  desc "Build release .app (no signing — for local testing)"
+  lane :build_local do
+    sh "mkdir -p #{BUILD_DIR}"
+    sh "xcodebuild -project #{PROJECT} -scheme #{SCHEME} " \
+       "-configuration Release -sdk macosx " \
+       "-derivedDataPath #{BUILD_DIR}/DerivedData " \
+       "CODE_SIGN_IDENTITY='' CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO " \
+       "CONFIGURATION_BUILD_DIR=#{BUILD_DIR} build | xcpretty || true"
+  end
+
+  desc "Archive + export .app with Developer ID signing"
+  lane :build do
+    sh "mkdir -p #{BUILD_DIR}"
+
+    # Increment build number to timestamp
+    increment_build_number(
+      build_number: Time.now.strftime("%Y%m%d%H%M"),
+      xcodeproj: PROJECT
+    )
+
+    sh "xcodebuild -project #{PROJECT} -scheme #{SCHEME} " \
+       "-configuration Release -sdk macosx " \
+       "-archivePath #{BUILD_DIR}/SolunaControl.xcarchive " \
+       "archive | xcpretty"
+
+    sh "xcodebuild -exportArchive " \
+       "-archivePath #{BUILD_DIR}/SolunaControl.xcarchive " \
+       "-exportOptionsPlist ExportOptions.plist " \
+       "-exportPath #{BUILD_DIR}/export | xcpretty"
+  end
+
+  desc "Build, notarize, and create distributable .dmg"
+  lane :release do
+    api_key = app_store_connect_api_key(
+      key_id:     ENV["APP_STORE_CONNECT_API_KEY_ID"],
+      issuer_id:  ENV["APP_STORE_CONNECT_ISSUER_ID"],
+      key_filepath: ENV["APP_STORE_CONNECT_API_KEY_PATH"],
+      in_house: false
+    )
+
+    # Build signed .app
+    build
+
+    app_path = "#{BUILD_DIR}/export/SolunaControl.app"
+
+    # Notarize
+    notarize(
+      package:   app_path,
+      bundle_id: BUNDLE_ID,
+      api_key:   api_key
+    )
+
+    # Create .dmg
+    dmg_path = "#{BUILD_DIR}/SolunaControl.dmg"
+    sh "hdiutil create " \
+       "-volname 'Soluna Control' " \
+       "-srcfolder '#{app_path}' " \
+       "-ov -format UDZO '#{dmg_path}'"
+
+    UI.success "✔ DMG ready: #{dmg_path}"
+    UI.success "  Distribute via: https://soluna-web.fly.dev/SolunaControl.dmg"
+  end
+end

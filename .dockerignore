@@ -1,0 +1,14 @@
+build/
+.git/
+apps/
+src/
+tests/
+docs/
+cmake/
+*.cpp
+*.h
+CMakeLists.txt
+*.xcodeproj
+*.xcworkspace
+*.md
+deploy/rpi/

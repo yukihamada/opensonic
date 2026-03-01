@@ -1,0 +1,9 @@
+app_identifier("com.soluna.SolunaControl")
+apple_id(ENV["APPLE_ID"] || "your-apple-id@example.com")
+team_id(ENV["TEAM_ID"] || "5BV85JW8US")
+
+# App Store Connect API Key (recommended for CI/CD)
+# Set these environment variables:
+# - APP_STORE_CONNECT_API_KEY_ID
+# - APP_STORE_CONNECT_ISSUER_ID
+# - APP_STORE_CONNECT_API_KEY_PATH  (path to .p8 file)

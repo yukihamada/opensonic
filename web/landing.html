@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna — Mac の音声をネットワーク経由で iPhone・Raspberry Pi・ブラウザにリアルタイム配信。オープンソース、無料。">
+    <meta property="og:title" content="Soluna — ネットワークオーディオ">
+    <meta property="og:description" content="Mac の音を、どこでも。iPhone・RPi・ブラウザへ低遅延で同時配信。">
+    <meta property="og:type" content="website">
+    <title>Soluna — Mac の音を、どこでも。</title>
+    <style>
+        :root {
+            --bg:     #07080c;
+            --s1:     #0e1018;
+            --s2:     #141720;
+            --s3:     #1c2030;
+            --border: rgba(255,255,255,0.07);
+            --border2:rgba(255,255,255,0.13);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --green:  #10b981;
+            --amber:  #f59e0b;
+            --red:    #ef4444;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ── Nav ──────────────────────────────────────── */
+        nav {
+            position: sticky; top: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 max(20px, calc(50% - 560px));
+            height: 56px;
+            background: rgba(7,8,12,0.85);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+        .nav-links { display: flex; align-items: center; gap: 24px; }
+        .nav-links a {
+            color: var(--text2); text-decoration: none; font-size: 14px;
+            transition: color 0.15s;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .nav-cta {
+            padding: 7px 16px;
+            background: var(--blue);
+            color: #fff !important;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 13px !important;
+            transition: opacity 0.15s !important;
+        }
+        .nav-cta:hover { opacity: 0.85; }
+
+        /* ── Shared ───────────────────────────────────── */
+        .section {
+            padding: 80px max(20px, calc(50% - 560px));
+        }
+        .section-label {
+            font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+            text-transform: uppercase; color: var(--text3); margin-bottom: 12px;
+        }
+        h2 {
+            font-size: clamp(24px, 4vw, 36px);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+            margin-bottom: 16px;
+        }
+        .sub {
+            font-size: 16px; color: var(--text2); line-height: 1.7;
+            max-width: 520px; margin-bottom: 40px;
+        }
+
+        /* ── Hero ─────────────────────────────────────── */
+        .hero {
+            padding: 100px max(20px, calc(50% - 560px)) 80px;
+            position: relative;
+        }
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(59,130,246,0.1);
+            border: 1px solid rgba(59,130,246,0.25);
+            color: #60a5fa; font-size: 12px; font-weight: 600;
+            padding: 5px 12px; border-radius: 20px;
+            margin-bottom: 28px;
+        }
+        .hero-badge span { width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
+        h1 {
+            font-size: clamp(36px, 7vw, 72px);
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            line-height: 1.05;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.6) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero-sub {
+            font-size: clamp(16px, 2.5vw, 20px);
+            color: var(--text2); max-width: 540px; line-height: 1.7; margin-bottom: 40px;
+        }
+        .hero-actions {
+            display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+        }
+        .btn-primary {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 24px;
+            background: var(--blue);
+            color: #fff; text-decoration: none;
+            border-radius: 10px; font-weight: 600; font-size: 15px;
+            transition: transform 0.15s, box-shadow 0.15s;
+            box-shadow: 0 4px 20px rgba(59,130,246,0.35);
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(59,130,246,0.45); }
+        .btn-secondary {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 24px;
+            background: var(--s2); border: 1px solid var(--border2);
+            color: var(--text); text-decoration: none;
+            border-radius: 10px; font-weight: 600; font-size: 15px;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .btn-secondary:hover { background: var(--s3); border-color: rgba(255,255,255,0.2); }
+        .hero-note {
+            margin-top: 16px; font-size: 13px; color: var(--text3);
+        }
+
+        /* ── Diagram ──────────────────────────────────── */
+        .diagram {
+            margin-top: 60px;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+        }
+        .diag-node {
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
+            padding: 16px 20px;
+            background: var(--s2);
+            border: 1px solid var(--border2);
+            border-radius: 14px;
+            min-width: 110px;
+        }
+        .diag-node .icon { font-size: 28px; }
+        .diag-node .label { font-size: 12px; font-weight: 600; color: var(--text2); }
+        .diag-arrow {
+            font-size: 20px; color: var(--text3); padding: 0 12px; flex-shrink: 0;
+        }
+        .diag-split {
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .diag-rx {
+            display: flex; align-items: center; gap: 8px;
+            background: var(--s2); border: 1px solid var(--border);
+            border-radius: 10px; padding: 10px 14px;
+            font-size: 12px; font-weight: 500; color: var(--text2);
+        }
+        .diag-rx .dot {
+            width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0;
+        }
+        .diag-center {
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+            padding: 0 8px;
+        }
+        .diag-tag {
+            font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+            text-transform: uppercase; color: var(--blue);
+            background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2);
+            padding: 2px 8px; border-radius: 20px;
+        }
+
+        /* ── Install ──────────────────────────────────── */
+        .install-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+        }
+        .install-card {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 14px;
+            transition: border-color 0.2s;
+        }
+        .install-card:hover { border-color: var(--border2); }
+        .install-card .ic-header {
+            display: flex; align-items: center; gap: 12px;
+        }
+        .install-card .ic-icon { font-size: 28px; flex-shrink: 0; }
+        .install-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+        .install-card p { font-size: 13px; color: var(--text2); }
+        .code-block {
+            background: var(--s3); border: 1px solid var(--border);
+            border-radius: 8px; padding: 10px 14px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12px; color: #a8d8b0; overflow-x: auto; white-space: nowrap;
+            position: relative;
+        }
+        .code-block .copy-btn {
+            position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+            background: var(--s2); border: 1px solid var(--border2);
+            color: var(--text3); font-size: 10px; font-weight: 600;
+            padding: 3px 8px; border-radius: 4px; cursor: pointer;
+            transition: all 0.15s;
+        }
+        .code-block .copy-btn:hover { color: var(--text); }
+        .install-card .ic-link {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 10px 16px;
+            background: var(--s2); border: 1px solid var(--border2);
+            border-radius: 8px; color: var(--text); text-decoration: none;
+            font-size: 13px; font-weight: 600; width: 100%; justify-content: center;
+            transition: background 0.15s;
+        }
+        .install-card .ic-link:hover { background: var(--s3); }
+        .install-card .ic-link.primary {
+            background: var(--blue); border-color: transparent; color: #fff;
+        }
+        .install-card .ic-link.primary:hover { opacity: 0.9; }
+
+        /* ── Features ─────────────────────────────────── */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 12px;
+        }
+        .feat {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 8px;
+        }
+        .feat .feat-icon { font-size: 22px; }
+        .feat h4 { font-size: 14px; font-weight: 700; }
+        .feat p { font-size: 12px; color: var(--text2); line-height: 1.6; }
+
+        /* ── Dashboard preview ────────────────────────── */
+        .preview-wrap {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 20px; overflow: hidden;
+        }
+        .preview-bar {
+            background: var(--s2); border-bottom: 1px solid var(--border);
+            padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+        }
+        .preview-dots { display: flex; gap: 6px; }
+        .preview-dots span {
+            width: 10px; height: 10px; border-radius: 50%;
+        }
+        .preview-dots .red   { background: #ff5f57; }
+        .preview-dots .amber { background: #febc2e; }
+        .preview-dots .green { background: #28c840; }
+        .preview-url {
+            flex: 1; background: var(--s3); border-radius: 6px;
+            padding: 4px 12px; font-size: 12px; color: var(--text3);
+            font-family: monospace;
+        }
+        .preview-body { padding: 20px; }
+        .mock-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 14px; background: var(--s2); border-radius: 10px;
+            margin-bottom: 16px;
+        }
+        .mock-logo { font-size: 14px; font-weight: 700; }
+        .mock-badge {
+            font-size: 11px; font-weight: 600; padding: 3px 10px;
+            border-radius: 20px; background: rgba(16,185,129,0.15);
+            color: var(--green); border: 1px solid rgba(16,185,129,0.3);
+        }
+        .mock-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .mock-card {
+            background: var(--s2); border: 1px solid var(--border);
+            border-radius: 10px; padding: 14px;
+        }
+        .mock-card-hd {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .mock-card-name { font-size: 12px; font-weight: 600; }
+        .mock-card-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+        }
+        .mock-bar-wrap {
+            height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden;
+        }
+        .mock-bar {
+            height: 100%; border-radius: 2px;
+            background: linear-gradient(90deg, var(--green), var(--blue));
+        }
+        .mock-stat { font-size: 10px; color: var(--text3); margin-top: 6px; }
+        .mock-nav {
+            display: flex; gap: 4px; margin-top: 16px;
+        }
+        .mock-nav-btn {
+            flex: 1; padding: 8px; background: var(--s2); border-radius: 8px;
+            font-size: 10px; font-weight: 600; text-align: center;
+            color: var(--text3);
+        }
+        .mock-nav-btn.active { background: rgba(59,130,246,0.15); color: #60a5fa; }
+
+        /* ── Comparison ───────────────────────────────── */
+        .table-wrap { overflow-x: auto; }
+        table {
+            width: 100%; border-collapse: collapse;
+            font-size: 14px;
+        }
+        th {
+            padding: 10px 16px; text-align: left; font-size: 11px;
+            font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+            color: var(--text3); border-bottom: 1px solid var(--border);
+        }
+        th:first-child { min-width: 140px; }
+        td {
+            padding: 12px 16px; border-bottom: 1px solid var(--border);
+            color: var(--text2);
+        }
+        td:first-child { font-weight: 600; color: var(--text); }
+        tr:last-child td { border-bottom: none; }
+        .yes { color: var(--green); font-weight: 700; }
+        .no  { color: var(--text3); }
+        .hl-col td:nth-child(2) { color: var(--text); background: rgba(59,130,246,0.04); }
+        .hl-col th:nth-child(2) { color: #60a5fa; }
+
+        /* ── Footer ───────────────────────────────────── */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 32px max(20px, calc(50% - 560px));
+            display: flex; flex-wrap: wrap; align-items: center;
+            justify-content: space-between; gap: 16px;
+        }
+        footer .f-logo { font-size: 16px; font-weight: 700; }
+        footer .f-links { display: flex; gap: 20px; }
+        footer .f-links a { font-size: 13px; color: var(--text3); text-decoration: none; }
+        footer .f-links a:hover { color: var(--text2); }
+        footer .f-copy { font-size: 12px; color: var(--text3); }
+
+        /* ── Divider ──────────────────────────────────── */
+        hr { border: none; border-top: 1px solid var(--border); }
+
+        /* ── Responsive ───────────────────────────────── */
+        @media (max-width: 600px) {
+            .nav-links .hide-sm { display: none; }
+            .hero-actions { flex-direction: column; }
+            .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+            .diag-arrow { display: none; }
+            .diagram { gap: 8px; }
+            .mock-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+    <div class="nav-logo">◈ Soluna</div>
+    <div class="nav-links">
+        <a href="#install" class="hide-sm">インストール</a>
+        <a href="/guide.html" class="hide-sm">ガイド</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub ↗</a>
+        <a href="/index.html" class="nav-cta">Dashboard →</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-badge"><span></span> Open Source · MIT License</div>
+    <h1>Mac の音を、<br>どこでも。</h1>
+    <p class="hero-sub">
+        Soluna はシステム音声をネットワーク経由で iPhone・Raspberry Pi・ブラウザへリアルタイム配信。BlackHole や複雑な設定は不要。仮想デバイスを選ぶだけ。
+    </p>
+    <div class="hero-actions">
+        <a href="#install" class="btn-primary">▶ &nbsp;セットアップを始める</a>
+        <a href="/index.html" class="btn-secondary">Dashboard を開く →</a>
+    </div>
+    <p class="hero-note">macOS 12+ 対応 · 無料 · オープンソース</p>
+
+    <!-- Mini diagram -->
+    <div class="diagram">
+        <div class="diag-node">
+            <div class="icon">💻</div>
+            <div class="label">Mac</div>
+        </div>
+        <div class="diag-center">
+            <div class="diag-arrow">→</div>
+            <div class="diag-tag">UDP Multicast</div>
+        </div>
+        <div class="diag-node" style="border-color:rgba(59,130,246,0.4);background:rgba(59,130,246,0.07)">
+            <div class="icon">◈</div>
+            <div class="label" style="color:#60a5fa">Soluna</div>
+        </div>
+        <div class="diag-center">
+            <div class="diag-arrow">→</div>
+        </div>
+        <div class="diag-split">
+            <div class="diag-rx"><span class="dot"></span>iPhone</div>
+            <div class="diag-rx"><span class="dot"></span>Raspberry Pi</div>
+            <div class="diag-rx"><span class="dot"></span>Browser</div>
+            <div class="diag-rx"><span class="dot" style="background:var(--blue)"></span>Mac スピーカー</div>
+        </div>
+    </div>
+</section>
+
+<hr>
+
+<!-- Features -->
+<section class="section">
+    <div class="section-label">機能</div>
+    <h2>必要なものは全部入り。</h2>
+    <p class="sub">プロ向けのネットワークオーディオ機能を、オープンソースで。</p>
+    <div class="features-grid">
+        <div class="feat">
+            <div class="feat-icon">⚡</div>
+            <h4>低遅延配信</h4>
+            <p>UDP マルチキャストで LAN 内 20ms 以下の遅延。Mac スピーカーと同期。</p>
+        </div>
+        <div class="feat">
+            <div class="feat-icon">🔄</div>
+            <h4>自動遅延同期</h4>
+            <p>WebSocket RTT 計測で Mac スピーカーと iPhone の音を自動ピッタリ合わせ。</p>
+        </div>
+        <div class="feat">
+            <div class="feat-icon">🛡</div>
+            <h4>PLC パケット補間</h4>
+            <p>最大 2 パケット欠落を前フレームで補完。WiFi でもプツッとしない。</p>
+        </div>
+        <div class="feat">
+            <div class="feat-icon">📡</div>
+            <h4>Bonjour 自動検出</h4>
+            <p>同じ WiFi の iPhone が solunad を自動発見。IP アドレスを入力不要。</p>
+        </div>
+        <div class="feat">
+            <div class="feat-icon">🌐</div>
+            <h4>Web ダッシュボード</h4>
+            <p>localhost:8400 で全操作。スパークライン、遅延バー、リアルタイム統計。</p>
+        </div>
+        <div class="feat">
+            <div class="feat-icon">⚙️</div>
+            <h4>設定の永続化</h4>
+            <p>音量・遅延・ミュートを自動保存。再起動後も設定を引き継ぎ。</p>
+        </div>
+        <div class="feat">
+            <div class="feat-icon">🖥</div>
+            <h4>Menu bar アプリ</h4>
+            <p>macOS メニューバーからワンタップで音量・遅延を調整。</p>
+        </div>
+        <div class="feat">
+            <div class="feat-icon">🚀</div>
+            <h4>launchd 自動起動</h4>
+            <p>Mac ログイン時に自動起動。一度設定すれば意識しなくていい。</p>
+        </div>
+    </div>
+</section>
+
+<hr>
+
+<!-- Install -->
+<section class="section" id="install">
+    <div class="section-label">インストール</div>
+    <h2>使い始めるのは簡単。</h2>
+    <p class="sub">プラットフォームを選んでセットアップを始めてください。</p>
+    <div class="install-grid">
+
+        <!-- Mac -->
+        <div class="install-card">
+            <div class="ic-header">
+                <div class="ic-icon">💻</div>
+                <div>
+                    <h3>Mac <small style="font-size:11px;color:var(--text3);font-weight:500">送信側 TX</small></h3>
+                    <p>まずここから。Mac がオーディオの送信元になります。</p>
+                </div>
+            </div>
+            <div class="code-block">
+                curl -fsSL https://soluna-web.fly.dev/install.sh | bash
+                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <a href="/guide.html#mac" class="ic-link">詳細なセットアップ手順 →</a>
+        </div>
+
+        <!-- iPhone -->
+        <div class="install-card">
+            <div class="ic-header">
+                <div class="ic-icon">📱</div>
+                <div>
+                    <h3>iPhone <small style="font-size:11px;color:var(--text3);font-weight:500">受信側 RX</small></h3>
+                    <p>Mac と同じ WiFi に繋ぐだけで自動検出。</p>
+                </div>
+            </div>
+            <a href="https://github.com/yukihamada/opensonic/releases" class="ic-link primary" target="_blank">TestFlight で入手 →</a>
+            <p style="font-size:12px;color:var(--text3)">Mac の Xcode でビルドする方法は<a href="/guide.html" style="color:var(--text2)">こちら</a>。</p>
+        </div>
+
+        <!-- RPi -->
+        <div class="install-card">
+            <div class="ic-header">
+                <div class="ic-icon">🥧</div>
+                <div>
+                    <h3>Raspberry Pi <small style="font-size:11px;color:var(--text3);font-weight:500">受信側 RX</small></h3>
+                    <p>ワンコマンドインストール。ALSA DAC に対応。</p>
+                </div>
+            </div>
+            <div class="code-block">
+                sudo bash deploy/rpi/install-rx.sh
+                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <a href="/guide.html#rpi" class="ic-link">RPi セットアップ →</a>
+        </div>
+
+        <!-- Browser -->
+        <div class="install-card">
+            <div class="ic-header">
+                <div class="ic-icon">🌐</div>
+                <div>
+                    <h3>ブラウザ <small style="font-size:11px;color:var(--text3);font-weight:500">インストール不要</small></h3>
+                    <p>Mac で solunad が動いていれば、ブラウザから即試聴。</p>
+                </div>
+            </div>
+            <a href="/index.html" class="ic-link primary">Dashboard を開く →</a>
+            <p style="font-size:12px;color:var(--text3)">Dashboard の「Browser」タブから ▶ ボタンを押すだけ。</p>
+        </div>
+
+    </div>
+</section>
+
+<hr>
+
+<!-- Dashboard Preview -->
+<section class="section">
+    <div class="section-label">ダッシュボード</div>
+    <h2>一画面で全部見える。</h2>
+    <p class="sub">localhost:8400 でアクセスできる Web UI。全スピーカーをブラウザから操作。</p>
+
+    <div class="preview-wrap">
+        <div class="preview-bar">
+            <div class="preview-dots">
+                <span class="red"></span>
+                <span class="amber"></span>
+                <span class="green"></span>
+            </div>
+            <div class="preview-url">http://localhost:8400</div>
+        </div>
+        <div class="preview-body">
+            <div class="mock-header">
+                <div class="mock-logo">◈ Soluna</div>
+                <div class="mock-badge">● Live</div>
+            </div>
+            <div class="mock-grid">
+                <div class="mock-card">
+                    <div class="mock-card-hd">
+                        <div class="mock-card-name">📱 iPhone</div>
+                        <div class="mock-card-dot" style="background:var(--green)"></div>
+                    </div>
+                    <div class="mock-bar-wrap"><div class="mock-bar" style="width:78%"></div></div>
+                    <div class="mock-stat">78% · 42ms delay · 0 drop</div>
+                </div>
+                <div class="mock-card">
+                    <div class="mock-card-hd">
+                        <div class="mock-card-name">🥧 RPi Living</div>
+                        <div class="mock-card-dot" style="background:var(--green)"></div>
+                    </div>
+                    <div class="mock-bar-wrap"><div class="mock-bar" style="width:100%"></div></div>
+                    <div class="mock-stat">100% · 38ms delay · 0 drop</div>
+                </div>
+                <div class="mock-card">
+                    <div class="mock-card-hd">
+                        <div class="mock-card-name">🌐 Browser</div>
+                        <div class="mock-card-dot" style="background:var(--blue)"></div>
+                    </div>
+                    <div class="mock-bar-wrap"><div class="mock-bar" style="width:60%;background:linear-gradient(90deg,var(--blue),var(--green))"></div></div>
+                    <div class="mock-stat">60% · 52ms · underruns: 0</div>
+                </div>
+                <div class="mock-card">
+                    <div class="mock-card-hd">
+                        <div class="mock-card-name">🖥 Mac Monitor</div>
+                        <div class="mock-card-dot" style="background:var(--green)"></div>
+                    </div>
+                    <div class="mock-bar-wrap"><div class="mock-bar" style="width:90%"></div></div>
+                    <div class="mock-stat">Running · 48kHz · 20ms buf</div>
+                </div>
+            </div>
+            <div class="mock-nav">
+                <div class="mock-nav-btn active">Dashboard</div>
+                <div class="mock-nav-btn">Browser</div>
+                <div class="mock-nav-btn">Routing</div>
+                <div class="mock-nav-btn">Stats</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<hr>
+
+<!-- Comparison -->
+<section class="section">
+    <div class="section-label">比較</div>
+    <h2>Soluna を選ぶ理由。</h2>
+    <p class="sub">有償製品と同等以上の機能をオープンソースで。</p>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr class="hl-col">
+                    <th>機能</th>
+                    <th>◈ Soluna</th>
+                    <th>Dante</th>
+                    <th>AES67</th>
+                    <th>BlackHole+Multi</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="hl-col"><td>ライセンス</td><td class="yes">MIT 無料</td><td class="no">有償 高額</td><td class="no">標準規格</td><td class="no">手動設定必要</td></tr>
+                <tr class="hl-col"><td>仮想デバイス</td><td class="yes">✅ 自動</td><td class="no">❌</td><td class="no">❌</td><td class="no">手動</td></tr>
+                <tr class="hl-col"><td>Mac スピーカー同時</td><td class="yes">✅</td><td class="no">❌</td><td class="no">❌</td><td class="no">複雑</td></tr>
+                <tr class="hl-col"><td>iPhone 受信</td><td class="yes">✅</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td></tr>
+                <tr class="hl-col"><td>WiFi 対応</td><td class="yes">✅</td><td class="no">限定的</td><td class="no">❌</td><td class="no">—</td></tr>
+                <tr class="hl-col"><td>ブラウザ受信</td><td class="yes">✅</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td></tr>
+                <tr class="hl-col"><td>自動遅延同期</td><td class="yes">✅</td><td class="no">手動</td><td class="no">手動</td><td class="no">❌</td></tr>
+                <tr class="hl-col"><td>Web UI</td><td class="yes">✅</td><td class="yes">✅</td><td class="no">❌</td><td class="no">❌</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<hr>
+
+<!-- Footer -->
+<footer>
+    <div class="f-logo">◈ Soluna</div>
+    <div class="f-links">
+        <a href="/guide.html">セットアップガイド</a>
+        <a href="/index.html">Dashboard</a>
+        <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+        <a href="https://github.com/yukihamada/opensonic/issues" target="_blank">バグ報告</a>
+    </div>
+    <div class="f-copy">MIT License · Open Source</div>
+</footer>
+
+<script>
+function copyCode(btn) {
+    const code = btn.closest('.code-block').textContent.replace('Copy', '').trim();
+    navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+}
+</script>
+</body>
+</html>
