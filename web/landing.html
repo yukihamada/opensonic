@@ -3,26 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Soluna — Mac の音声をネットワーク経由で iPhone・Raspberry Pi・ブラウザにリアルタイム配信。オープンソース、無料。">
+    <meta name="description" content="Soluna — Mac の音声をネットワーク経由で iPhone・Raspberry Pi・ブラウザにリアルタイム配信。P2P メッシュ中継対応。オープンソース。">
     <meta property="og:title" content="Soluna — ネットワークオーディオ">
-    <meta property="og:description" content="Mac の音を、どこでも。iPhone・RPi・ブラウザへ低遅延で同時配信。">
+    <meta property="og:description" content="Mac の音を、どこでも。iPhone・RPi・ブラウザへ低遅延で同時配信。P2P 中継でフェスにも。">
     <meta property="og:type" content="website">
     <title>Soluna — Mac の音を、どこでも。</title>
     <style>
         :root {
-            --bg:     #07080c;
-            --s1:     #0e1018;
-            --s2:     #141720;
-            --s3:     #1c2030;
-            --border: rgba(255,255,255,0.07);
-            --border2:rgba(255,255,255,0.13);
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
             --text:   #e8eaf2;
             --text2:  #8b91a8;
             --text3:  #50566e;
             --blue:   #3b82f6;
+            --cyan:   #06b6d4;
             --green:  #10b981;
+            --purple: #8b5cf6;
             --amber:  #f59e0b;
-            --red:    #ef4444;
+            --pink:   #ec4899;
             font-synthesis: none;
             -webkit-font-smoothing: antialiased;
         }
@@ -36,156 +38,407 @@
             overflow-x: hidden;
         }
 
+        /* ── Scroll reveal ────────────────────────────────── */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
         /* ── Nav ──────────────────────────────────────── */
         nav {
-            position: sticky; top: 0; z-index: 100;
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
             display: flex; align-items: center; justify-content: space-between;
-            padding: 0 max(20px, calc(50% - 560px));
-            height: 56px;
-            background: rgba(7,8,12,0.85);
-            backdrop-filter: blur(20px);
+            padding: 0 max(20px, calc(50% - 580px));
+            height: 60px;
+            background: rgba(5,6,10,0.7);
+            backdrop-filter: blur(24px) saturate(1.8);
             border-bottom: 1px solid var(--border);
+            transition: background 0.3s;
         }
-        .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+        .nav-logo {
+            font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .nav-logo svg { width: 24px; height: 24px; }
         .nav-links { display: flex; align-items: center; gap: 24px; }
         .nav-links a {
             color: var(--text2); text-decoration: none; font-size: 14px;
-            transition: color 0.15s;
+            transition: color 0.2s;
         }
         .nav-links a:hover { color: var(--text); }
         .nav-cta {
-            padding: 7px 16px;
-            background: var(--blue);
+            padding: 8px 18px;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
             color: #fff !important;
-            border-radius: 8px;
+            border-radius: 10px;
             font-weight: 600;
             font-size: 13px !important;
-            transition: opacity 0.15s !important;
+            transition: opacity 0.2s, transform 0.2s !important;
+            box-shadow: 0 2px 12px rgba(59,130,246,0.3);
         }
-        .nav-cta:hover { opacity: 0.85; }
+        .nav-cta:hover { opacity: 0.9; transform: translateY(-1px) !important; }
 
         /* ── Shared ───────────────────────────────────── */
         .section {
-            padding: 80px max(20px, calc(50% - 560px));
+            padding: 100px max(20px, calc(50% - 580px));
         }
         .section-label {
-            font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
-            text-transform: uppercase; color: var(--text3); margin-bottom: 12px;
+            font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; margin-bottom: 14px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
         h2 {
-            font-size: clamp(24px, 4vw, 36px);
-            font-weight: 700;
-            letter-spacing: -0.02em;
-            line-height: 1.2;
+            font-size: clamp(28px, 5vw, 44px);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
             margin-bottom: 16px;
         }
         .sub {
-            font-size: 16px; color: var(--text2); line-height: 1.7;
-            max-width: 520px; margin-bottom: 40px;
+            font-size: 17px; color: var(--text2); line-height: 1.7;
+            max-width: 540px; margin-bottom: 48px;
         }
 
         /* ── Hero ─────────────────────────────────────── */
         .hero {
-            padding: 100px max(20px, calc(50% - 560px)) 80px;
             position: relative;
+            padding: 160px max(20px, calc(50% - 580px)) 100px;
+            overflow: hidden;
         }
+        .hero-bg {
+            position: absolute; inset: 0; z-index: 0;
+            overflow: hidden;
+        }
+        .hero-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: 0.15;
+            animation: orb-float 20s ease-in-out infinite;
+        }
+        .hero-orb-1 {
+            width: 500px; height: 500px;
+            background: var(--blue);
+            top: -10%; right: 10%;
+            animation-delay: 0s;
+        }
+        .hero-orb-2 {
+            width: 400px; height: 400px;
+            background: var(--purple);
+            bottom: -5%; left: 5%;
+            animation-delay: -7s;
+        }
+        .hero-orb-3 {
+            width: 300px; height: 300px;
+            background: var(--cyan);
+            top: 30%; left: 40%;
+            animation-delay: -14s;
+        }
+        @keyframes orb-float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -20px) scale(1.05); }
+            66% { transform: translate(-20px, 15px) scale(0.95); }
+        }
+        .hero-content { position: relative; z-index: 1; }
         .hero-badge {
             display: inline-flex; align-items: center; gap: 8px;
-            background: rgba(59,130,246,0.1);
-            border: 1px solid rgba(59,130,246,0.25);
-            color: #60a5fa; font-size: 12px; font-weight: 600;
-            padding: 5px 12px; border-radius: 20px;
-            margin-bottom: 28px;
+            background: rgba(59,130,246,0.08);
+            border: 1px solid rgba(59,130,246,0.2);
+            color: #60a5fa; font-size: 13px; font-weight: 600;
+            padding: 6px 16px; border-radius: 24px;
+            margin-bottom: 32px;
+            animation: badge-in 0.6s ease both;
         }
-        .hero-badge span { width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
+        .hero-badge .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes badge-in { from { opacity: 0; transform: translateY(10px); } }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
         h1 {
-            font-size: clamp(36px, 7vw, 72px);
+            font-size: clamp(40px, 8vw, 80px);
             font-weight: 800;
             letter-spacing: -0.04em;
             line-height: 1.05;
-            margin-bottom: 24px;
-            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.6) 100%);
+            margin-bottom: 28px;
+        }
+        .h1-grad {
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
+        .h1-accent {
+            background: linear-gradient(135deg, var(--blue), var(--cyan), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            background-size: 200% auto;
+            animation: grad-shift 4s ease-in-out infinite;
+        }
+        @keyframes grad-shift {
+            0%, 100% { background-position: 0% center; }
+            50% { background-position: 100% center; }
+        }
+
         .hero-sub {
             font-size: clamp(16px, 2.5vw, 20px);
-            color: var(--text2); max-width: 540px; line-height: 1.7; margin-bottom: 40px;
+            color: var(--text2); max-width: 560px; line-height: 1.7;
+            margin-bottom: 40px;
         }
+        .typewriter {
+            display: inline;
+            border-right: 2px solid var(--blue);
+            animation: cursor-blink 0.8s step-end infinite;
+        }
+        @keyframes cursor-blink { 0%, 100% { border-color: var(--blue); } 50% { border-color: transparent; } }
+
         .hero-actions {
-            display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+            display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+            margin-bottom: 16px;
         }
         .btn-primary {
             display: inline-flex; align-items: center; gap: 8px;
-            padding: 14px 24px;
-            background: var(--blue);
+            padding: 15px 28px;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
             color: #fff; text-decoration: none;
-            border-radius: 10px; font-weight: 600; font-size: 15px;
-            transition: transform 0.15s, box-shadow 0.15s;
-            box-shadow: 0 4px 20px rgba(59,130,246,0.35);
+            border-radius: 14px; font-weight: 600; font-size: 15px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 24px rgba(59,130,246,0.35);
         }
-        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(59,130,246,0.45); }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(59,130,246,0.45); }
         .btn-secondary {
             display: inline-flex; align-items: center; gap: 8px;
-            padding: 14px 24px;
-            background: var(--s2); border: 1px solid var(--border2);
+            padding: 15px 28px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border2);
             color: var(--text); text-decoration: none;
-            border-radius: 10px; font-weight: 600; font-size: 15px;
-            transition: background 0.15s, border-color 0.15s;
+            border-radius: 14px; font-weight: 600; font-size: 15px;
+            transition: all 0.2s;
         }
-        .btn-secondary:hover { background: var(--s3); border-color: rgba(255,255,255,0.2); }
-        .hero-note {
-            margin-top: 16px; font-size: 13px; color: var(--text3);
+        .btn-secondary:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); }
+        .hero-note { font-size: 13px; color: var(--text3); }
+
+        /* ── Waveform SVG ────────────────────────────────── */
+        .wave-wrap {
+            margin-top: 60px;
+            position: relative;
+            height: 80px;
+            opacity: 0.3;
+        }
+        .wave-wrap svg {
+            width: 100%;
+            height: 100%;
+        }
+        .wave-path {
+            stroke-dasharray: 2000;
+            stroke-dashoffset: 2000;
+            animation: wave-draw 3s ease forwards;
+        }
+        @keyframes wave-draw { to { stroke-dashoffset: 0; } }
+
+        /* ── Architecture (animated SVG) ──────────────────── */
+        .arch-wrap {
+            margin-top: 64px;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 40px 32px;
+            position: relative;
+            overflow: hidden;
+        }
+        .arch-wrap::before {
+            content: '';
+            position: absolute; inset: 0;
+            background: radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.06) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .arch-flow {
+            display: flex; align-items: center; justify-content: center;
+            gap: 0; flex-wrap: wrap;
+            position: relative; z-index: 1;
+        }
+        .arch-node {
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+            padding: 20px 24px;
+            background: var(--s2);
+            border: 1px solid var(--border2);
+            border-radius: 16px;
+            min-width: 120px;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+        .arch-node:hover { transform: translateY(-4px); border-color: var(--blue); }
+        .arch-node-icon { font-size: 32px; }
+        .arch-node-label { font-size: 13px; font-weight: 600; color: var(--text2); }
+        .arch-node.hub {
+            background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1));
+            border-color: rgba(59,130,246,0.3);
+        }
+        .arch-node.hub .arch-node-label { color: #60a5fa; }
+        .arch-connector {
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            padding: 0 16px;
+        }
+        .arch-line {
+            width: 48px; height: 2px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            border-radius: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+        .arch-line::after {
+            content: '';
+            position: absolute; inset: 0;
+            background: linear-gradient(90deg, transparent, #fff, transparent);
+            animation: packet-flow 2s linear infinite;
+        }
+        @keyframes packet-flow { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+        .arch-tag {
+            font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+            text-transform: uppercase; color: var(--cyan);
+            white-space: nowrap;
+        }
+        .arch-receivers {
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .arch-rx {
+            display: flex; align-items: center; gap: 10px;
+            background: var(--s2); border: 1px solid var(--border);
+            border-radius: 12px; padding: 10px 16px;
+            font-size: 13px; font-weight: 500; color: var(--text2);
+            transition: border-color 0.3s;
+        }
+        .arch-rx:hover { border-color: var(--green); }
+        .arch-rx .dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--green);
+            animation: pulse-dot 2s ease-in-out infinite;
         }
 
-        /* ── Diagram ──────────────────────────────────── */
-        .diagram {
-            margin-top: 60px;
+        /* ── How it works (3 steps) ──────────────────────── */
+        .steps {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+        }
+        .step {
             background: var(--s1);
             border: 1px solid var(--border);
             border-radius: 20px;
-            padding: 32px;
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            justify-content: center;
-            gap: 0;
+            padding: 32px 24px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.3s, transform 0.3s;
         }
-        .diag-node {
-            display: flex; flex-direction: column; align-items: center; gap: 8px;
-            padding: 16px 20px;
-            background: var(--s2);
-            border: 1px solid var(--border2);
-            border-radius: 14px;
-            min-width: 110px;
+        .step:hover { border-color: var(--border2); transform: translateY(-4px); }
+        .step::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            opacity: 0;
+            transition: opacity 0.3s;
         }
-        .diag-node .icon { font-size: 28px; }
-        .diag-node .label { font-size: 12px; font-weight: 600; color: var(--text2); }
-        .diag-arrow {
-            font-size: 20px; color: var(--text3); padding: 0 12px; flex-shrink: 0;
+        .step:hover::before { opacity: 1; }
+        .step-num {
+            font-size: 48px; font-weight: 800; letter-spacing: -0.04em;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.03));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 16px;
         }
-        .diag-split {
-            display: flex; flex-direction: column; gap: 8px;
+        .step-icon {
+            width: 48px; height: 48px;
+            display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1));
+            border-radius: 12px;
+            font-size: 24px;
+            margin-bottom: 16px;
         }
-        .diag-rx {
-            display: flex; align-items: center; gap: 8px;
-            background: var(--s2); border: 1px solid var(--border);
-            border-radius: 10px; padding: 10px 14px;
-            font-size: 12px; font-weight: 500; color: var(--text2);
+        .step h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+        .step p { font-size: 14px; color: var(--text2); line-height: 1.7; }
+
+        /* ── Features ─────────────────────────────────── */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 16px;
         }
-        .diag-rx .dot {
-            width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0;
+        .feat {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px;
+            display: flex; flex-direction: column; gap: 12px;
+            transition: border-color 0.3s, transform 0.3s;
         }
-        .diag-center {
-            display: flex; flex-direction: column; align-items: center; gap: 6px;
-            padding: 0 8px;
+        .feat:hover { border-color: var(--border2); transform: translateY(-2px); }
+        .feat-icon-wrap {
+            width: 40px; height: 40px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 10px;
+            font-size: 20px;
         }
-        .diag-tag {
-            font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
-            text-transform: uppercase; color: var(--blue);
-            background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2);
-            padding: 2px 8px; border-radius: 20px;
+        .feat-icon-wrap.blue   { background: rgba(59,130,246,0.1); }
+        .feat-icon-wrap.green  { background: rgba(16,185,129,0.1); }
+        .feat-icon-wrap.purple { background: rgba(139,92,246,0.1); }
+        .feat-icon-wrap.amber  { background: rgba(245,158,11,0.1); }
+        .feat-icon-wrap.cyan   { background: rgba(6,182,212,0.1); }
+        .feat-icon-wrap.pink   { background: rgba(236,72,153,0.1); }
+        .feat h4 { font-size: 15px; font-weight: 700; }
+        .feat p { font-size: 13px; color: var(--text2); line-height: 1.6; }
+
+        /* ── P2P Mesh section ─────────────────────────────── */
+        .mesh-wrap {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center;
+        }
+        .mesh-visual {
+            position: relative;
+            aspect-ratio: 1;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        .mesh-visual svg { width: 100%; height: 100%; }
+        .mesh-node-circle {
+            fill: var(--s2); stroke: var(--border2); stroke-width: 1.5;
+            transition: stroke 0.3s;
+        }
+        .mesh-line {
+            stroke: url(#meshGrad); stroke-width: 1.5;
+            stroke-dasharray: 6 4;
+            animation: dash-flow 1s linear infinite;
+        }
+        @keyframes dash-flow { to { stroke-dashoffset: -10; } }
+        .mesh-info h3 {
+            font-size: clamp(22px, 4vw, 32px);
+            font-weight: 800; letter-spacing: -0.03em;
+            margin-bottom: 16px; line-height: 1.2;
+        }
+        .mesh-info p {
+            font-size: 16px; color: var(--text2); line-height: 1.7;
+            margin-bottom: 24px;
+        }
+        .mesh-features {
+            display: flex; flex-direction: column; gap: 12px;
+        }
+        .mesh-feat {
+            display: flex; align-items: center; gap: 12px;
+            font-size: 14px; color: var(--text2);
+        }
+        .mesh-feat .check {
+            width: 22px; height: 22px;
+            background: rgba(16,185,129,0.1);
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--green); font-size: 12px; font-weight: 700;
+            flex-shrink: 0;
         }
 
         /* ── Install ──────────────────────────────────── */
@@ -196,58 +449,82 @@
         }
         .install-card {
             background: var(--s1); border: 1px solid var(--border);
-            border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 14px;
-            transition: border-color 0.2s;
+            border-radius: 20px; padding: 28px; display: flex; flex-direction: column; gap: 16px;
+            transition: border-color 0.3s, transform 0.3s;
+            position: relative; overflow: hidden;
         }
-        .install-card:hover { border-color: var(--border2); }
-        .install-card .ic-header {
-            display: flex; align-items: center; gap: 12px;
+        .install-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+        .install-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            opacity: 0; transition: opacity 0.3s;
         }
-        .install-card .ic-icon { font-size: 28px; flex-shrink: 0; }
-        .install-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
-        .install-card p { font-size: 13px; color: var(--text2); }
+        .install-card:hover::before { opacity: 1; }
+        .ic-header { display: flex; align-items: center; gap: 14px; }
+        .ic-icon { font-size: 32px; flex-shrink: 0; }
+        .ic-header h3 { font-size: 17px; font-weight: 700; margin-bottom: 2px; }
+        .ic-header p { font-size: 13px; color: var(--text2); }
+        .ic-tag {
+            font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+            text-transform: uppercase; padding: 2px 8px; border-radius: 4px;
+            display: inline-block; margin-left: 8px;
+        }
+        .ic-tag.tx { color: var(--blue); background: rgba(59,130,246,0.1); }
+        .ic-tag.rx { color: var(--green); background: rgba(16,185,129,0.1); }
         .code-block {
             background: var(--s3); border: 1px solid var(--border);
-            border-radius: 8px; padding: 10px 14px;
+            border-radius: 10px; padding: 12px 16px;
             font-family: 'SF Mono', 'Fira Code', monospace;
-            font-size: 12px; color: #a8d8b0; overflow-x: auto; white-space: nowrap;
+            font-size: 13px; color: #a8d8b0; overflow-x: auto; white-space: nowrap;
             position: relative;
         }
+        .code-block .prompt { color: var(--text3); user-select: none; }
         .code-block .copy-btn {
-            position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+            position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
             background: var(--s2); border: 1px solid var(--border2);
-            color: var(--text3); font-size: 10px; font-weight: 600;
-            padding: 3px 8px; border-radius: 4px; cursor: pointer;
-            transition: all 0.15s;
+            color: var(--text3); font-size: 11px; font-weight: 600;
+            padding: 4px 10px; border-radius: 6px; cursor: pointer;
+            transition: all 0.2s;
         }
-        .code-block .copy-btn:hover { color: var(--text); }
-        .install-card .ic-link {
-            display: inline-flex; align-items: center; gap: 6px;
-            padding: 10px 16px;
-            background: var(--s2); border: 1px solid var(--border2);
-            border-radius: 8px; color: var(--text); text-decoration: none;
-            font-size: 13px; font-weight: 600; width: 100%; justify-content: center;
-            transition: background 0.15s;
+        .code-block .copy-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+        .ic-link {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 12px 18px;
+            background: rgba(255,255,255,0.03); border: 1px solid var(--border2);
+            border-radius: 10px; color: var(--text); text-decoration: none;
+            font-size: 14px; font-weight: 600; width: 100%; justify-content: center;
+            transition: all 0.2s;
         }
-        .install-card .ic-link:hover { background: var(--s3); }
-        .install-card .ic-link.primary {
-            background: var(--blue); border-color: transparent; color: #fff;
+        .ic-link:hover { background: rgba(255,255,255,0.06); }
+        .ic-link.primary {
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            border-color: transparent; color: #fff;
         }
-        .install-card .ic-link.primary:hover { opacity: 0.9; }
+        .ic-link.primary:hover { opacity: 0.9; }
 
-        /* ── Features ─────────────────────────────────── */
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 12px;
+        /* ── Numbers ──────────────────────────────────── */
+        .numbers {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px;
         }
-        .feat {
-            background: var(--s1); border: 1px solid var(--border);
-            border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 8px;
+        .num-card {
+            text-align: center;
+            padding: 32px 16px;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 16px;
         }
-        .feat .feat-icon { font-size: 22px; }
-        .feat h4 { font-size: 14px; font-weight: 700; }
-        .feat p { font-size: 12px; color: var(--text2); line-height: 1.6; }
+        .num-val {
+            font-size: clamp(32px, 5vw, 48px);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .num-label {
+            font-size: 13px; color: var(--text3); margin-top: 4px;
+        }
 
         /* ── Dashboard preview ────────────────────────── */
         .preview-wrap {
@@ -256,77 +533,73 @@
         }
         .preview-bar {
             background: var(--s2); border-bottom: 1px solid var(--border);
-            padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+            padding: 14px 18px; display: flex; align-items: center; gap: 12px;
         }
         .preview-dots { display: flex; gap: 6px; }
-        .preview-dots span {
-            width: 10px; height: 10px; border-radius: 50%;
-        }
-        .preview-dots .red   { background: #ff5f57; }
-        .preview-dots .amber { background: #febc2e; }
-        .preview-dots .green { background: #28c840; }
+        .preview-dots span { width: 12px; height: 12px; border-radius: 50%; }
+        .preview-dots .d-red   { background: #ff5f57; }
+        .preview-dots .d-amber { background: #febc2e; }
+        .preview-dots .d-green { background: #28c840; }
         .preview-url {
-            flex: 1; background: var(--s3); border-radius: 6px;
-            padding: 4px 12px; font-size: 12px; color: var(--text3);
+            flex: 1; background: var(--s3); border-radius: 8px;
+            padding: 5px 14px; font-size: 12px; color: var(--text3);
             font-family: monospace;
         }
-        .preview-body { padding: 20px; }
+        .preview-body { padding: 24px; }
         .mock-header {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 10px 14px; background: var(--s2); border-radius: 10px;
+            padding: 12px 16px; background: var(--s2); border-radius: 12px;
             margin-bottom: 16px;
         }
-        .mock-logo { font-size: 14px; font-weight: 700; }
+        .mock-logo { font-size: 15px; font-weight: 700; }
         .mock-badge {
-            font-size: 11px; font-weight: 600; padding: 3px 10px;
-            border-radius: 20px; background: rgba(16,185,129,0.15);
-            color: var(--green); border: 1px solid rgba(16,185,129,0.3);
+            display: flex; align-items: center; gap: 6px;
+            font-size: 12px; font-weight: 600; padding: 4px 12px;
+            border-radius: 20px; background: rgba(16,185,129,0.12);
+            color: var(--green);
         }
-        .mock-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .mock-badge .live-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        .mock-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .mock-card {
             background: var(--s2); border: 1px solid var(--border);
-            border-radius: 10px; padding: 14px;
+            border-radius: 12px; padding: 16px;
         }
         .mock-card-hd {
             display: flex; align-items: center; justify-content: space-between;
             margin-bottom: 10px;
         }
-        .mock-card-name { font-size: 12px; font-weight: 600; }
-        .mock-card-dot {
-            width: 7px; height: 7px; border-radius: 50%;
-        }
+        .mock-card-name { font-size: 13px; font-weight: 600; }
+        .mock-card-dot { width: 8px; height: 8px; border-radius: 50%; }
         .mock-bar-wrap {
-            height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden;
+            height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px;
+            overflow: hidden;
         }
         .mock-bar {
             height: 100%; border-radius: 2px;
-            background: linear-gradient(90deg, var(--green), var(--blue));
+            background: linear-gradient(90deg, var(--green), var(--cyan));
         }
-        .mock-stat { font-size: 10px; color: var(--text3); margin-top: 6px; }
-        .mock-nav {
-            display: flex; gap: 4px; margin-top: 16px;
-        }
-        .mock-nav-btn {
-            flex: 1; padding: 8px; background: var(--s2); border-radius: 8px;
-            font-size: 10px; font-weight: 600; text-align: center;
-            color: var(--text3);
-        }
-        .mock-nav-btn.active { background: rgba(59,130,246,0.15); color: #60a5fa; }
+        .mock-stat { font-size: 11px; color: var(--text3); margin-top: 6px; }
 
         /* ── Comparison ───────────────────────────────── */
-        .table-wrap { overflow-x: auto; }
-        table {
-            width: 100%; border-collapse: collapse;
-            font-size: 14px;
+        .table-wrap {
+            overflow-x: auto;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 4px;
         }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
         th {
-            padding: 10px 16px; text-align: left; font-size: 11px;
+            padding: 14px 18px; text-align: left; font-size: 11px;
             font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
             color: var(--text3); border-bottom: 1px solid var(--border);
         }
-        th:first-child { min-width: 140px; }
         td {
-            padding: 12px 16px; border-bottom: 1px solid var(--border);
+            padding: 14px 18px; border-bottom: 1px solid var(--border);
             color: var(--text2);
         }
         td:first-child { font-weight: 600; color: var(--text); }
@@ -336,16 +609,31 @@
         .hl-col td:nth-child(2) { color: var(--text); background: rgba(59,130,246,0.04); }
         .hl-col th:nth-child(2) { color: #60a5fa; }
 
+        /* ── CTA section ──────────────────────────────── */
+        .cta-section {
+            text-align: center;
+            padding: 100px max(20px, calc(50% - 580px));
+            position: relative;
+        }
+        .cta-section h2 {
+            font-size: clamp(28px, 5vw, 48px);
+            margin-bottom: 20px;
+        }
+        .cta-section .sub { margin: 0 auto 40px; text-align: center; }
+
         /* ── Footer ───────────────────────────────────── */
+        .footer-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(59,130,246,0.3), var(--border), transparent);
+        }
         footer {
-            border-top: 1px solid var(--border);
-            padding: 32px max(20px, calc(50% - 560px));
+            padding: 40px max(20px, calc(50% - 580px));
             display: flex; flex-wrap: wrap; align-items: center;
             justify-content: space-between; gap: 16px;
         }
-        footer .f-logo { font-size: 16px; font-weight: 700; }
-        footer .f-links { display: flex; gap: 20px; }
-        footer .f-links a { font-size: 13px; color: var(--text3); text-decoration: none; }
+        footer .f-logo { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        footer .f-links { display: flex; gap: 24px; }
+        footer .f-links a { font-size: 13px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
         footer .f-links a:hover { color: var(--text2); }
         footer .f-copy { font-size: 12px; color: var(--text3); }
 
@@ -353,13 +641,17 @@
         hr { border: none; border-top: 1px solid var(--border); }
 
         /* ── Responsive ───────────────────────────────── */
-        @media (max-width: 600px) {
+        @media (max-width: 768px) {
             .nav-links .hide-sm { display: none; }
             .hero-actions { flex-direction: column; }
             .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
-            .diag-arrow { display: none; }
-            .diagram { gap: 8px; }
+            .steps { grid-template-columns: 1fr; }
+            .mesh-wrap { grid-template-columns: 1fr; }
+            .mesh-visual { max-width: 280px; }
+            .numbers { grid-template-columns: repeat(2, 1fr); }
             .mock-grid { grid-template-columns: 1fr; }
+            .arch-connector { display: none; }
+            .arch-flow { gap: 8px; }
         }
     </style>
 </head>
@@ -367,50 +659,187 @@
 
 <!-- Nav -->
 <nav>
-    <div class="nav-logo">◈ Soluna</div>
+    <div class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/>
+            <path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/>
+            <defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs>
+        </svg>
+        Soluna
+    </div>
     <div class="nav-links">
+        <a href="#how" class="hide-sm">使い方</a>
+        <a href="#features" class="hide-sm">機能</a>
         <a href="#install" class="hide-sm">インストール</a>
-        <a href="/guide.html" class="hide-sm">ガイド</a>
-        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub ↗</a>
-        <a href="/index.html" class="nav-cta">Dashboard →</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/dashboard" class="nav-cta">Dashboard</a>
     </div>
 </nav>
 
 <!-- Hero -->
 <section class="hero">
-    <div class="hero-badge"><span></span> Open Source · MIT License</div>
-    <h1>Mac の音を、<br>どこでも。</h1>
-    <p class="hero-sub">
-        Soluna はシステム音声をネットワーク経由で iPhone・Raspberry Pi・ブラウザへリアルタイム配信。BlackHole や複雑な設定は不要。仮想デバイスを選ぶだけ。
-    </p>
-    <div class="hero-actions">
-        <a href="#install" class="btn-primary">▶ &nbsp;セットアップを始める</a>
-        <a href="/index.html" class="btn-secondary">Dashboard を開く →</a>
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+        <div class="hero-orb hero-orb-3"></div>
     </div>
-    <p class="hero-note">macOS 12+ 対応 · 無料 · オープンソース</p>
+    <div class="hero-content">
+        <div class="hero-badge"><span class="dot"></span> Open Source &middot; MIT License</div>
+        <h1>
+            <span class="h1-grad">Mac の音を、</span><br>
+            <span class="h1-accent" id="hero-typing"></span><span class="typewriter" id="hero-cursor"></span>
+        </h1>
+        <p class="hero-sub">
+            Soluna はシステム音声をネットワーク経由で iPhone・Raspberry Pi・ブラウザへリアルタイム配信。<br>
+            近くの端末同士で自動中継。フェスでも使える P2P メッシュ。
+        </p>
+        <div class="hero-actions">
+            <a href="#install" class="btn-primary">セットアップを始める</a>
+            <a href="/dashboard" class="btn-secondary">Dashboard を開く →</a>
+        </div>
+        <p class="hero-note">macOS 12+ &middot; iOS 14+ &middot; Linux &middot; 無料 &middot; オープンソース</p>
 
-    <!-- Mini diagram -->
-    <div class="diagram">
-        <div class="diag-node">
-            <div class="icon">💻</div>
-            <div class="label">Mac</div>
+        <!-- Architecture diagram -->
+        <div class="arch-wrap reveal">
+            <div class="arch-flow">
+                <div class="arch-node">
+                    <div class="arch-node-icon">💻</div>
+                    <div class="arch-node-label">Mac</div>
+                </div>
+                <div class="arch-connector">
+                    <div class="arch-line"></div>
+                    <div class="arch-tag">UDP Multicast</div>
+                </div>
+                <div class="arch-node hub">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="#60a5fa" stroke-width="1.5"/>
+                        <path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="#60a5fa" stroke-width="1.5" fill="rgba(59,130,246,0.15)"/>
+                    </svg>
+                    <div class="arch-node-label">Soluna</div>
+                </div>
+                <div class="arch-connector">
+                    <div class="arch-line"></div>
+                    <div class="arch-tag">Low Latency</div>
+                </div>
+                <div class="arch-receivers">
+                    <div class="arch-rx"><span class="dot"></span> iPhone</div>
+                    <div class="arch-rx"><span class="dot"></span> Raspberry Pi</div>
+                    <div class="arch-rx"><span class="dot"></span> Browser</div>
+                    <div class="arch-rx"><span class="dot" style="background:var(--blue)"></span> Mac Speaker</div>
+                </div>
+            </div>
         </div>
-        <div class="diag-center">
-            <div class="diag-arrow">→</div>
-            <div class="diag-tag">UDP Multicast</div>
+    </div>
+</section>
+
+<!-- How it works -->
+<section class="section" id="how">
+    <div class="section-label reveal">使い方</div>
+    <h2 class="reveal">3 ステップで完了。</h2>
+    <p class="sub reveal">インストールから配信まで、5 分もかかりません。</p>
+
+    <div class="steps">
+        <div class="step reveal reveal-delay-1">
+            <div class="step-num">01</div>
+            <div class="step-icon">💻</div>
+            <h3>Mac にインストール</h3>
+            <p>ターミナルで 1 行コピペするだけ。仮想オーディオデバイスが自動で作られ、solunad が起動します。</p>
         </div>
-        <div class="diag-node" style="border-color:rgba(59,130,246,0.4);background:rgba(59,130,246,0.07)">
-            <div class="icon">◈</div>
-            <div class="label" style="color:#60a5fa">Soluna</div>
+        <div class="step reveal reveal-delay-2">
+            <div class="step-num">02</div>
+            <div class="step-icon">📱</div>
+            <h3>デバイスを接続</h3>
+            <p>iPhone アプリを開くか、ブラウザで Dashboard にアクセス。同じ WiFi なら自動検出。チャンネル名を合わせるだけ。</p>
         </div>
-        <div class="diag-center">
-            <div class="diag-arrow">→</div>
+        <div class="step reveal reveal-delay-3">
+            <div class="step-num">03</div>
+            <div class="step-icon">🎵</div>
+            <h3>音楽を再生</h3>
+            <p>Mac で Spotify、YouTube、何でも再生。全デバイスで同時に聞こえます。遅延は自動同期。</p>
         </div>
-        <div class="diag-split">
-            <div class="diag-rx"><span class="dot"></span>iPhone</div>
-            <div class="diag-rx"><span class="dot"></span>Raspberry Pi</div>
-            <div class="diag-rx"><span class="dot"></span>Browser</div>
-            <div class="diag-rx"><span class="dot" style="background:var(--blue)"></span>Mac スピーカー</div>
+    </div>
+</section>
+
+<hr>
+
+<!-- P2P Mesh -->
+<section class="section" id="p2p">
+    <div class="mesh-wrap">
+        <div class="mesh-visual reveal">
+            <svg viewBox="0 0 300 300" fill="none">
+                <defs>
+                    <linearGradient id="meshGrad" x1="0" y1="0" x2="300" y2="300">
+                        <stop offset="0%" stop-color="#3b82f6"/>
+                        <stop offset="100%" stop-color="#10b981"/>
+                    </linearGradient>
+                    <radialGradient id="nodeGlow">
+                        <stop offset="0%" stop-color="rgba(59,130,246,0.2)"/>
+                        <stop offset="100%" stop-color="transparent"/>
+                    </radialGradient>
+                </defs>
+                <!-- Connection lines -->
+                <line x1="150" y1="80" x2="80" y2="170" class="mesh-line"/>
+                <line x1="150" y1="80" x2="220" y2="170" class="mesh-line"/>
+                <line x1="80" y1="170" x2="150" y2="240" class="mesh-line"/>
+                <line x1="220" y1="170" x2="150" y2="240" class="mesh-line"/>
+                <line x1="80" y1="170" x2="220" y2="170" class="mesh-line" style="opacity:0.3"/>
+                <!-- Glow -->
+                <circle cx="150" cy="80" r="40" fill="url(#nodeGlow)"/>
+                <!-- Nodes -->
+                <circle cx="150" cy="80" r="24" class="mesh-node-circle" stroke-width="2" stroke="rgba(59,130,246,0.5)" fill="rgba(59,130,246,0.08)"/>
+                <text x="150" y="85" text-anchor="middle" fill="#60a5fa" font-size="20">📡</text>
+                <circle cx="80" cy="170" r="20" class="mesh-node-circle"/>
+                <text x="80" y="175" text-anchor="middle" fill="var(--text2)" font-size="16">📱</text>
+                <circle cx="220" cy="170" r="20" class="mesh-node-circle"/>
+                <text x="220" y="175" text-anchor="middle" fill="var(--text2)" font-size="16">📱</text>
+                <circle cx="150" cy="240" r="20" class="mesh-node-circle"/>
+                <text x="150" y="245" text-anchor="middle" fill="var(--text2)" font-size="16">📱</text>
+                <!-- Labels -->
+                <text x="150" y="45" text-anchor="middle" fill="var(--text3)" font-size="10" font-weight="600">RELAY</text>
+                <text x="40" y="175" text-anchor="middle" fill="var(--text3)" font-size="10">PEER</text>
+                <text x="260" y="175" text-anchor="middle" fill="var(--text3)" font-size="10">PEER</text>
+                <text x="150" y="275" text-anchor="middle" fill="var(--text3)" font-size="10">PEER</text>
+            </svg>
+        </div>
+        <div class="mesh-info reveal">
+            <div class="section-label">P2P メッシュ中継</div>
+            <h3>電波が届かなくても、<br>近くの人から音をもらう。</h3>
+            <p>
+                フェスや大規模イベントで WiFi が混雑しても大丈夫。
+                近くにいる受信済みの端末から自動的にオーディオを受け取ります。
+                チャンネル名を合わせるだけ。許可は不要。
+            </p>
+            <div class="mesh-features">
+                <div class="mesh-feat"><span class="check">&#10003;</span> チャンネル名で自動マッチング</div>
+                <div class="mesh-feat"><span class="check">&#10003;</span> 受信前に近くの端末を自動検索</div>
+                <div class="mesh-feat"><span class="check">&#10003;</span> 送信側の許可は不要</div>
+                <div class="mesh-feat"><span class="check">&#10003;</span> ついてこれない端末は自動ミュート</div>
+                <div class="mesh-feat"><span class="check">&#10003;</span> 最大 2000ms のバッファ調整</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<hr>
+
+<!-- Numbers -->
+<section class="section">
+    <div class="numbers">
+        <div class="num-card reveal reveal-delay-1">
+            <div class="num-val" data-target="20">&lt;20</div>
+            <div class="num-label">ms 遅延 (LAN)</div>
+        </div>
+        <div class="num-card reveal reveal-delay-2">
+            <div class="num-val">48</div>
+            <div class="num-label">kHz / 24bit</div>
+        </div>
+        <div class="num-card reveal reveal-delay-3">
+            <div class="num-val">P2P</div>
+            <div class="num-label">メッシュ中継</div>
+        </div>
+        <div class="num-card reveal reveal-delay-4">
+            <div class="num-val">MIT</div>
+            <div class="num-label">完全無料</div>
         </div>
     </div>
 </section>
@@ -418,48 +847,48 @@
 <hr>
 
 <!-- Features -->
-<section class="section">
-    <div class="section-label">機能</div>
-    <h2>必要なものは全部入り。</h2>
-    <p class="sub">プロ向けのネットワークオーディオ機能を、オープンソースで。</p>
+<section class="section" id="features">
+    <div class="section-label reveal">機能</div>
+    <h2 class="reveal">プロ仕様を、オープンソースで。</h2>
+    <p class="sub reveal">必要な機能は全部入り。</p>
     <div class="features-grid">
-        <div class="feat">
-            <div class="feat-icon">⚡</div>
-            <h4>低遅延配信</h4>
-            <p>UDP マルチキャストで LAN 内 20ms 以下の遅延。Mac スピーカーと同期。</p>
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap blue">&#9889;</div>
+            <h4>低遅延 UDP マルチキャスト</h4>
+            <p>LAN 内 20ms 以下。Mac スピーカーと同期して全デバイスで同じ瞬間に音が鳴る。</p>
         </div>
-        <div class="feat">
-            <div class="feat-icon">🔄</div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap green">&#128260;</div>
             <h4>自動遅延同期</h4>
             <p>WebSocket RTT 計測で Mac スピーカーと iPhone の音を自動ピッタリ合わせ。</p>
         </div>
-        <div class="feat">
-            <div class="feat-icon">🛡</div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap purple">&#128225;</div>
+            <h4>P2P 自動中継</h4>
+            <p>同じチャンネルの近くの端末から自動受信。フェスでも途切れない。</p>
+        </div>
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap amber">&#128737;</div>
             <h4>PLC パケット補間</h4>
             <p>最大 2 パケット欠落を前フレームで補完。WiFi でもプツッとしない。</p>
         </div>
-        <div class="feat">
-            <div class="feat-icon">📡</div>
-            <h4>Bonjour 自動検出</h4>
-            <p>同じ WiFi の iPhone が solunad を自動発見。IP アドレスを入力不要。</p>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap cyan">&#128161;</div>
+            <h4>デバイスヘルス自動管理</h4>
+            <p>ついてこれない端末はバッファ自動拡大 → 限界なら自動ミュートでノイズゼロ。</p>
         </div>
-        <div class="feat">
-            <div class="feat-icon">🌐</div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap pink">&#127760;</div>
             <h4>Web ダッシュボード</h4>
-            <p>localhost:8400 で全操作。スパークライン、遅延バー、リアルタイム統計。</p>
+            <p>localhost:8400 で全操作。スパークライン、遅延調整、リアルタイム統計。</p>
         </div>
-        <div class="feat">
-            <div class="feat-icon">⚙️</div>
-            <h4>設定の永続化</h4>
-            <p>音量・遅延・ミュートを自動保存。再起動後も設定を引き継ぎ。</p>
-        </div>
-        <div class="feat">
-            <div class="feat-icon">🖥</div>
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap blue">&#128187;</div>
             <h4>Menu bar アプリ</h4>
             <p>macOS メニューバーからワンタップで音量・遅延を調整。</p>
         </div>
-        <div class="feat">
-            <div class="feat-icon">🚀</div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap green">&#128640;</div>
             <h4>launchd 自動起動</h4>
             <p>Mac ログイン時に自動起動。一度設定すれば意識しなくていい。</p>
         </div>
@@ -470,69 +899,58 @@
 
 <!-- Install -->
 <section class="section" id="install">
-    <div class="section-label">インストール</div>
-    <h2>使い始めるのは簡単。</h2>
-    <p class="sub">プラットフォームを選んでセットアップを始めてください。</p>
+    <div class="section-label reveal">インストール</div>
+    <h2 class="reveal">始めるのは簡単。</h2>
+    <p class="sub reveal">プラットフォームを選んでセットアップ。</p>
     <div class="install-grid">
-
-        <!-- Mac -->
-        <div class="install-card">
+        <div class="install-card reveal reveal-delay-1">
             <div class="ic-header">
                 <div class="ic-icon">💻</div>
                 <div>
-                    <h3>Mac <small style="font-size:11px;color:var(--text3);font-weight:500">送信側 TX</small></h3>
-                    <p>まずここから。Mac がオーディオの送信元になります。</p>
+                    <h3>Mac<span class="ic-tag tx">TX</span></h3>
+                    <p>Mac がオーディオの送信元。まずここから。</p>
                 </div>
             </div>
             <div class="code-block">
-                curl -fsSL https://soluna-web.fly.dev/install.sh | bash
+                <span class="prompt">$ </span>curl -fsSL https://soluna-web.fly.dev/install.sh | bash
                 <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             </div>
-            <a href="/guide.html#mac" class="ic-link">詳細なセットアップ手順 →</a>
+            <a href="/guide" class="ic-link">詳細なセットアップ手順 →</a>
         </div>
-
-        <!-- iPhone -->
-        <div class="install-card">
+        <div class="install-card reveal reveal-delay-2">
             <div class="ic-header">
                 <div class="ic-icon">📱</div>
                 <div>
-                    <h3>iPhone <small style="font-size:11px;color:var(--text3);font-weight:500">受信側 RX</small></h3>
-                    <p>Mac と同じ WiFi に繋ぐだけで自動検出。</p>
+                    <h3>iPhone<span class="ic-tag rx">RX</span></h3>
+                    <p>同じ WiFi に繋ぐだけ。チャンネル名で自動接続。</p>
                 </div>
             </div>
             <a href="https://github.com/yukihamada/opensonic/releases" class="ic-link primary" target="_blank">TestFlight で入手 →</a>
-            <p style="font-size:12px;color:var(--text3)">Mac の Xcode でビルドする方法は<a href="/guide.html" style="color:var(--text2)">こちら</a>。</p>
+            <p style="font-size:12px;color:var(--text3)">Xcode でビルドする方法は<a href="/guide" style="color:var(--text2)">ガイド</a>を参照。</p>
         </div>
-
-        <!-- RPi -->
-        <div class="install-card">
+        <div class="install-card reveal reveal-delay-3">
             <div class="ic-header">
-                <div class="ic-icon">🥧</div>
+                <div class="ic-icon">🍓</div>
                 <div>
-                    <h3>Raspberry Pi <small style="font-size:11px;color:var(--text3);font-weight:500">受信側 RX</small></h3>
-                    <p>ワンコマンドインストール。ALSA DAC に対応。</p>
+                    <h3>Raspberry Pi<span class="ic-tag rx">RX</span></h3>
+                    <p>ワンコマンド。ALSA DAC に対応。</p>
                 </div>
             </div>
             <div class="code-block">
-                sudo bash deploy/rpi/install-rx.sh
+                <span class="prompt">$ </span>sudo bash deploy/rpi/install-rx.sh
                 <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             </div>
-            <a href="/guide.html#rpi" class="ic-link">RPi セットアップ →</a>
         </div>
-
-        <!-- Browser -->
-        <div class="install-card">
+        <div class="install-card reveal reveal-delay-4">
             <div class="ic-header">
                 <div class="ic-icon">🌐</div>
                 <div>
-                    <h3>ブラウザ <small style="font-size:11px;color:var(--text3);font-weight:500">インストール不要</small></h3>
-                    <p>Mac で solunad が動いていれば、ブラウザから即試聴。</p>
+                    <h3>Browser<span class="ic-tag" style="color:var(--cyan);background:rgba(6,182,212,0.1)">ZERO INSTALL</span></h3>
+                    <p>インストール不要。Dashboard の Browser タブから再生。</p>
                 </div>
             </div>
-            <a href="/index.html" class="ic-link primary">Dashboard を開く →</a>
-            <p style="font-size:12px;color:var(--text3)">Dashboard の「Browser」タブから ▶ ボタンを押すだけ。</p>
+            <a href="/dashboard" class="ic-link primary">Dashboard を開く →</a>
         </div>
-
     </div>
 </section>
 
@@ -540,23 +958,20 @@
 
 <!-- Dashboard Preview -->
 <section class="section">
-    <div class="section-label">ダッシュボード</div>
-    <h2>一画面で全部見える。</h2>
-    <p class="sub">localhost:8400 でアクセスできる Web UI。全スピーカーをブラウザから操作。</p>
-
-    <div class="preview-wrap">
+    <div class="section-label reveal">ダッシュボード</div>
+    <h2 class="reveal">一画面で全部見える。</h2>
+    <p class="sub reveal">ブラウザから全スピーカーを操作。</p>
+    <div class="preview-wrap reveal">
         <div class="preview-bar">
             <div class="preview-dots">
-                <span class="red"></span>
-                <span class="amber"></span>
-                <span class="green"></span>
+                <span class="d-red"></span><span class="d-amber"></span><span class="d-green"></span>
             </div>
-            <div class="preview-url">http://localhost:8400</div>
+            <div class="preview-url">localhost:8400</div>
         </div>
         <div class="preview-body">
             <div class="mock-header">
-                <div class="mock-logo">◈ Soluna</div>
-                <div class="mock-badge">● Live</div>
+                <div class="mock-logo">&#9670; Soluna</div>
+                <div class="mock-badge"><span class="live-dot"></span> Live</div>
             </div>
             <div class="mock-grid">
                 <div class="mock-card">
@@ -565,23 +980,23 @@
                         <div class="mock-card-dot" style="background:var(--green)"></div>
                     </div>
                     <div class="mock-bar-wrap"><div class="mock-bar" style="width:78%"></div></div>
-                    <div class="mock-stat">78% · 42ms delay · 0 drop</div>
+                    <div class="mock-stat">78% &middot; 42ms delay &middot; P2P relay</div>
                 </div>
                 <div class="mock-card">
                     <div class="mock-card-hd">
-                        <div class="mock-card-name">🥧 RPi Living</div>
+                        <div class="mock-card-name">🍓 RPi Living</div>
                         <div class="mock-card-dot" style="background:var(--green)"></div>
                     </div>
                     <div class="mock-bar-wrap"><div class="mock-bar" style="width:100%"></div></div>
-                    <div class="mock-stat">100% · 38ms delay · 0 drop</div>
+                    <div class="mock-stat">100% &middot; 38ms delay &middot; 0 drop</div>
                 </div>
                 <div class="mock-card">
                     <div class="mock-card-hd">
                         <div class="mock-card-name">🌐 Browser</div>
-                        <div class="mock-card-dot" style="background:var(--blue)"></div>
+                        <div class="mock-card-dot" style="background:var(--cyan)"></div>
                     </div>
-                    <div class="mock-bar-wrap"><div class="mock-bar" style="width:60%;background:linear-gradient(90deg,var(--blue),var(--green))"></div></div>
-                    <div class="mock-stat">60% · 52ms · underruns: 0</div>
+                    <div class="mock-bar-wrap"><div class="mock-bar" style="width:60%;background:linear-gradient(90deg,var(--cyan),var(--green))"></div></div>
+                    <div class="mock-stat">60% &middot; 52ms &middot; underruns: 0</div>
                 </div>
                 <div class="mock-card">
                     <div class="mock-card-hd">
@@ -589,14 +1004,8 @@
                         <div class="mock-card-dot" style="background:var(--green)"></div>
                     </div>
                     <div class="mock-bar-wrap"><div class="mock-bar" style="width:90%"></div></div>
-                    <div class="mock-stat">Running · 48kHz · 20ms buf</div>
+                    <div class="mock-stat">Running &middot; 48kHz &middot; 20ms buf</div>
                 </div>
-            </div>
-            <div class="mock-nav">
-                <div class="mock-nav-btn active">Dashboard</div>
-                <div class="mock-nav-btn">Browser</div>
-                <div class="mock-nav-btn">Routing</div>
-                <div class="mock-nav-btn">Stats</div>
             </div>
         </div>
     </div>
@@ -606,56 +1015,115 @@
 
 <!-- Comparison -->
 <section class="section">
-    <div class="section-label">比較</div>
-    <h2>Soluna を選ぶ理由。</h2>
-    <p class="sub">有償製品と同等以上の機能をオープンソースで。</p>
-    <div class="table-wrap">
+    <div class="section-label reveal">比較</div>
+    <h2 class="reveal">Soluna を選ぶ理由。</h2>
+    <p class="sub reveal">有償製品と同等以上の機能をオープンソースで。</p>
+    <div class="table-wrap reveal">
         <table>
             <thead>
                 <tr class="hl-col">
-                    <th>機能</th>
-                    <th>◈ Soluna</th>
-                    <th>Dante</th>
-                    <th>AES67</th>
-                    <th>BlackHole+Multi</th>
+                    <th>機能</th><th>&#9670; Soluna</th><th>Dante</th><th>AES67</th><th>BlackHole</th>
                 </tr>
             </thead>
             <tbody>
-                <tr class="hl-col"><td>ライセンス</td><td class="yes">MIT 無料</td><td class="no">有償 高額</td><td class="no">標準規格</td><td class="no">手動設定必要</td></tr>
-                <tr class="hl-col"><td>仮想デバイス</td><td class="yes">✅ 自動</td><td class="no">❌</td><td class="no">❌</td><td class="no">手動</td></tr>
-                <tr class="hl-col"><td>Mac スピーカー同時</td><td class="yes">✅</td><td class="no">❌</td><td class="no">❌</td><td class="no">複雑</td></tr>
-                <tr class="hl-col"><td>iPhone 受信</td><td class="yes">✅</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td></tr>
-                <tr class="hl-col"><td>WiFi 対応</td><td class="yes">✅</td><td class="no">限定的</td><td class="no">❌</td><td class="no">—</td></tr>
-                <tr class="hl-col"><td>ブラウザ受信</td><td class="yes">✅</td><td class="no">❌</td><td class="no">❌</td><td class="no">❌</td></tr>
-                <tr class="hl-col"><td>自動遅延同期</td><td class="yes">✅</td><td class="no">手動</td><td class="no">手動</td><td class="no">❌</td></tr>
-                <tr class="hl-col"><td>Web UI</td><td class="yes">✅</td><td class="yes">✅</td><td class="no">❌</td><td class="no">❌</td></tr>
+                <tr class="hl-col"><td>ライセンス</td><td class="yes">MIT 無料</td><td class="no">有償</td><td class="no">標準規格</td><td class="no">手動設定</td></tr>
+                <tr class="hl-col"><td>P2P メッシュ中継</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>iPhone 受信</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>ブラウザ受信</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>WiFi 対応</td><td class="yes">&#10003;</td><td class="no">限定的</td><td class="no">&#10005;</td><td class="no">&#8212;</td></tr>
+                <tr class="hl-col"><td>自動遅延同期</td><td class="yes">&#10003;</td><td class="no">手動</td><td class="no">手動</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>デバイスヘルス管理</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>Web UI</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
             </tbody>
         </table>
     </div>
 </section>
 
-<hr>
+<!-- CTA -->
+<section class="cta-section">
+    <h2 class="reveal"><span class="h1-accent">今すぐ始めよう。</span></h2>
+    <p class="sub reveal">5 分で Mac の音を全デバイスに配信。</p>
+    <div class="reveal">
+        <a href="#install" class="btn-primary" style="font-size:17px;padding:16px 32px">セットアップを始める</a>
+    </div>
+</section>
+
+<div class="footer-divider"></div>
 
 <!-- Footer -->
 <footer>
-    <div class="f-logo">◈ Soluna</div>
+    <div class="f-logo">&#9670; Soluna</div>
     <div class="f-links">
-        <a href="/guide.html">セットアップガイド</a>
-        <a href="/index.html">Dashboard</a>
+        <a href="/guide">セットアップガイド</a>
+        <a href="/dashboard">Dashboard</a>
         <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
-        <a href="https://github.com/yukihamada/opensonic/issues" target="_blank">バグ報告</a>
     </div>
-    <div class="f-copy">MIT License · Open Source</div>
+    <div class="f-copy">MIT License &middot; Open Source</div>
 </footer>
 
 <script>
+/* ── Scroll reveal ──────────────────────────────────── */
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+        if (e.isIntersecting) {
+            e.target.classList.add('visible');
+            observer.unobserve(e.target);
+        }
+    });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+/* ── Typewriter ─────────────────────────────────────── */
+const phrases = ['どこでも。', 'iPhone でも。', 'フェスでも。', 'ブラウザでも。', '世界中でも。'];
+const typingEl = document.getElementById('hero-typing');
+const cursorEl = document.getElementById('hero-cursor');
+let phraseIdx = 0, charIdx = 0, deleting = false;
+
+function typeStep() {
+    const phrase = phrases[phraseIdx];
+    if (!deleting) {
+        charIdx++;
+        typingEl.textContent = phrase.slice(0, charIdx);
+        if (charIdx === phrase.length) {
+            setTimeout(() => { deleting = true; typeStep(); }, 2200);
+            return;
+        }
+        setTimeout(typeStep, 80);
+    } else {
+        charIdx--;
+        typingEl.textContent = phrase.slice(0, charIdx);
+        if (charIdx === 0) {
+            deleting = false;
+            phraseIdx = (phraseIdx + 1) % phrases.length;
+            setTimeout(typeStep, 400);
+            return;
+        }
+        setTimeout(typeStep, 40);
+    }
+}
+typeStep();
+
+/* ── Copy code ──────────────────────────────────────── */
 function copyCode(btn) {
-    const code = btn.closest('.code-block').textContent.replace('Copy', '').trim();
-    navigator.clipboard.writeText(code).then(() => {
+    const block = btn.closest('.code-block');
+    const text = block.textContent.replace('Copy', '').replace('Copied!', '').replace('$ ', '').trim();
+    navigator.clipboard.writeText(text).then(() => {
         btn.textContent = 'Copied!';
         setTimeout(() => btn.textContent = 'Copy', 2000);
     });
 }
+
+/* ── Nav scroll effect ──────────────────────────────── */
+let lastScroll = 0;
+window.addEventListener('scroll', () => {
+    const nav = document.querySelector('nav');
+    if (window.scrollY > 80) {
+        nav.style.background = 'rgba(5,6,10,0.92)';
+    } else {
+        nav.style.background = 'rgba(5,6,10,0.7)';
+    }
+}, { passive: true });
 </script>
 </body>
 </html>
