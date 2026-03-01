@@ -86,6 +86,9 @@ static soluna::control::WebSocketServer* g_ws_server_ptr = nullptr;
 // ── Monitor speaker underrun counter ─────────────────────────────────────────
 static std::atomic<uint64_t> g_mon_underruns{0};
 
+// ── Global RX delay (pushed to all receivers, 0 = device-local) ──────────────
+static std::atomic<uint32_t> g_rx_delay_ms{0};
+
 // ── Persistent config (~/.config/solunad/config.json) ────────────────────────
 
 static std::string persist_config_path() {
