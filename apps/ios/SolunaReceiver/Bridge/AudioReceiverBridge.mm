@@ -634,6 +634,9 @@ private:
             return;
         }
 
+        // Periodically check if health can be recovered
+        maybe_check_recovery();
+
         // Normal playback with soft limiter to prevent clipping
         ring_buffer_.read(read_buffer_.data(), frame_count);
         const int32_t* src = read_buffer_.data();
