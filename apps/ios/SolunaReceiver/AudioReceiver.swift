@@ -109,20 +109,40 @@ final class AudioReceiver: ObservableObject {
         receiver.delegate = delegateHandler
     }
 
-    /// Start receiving audio (and P2P relay discovery)
+    /// Start receiving audio with discovery-first P2P.
+    /// Scans for nearby peers on the same channel for 3 seconds.
+    /// If a peer is found → receive from them (no multicast).
+    /// If not → start multicast and become a relay for others.
     func start() {
+        guard state == .stopped || state == .error else { return }
         errorMessage = nil
-        _ = receiver.start()
-        PeerRelayManager.shared.start()
-        // Evaluate relay role after 6 seconds of data
+        state = .connecting   // visual feedback during scan
+
+        let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+
         Task {
-            try? await Task.sleep(nanoseconds: 6_000_000_000)
-            await evaluateRelayRole()
+            let foundPeer = await PeerRelayManager.shared.scanForPeers(channel: ch)
+
+            guard state == .connecting else { return } // user stopped during scan
+
+            let ok = receiver.start()   // starts audio output + ring buffer
+            if !ok { return }           // bridge sets state → .error via delegate
+
+            if foundPeer {
+                // Peer mode — multicast already disabled by PeerRelayManager.
+                // Audio arrives via injectRawPacket → ring buffer → audio callback.
+            } else {
+                // Direct mode — wait for stable multicast, then become relay
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                guard state == .receiving else { return }
+                PeerRelayManager.shared.becomeDirectRelay()
+            }
         }
     }
 
     /// Stop receiving audio
     func stop() {
+        state = .stopped
         receiver.stop()
         PeerRelayManager.shared.stop()
     }
