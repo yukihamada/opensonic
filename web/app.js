@@ -75,7 +75,7 @@ function pollTxStats() {
 }
 
 // ── Monitor card (Mac local playback via TX daemon) ───────────
-let monState = { supported: false, running: false, volume: 1.0, muted: false, packets: 0, volTimer: null, lastRtt: 0, lastSyncAt: null };
+let monState = { supported: false, running: false, volume: 1.0, muted: false, packets: 0, volTimer: null, lastRtt: 0, lastSyncAt: null, rxDelayMs: 0 };
 let monPollTimer = null;
 
 function initMonitor() {
