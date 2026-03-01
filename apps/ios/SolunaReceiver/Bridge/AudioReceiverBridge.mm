@@ -667,6 +667,7 @@ private:
     std::atomic<bool>     muted_;
     std::atomic<bool>     running_;
     std::atomic<uint32_t> target_fill_frames_;
+    std::atomic<bool>     network_disabled_{false};
     // Health tracking atomics (written audio-cb, read ObjC):
     std::atomic<int>      health_{0};           ///< 0=good 1=stressed 2=silenced
     std::atomic<bool>     health_silenced_{false};
