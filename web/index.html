@@ -55,8 +55,11 @@
                     </div>
                 </div>
 
-                <!-- VU meter -->
-                <canvas id="ba-vu" class="ba-vu" width="600" height="28"></canvas>
+                <!-- VU meter / Spectrum + toggle -->
+                <div class="ba-viz-row">
+                    <canvas id="ba-vu" class="ba-vu" width="600" height="44"></canvas>
+                    <button id="ba-viz-toggle" class="ba-viz-btn" title="Switch to Spectrum">Spec</button>
+                </div>
 
                 <!-- Controls (hidden until playing) -->
                 <div id="ba-controls" class="ba-controls" style="display:none">
@@ -68,8 +71,14 @@
                     <div class="ba-ctrl-row">
                         <span class="ba-ctrl-label">Buffer</span>
                         <span id="ba-buf-val" class="ba-mono">—</span>
-                        <span class="ba-ctrl-label" style="margin-left:16px">Chunks</span>
+                        <span class="ba-ctrl-label" style="margin-left:16px">Latency</span>
+                        <span id="ba-latency" class="ba-mono">—</span>
+                    </div>
+                    <div class="ba-ctrl-row">
+                        <span class="ba-ctrl-label">Chunks</span>
                         <span id="ba-pkt-val" class="ba-mono">0</span>
+                        <span class="ba-ctrl-label" style="margin-left:16px">Underruns</span>
+                        <span id="ba-underrun" class="ba-mono">0</span>
                     </div>
                 </div>
 
