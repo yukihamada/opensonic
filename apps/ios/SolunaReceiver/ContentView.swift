@@ -4,12 +4,14 @@
 //
 
 import SwiftUI
+import MultipeerConnectivity
 
 // MARK: - Root
 
 struct ContentView: View {
     @StateObject private var receiver = AudioReceiver()
     @StateObject private var speakers = SpeakersController()
+    @StateObject private var relay    = PeerRelayManager.shared
     @State private var showSettings   = false
     @State private var showAddSpeaker = false
     @State private var newName        = ""
