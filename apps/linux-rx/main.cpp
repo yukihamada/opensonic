@@ -29,6 +29,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
+#include <chrono>
 
 #ifdef __linux__
 #include <alsa/asoundlib.h>
