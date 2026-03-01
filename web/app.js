@@ -331,14 +331,18 @@ function updateEmpty() {
 }
 
 const BUF_OPTIONS = [
-    { label: '5 ms',   ms: 5   },
-    { label: '10 ms',  ms: 10  },
-    { label: '20 ms',  ms: 20  },
-    { label: '40 ms',  ms: 40  },
-    { label: '60 ms',  ms: 60  },
-    { label: '100 ms', ms: 100 },
-    { label: '150 ms', ms: 150 },
-    { label: '200 ms', ms: 200 },
+    { label: '5 ms',    ms: 5    },
+    { label: '10 ms',   ms: 10   },
+    { label: '20 ms',   ms: 20   },
+    { label: '40 ms',   ms: 40   },
+    { label: '60 ms',   ms: 60   },
+    { label: '100 ms',  ms: 100  },
+    { label: '150 ms',  ms: 150  },
+    { label: '200 ms',  ms: 200  },
+    { label: '500 ms',  ms: 500  },
+    { label: '1000 ms', ms: 1000 },
+    { label: '1500 ms', ms: 1500 },
+    { label: '2000 ms', ms: 2000 },
 ];
 
 function buildBufOptions(selectedMs) {
