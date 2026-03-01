@@ -600,6 +600,8 @@ private:
         }
     }
 
+    std::function<void(const uint8_t*, size_t)> relay_callback_;
+
     std::string multicast_group_;
     uint16_t port_;
     uint32_t channels_;
