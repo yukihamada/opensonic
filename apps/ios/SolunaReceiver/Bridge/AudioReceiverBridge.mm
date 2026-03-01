@@ -864,8 +864,12 @@ private:
 }
 
 - (void)setBufferTargetMs:(uint32_t)ms {
-    _bufferTargetMs = std::max(5u, std::min(200u, ms));
+    _bufferTargetMs = std::max(5u, std::min(2000u, ms));
     if (_impl) _impl->set_buffer_ms(_bufferTargetMs);
+}
+
+- (SolunaDeviceHealth)deviceHealth {
+    return _impl ? (SolunaDeviceHealth)_impl->device_health() : SolunaDeviceHealthGood;
 }
 
 - (SolunaReceiverStats *)currentStats {
