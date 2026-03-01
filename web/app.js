@@ -156,6 +156,13 @@ function patchMonCard() {
         $ur.style.display = u > 0 ? '' : 'none';
         $urv.textContent = u;
     }
+
+    const $rxSl = document.getElementById('mon-rx-delay-sl');
+    const $rxVal = document.getElementById('mon-rx-delay-val');
+    if ($rxSl && $rxVal && document.activeElement !== $rxSl) {
+        $rxSl.value = monState.rxDelayMs ?? 0;
+        $rxVal.textContent = (monState.rxDelayMs ?? 0) + 'ms';
+    }
 }
 
 function buildMonitorCard() {
