@@ -232,6 +232,7 @@ final class DaemonClient: ObservableObject {
             monitorMuted   = d["muted"]   as? Bool ?? false
             monitorPackets = UInt64(d["packets"] as? Int ?? 0)
             if let delay = d["delay_ms"] as? Int { monitorDelayMs = delay }
+            if let rxd = d["rx_delay_ms"] as? Int { rxDelayMs = rxd }
 
         } else if d["tunnel_url"] != nil {
             // system.info
