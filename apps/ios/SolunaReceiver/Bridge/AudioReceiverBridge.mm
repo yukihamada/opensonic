@@ -659,10 +659,18 @@ private:
     std::atomic<bool>     muted_;
     std::atomic<bool>     running_;
     std::atomic<uint32_t> target_fill_frames_;
+    // Health tracking atomics (written audio-cb, read ObjC):
+    std::atomic<int>      health_{0};           ///< 0=good 1=stressed 2=silenced
+    std::atomic<bool>     health_silenced_{false};
     // audio_callback-only state (no atomics needed):
     bool                  prefilled_ = false;
     float                 ramp_      = 0.0f;
     std::vector<float>    held_sample_;
+    // Health tracking — audio-callback-only (no atomic needed):
+    uint64_t health_window_start_ms_    = 0;
+    uint32_t health_underruns_in_window_ = 0;
+    uint64_t last_underrun_ms_          = 0;
+    uint32_t recovery_check_counter_    = 0;
 
     std::unique_ptr<SimpleRtpReceiver> rtp_receiver_;
     std::unique_ptr<pal::AudioDevice>  audio_device_;
