@@ -925,19 +925,23 @@
                     <p>同じ WiFi に繋ぐだけ。チャンネル名で自動接続。</p>
                 </div>
             </div>
-            <a href="https://github.com/yukihamada/opensonic/releases" class="ic-link primary" target="_blank">TestFlight で入手 →</a>
-            <p style="font-size:12px;color:var(--text3)">Xcode でビルドする方法は<a href="/guide" style="color:var(--text2)">ガイド</a>を参照。</p>
+            <div class="code-block" style="font-size:12px">
+                <span class="prompt">$ </span>git clone https://github.com/yukihamada/opensonic.git<br>
+                <span class="prompt">$ </span>open apps/ios/SolunaReceiver.xcodeproj
+                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p style="font-size:12px;color:var(--text3)">Xcode で iPhone にビルド。詳細は<a href="/guide" style="color:var(--text2)">ガイド</a>を参照。</p>
         </div>
         <div class="install-card reveal reveal-delay-3">
             <div class="ic-header">
                 <div class="ic-icon">🍓</div>
                 <div>
                     <h3>Raspberry Pi<span class="ic-tag rx">RX</span></h3>
-                    <p>ワンコマンド。ALSA DAC に対応。</p>
+                    <p>ワンコマンド。ビルドからサービス登録まで自動。</p>
                 </div>
             </div>
             <div class="code-block">
-                <span class="prompt">$ </span>sudo bash deploy/rpi/install-rx.sh
+                <span class="prompt">$ </span>curl -fsSL https://soluna-web.fly.dev/install-rx.sh | sudo bash
                 <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             </div>
         </div>
