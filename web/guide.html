@@ -312,14 +312,23 @@
             <div class="guide-section-title">Mac セットアップ</div>
             <div class="steps">
                 <div class="step">
+                    <div class="step-num">★</div>
+                    <div class="step-body">
+                        <h3>ワンコマンドインストール（推奨）</h3>
+                        <p>以下を実行するだけで、ビルド・ドライバーインストール・サービス登録まで全自動。</p>
+                        <code>curl -fsSL https://soluna-web.fly.dev/install.sh | bash</code>
+                        <p>完了後は「<strong>システム設定 → サウンド → 出力 → Soluna</strong>」を選択してください。</p>
+                    </div>
+                </div>
+                <div class="step">
                     <div class="step-num">1</div>
                     <div class="step-body">
-                        <h3>ビルド</h3>
-                        <p>Xcode Command Line Tools と CMake が必要です。</p>
+                        <h3>手動ビルド</h3>
+                        <p>手動で行う場合。Xcode Command Line Tools と CMake が必要です。</p>
                         <code>git clone https://github.com/yukihamada/opensonic.git
 cd opensonic
 cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)</code>
+cmake --build build -j$(sysctl -n hw.logicalcpu)</code>
                     </div>
                 </div>
                 <div class="step">
