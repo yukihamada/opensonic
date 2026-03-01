@@ -68,8 +68,31 @@ struct ContentView: View {
 
     @ViewBuilder
     private var relayBanner: some View {
+        if relay.isScanning {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .scaleEffect(0.8)
+                Text("近くの端末を検索中…")
+                    .font(.footnote.weight(.medium))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(relay.channel)
+                    .font(.caption2)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(.tertiarySystemFill))
+                    .foregroundColor(.secondary)
+                    .clipShape(Capsule())
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color(.tertiarySystemFill))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+
         switch relay.role {
-        case .relay:
+        case .direct where relay.connectedPeerCount > 0:
             HStack(spacing: 8) {
                 Image(systemName: "antenna.radiowaves.left.and.right")
                     .foregroundColor(.green)
