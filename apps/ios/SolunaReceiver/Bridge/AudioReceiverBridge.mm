@@ -416,6 +416,10 @@ private:
     void receive_loop() {
         // ONLY writes to ring_buffer_ — never reads (RingBuffer is SPSC).
         // Drain happens exclusively in audio_callback to avoid data race.
+        // Propagate relay callback now that rtp_receiver_ is initialized.
+        if (relay_callback_ && rtp_receiver_) {
+            rtp_receiver_->relay_callback = relay_callback_;
+        }
         while (running_.load()) {
             if (rtp_receiver_) {
                 for (int i = 0; i < 10 && running_.load(); i++) {
