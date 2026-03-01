@@ -239,6 +239,17 @@ function buildMonitorCard() {
         localSend('monitor.set_buffer', { ms: parseInt(e.target.value, 10) });
     });
 
+    const rxDelaySl = el.querySelector('#mon-rx-delay-sl');
+    const rxDelayVal = el.querySelector('#mon-rx-delay-val');
+    rxDelaySl.addEventListener('input', () => {
+        rxDelayVal.textContent = rxDelaySl.value + 'ms';
+    });
+    el.querySelector('#mon-rx-delay-btn').addEventListener('click', () => {
+        const ms = parseInt(rxDelaySl.value, 10);
+        localSend('rx.set_global_delay', { ms });
+        monState.rxDelayMs = ms;
+    });
+
     return el;
 }
 
