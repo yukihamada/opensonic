@@ -102,6 +102,10 @@ final class DaemonClient: ObservableObject {
         send(#"{"id":\#(nextId()),"command":"monitor.set_delay","ms":\#(ms)}"#)
     }
 
+    func setGlobalRxDelay(_ ms: Int) {
+        send(#"{"id":\#(nextId()),"command":"rx.set_global_delay","ms":\#(ms)}"#)
+    }
+
     // MARK: - Auto-sync
 
     /// Send a WS ping to measure round-trip time.
