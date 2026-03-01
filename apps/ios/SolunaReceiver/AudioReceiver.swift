@@ -47,6 +47,9 @@ final class AudioReceiver: ObservableObject {
     /// Number of packets concealed by PLC
     @Published private(set) var packetsConcealed: UInt64 = 0
 
+    /// Device health (good / stressed / silenced based on underrun rate)
+    @Published private(set) var deviceHealth: SolunaDeviceHealth = .good
+
     /// Current volume (0.0 - 1.0)
     @Published var volume: Float = 1.0 {
         didSet {
