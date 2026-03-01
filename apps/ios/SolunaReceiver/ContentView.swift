@@ -442,6 +442,23 @@ private struct LocalSpeakerRow: View {
                 HStack {
                     Text("This iPhone")
                         .font(.subheadline.weight(.semibold))
+                    if receiver.deviceHealth == .silenced {
+                        Text("Auto-silenced")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(.red)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.red.opacity(0.12))
+                            .clipShape(Capsule())
+                    } else if receiver.deviceHealth == .stressed {
+                        Text("Buffering")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
                     Spacer()
                     muteButton
                     Text(receiver.isMuted ? "Muted" : "\(Int(receiver.volume * 100))%")
