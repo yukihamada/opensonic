@@ -407,9 +407,9 @@ bash apps/daemon/install-service.sh</code>
                     <div class="step-num">1</div>
                     <div class="step-body">
                         <h3>ワンコマンドインストール</h3>
-                        <p>RPi 上でインストールスクリプトを実行（soluna-rx バイナリが必要）。</p>
-                        <code>sudo bash deploy/rpi/install-rx.sh</code>
-                        <p>自動で systemd サービス登録、起動まで行います。</p>
+                        <p>RPi / Linux 上で実行。ビルドからサービス登録まで全自動。</p>
+                        <code>curl -fsSL https://soluna-web.fly.dev/install-rx.sh | sudo bash</code>
+                        <p>依存パッケージ、ビルド、systemd サービス登録まで自動で行います。</p>
                     </div>
                 </div>
                 <div class="step">
