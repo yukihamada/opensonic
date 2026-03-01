@@ -474,7 +474,8 @@ private:
             rtp_receiver_->relay_callback = relay_callback_;
         }
         while (running_.load()) {
-            if (rtp_receiver_) {
+            // When network_disabled_, audio arrives via inject_raw_packet instead
+            if (!network_disabled_.load() && rtp_receiver_) {
                 for (int i = 0; i < 10 && running_.load(); i++) {
                     if (!rtp_receiver_->receive_packet(ring_buffer_)) break;
                 }
