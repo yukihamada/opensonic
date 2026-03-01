@@ -113,7 +113,7 @@ final class AudioReceiver: ObservableObject {
         PeerRelayManager.shared.start()
         // Evaluate relay role after 6 seconds of data
         Task {
-            try? await Task.sleep(for: .seconds(6))
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
             await evaluateRelayRole()
         }
     }
