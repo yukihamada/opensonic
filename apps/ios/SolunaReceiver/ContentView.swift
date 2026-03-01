@@ -27,6 +27,7 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     heroSection
+                    relayBanner
                     if receiver.state == .receiving || receiver.packetsReceived > 0 {
                         statsRow
                             .transition(.move(edge: .top).combined(with: .opacity))
