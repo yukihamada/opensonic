@@ -238,7 +238,7 @@ static std::string ws_handle(const std::string& msg) {
         if (p != std::string::npos) {
             try {
                 uint32_t ms = static_cast<uint32_t>(std::stoul(msg.substr(p + 5)));
-                g_buf_target_ms.store(std::max(5u, std::min(500u, ms)));
+                g_buf_target_ms.store(std::max(5u, std::min(2000u, ms)));
             } catch (...) {}
         }
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
