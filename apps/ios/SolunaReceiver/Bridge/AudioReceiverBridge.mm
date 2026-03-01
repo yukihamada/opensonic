@@ -401,6 +401,10 @@ public:
         return {};
     }
 
+    int device_health() const {
+        return health_.load(std::memory_order_relaxed);
+    }
+
     // ── Relay support ──────────────────────────────────────────────────────
 
     void set_relay_callback(std::function<void(const uint8_t*, size_t)> cb) {
