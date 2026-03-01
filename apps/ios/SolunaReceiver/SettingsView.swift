@@ -175,6 +175,7 @@ struct SettingsView: View {
         tempMulticastGroup = "239.69.0.1"
         tempPort = "5004"
         tempChannels = 2
+        tempChannel = "soluna"
         autoConnect = false
 
         // Haptic feedback
