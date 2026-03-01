@@ -78,6 +78,7 @@
 				2A0003 /* AudioReceiver.swift */,
 				2A0020 /* DaemonClient.swift */,
 				2A0030 /* SpeakersController.swift */,
+				2A0040 /* PeerRelayManager.swift */,
 				5A0010 /* Bridge */,
 				2A0009 /* Assets.xcassets */,
 				2A0007 /* Info.plist */,
