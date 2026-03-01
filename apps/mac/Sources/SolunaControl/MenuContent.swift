@@ -125,7 +125,7 @@ struct MenuContent: View {
                             Slider(value: Binding(
                                 get: { Double(d.monitorBufferMs) },
                                 set: { d.setMonitorBuffer(Int($0)) }
-                            ), in: 5...100, step: 5)
+                            ), in: 5...200, step: 5)
                             .controlSize(.small)
                         }
                         .disabled(!d.isConnected)
