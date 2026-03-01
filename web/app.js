@@ -745,105 +745,214 @@ function escHtml(s) {
 }
 
 // ── Browser Audio Receiver ────────────────────────────────────
+
+// AudioWorklet processor: ring-buffer-based, runs in audio thread
+// Loaded via Blob URL — no extra HTTP request needed
+const BA_WORKLET_SRC = `
+class SolunaProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this._cap  = 131072; // 131072 samples ~2.7s at 48kHz
+    this._L    = new Float32Array(this._cap);
+    this._R    = new Float32Array(this._cap);
+    this._w    = 0;
+    this._r    = 0;
+    this._tick = 0;
+    this.port.onmessage = ({ data: [l, r] }) => {
+      for (let i = 0; i < l.length; i++) {
+        this._L[this._w % this._cap] = l[i];
+        this._R[this._w % this._cap] = r[i];
+        this._w++;
+      }
+    };
+  }
+  process(_, outputs) {
+    const L = outputs[0][0], R = outputs[0][1] || outputs[0][0];
+    const n = L.length; // 128 samples per block
+    const avail = this._w - this._r;
+    if (avail < n) {
+      L.fill(0); R.fill(0);
+      this.port.postMessage({ t: 'u' });
+    } else {
+      for (let i = 0; i < n; i++) {
+        const p = this._r % this._cap;
+        L[i] = this._L[p];
+        R[i] = this._R[p];
+        this._r++;
+      }
+    }
+    // Report fill level every ~375 blocks (≈1s)
+    if (++this._tick >= 375) {
+      this._tick = 0;
+      this.port.postMessage({ t: 's', f: this._w - this._r });
+    }
+    return true;
+  }
+}
+registerProcessor('soluna', SolunaProcessor);
+`;
+
 let baCtx        = null;
+let baWorklet    = null;
 let baGain       = null;
 let baAnalyser   = null;
-let baPlayAt     = 0;
 let baActive     = false;
 let baSampleRate = 48000;
 let baChannels   = 2;
 let baPkts       = 0;
+let baUnderruns  = 0;
 let baVuRaf      = null;
-let baPeakHold   = 0;
-let baPeakTimer  = 0;
+let baPeakL = 0, baPeakR = 0, baPeakTimer = 0;
+let baWakeLock   = null;
+let baVizMode    = 'vu'; // 'vu' | 'spectrum'
+let baPingTimer  = null;
 
-// Target ahead-of-time buffer, adapts to network jitter
-let baTargetBuf  = 0.08; // 80ms start
+// Safari-compatible roundRect helper
+function baRoundRect(ctx, x, y, w, h, r) {
+    if (typeof ctx.roundRect === 'function') {
+        ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill();
+    } else {
+        ctx.fillRect(x, y, w, h);
+    }
+}
 
 function baSubscribe() {
     localSend('audio.subscribe', {}, (r) => {
-        if (r.success && r.data) {
-            try {
-                const d = JSON.parse(r.data);
-                if (d.sample_rate) baSampleRate = d.sample_rate;
-                if (d.channels)    baChannels   = d.channels;
-                document.getElementById('ba-fmt').textContent =
-                    `${(baSampleRate/1000).toFixed(1)} kHz · ${baChannels === 1 ? 'Mono' : 'Stereo'}`;
-            } catch (_) {}
-        }
+        if (!r.success || !r.data) return;
+        try {
+            const d = JSON.parse(r.data);
+            if (d.sample_rate) baSampleRate = d.sample_rate;
+            if (d.channels)    baChannels   = d.channels;
+            const el = document.getElementById('ba-fmt');
+            if (el) el.textContent = `${(baSampleRate/1000).toFixed(1)} kHz · ${baChannels === 1 ? 'Mono' : 'Stereo'}`;
+        } catch (_) {}
     });
 }
 
-function baStart() {
+async function baStart() {
     if (baActive) return;
-    baCtx      = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: baSampleRate });
+
+    // Create AudioContext — must resume() to satisfy autoplay policy
+    baCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: baSampleRate });
+    if (baCtx.state === 'suspended') await baCtx.resume().catch(() => {});
+    baCtx.onstatechange = () => {
+        if (baCtx && baCtx.state === 'suspended') baCtx.resume().catch(() => {});
+    };
+
+    // Load AudioWorklet via Blob URL (no server file needed)
+    const blob    = new Blob([BA_WORKLET_SRC], { type: 'application/javascript' });
+    const blobURL = URL.createObjectURL(blob);
+    try {
+        await baCtx.audioWorklet.addModule(blobURL);
+    } catch (e) {
+        // Fallback: AudioWorklet not supported — continue with degraded mode
+        console.warn('[ba] AudioWorklet unavailable:', e);
+    } finally {
+        URL.revokeObjectURL(blobURL);
+    }
+
+    // Audio graph: Worklet → Gain → Analyser → destination
+    baWorklet  = new AudioWorkletNode(baCtx, 'soluna', { outputChannelCount: [2] });
     baGain     = baCtx.createGain();
     baAnalyser = baCtx.createAnalyser();
-    baAnalyser.fftSize = 512;
-    baAnalyser.smoothingTimeConstant = 0.6;
+    baAnalyser.fftSize = 2048;
+    baAnalyser.smoothingTimeConstant = 0.7;
+    baWorklet.connect(baGain);
     baGain.connect(baAnalyser);
     baAnalyser.connect(baCtx.destination);
-    baPlayAt  = baCtx.currentTime + baTargetBuf;
-    baActive  = true;
-    baPkts    = 0;
+
+    // Messages from worklet thread
+    baWorklet.port.onmessage = ({ data }) => {
+        if (data.t === 'u') {
+            baUnderruns++;
+            const el = document.getElementById('ba-underrun');
+            if (el) el.textContent = baUnderruns;
+        } else if (data.t === 's') {
+            const ms = Math.round(data.f / baSampleRate * 1000);
+            const el = document.getElementById('ba-buf-val');
+            if (el) el.textContent = `${ms} ms`;
+        }
+    };
+
+    baActive    = true;
+    baPkts      = 0;
+    baUnderruns = 0;
     baSubscribe();
+
+    // Screen Wake Lock — prevent sleep on mobile
+    if ('wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').then(wl => { baWakeLock = wl; }).catch(() => {});
+    }
+    document.addEventListener('visibilitychange', baOnVisibility);
+
+    // UI
     document.getElementById('ba-btn').classList.add('ba-playing');
     document.getElementById('ba-icon').textContent = '■';
     document.getElementById('ba-label').textContent = 'Listening…';
     document.getElementById('ba-controls').style.display = '';
-    baDrawVU();
-    // Show URL hint
     const urlEl = document.getElementById('ba-url');
     if (urlEl) urlEl.textContent = location.origin;
+
+    baDrawViz();
+    baPingTimer = setInterval(baPing, 3000);
 }
 
 function baStop() {
     if (!baActive) return;
     baActive = false;
+    document.removeEventListener('visibilitychange', baOnVisibility);
     localSend('audio.unsubscribe', {}, null);
-    if (baVuRaf) { cancelAnimationFrame(baVuRaf); baVuRaf = null; }
-    if (baCtx)   { baCtx.close(); baCtx = null; baGain = null; baAnalyser = null; }
+    if (baVuRaf)    { cancelAnimationFrame(baVuRaf); baVuRaf = null; }
+    if (baPingTimer){ clearInterval(baPingTimer); baPingTimer = null; }
+    if (baWakeLock) { baWakeLock.release(); baWakeLock = null; }
+    if (baCtx)      { baCtx.close(); baCtx = null; }
+    baWorklet = baGain = baAnalyser = null;
     document.getElementById('ba-btn').classList.remove('ba-playing');
     document.getElementById('ba-icon').textContent = '▶';
     document.getElementById('ba-label').textContent = 'Click to listen';
     document.getElementById('ba-controls').style.display = 'none';
-    baClearVU();
+    baClearCanvas();
+}
+
+function baOnVisibility() {
+    if (document.visibilityState !== 'visible') return;
+    // Resume context if browser suspended it (background policy)
+    if (baCtx && baCtx.state === 'suspended') baCtx.resume().catch(() => {});
+    // Re-acquire wake lock (auto-released on hide)
+    if (baActive && 'wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').then(wl => { baWakeLock = wl; }).catch(() => {});
+    }
 }
 
 function baHandleChunk(buf) {
-    if (!baCtx || !baActive) return;
-    const s16       = new Int16Array(buf);
-    const numFrames = (s16.length / baChannels) | 0;
-    if (numFrames <= 0) return;
+    if (!baWorklet || !baActive) return;
+    const s16 = new Int16Array(buf);
+    const n   = (s16.length / baChannels) | 0;
+    if (n <= 0) return;
 
-    const audioBuf = baCtx.createBuffer(baChannels, numFrames, baSampleRate);
-    for (let ch = 0; ch < baChannels; ch++) {
-        const out = audioBuf.getChannelData(ch);
-        for (let i = 0; i < numFrames; i++)
-            out[i] = s16[i * baChannels + ch] / 32768.0;
+    // Deinterleave S16 → Float32 per channel, transfer ownership (zero-copy)
+    const L = new Float32Array(n), R = new Float32Array(n);
+    if (baChannels === 1) {
+        for (let i = 0; i < n; i++) L[i] = R[i] = s16[i] / 32768;
+    } else {
+        for (let i = 0; i < n; i++) {
+            L[i] = s16[i * 2]     / 32768;
+            R[i] = s16[i * 2 + 1] / 32768;
+        }
     }
-
-    const src = baCtx.createBufferSource();
-    src.buffer = audioBuf;
-    src.connect(baGain);
-
-    const now = baCtx.currentTime;
-    // Adaptive re-sync: if too far behind, reset ahead; if too far ahead, nudge back
-    if      (baPlayAt < now + 0.015)          baPlayAt = now + baTargetBuf;
-    else if (baPlayAt > now + baTargetBuf * 3) baPlayAt = now + baTargetBuf;
-    src.start(baPlayAt);
-    baPlayAt += audioBuf.duration;
+    baWorklet.port.postMessage([L, R], [L.buffer, R.buffer]);
 
     baPkts++;
-    const bufMs = Math.round((baPlayAt - now) * 1000);
-    document.getElementById('ba-buf-val').textContent = `${bufMs} ms`;
-    document.getElementById('ba-pkt-val').textContent = baPkts;
+    const el = document.getElementById('ba-pkt-val');
+    if (el) el.textContent = baPkts;
+}
 
-    // Adaptive target: shrink toward 60ms if stable, grow if stressed
-    if (bufMs > 0 && bufMs < baTargetBuf * 1000 * 0.7)
-        baTargetBuf = Math.min(0.15, baTargetBuf + 0.005);
-    else if (bufMs > baTargetBuf * 1000 * 1.5)
-        baTargetBuf = Math.max(0.04, baTargetBuf - 0.002);
+// ── Visualization ─────────────────────────────────────────────
+
+function baDrawViz() {
+    if (!baAnalyser || !baActive) return;
+    baVizMode === 'spectrum' ? baDrawSpectrum() : baDrawVU();
+    baVuRaf = requestAnimationFrame(baDrawViz);
 }
 
 function baDrawVU() {
@@ -852,69 +961,117 @@ function baDrawVU() {
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
 
-    if (!baAnalyser || !baActive) { baClearVU(); return; }
-
-    const data = new Uint8Array(baAnalyser.frequencyBinCount);
-    baAnalyser.getByteTimeDomainData(data);
-
-    // RMS level
-    let sumSq = 0;
-    for (const v of data) { const s = (v - 128) / 128; sumSq += s * s; }
-    const rms   = Math.sqrt(sumSq / data.length);
-    const level = Math.min(1, rms * 4);
+    // Time-domain data → per-channel RMS
+    const td = new Uint8Array(baAnalyser.frequencyBinCount);
+    baAnalyser.getByteTimeDomainData(td);
+    let sL = 0, sR = 0;
+    for (let i = 0; i < td.length; i++) {
+        const v = (td[i] - 128) / 128;
+        (i % 2 === 0 ? (sL += v * v) : (sR += v * v));
+    }
+    const half = td.length / 2;
+    const rmsL = Math.min(1, Math.sqrt(sL / half) * 4.5);
+    const rmsR = Math.min(1, Math.sqrt(sR / half) * 4.5);
 
     // Peak hold
-    if (level > baPeakHold) { baPeakHold = level; baPeakTimer = 40; }
-    else if (baPeakTimer > 0) baPeakTimer--;
-    else baPeakHold = Math.max(0, baPeakHold - 0.015);
+    if (rmsL > baPeakL) { baPeakL = rmsL; baPeakTimer = 45; }
+    if (rmsR > baPeakR)   baPeakR = rmsR;
+    if (baPeakTimer > 0) baPeakTimer--;
+    else { baPeakL = Math.max(0, baPeakL - 0.01); baPeakR = baPeakL; }
 
     ctx.clearRect(0, 0, W, H);
+    const gap = 4, ch = (H - gap) / 2;
 
-    // BG track
-    ctx.fillStyle = 'rgba(255,255,255,0.05)';
-    ctx.roundRect(0, 0, W, H, 4);
-    ctx.fill();
-
-    // Level gradient bar
-    const gr = ctx.createLinearGradient(0, 0, W, 0);
-    gr.addColorStop(0,    '#10b981');
-    gr.addColorStop(0.65, '#f59e0b');
-    gr.addColorStop(1,    '#ef4444');
-    ctx.fillStyle = gr;
-    ctx.roundRect(0, 0, W * level, H, 4);
-    ctx.fill();
-
-    // Peak marker
-    const px = W * baPeakHold;
-    ctx.fillStyle = baPeakHold > 0.9 ? '#ef4444' : 'rgba(255,255,255,0.8)';
-    ctx.fillRect(Math.max(0, px - 2), 0, 2, H);
-
-    baVuRaf = requestAnimationFrame(baDrawVU);
+    [[rmsL, baPeakL], [rmsR, baPeakR]].forEach(([lvl, peak], i) => {
+        const y = i * (ch + gap);
+        // Track
+        ctx.fillStyle = 'rgba(255,255,255,0.05)';
+        ctx.fillRect(0, y, W, ch);
+        // Level bar
+        const gr = ctx.createLinearGradient(0, 0, W, 0);
+        gr.addColorStop(0, '#10b981'); gr.addColorStop(0.65, '#f59e0b'); gr.addColorStop(1, '#ef4444');
+        ctx.fillStyle = gr;
+        ctx.fillRect(0, y, W * lvl, ch);
+        // Peak marker
+        const px = Math.max(0, W * peak - 2);
+        ctx.fillStyle = peak > 0.9 ? '#ef4444' : 'rgba(255,255,255,0.75)';
+        ctx.fillRect(px, y, 2, ch);
+        // Channel label
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.font = `${Math.round(ch * 0.7)}px monospace`;
+        ctx.fillText(i === 0 ? 'L' : 'R', 4, y + ch * 0.8);
+    });
 }
 
-function baClearVU() {
+function baDrawSpectrum() {
     const canvas = document.getElementById('ba-vu');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'rgba(255,255,255,0.05)';
-    ctx.roundRect(0, 0, canvas.width, canvas.height, 4);
-    ctx.fill();
+    const W = canvas.width, H = canvas.height;
+
+    const fd = new Uint8Array(baAnalyser.frequencyBinCount);
+    baAnalyser.getByteFrequencyData(fd);
+
+    ctx.clearRect(0, 0, W, H);
+    // Show ~0–16kHz (first 1/3 of bins at 48kHz)
+    const bins = Math.min(Math.floor(fd.length / 3), W);
+    const bw   = W / bins;
+    for (let i = 0; i < bins; i++) {
+        const v  = fd[i] / 255;
+        const bh = v * H;
+        // bass (blue) → mid (green) → treble (amber)
+        const hue = 220 - (i / bins) * 160;
+        ctx.fillStyle = `hsla(${hue},80%,55%,${0.4 + v * 0.6})`;
+        ctx.fillRect(i * bw, H - bh, Math.max(1, bw - 0.5), bh);
+    }
+    // Frequency labels
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.font = '10px monospace';
+    ['100Hz','1kHz','4kHz','8kHz','16kHz'].forEach((lbl, i, arr) => {
+        const x = (i / (arr.length - 1)) * W;
+        ctx.fillText(lbl, x + 2, H - 3);
+    });
 }
+
+function baClearCanvas() {
+    const c = document.getElementById('ba-vu');
+    if (!c) return;
+    c.getContext('2d').clearRect(0, 0, c.width, c.height);
+}
+
+// ── RTT ping ─────────────────────────────────────────────────
+
+function baPing() {
+    if (!baActive) return;
+    const t0 = performance.now();
+    localSend('time.ping', {}, () => {
+        const rtt = Math.round(performance.now() - t0);
+        const el = document.getElementById('ba-latency');
+        if (el) el.textContent = `${rtt} ms`;
+    });
+}
+
+// ── Init ─────────────────────────────────────────────────────
 
 function baInit() {
     const btn = document.getElementById('ba-btn');
-    if (!btn) return;
-    btn.addEventListener('click', () => baActive ? baStop() : baStart());
+    if (btn) btn.addEventListener('click', () => baActive ? baStop() : baStart());
+
+    const toggle = document.getElementById('ba-viz-toggle');
+    if (toggle) toggle.addEventListener('click', () => {
+        baVizMode = baVizMode === 'vu' ? 'spectrum' : 'vu';
+        toggle.textContent = baVizMode === 'vu' ? 'Spec' : 'VU';
+        toggle.title = baVizMode === 'vu' ? 'Switch to Spectrum' : 'Switch to VU Meter';
+    });
 
     const vol = document.getElementById('ba-volume');
-    if (vol) {
-        vol.addEventListener('input', () => {
-            if (baGain) baGain.gain.value = parseFloat(vol.value);
-            document.getElementById('ba-vol-val').textContent = Math.round(vol.value * 100) + '%';
-        });
-    }
-    baClearVU();
+    if (vol) vol.addEventListener('input', () => {
+        if (baGain) baGain.gain.value = parseFloat(vol.value);
+        const el = document.getElementById('ba-vol-val');
+        if (el) el.textContent = Math.round(vol.value * 100) + '%';
+    });
+
+    baClearCanvas();
 }
 
 // ── Boot ─────────────────────────────────────────────────────
