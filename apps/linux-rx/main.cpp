@@ -110,7 +110,15 @@ int main(int argc, char** argv) {
         else if (a == "--device")   alsa_dev = next();
         else if (a == "--output") {
             std::string mode = next();
-            use_alsa = (mode == "alsa");
+            if (mode == "alsa") {
+                use_alsa = true;
+            } else if (mode == "pipe") {
+                use_alsa = false;
+            } else {
+                fprintf(stderr, "[rx] Unknown --output mode '%s'; expected 'alsa' or 'pipe'\n",
+                        mode.c_str());
+                return 1;
+            }
         }
         else if (a == "--help") {
             fprintf(stdout,
