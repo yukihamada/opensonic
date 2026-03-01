@@ -159,6 +159,7 @@ struct SettingsView: View {
         multicastGroup = tempMulticastGroup.isEmpty ? "239.69.0.1" : tempMulticastGroup
         port = Int(tempPort) ?? 5004
         channels = tempChannels
+        channel = tempChannel.isEmpty ? "soluna" : tempChannel
 
         // Apply to receiver
         receiver.multicastGroup = multicastGroup
