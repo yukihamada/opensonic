@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soluna — セットアップガイド</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        /* Guide-specific overrides */
+        .guide-wrap {
+            max-width: 740px;
+            margin: 0 auto;
+            padding: 0 16px 80px;
+        }
+        .guide-hero {
+            text-align: center;
+            padding: 48px 0 32px;
+        }
+        .guide-hero .logo {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+        .guide-hero p {
+            color: var(--text2);
+            margin-top: 10px;
+            font-size: 15px;
+            max-width: 480px;
+            margin-inline: auto;
+            line-height: 1.7;
+        }
+
+        /* Section */
+        .guide-section {
+            margin-top: 40px;
+        }
+        .guide-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text3);
+            margin-bottom: 14px;
+        }
+
+        /* Step cards */
+        .steps {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .step {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px 20px;
+            position: relative;
+        }
+        .step-num {
+            flex-shrink: 0;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--blue);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 1px;
+        }
+        .step-body h3 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+        .step-body p {
+            font-size: 13px;
+            color: var(--text2);
+            line-height: 1.65;
+            margin-bottom: 10px;
+        }
+        .step-body p:last-child { margin-bottom: 0; }
+        .step-body code {
+            display: block;
+            background: var(--s3);
+            border: 1px solid var(--border);
+            border-radius: var(--r-xs);
+            padding: 10px 14px;
+            font-size: 12px;
+            color: #a8d8b0;
+            white-space: pre;
+            overflow-x: auto;
+            margin-top: 8px;
+            line-height: 1.7;
+        }
+        .step-body .note {
+            display: flex;
+            gap: 8px;
+            background: rgba(245,158,11,0.08);
+            border: 1px solid rgba(245,158,11,0.2);
+            border-radius: var(--r-xs);
+            padding: 10px 12px;
+            font-size: 12px;
+            color: var(--amber);
+            margin-top: 10px;
+            line-height: 1.6;
+        }
+
+        /* Platform pills */
+        .platform-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        .platform-card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .platform-card .pc-icon {
+            font-size: 24px;
+        }
+        .platform-card h3 {
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .platform-card p {
+            font-size: 12px;
+            color: var(--text2);
+            line-height: 1.6;
+        }
+        .platform-card .pc-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 20px;
+            margin-top: 4px;
+            width: fit-content;
+        }
+        .pc-badge.tx { background: rgba(59,130,246,0.15); color: #60a5fa; }
+        .pc-badge.rx { background: rgba(16,185,129,0.15); color: #34d399; }
+
+        /* Troubleshoot accordion */
+        .trouble-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        details.trouble {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        details.trouble summary {
+            padding: 14px 18px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none;
+        }
+        details.trouble summary::after {
+            content: '▾';
+            font-size: 12px;
+            color: var(--text3);
+            transition: transform 0.2s;
+        }
+        details.trouble[open] summary::after { transform: rotate(-180deg); }
+        details.trouble summary::-webkit-details-marker { display: none; }
+        .trouble-body {
+            padding: 0 18px 16px;
+            font-size: 13px;
+            color: var(--text2);
+            line-height: 1.7;
+        }
+        .trouble-body code {
+            display: block;
+            background: var(--s3);
+            border: 1px solid var(--border);
+            border-radius: var(--r-xs);
+            padding: 9px 12px;
+            font-size: 12px;
+            color: #a8d8b0;
+            white-space: pre;
+            overflow-x: auto;
+            margin-top: 8px;
+        }
+
+        /* Architecture diagram */
+        .arch-diagram {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12px;
+            color: var(--text2);
+            line-height: 2;
+            overflow-x: auto;
+        }
+        .arch-diagram .hl { color: var(--blue); }
+        .arch-diagram .grn { color: var(--green); }
+        .arch-diagram .amb { color: var(--amber); }
+
+        /* Inline code */
+        code.inline {
+            background: var(--s3);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--text);
+        }
+
+        /* Back button */
+        .guide-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text3);
+            font-size: 13px;
+            text-decoration: none;
+            padding: 8px 0;
+        }
+        .guide-back:hover { color: var(--text2); }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <span class="logo">◈ Soluna</span>
+        </div>
+        <div class="header-right">
+            <a href="/" class="guide-back">← ダッシュボード</a>
+        </div>
+    </header>
+
+    <div class="guide-wrap">
+
+        <!-- Hero -->
+        <div class="guide-hero">
+            <div class="logo">セットアップガイド</div>
+            <p>Mac の音声をネットワーク経由で iPhone・Raspberry Pi・ブラウザにリアルタイム配信。このページを読めば 5 分で動きます。</p>
+        </div>
+
+        <!-- Architecture -->
+        <div class="guide-section">
+            <div class="guide-section-title">仕組み</div>
+            <div class="arch-diagram">
+<span class="hl">Mac</span> のシステム出力を <span class="hl">Soluna</span>（仮想デバイス）に変えるだけ
+                ↓
+<span class="hl">Soluna.driver</span>  ← CoreAudio HAL プラグイン
+                ↓ 共有メモリ
+<span class="hl">solunad</span> ─────────────────────────────────────┐
+   │                                              │
+   ├── <span class="grn">UDP マルチキャスト</span> → iPhone / Raspberry Pi │
+   ├── <span class="grn">WebSocket</span>        → ブラウザ (このページ)  │
+   └── <span class="grn">CoreAudio 出力</span>   → Mac スピーカー同時再生 │
+                                                   │
+              <span class="amb">Web UI</span> http://localhost:8400 ◄──────┘</div>
+        </div>
+
+        <!-- Platforms -->
+        <div class="guide-section">
+            <div class="guide-section-title">対応プラットフォーム</div>
+            <div class="platform-grid">
+                <div class="platform-card">
+                    <div class="pc-icon">💻</div>
+                    <h3>Mac</h3>
+                    <p>Soluna 仮想デバイス経由で全システム音声を配信。Mac スピーカーでも同時再生。</p>
+                    <span class="pc-badge tx">TX 送信</span>
+                </div>
+                <div class="platform-card">
+                    <div class="pc-icon">📱</div>
+                    <h3>iPhone</h3>
+                    <p>Soluna Receiver アプリで受信。Bonjour で自動検出、音量・遅延を個別調整。</p>
+                    <span class="pc-badge rx">RX 受信</span>
+                </div>
+                <div class="platform-card">
+                    <div class="pc-icon">🥧</div>
+                    <h3>Raspberry Pi</h3>
+                    <p><code class="inline">soluna-rx</code> を起動するだけ。ALSA 対応 DAC で高音質再生。</p>
+                    <span class="pc-badge rx">RX 受信</span>
+                </div>
+                <div class="platform-card">
+                    <div class="pc-icon">🌐</div>
+                    <h3>ブラウザ</h3>
+                    <p>このダッシュボードの「Browser」タブから即座に試聴。インストール不要。</p>
+                    <span class="pc-badge rx">RX 受信</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mac setup -->
+        <div class="guide-section">
+            <div class="guide-section-title">Mac セットアップ</div>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <h3>ビルド</h3>
+                        <p>Xcode Command Line Tools と CMake が必要です。</p>
+                        <code>git clone https://github.com/yukihamada/opensonic.git
+cd opensonic
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)</code>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <h3>Soluna ドライバのインストール</h3>
+                        <p>仮想オーディオデバイスを macOS に登録します。</p>
+                        <code>bash apps/plugin/install.sh</code>
+                        <div class="note">⚠ インストール後、<strong>システム設定 → プライバシーとセキュリティ</strong> に「許可」ボタンが出ます。クリック後に <code>sudo killall coreaudiod</code> を実行してください。</div>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-body">
+                        <h3>出力先を "Soluna" に変更</h3>
+                        <p><strong>システム設定 → サウンド → 出力</strong> で <strong>Soluna</strong> を選択。</p>
+                        <p>これだけで、再生する音がすべて Soluna 経由になります。</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">4</div>
+                    <div class="step-body">
+                        <h3>solunad を起動</h3>
+                        <p>ターミナルから起動、または <strong>自動起動（推奨）</strong> に設定します。</p>
+                        <code># 手動で起動（テスト用）
+./build/solunad --tx --device soluna --speaker ""
+
+# Mac ログイン時に自動起動（推奨）
+bash apps/daemon/install-service.sh</code>
+                        <div class="note">起動後は <strong>http://localhost:8400</strong> でダッシュボードにアクセスできます。</div>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">5</div>
+                    <div class="step-body">
+                        <h3>（任意）Menu bar アプリ</h3>
+                        <p>音量・遅延・接続状態を Menu bar からさっと確認できます。</p>
+                        <code>cd apps/mac && swift build -c release</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- iPhone setup -->
+        <div class="guide-section">
+            <div class="guide-section-title">iPhone セットアップ</div>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <h3>アプリをインストール</h3>
+                        <p>Xcode で <code class="inline">apps/ios/SolunaReceiver.xcodeproj</code> を開いてビルド、または TestFlight で配布。</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <h3>自動接続（Bonjour）</h3>
+                        <p>Mac と同じ Wi-Fi に接続していれば、<strong>起動するだけで自動検出</strong>されます。<br>「Speakers」欄に Mac が表示されたら完了。</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-body">
+                        <h3>手動で接続する場合</h3>
+                        <p>「＋」ボタンから Mac の IP アドレス（例: <code class="inline">192.168.1.10</code>）を入力してください。</p>
+                        <p>Mac の IP は <strong>システム設定 → Wi-Fi → 詳細 → TCP/IP</strong> で確認できます。</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">4</div>
+                    <div class="step-body">
+                        <h3>遅延の自動同期</h3>
+                        <p>接続直後に自動でレイテンシ計測が走り、Mac スピーカーと iPhone の音がぴったり合います。<br>ズレを感じる場合は「Global Delay」スライダーで手動調整してください。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RPi setup -->
+        <div class="guide-section">
+            <div class="guide-section-title">Raspberry Pi セットアップ</div>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <h3>ワンコマンドインストール</h3>
+                        <p>RPi 上でインストールスクリプトを実行（soluna-rx バイナリが必要）。</p>
+                        <code>sudo bash deploy/rpi/install-rx.sh</code>
+                        <p>自動で systemd サービス登録、起動まで行います。</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <h3>手動ビルド（Linux 環境）</h3>
+                        <code>cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -- soluna-rx
+sudo cp build/soluna-rx /usr/local/bin/</code>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-body">
+                        <h3>起動・確認</h3>
+                        <code># ALSA デフォルト出力
+soluna-rx --output alsa
+
+# パイプ出力 → aplay に渡す
+soluna-rx --output pipe | aplay -f S16_LE -r 48000 -c 2
+
+# サービス状態確認
+systemctl status soluna-rx</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Browser -->
+        <div class="guide-section">
+            <div class="guide-section-title">ブラウザで試聴する</div>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <h3>Dashboard → "Browser" タブ</h3>
+                        <p><a href="/">ダッシュボード</a>の下部ナビゲーションから <strong>Browser</strong> を選択。</p>
+                        <p>▶ ボタンを押すと即座に試聴開始。インストール不要です。</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <h3>別のデバイスから接続</h3>
+                        <p>Mac の IP アドレスを使って同じネットワーク内の任意のブラウザから開けます。</p>
+                        <code>http://&lt;MacのIPアドレス&gt;:8400</code>
+                        <div class="note">⚠ iOS Safari はバックグラウンドタブでオーディオが停止する場合があります。画面を表示したままにしてください。</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Troubleshooting -->
+        <div class="guide-section">
+            <div class="guide-section-title">トラブルシューティング</div>
+            <div class="trouble-list">
+                <details class="trouble">
+                    <summary>「Soluna」がサウンド設定に表示されない</summary>
+                    <div class="trouble-body">
+                        ドライバの再インストールと CoreAudio の再起動で解消することがほとんどです。
+                        <code>bash apps/plugin/install.sh
+# システム設定 → プライバシーとセキュリティ で「許可」をクリック後
+sudo killall coreaudiod</code>
+                    </div>
+                </details>
+                <details class="trouble">
+                    <summary>音が出ない（solunad 起動済みなのに）</summary>
+                    <div class="trouble-body">
+                        solunad を先に起動してから音楽を再生してください。SHM ファイルが存在しない場合、ドライバが 2〜3 秒ごとに再接続を試みます。
+                        <code># SHM ファイルを確認
+ls -la $TMPDIR/soluna_audio.shm
+
+# ログでエラーを確認
+tail -f /tmp/solunad.log</code>
+                    </div>
+                </details>
+                <details class="trouble">
+                    <summary>Mac 再起動後に自動起動しない</summary>
+                    <div class="trouble-body">
+                        launchd の登録状態を確認します。
+                        <code>launchctl print gui/$UID/io.soluna.daemon
+
+# 再インストール
+bash apps/daemon/install-service.sh</code>
+                    </div>
+                </details>
+                <details class="trouble">
+                    <summary>iPhone で音がプツプツ切れる</summary>
+                    <div class="trouble-body">
+                        バッファを増やすことで改善します。iPhone アプリの Settings → Buffer Size を 60〜120ms に上げてください。<br>
+                        または「Global Delay」スライダーを 60ms 以上に設定してみてください。
+                    </div>
+                </details>
+                <details class="trouble">
+                    <summary>Raspberry Pi でドロップアウトが発生する</summary>
+                    <div class="trouble-body">
+                        リアルタイムスケジューリング権限を付与すると大幅に改善します。
+                        <code>sudo setcap cap_sys_nice=ep /usr/local/bin/soluna-rx
+echo 'kernel.sched_rt_runtime_us=-1' | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p</code>
+                    </div>
+                </details>
+                <details class="trouble">
+                    <summary>ブラウザで音が遅れる / 途切れる</summary>
+                    <div class="trouble-body">
+                        ブラウザ版は AudioWorklet を使った低遅延設計ですが、CPU 負荷が高い場合に途切れることがあります。Controls の Buffer 値（ms）が安定している場合は正常動作中です。「Underruns: 0」であれば問題ありません。
+                    </div>
+                </details>
+                <details class="trouble">
+                    <summary>Mac と iPhone の音がズレる</summary>
+                    <div class="trouble-body">
+                        iPhone アプリが接続時に RTT を自動計測して遅延を合わせます。大きくズレる場合は「Global Delay」スライダーで手動調整してください。目安: 同一 Wi-Fi で 30〜60ms、ルーター越えで 80〜150ms。
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <!-- launchctl cheatsheet -->
+        <div class="guide-section">
+            <div class="guide-section-title">launchd コマンドチートシート</div>
+            <div class="step">
+                <div class="step-body" style="width:100%">
+                    <code>launchctl print gui/$UID/io.soluna.daemon   # 状態確認
+launchctl stop  gui/$UID/io.soluna.daemon   # 停止
+launchctl start gui/$UID/io.soluna.daemon   # 開始
+launchctl bootout gui/$UID/io.soluna.daemon # アンインストール
+
+tail -f /tmp/solunad.log                    # ログ確認</code>
+                </div>
+            </div>
+        </div>
+
+        <!-- WebSocket API -->
+        <div class="guide-section">
+            <div class="guide-section-title">WebSocket コマンドリファレンス</div>
+            <div class="step">
+                <div class="step-body" style="width:100%">
+                    <p><code class="inline">ws://localhost:8400/ws</code> に接続して JSON コマンドを送れます。</p>
+                    <code># モニター音量を 80% に設定
+{"id":1,"command":"monitor.set_volume","volume":0.8}
+
+# バッファを 40ms に設定
+{"id":2,"command":"monitor.set_buffer","ms":40}
+
+# 遅延を 50ms に設定
+{"id":3,"command":"monitor.set_delay","ms":50}
+
+# 受信側の統計取得
+{"id":4,"command":"rx.stats"}
+
+# ブラウザオーディオ開始
+{"id":5,"command":"audio.subscribe"}
+
+# ping / RTT 計測
+{"id":6,"command":"time.ping"}</code>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="margin-top:48px;text-align:center;font-size:12px;color:var(--text3)">
+            <p>Soluna — MIT License &nbsp;·&nbsp; <a href="https://github.com/yukihamada/opensonic" style="color:var(--text3)">GitHub</a> &nbsp;·&nbsp; <a href="/" style="color:var(--text3)">← ダッシュボード</a></p>
+        </div>
+
+    </div>
+</body>
+</html>

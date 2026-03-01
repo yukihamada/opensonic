@@ -1,10 +1,10 @@
 version: "Apple Swift version 6.0.3 (swiftlang-6.0.3.1.10 clang-1600.0.30.1)"
 options: "a53ec4cb0dacb97e90e703f90beadcbe4fe269ff949d7b7fae69036f843deb22"
-build_start_time: [1772191325, 924021000]
-build_end_time: [1772191333, 107129000]
+build_start_time: [1772333648, 364524000]
+build_end_time: [1772333670, 557420000]
 inputs:
   ? "/Users/yuki/workspace/infra/opensonic/apps/mac/.build/arm64-apple-macosx/release/SolunaControl.build/DerivedSources/resource_bundle_accessor.swift"
   : [1772191017, 578910569]
   "/Users/yuki/workspace/infra/opensonic/apps/mac/Sources/SolunaControl/DaemonClient.swift": [1772191317, 178403589]
-  "/Users/yuki/workspace/infra/opensonic/apps/mac/Sources/SolunaControl/MenuContent.swift": [1772101450, 530725027]
+  "/Users/yuki/workspace/infra/opensonic/apps/mac/Sources/SolunaControl/MenuContent.swift": [1772333435, 958217256]
   "/Users/yuki/workspace/infra/opensonic/apps/mac/Sources/SolunaControl/SolunaControlApp.swift": [1772096480, 596420601]
