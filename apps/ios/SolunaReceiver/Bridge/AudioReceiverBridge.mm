@@ -877,6 +877,14 @@ private:
     return _impl ? (SolunaDeviceHealth)_impl->device_health() : SolunaDeviceHealthGood;
 }
 
+- (BOOL)networkDisabled {
+    return _impl ? (BOOL)_impl->is_network_disabled() : NO;
+}
+
+- (void)setNetworkDisabled:(BOOL)disabled {
+    if (_impl) _impl->set_network_disabled((bool)disabled);
+}
+
 - (SolunaReceiverStats *)currentStats {
     if (_impl) {
         auto stats = _impl->stats();
