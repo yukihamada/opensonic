@@ -128,6 +128,19 @@ public:
 
     const Stats& stats() const { return stats_; }
 
+    /// Inject a raw packet from a relay peer (bypasses UDP socket)
+    bool inject_raw_packet(const uint8_t* data, size_t len, pipeline::RingBuffer& ring) {
+        bool is_aes67 = false;
+        if (config_.mode == ReceiveMode::Auto && len >= sizeof(transport::RtpHeader)) {
+            const auto* rtp = reinterpret_cast<const transport::RtpHeader*>(data);
+            is_aes67 = aes67_is_standard_packet(*rtp);
+        } else if (config_.mode == ReceiveMode::AES67) {
+            is_aes67 = true;
+        }
+        if (is_aes67) return receive_aes67_packet(data, len, ring);
+        else          return receive_ostp_packet(data, len, ring);
+    }
+
 private:
     bool receive_ostp_packet(const uint8_t* data, size_t len, pipeline::RingBuffer& ring) {
         transport::RtpHeader rtp;
