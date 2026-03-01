@@ -417,6 +417,52 @@ public:
     }
 
 private:
+    // ── Health tracking helpers (audio-callback thread only) ──────────────
+
+    static uint64_t now_ms_() {
+        using namespace std::chrono;
+        return (uint64_t)duration_cast<milliseconds>(
+            steady_clock::now().time_since_epoch()).count();
+    }
+
+    void record_underrun_now() {
+        uint64_t now = now_ms_();
+        if (health_window_start_ms_ == 0 || now - health_window_start_ms_ >= 30000) {
+            health_window_start_ms_ = now;
+            health_underruns_in_window_ = 0;
+        }
+        health_underruns_in_window_++;
+        last_underrun_ms_ = now;
+
+        int cur = health_.load(std::memory_order_relaxed);
+        if (health_underruns_in_window_ >= 20 && cur < 2) {
+            // Extreme underruns: silence device to prevent noise
+            health_.store(2, std::memory_order_relaxed);
+            health_silenced_.store(true, std::memory_order_relaxed);
+        } else if (health_underruns_in_window_ >= 5 && cur < 1) {
+            // Moderate underruns: stressed — auto-increase buffer 50%, cap at 2000ms
+            health_.store(1, std::memory_order_relaxed);
+            uint32_t cur_frames = target_fill_frames_.load(std::memory_order_relaxed);
+            uint32_t new_frames = std::min(cur_frames + cur_frames / 2, 96000u);
+            target_fill_frames_.store(new_frames, std::memory_order_relaxed);
+        }
+    }
+
+    void maybe_check_recovery() {
+        if (health_.load(std::memory_order_relaxed) == 0) return;
+        if (++recovery_check_counter_ < 200) return;  // ~1 s at 5ms/callback
+        recovery_check_counter_ = 0;
+        if (last_underrun_ms_ == 0) return;
+        if (now_ms_() - last_underrun_ms_ >= 60000) {
+            // 60 seconds clean: restore normal operation
+            health_.store(0, std::memory_order_relaxed);
+            health_silenced_.store(false, std::memory_order_relaxed);
+            health_window_start_ms_ = 0;
+            health_underruns_in_window_ = 0;
+            last_underrun_ms_ = 0;
+        }
+    }
+
     void receive_loop() {
         // ONLY writes to ring_buffer_ — never reads (RingBuffer is SPSC).
         // Drain happens exclusively in audio_callback to avoid data race.
