@@ -45,6 +45,18 @@ struct SettingsView: View {
                     }
                 }
 
+                Section(header: Text("Channel"),
+                        footer: Text("Nearby devices on the same channel share audio automatically.")) {
+                    HStack {
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                            .foregroundColor(.purple)
+                            .frame(width: 28)
+                        TextField("Channel name", text: $tempChannel)
+                            .autocapitalization(.none)
+                            .autocorrectionDisabled()
+                    }
+                }
+
                 Section(header: Text("Audio")) {
                     Picker(selection: $tempChannels, label:
                         HStack {
