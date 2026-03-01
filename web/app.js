@@ -1105,3 +1105,7 @@ function baInit() {
 initCards();
 localConnect();
 baInit();
+
+// Stop browser audio on page unload to prevent AudioContext hanging
+window.addEventListener('pagehide', () => { if (baActive) baStop(); });
+window.addEventListener('beforeunload', () => { if (baActive) baStop(); });
