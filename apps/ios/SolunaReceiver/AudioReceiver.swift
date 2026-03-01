@@ -106,15 +106,22 @@ final class AudioReceiver: ObservableObject {
         receiver.delegate = delegateHandler
     }
 
-    /// Start receiving audio
+    /// Start receiving audio (and P2P relay discovery)
     func start() {
         errorMessage = nil
         _ = receiver.start()
+        PeerRelayManager.shared.start()
+        // Evaluate relay role after 6 seconds of data
+        Task {
+            try? await Task.sleep(for: .seconds(6))
+            await evaluateRelayRole()
+        }
     }
 
     /// Stop receiving audio
     func stop() {
         receiver.stop()
+        PeerRelayManager.shared.stop()
     }
 
     /// Toggle play/stop
