@@ -2349,11 +2349,12 @@ static int run_rx(DaemonConfig cfg) {
         if (prev_good_buf.size() < samples) prev_good_buf.resize(samples);
 
         // Wait for prefill before starting playback to absorb jitter
-        // Must accumulate enough for at least 2 ALSA callbacks worth of data
+        // Must fill to buf_target so buffer can absorb worst-case jitter swings
         if (!prefilled.load()) {
-            size_t prefill_frames = std::max(
-                static_cast<size_t>(kFramesPerPacket) * kPrefillPackets,
-                static_cast<size_t>(frame_count) * 2);
+            size_t prefill_frames = static_cast<size_t>(
+                g_buf_target_ms.load()) * (cfg.sample_rate / 1000u);
+            if (prefill_frames < static_cast<size_t>(frame_count) * 3)
+                prefill_frames = static_cast<size_t>(frame_count) * 3;
             if (ring.available_read() < prefill_frames) {
                 std::memset(buffer, 0, samples * sizeof(float));
                 return;
@@ -2587,14 +2588,15 @@ static int run_rx(DaemonConfig cfg) {
             }
         }
 
-        // Trim ring buffer to target latency (drain excess frames)
-        // Hysteresis: only trim when > 2× target, drain to 1.5× target
-        // This keeps a jitter absorption margin instead of draining everything
+        // Trim ring buffer only to prevent overflow (safety valve)
+        // For WiFi: let the buffer float freely to absorb jitter.
+        // Only drain when approaching ring capacity (>75%).
         {
             size_t avail = ring.available_read();
+            size_t cap = ring.capacity();
+            size_t trim_threshold = cap * 3 / 4; // 75% of capacity
             uint32_t target = g_buf_target_ms.load() * (cfg.sample_rate / 1000u);
-            uint32_t trim_threshold = target * 2;
-            uint32_t trim_target = target + target / 2; // 1.5× target
+            size_t trim_target = cap / 2; // drain to 50% of capacity
             if (avail > trim_threshold) {
                 static thread_local std::vector<int32_t> drain_buf(512);
                 size_t excess = avail - trim_target;
