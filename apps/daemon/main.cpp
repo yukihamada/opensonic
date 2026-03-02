@@ -1061,7 +1061,7 @@ static LatencyParams get_latency_params(LatencyProfile profile) {
     case LatencyProfile::LowLatency:
         return {48, soluna::PacketTier::Standard, 2, 1, 2, 5, 1, "low-latency"};
     case LatencyProfile::WiFi:
-        return {96, soluna::PacketTier::WiFi, 3, 2, 8, 10, 5, "wifi-latency"};
+        return {96, soluna::PacketTier::WiFi, 4, 1, 12, 12, 5, "wifi-latency"};
     default:
         return {240, soluna::PacketTier::LAN, 4, 2, 20, 20, 10, "default"};
     }
@@ -2354,8 +2354,8 @@ static int run_rx(DaemonConfig cfg) {
         }
 
         size_t read = ring.read(s24_buf.data(), frame_count);
-        if (read < frame_count) {
-            // Underrun: use previous good buffer with fade-out instead of silence
+        if (read == 0) {
+            // Complete underrun: use previous good buffer with fade-out
             consecutive_underruns++;
             if (rx_had_audio && consecutive_underruns <= 3) {
                 float fade_base = 1.0f - 0.3f * (consecutive_underruns - 1);
@@ -2366,14 +2366,29 @@ static int run_rx(DaemonConfig cfg) {
             } else {
                 std::memset(buffer, 0, samples * sizeof(float));
             }
-            if (consecutive_underruns > 5) prefilled.store(false);
+            if (consecutive_underruns > 8) prefilled.store(false);
             g_plc_frames.fetch_add(frame_count, std::memory_order_relaxed);
+        } else if (read < frame_count) {
+            // Partial read: convert available data, crossfade-fill the rest from prev
+            consecutive_underruns = 0;
+            size_t got_samples = read * cfg.channels;
+            size_t remain_samples = samples - got_samples;
+            s24_to_float(s24_buf.data(), buffer, got_samples);
+            if (rx_had_audio) {
+                // Crossfade tail from previous good buffer
+                for (size_t i = 0; i < remain_samples; i++) {
+                    float t = (float)i / (float)remain_samples;
+                    size_t idx = got_samples + i;
+                    float prev_val = (idx < prev_good_buf.size()) ? prev_good_buf[idx] : 0.0f;
+                    buffer[idx] = buffer[got_samples - cfg.channels + (i % cfg.channels)] * (1.0f - t)
+                                + prev_val * t;
+                }
+            } else {
+                std::memset(buffer + got_samples, 0, remain_samples * sizeof(float));
+            }
+            g_plc_frames.fetch_add(frame_count - read, std::memory_order_relaxed);
         } else {
             consecutive_underruns = 0;
-            if (ring.available_read() < kFramesPerPacket * kRefillThreshold) {
-                // Buffer running low — re-prefill to avoid imminent dropout
-                prefilled.store(false);
-            }
             s24_to_float(s24_buf.data(), buffer, samples);
         }
 
@@ -2564,12 +2579,16 @@ static int run_rx(DaemonConfig cfg) {
         }
 
         // Trim ring buffer to target latency (drain excess frames)
+        // Hysteresis: only trim when > 2× target, drain to 1.5× target
+        // This keeps a jitter absorption margin instead of draining everything
         {
             size_t avail = ring.available_read();
             uint32_t target = g_buf_target_ms.load() * (cfg.sample_rate / 1000u);
-            if (avail > target) {
+            uint32_t trim_threshold = target * 2;
+            uint32_t trim_target = target + target / 2; // 1.5× target
+            if (avail > trim_threshold) {
                 static thread_local std::vector<int32_t> drain_buf(512);
-                size_t excess = avail - target;
+                size_t excess = avail - trim_target;
                 while (excess > 0) {
                     size_t chunk = std::min(excess, drain_buf.size() / cfg.channels);
                     if (chunk == 0) break;
