@@ -122,7 +122,9 @@ private:
         snd_pcm_uframes_t period = config.frames_per_buffer;
         snd_pcm_hw_params_set_period_size_near(handle_, params, &period, nullptr);
 
-        snd_pcm_uframes_t buffer_size = period * 4;
+        // Low-latency: period<=48 (1ms) → double-buffer; otherwise quad-buffer
+        unsigned int buf_mult = (period <= 48) ? 2 : 4;
+        snd_pcm_uframes_t buffer_size = period * buf_mult;
         snd_pcm_hw_params_set_buffer_size_near(handle_, params, &buffer_size);
 
         err = snd_pcm_hw_params(handle_, params);
@@ -132,6 +134,18 @@ private:
             handle_ = nullptr;
             return false;
         }
+
+        // Low-latency: start playback immediately (start_threshold = 1 period)
+        if (stream == SND_PCM_STREAM_PLAYBACK && period <= 48) {
+            snd_pcm_sw_params_t* sw_params;
+            snd_pcm_sw_params_alloca(&sw_params);
+            snd_pcm_sw_params_current(handle_, sw_params);
+            snd_pcm_sw_params_set_start_threshold(handle_, sw_params, period);
+            snd_pcm_sw_params(handle_, sw_params);
+        }
+
+        fprintf(stderr, "ALSA: period=%lu buffer=%lu (%ux) on '%s'\n",
+                (unsigned long)period, (unsigned long)buffer_size, buf_mult, dev);
 
         return true;
     }

@@ -16,6 +16,7 @@
         <string>auto</string>
         <string>--channels</string>
         <string>2</string>
+        <string>--low-latency</string>
     </array>
 
     <key>RunAtLoad</key>

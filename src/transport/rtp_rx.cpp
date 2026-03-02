@@ -117,7 +117,7 @@ private:
         const uint8_t* payload = nullptr;
         size_t payload_size = 0;
 
-        if (!ostp_parse_packet(data, len, rtp, ostp, payload, payload_size)) {
+        if (ostp_parse_packet(data, len, rtp, ostp, payload, payload_size) != 0) {
             return false;
         }
 

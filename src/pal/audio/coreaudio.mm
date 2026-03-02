@@ -149,28 +149,32 @@ private:
         conversion_buffer_.resize(config.frames_per_buffer * config.channels);
 
 #if TARGET_OS_MAC && !TARGET_OS_IPHONE
-        // Check microphone permission for capture mode on macOS
+        // Check microphone permission for capture mode on macOS.
+        // Wrap in @autoreleasepool for thread safety (background threads
+        // may not have an autorelease pool).
         if (capture) {
-            if (@available(macOS 10.14, *)) {
-                AVAuthorizationStatus auth = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
-                if (auth == AVAuthorizationStatusNotDetermined) {
-                    fprintf(stderr, "CoreAudio: Requesting microphone access...\n");
-                    dispatch_semaphore_t sema = dispatch_semaphore_create(0);
-                    [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
-                        completionHandler:^(BOOL granted) {
-                            (void)granted;
-                            dispatch_semaphore_signal(sema);
-                        }];
-                    dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
-                    auth = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+            @autoreleasepool {
+                if (@available(macOS 10.14, *)) {
+                    AVAuthorizationStatus auth = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+                    if (auth == AVAuthorizationStatusNotDetermined) {
+                        fprintf(stderr, "CoreAudio: Requesting microphone access...\n");
+                        dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+                        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
+                            completionHandler:^(BOOL granted) {
+                                (void)granted;
+                                dispatch_semaphore_signal(sema);
+                            }];
+                        dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+                        auth = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+                    }
+                    if (auth != AVAuthorizationStatusAuthorized) {
+                        fprintf(stderr, "CoreAudio: Microphone access DENIED (status=%d).\n"
+                            "  Grant access: System Settings → Privacy & Security → Microphone → Terminal\n",
+                            (int)auth);
+                        return false;
+                    }
+                    fprintf(stderr, "CoreAudio: Microphone access granted\n");
                 }
-                if (auth != AVAuthorizationStatusAuthorized) {
-                    fprintf(stderr, "CoreAudio: Microphone access DENIED (status=%d).\n"
-                        "  Grant access: System Settings → Privacy & Security → Microphone → Terminal\n",
-                        (int)auth);
-                    return false;
-                }
-                fprintf(stderr, "CoreAudio: Microphone access granted\n");
             }
         }
 #endif
@@ -272,6 +276,17 @@ private:
                 AudioObjectGetPropertyData(kAudioObjectSystemObject, &addr, 0, nullptr, &sz, &dev_id);
             }
 
+            if (dev_id == 0 && capture) {
+                // For capture with no explicit device: use DefaultInputDevice
+                AudioObjectPropertyAddress addr = {
+                    kAudioHardwarePropertyDefaultInputDevice,
+                    kAudioObjectPropertyScopeGlobal,
+                    kAudioObjectPropertyElementMain
+                };
+                UInt32 sz = sizeof(dev_id);
+                AudioObjectGetPropertyData(kAudioObjectSystemObject, &addr, 0, nullptr, &sz, &dev_id);
+            }
+
             if (dev_id != 0) {
                 status = AudioUnitSetProperty(audio_unit_,
                                               kAudioOutputUnitProperty_CurrentDevice,
@@ -330,22 +345,32 @@ private:
         }
 
 #if TARGET_OS_MAC && !TARGET_OS_IPHONE
-        // On macOS, also set the hardware buffer size on the device
-        if (!device_id.empty() && device_id != "default") {
-            AudioDeviceID dev_id = 0;
-            try {
-                dev_id = static_cast<AudioDeviceID>(std::stoul(device_id));
-            } catch (const std::exception&) {
-                dev_id = find_device_by_name(device_id, capture);
+        // On macOS, set the hardware buffer size on the device.
+        // For explicitly named devices, look up by name/ID.
+        // For capture with default device, query the AudioUnit's resolved device.
+        {
+            AudioDeviceID hw_dev = 0;
+            if (!device_id.empty() && device_id != "default") {
+                try {
+                    hw_dev = static_cast<AudioDeviceID>(std::stoul(device_id));
+                } catch (const std::exception&) {
+                    hw_dev = find_device_by_name(device_id, capture);
+                }
+            } else if (capture) {
+                // For default capture (e.g. auto-tune mic), query the resolved device
+                UInt32 hw_sz = sizeof(hw_dev);
+                AudioUnitGetProperty(audio_unit_,
+                    kAudioOutputUnitProperty_CurrentDevice,
+                    kAudioUnitScope_Global, 0, &hw_dev, &hw_sz);
             }
-            if (dev_id != 0) {
+            if (hw_dev != 0) {
                 UInt32 hw_buf = config.frames_per_buffer;
                 AudioObjectPropertyAddress buf_addr = {
                     kAudioDevicePropertyBufferFrameSize,
                     kAudioObjectPropertyScopeGlobal,
                     kAudioObjectPropertyElementMain
                 };
-                AudioObjectSetPropertyData(dev_id, &buf_addr,
+                AudioObjectSetPropertyData(hw_dev, &buf_addr,
                     0, nullptr, sizeof(hw_buf), &hw_buf);
             }
         }
@@ -488,8 +513,7 @@ private:
                                           inNumberFrames,
                                           &buffer_list);
         if (status != noErr) {
-            static int err_count = 0;
-            if (err_count++ < 5) {
+            if (device->render_err_count_++ < 5) {
                 fprintf(stderr, "CoreAudio: AudioUnitRender error: %d\n", (int)status);
             }
             return status;
@@ -509,6 +533,7 @@ private:
     std::atomic<bool> running_{false};
     bool is_capture_ = false;
     std::vector<float> conversion_buffer_;
+    int render_err_count_ = 0;
 };
 
 std::vector<AudioDeviceInfo> AudioDevice::enumerate() {

@@ -24,7 +24,9 @@ function localConnect() {
     localWs.onopen  = () => {
         localRetryDelay = 1000;
         setBadge('connected');
-        pollTxStats(); initMonitor(); startSyncPolling();
+        pollTxStats(); initMonitor(); startSyncPolling(); pollSysVol(); setInterval(pollSysVol, 2000);
+        pollInputDevices(); pollInputStats(); setInterval(pollInputStats, 2000);
+        initTune();
         if (baActive) baSubscribe();
     };
     localWs.onclose = () => {
@@ -258,6 +260,198 @@ function buildMonitorCard() {
     });
 
     return el;
+}
+
+// ── System Volume card (Mac output volume) ──────────────────────
+let sysVolState = { volume: -1, muted: false, timer: null };
+
+function buildSystemVolumeCard() {
+    const el = document.createElement('div');
+    el.id = 'sysvol-card';
+    el.className = 'mon-card';
+    el.style.display = 'none';
+    el.innerHTML = `
+<div class="mon-header">
+  <div class="mon-title">
+    <span class="mon-dot running" id="sysvol-dot"></span>
+    Mac Volume
+  </div>
+  <div class="mon-actions">
+    <button class="btn-mute" id="sysvol-mute-btn">🔊</button>
+  </div>
+</div>
+<div class="mon-body">
+  <div class="vol-row">
+    <span class="vol-label-txt">Vol</span>
+    <input type="range" min="0" max="100" value="50" class="vol-slider" id="sysvol-sl">
+    <span class="vol-pct" id="sysvol-pct">50%</span>
+  </div>
+</div>`;
+
+    const $sl = el.querySelector('#sysvol-sl');
+    $sl.addEventListener('input', () => {
+        const vol = $sl.value / 100;
+        sysVolState.volume = vol;
+        document.getElementById('sysvol-pct').textContent = $sl.value + '%';
+        updateSliderTrack($sl, vol);
+        clearTimeout(sysVolState.timer);
+        sysVolState.timer = setTimeout(() => localSend('system.set_volume', { volume: vol }), 50);
+    });
+    updateSliderTrack($sl, 0.5);
+
+    el.querySelector('#sysvol-mute-btn').addEventListener('click', () => {
+        sysVolState.muted = !sysVolState.muted;
+        localSend('system.set_mute', { muted: sysVolState.muted });
+        patchSysVolCard();
+    });
+
+    return el;
+}
+
+function pollSysVol() {
+    localSend('system.volume', {}, (resp) => {
+        if (!resp.success || !resp.data) return;
+        try {
+            const d = JSON.parse(resp.data);
+            if (d.volume < 0) return; // not supported
+            const card = document.getElementById('sysvol-card');
+            if (card) card.style.display = '';
+            sysVolState.volume = d.volume;
+            sysVolState.muted = !!d.muted;
+            patchSysVolCard();
+        } catch (_) {}
+    });
+}
+
+function patchSysVolCard() {
+    const $sl  = document.getElementById('sysvol-sl');
+    const $pct = document.getElementById('sysvol-pct');
+    const $mute = document.getElementById('sysvol-mute-btn');
+    const $dot  = document.getElementById('sysvol-dot');
+
+    const volPct = Math.round(sysVolState.volume * 100);
+    if ($sl && document.activeElement !== $sl) {
+        $sl.value = volPct;
+        updateSliderTrack($sl, sysVolState.volume);
+    }
+    if ($pct) $pct.textContent = volPct + '%';
+    if ($mute) {
+        $mute.className = 'btn-mute' + (sysVolState.muted ? ' muted' : '');
+        $mute.textContent = sysVolState.muted ? '🔇 Muted' : '🔊';
+    }
+    if ($dot) $dot.className = 'mon-dot' + (sysVolState.muted ? '' : ' running');
+}
+
+// ── Input Passthrough Card ──────────────────────────────────────
+let inputState = { active: false, volume: 5.0, channel: 2, devices: [], timer: null };
+
+function buildInputCard() {
+    const el = document.createElement('div');
+    el.id = 'input-card';
+    el.className = 'mon-card';
+    el.innerHTML = `
+<div class="mon-header">
+  <div class="mon-title">
+    <span class="mon-dot" id="input-dot"></span>
+    Input Passthrough
+  </div>
+  <div class="mon-actions">
+    <button class="btn-mute" id="input-toggle-btn">▶ Start</button>
+  </div>
+</div>
+<div class="mon-body">
+  <div class="vol-row">
+    <span class="vol-label-txt">Device</span>
+    <select id="input-device-sel" style="flex:1;padding:4px;border-radius:6px;border:1px solid #555;background:#222;color:#fff;font-size:13px"></select>
+  </div>
+  <div class="vol-row">
+    <span class="vol-label-txt">Ch</span>
+    <input type="number" min="1" max="32" value="3" id="input-ch" style="width:50px;padding:4px;border-radius:6px;border:1px solid #555;background:#222;color:#fff;text-align:center">
+  </div>
+  <div class="vol-row">
+    <span class="vol-label-txt">Gain</span>
+    <input type="range" min="0" max="200" value="50" class="vol-slider" id="input-vol-sl">
+    <span class="vol-pct" id="input-vol-pct">5.0x</span>
+  </div>
+</div>`;
+
+    // Volume slider
+    const $sl = el.querySelector('#input-vol-sl');
+    $sl.addEventListener('input', () => {
+        const vol = $sl.value / 10;  // 0..20
+        inputState.volume = vol;
+        document.getElementById('input-vol-pct').textContent = vol.toFixed(1) + 'x';
+        updateSliderTrack($sl, $sl.value / 200);
+        clearTimeout(inputState.timer);
+        inputState.timer = setTimeout(() => localSend('input.set_volume', { volume: vol }), 50);
+    });
+    updateSliderTrack($sl, 50 / 200);
+
+    // Toggle button
+    el.querySelector('#input-toggle-btn').addEventListener('click', () => {
+        if (inputState.active) {
+            localSend('input.stop', {});
+        } else {
+            const sel = document.getElementById('input-device-sel');
+            const ch = parseInt(document.getElementById('input-ch').value) - 1; // 1-indexed UI → 0-indexed
+            localSend('input.start', { device: sel.value, channel: ch });
+        }
+        setTimeout(pollInputStats, 500);
+    });
+
+    return el;
+}
+
+function pollInputDevices() {
+    localSend('input.list_devices', {}, (resp) => {
+        if (!resp.success || !resp.data) return;
+        try {
+            const devs = JSON.parse(resp.data);
+            inputState.devices = devs;
+            const sel = document.getElementById('input-device-sel');
+            if (!sel) return;
+            sel.innerHTML = devs.map(d =>
+                `<option value="${d.name}">${d.name} (${d.channels}ch)</option>`
+            ).join('');
+            // Select Babyface if present
+            for (const d of devs) {
+                if (d.name.includes('Babyface')) { sel.value = d.name; break; }
+            }
+        } catch (_) {}
+    });
+}
+
+function pollInputStats() {
+    localSend('input.stats', {}, (resp) => {
+        if (!resp.success || !resp.data) return;
+        try {
+            const d = JSON.parse(resp.data);
+            inputState.active = d.active;
+            inputState.volume = d.volume;
+            inputState.channel = d.channel;
+            patchInputCard();
+        } catch (_) {}
+    });
+}
+
+function patchInputCard() {
+    const $dot = document.getElementById('input-dot');
+    const $btn = document.getElementById('input-toggle-btn');
+    const $sl  = document.getElementById('input-vol-sl');
+    const $pct = document.getElementById('input-vol-pct');
+    const $ch  = document.getElementById('input-ch');
+
+    if ($dot) $dot.className = 'mon-dot' + (inputState.active ? ' running' : '');
+    if ($btn) {
+        $btn.textContent = inputState.active ? '⏹ Stop' : '▶ Start';
+        $btn.className = 'btn-mute' + (inputState.active ? ' muted' : '');
+    }
+    if ($sl && document.activeElement !== $sl) {
+        $sl.value = inputState.volume * 10;
+        updateSliderTrack($sl, inputState.volume / 20);
+    }
+    if ($pct) $pct.textContent = inputState.volume.toFixed(1) + 'x';
+    if ($ch && document.activeElement !== $ch) $ch.value = inputState.channel + 1;
 }
 
 // ── Auto-sync RTT (Web UI) ────────────────────────────────────
@@ -1134,12 +1328,452 @@ function baInit() {
     baClearCanvas();
 }
 
+// ── Tune / Repair / Latency card ─────────────────────────────
+let tuneState = {
+    active: false, rms_db: -100, clicks: 0, dropouts: 0, adjustments: 0,
+    buf_target_ms: 20, mon_target_ms: 20,
+    repair_enabled: true, repair_clicks: 0, repair_fades: 0,
+    lat: null
+};
+let noiseParams = {
+    sigma: 6.0, floor: 0.005, crossfade_thresh: 0.02, crossfade_frames: 16,
+    step_up: 2, step_down: 1, stable_sec: 5, loaded: false
+};
+
+function buildTuneCard() {
+    const el = document.createElement('div');
+    el.id = 'tune-card';
+    el.className = 'mon-card';
+    el.style.display = 'none';
+    el.innerHTML = `
+<div class="mon-header">
+  <div class="mon-title">
+    <span class="mon-dot" id="tune-dot"></span>
+    Noise Control
+  </div>
+  <div class="mon-actions">
+    <span class="mon-badge" id="tune-badge">Off</span>
+  </div>
+</div>
+<div class="mon-body">
+  <!-- Toggles -->
+  <div class="tune-toggle-row">
+    <div>
+      <div class="tune-toggle-label">Auto Tune</div>
+      <div class="tune-toggle-desc">Mic listens for noise, auto-adjusts buffers</div>
+    </div>
+    <label class="toggle green"><input type="checkbox" id="tune-sw"><span class="toggle-track"></span></label>
+  </div>
+  <div class="tune-toggle-row">
+    <div>
+      <div class="tune-toggle-label">Audio Repair</div>
+      <div class="tune-toggle-desc">Declicker + crossfade on speaker output</div>
+    </div>
+    <label class="toggle green"><input type="checkbox" id="repair-sw" checked><span class="toggle-track"></span></label>
+  </div>
+
+  <!-- Presets -->
+  <div class="tune-presets" style="display:flex;gap:0.4rem;margin-top:0.7rem">
+    <button class="preset-btn" id="preset-low" data-preset="low">
+      <span class="preset-icon">&#9889;</span>
+      <span class="preset-name">Low Latency</span>
+      <span class="preset-desc">6ms buf / repair aggressive</span>
+    </button>
+    <button class="preset-btn" id="preset-bal" data-preset="bal">
+      <span class="preset-icon">&#9878;</span>
+      <span class="preset-name">Balanced</span>
+      <span class="preset-desc">14ms buf / auto tune</span>
+    </button>
+    <button class="preset-btn" id="preset-safe" data-preset="safe">
+      <span class="preset-icon">&#9974;</span>
+      <span class="preset-name">Safe</span>
+      <span class="preset-desc">24ms buf / max repair</span>
+    </button>
+  </div>
+
+  <!-- RMS meter -->
+  <div style="margin-top:0.6rem">
+    <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text3);margin-bottom:0.2rem">
+      <span>Mic Level</span>
+      <span id="tune-rms-val" style="color:var(--text2);font-variant-numeric:tabular-nums">—</span>
+    </div>
+    <div class="rms-meter"><div class="rms-meter-fill" id="tune-rms-bar"></div></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="tune-stats">
+    <div class="tune-stat"><div class="tune-stat-label">Clicks</div><div class="tune-stat-val" id="tune-clicks">0</div></div>
+    <div class="tune-stat"><div class="tune-stat-label">Repaired</div><div class="tune-stat-val ok" id="tune-repaired">0</div></div>
+    <div class="tune-stat"><div class="tune-stat-label">Adjusts</div><div class="tune-stat-val" id="tune-adjusts">0</div></div>
+    <div class="tune-stat"><div class="tune-stat-label">Dropouts</div><div class="tune-stat-val" id="tune-dropouts">0</div></div>
+    <div class="tune-stat"><div class="tune-stat-label">Fades</div><div class="tune-stat-val ok" id="tune-fades">0</div></div>
+    <div class="tune-stat"><div class="tune-stat-label">CRC Err</div><div class="tune-stat-val" id="tune-crc-errors">0</div></div>
+    <div class="tune-stat"><div class="tune-stat-label">PLC</div><div class="tune-stat-val ok" id="tune-plc-frames">0</div></div>
+    <div class="tune-stat"><div class="tune-stat-label">Lost</div><div class="tune-stat-val" id="tune-lost-pkts">0</div></div>
+    <div class="tune-stat"><div class="tune-stat-label">Buf</div><div class="tune-stat-val" id="tune-buf-stat">—</div></div>
+  </div>
+  <div style="text-align:right;margin-top:0.15rem"><button class="tune-reset-link" id="tune-reset-btn">Reset counters</button></div>
+
+  <!-- Buffer sliders -->
+  <div class="tune-section">
+    <div class="tune-section-hdr open" data-sec="buffers">
+      <span class="sec-title">Buffers</span>
+      <span class="sec-arrow">&#9654;</span>
+    </div>
+    <div class="tune-section-body open" id="sec-buffers">
+      <div class="tune-slider-row">
+        <span class="sl-label">Buf Target</span>
+        <input type="range" min="2" max="100" step="1" value="20" class="vol-slider" id="tune-buf-sl" style="flex:1">
+        <span class="sl-val" id="tune-buf-val">20ms</span>
+      </div>
+      <div class="tune-slider-row">
+        <span class="sl-label">Mon Target</span>
+        <input type="range" min="2" max="100" step="1" value="20" class="vol-slider" id="tune-mon-sl" style="flex:1">
+        <span class="sl-val" id="tune-mon-val">20ms</span>
+      </div>
+      <div class="tune-slider-row">
+        <span class="sl-label">Spk Delay</span>
+        <input type="range" min="0" max="200" step="5" value="40" class="vol-slider" id="tune-delay-sl" style="flex:1">
+        <span class="sl-val" id="tune-delay-val">40ms</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Noise detection params -->
+  <div class="tune-section">
+    <div class="tune-section-hdr" data-sec="noise">
+      <span class="sec-title">Noise Detection</span>
+      <span class="sec-arrow">&#9654;</span>
+    </div>
+    <div class="tune-section-body" id="sec-noise">
+      <div class="tune-slider-row">
+        <span class="sl-label">Sigma</span>
+        <input type="range" min="1" max="20" step="0.5" value="6" class="vol-slider" id="ns-sigma-sl" style="flex:1">
+        <span class="sl-val" id="ns-sigma-val">6.0</span>
+      </div>
+      <div class="tune-slider-row">
+        <span class="sl-label">Floor</span>
+        <input type="range" min="0" max="0.1" step="0.001" value="0.005" class="vol-slider" id="ns-floor-sl" style="flex:1">
+        <span class="sl-val" id="ns-floor-val">0.005</span>
+      </div>
+      <div class="tune-slider-row">
+        <span class="sl-label">CF Thresh</span>
+        <input type="range" min="0" max="0.2" step="0.005" value="0.02" class="vol-slider" id="ns-cfthresh-sl" style="flex:1">
+        <span class="sl-val" id="ns-cfthresh-val">0.020</span>
+      </div>
+      <div class="tune-slider-row">
+        <span class="sl-label">CF Frames</span>
+        <input type="range" min="2" max="128" step="2" value="16" class="vol-slider" id="ns-cfframes-sl" style="flex:1">
+        <span class="sl-val" id="ns-cfframes-val">16</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tune speed params -->
+  <div class="tune-section">
+    <div class="tune-section-hdr" data-sec="speed">
+      <span class="sec-title">Tune Speed</span>
+      <span class="sec-arrow">&#9654;</span>
+    </div>
+    <div class="tune-section-body" id="sec-speed">
+      <div class="tune-slider-row">
+        <span class="sl-label">Step Up</span>
+        <input type="range" min="1" max="10" step="1" value="2" class="vol-slider" id="ns-stepup-sl" style="flex:1">
+        <span class="sl-val" id="ns-stepup-val">2ms</span>
+      </div>
+      <div class="tune-slider-row">
+        <span class="sl-label">Step Down</span>
+        <input type="range" min="1" max="10" step="1" value="1" class="vol-slider" id="ns-stepdn-sl" style="flex:1">
+        <span class="sl-val" id="ns-stepdn-val">1ms</span>
+      </div>
+      <div class="tune-slider-row">
+        <span class="sl-label">Stable</span>
+        <input type="range" min="1" max="30" step="1" value="5" class="vol-slider" id="ns-stable-sl" style="flex:1">
+        <span class="sl-val" id="ns-stable-val">5s</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Latency -->
+  <div class="tune-section" id="tune-lat-box" style="display:none">
+    <div class="tune-section-hdr open" data-sec="latency">
+      <span class="sec-title">Latency</span>
+      <span class="sec-arrow">&#9654;</span>
+    </div>
+    <div class="tune-section-body open" id="sec-latency">
+      <div class="lat-grid">
+        <div>SHM <span class="lat-val" id="lat-shm">—</span></div>
+        <div>TX Ring <span class="lat-val" id="lat-tx">—</span></div>
+        <div>Spk Ring <span class="lat-val" id="lat-spk">—</span></div>
+        <div>Mon Ring <span class="lat-val" id="lat-mon">—</span></div>
+        <div>Spk Delay <span class="lat-val" id="lat-delay">—</span></div>
+        <div>RX Ring <span class="lat-val" id="lat-rx">—</span></div>
+      </div>
+      <div class="lat-total">
+        Local: <span id="lat-total-local">—</span> &middot; Monitor: <span id="lat-total-mon">—</span>
+      </div>
+    </div>
+  </div>
+</div>`;
+
+    // ── Toggle switches ──
+    el.querySelector('#tune-sw').addEventListener('change', (e) => {
+        localSend(e.target.checked ? 'tune.start' : 'tune.stop', {});
+    });
+    el.querySelector('#repair-sw').addEventListener('change', (e) => {
+        localSend(e.target.checked ? 'repair.enable' : 'repair.disable', {});
+        tuneState.repair_enabled = e.target.checked;
+    });
+
+    // ── Presets ──
+    const presets = {
+        low:  { sigma: 3.5, floor: 0.003, crossfade_thresh: 0.008, crossfade_frames: 32, step_up: 1, step_down: 1, stable_sec: 3, buf: 6,  mon: 8,  delay: 15 },
+        bal:  { sigma: 5.0, floor: 0.005, crossfade_thresh: 0.015, crossfade_frames: 20, step_up: 2, step_down: 1, stable_sec: 5, buf: 14, mon: 16, delay: 30 },
+        safe: { sigma: 2.5, floor: 0.002, crossfade_thresh: 0.005, crossfade_frames: 48, step_up: 3, step_down: 1, stable_sec: 8, buf: 24, mon: 26, delay: 40 },
+    };
+    let activePreset = null;
+    el.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const key = btn.dataset.preset;
+            const p = presets[key];
+            if (!p) return;
+            activePreset = key;
+            // Apply noise params
+            localSend('noise.set', {
+                sigma: p.sigma, floor: p.floor,
+                crossfade_thresh: p.crossfade_thresh, crossfade_frames: p.crossfade_frames,
+                step_up: p.step_up, step_down: p.step_down, stable_sec: p.stable_sec,
+            });
+            // Apply buffers
+            localSend('monitor.set_buffer', { ms: p.buf });
+            localSend('monitor.set_delay', { ms: p.delay });
+            // Enable tune + repair
+            localSend('tune.start', {});
+            localSend('repair.enable', {});
+            // Visual feedback
+            el.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+    });
+
+    // ── Collapsible sections ──
+    el.querySelectorAll('.tune-section-hdr').forEach(hdr => {
+        hdr.addEventListener('click', () => {
+            hdr.classList.toggle('open');
+            const body = hdr.nextElementSibling;
+            body.classList.toggle('open');
+        });
+    });
+
+    // ── Reset ──
+    el.querySelector('#tune-reset-btn').addEventListener('click', () => {
+        localSend('repair.reset', {});
+    });
+
+    // ── Buffer sliders ──
+    const bindSlider = (slId, valId, fmt, cmd, paramName) => {
+        const sl = el.querySelector('#' + slId);
+        sl.addEventListener('input', () => {
+            document.getElementById(valId).textContent = fmt(sl.value);
+        });
+        sl.addEventListener('change', () => {
+            const p = {}; p[paramName] = parseFloat(sl.value);
+            localSend(cmd, p);
+        });
+    };
+    bindSlider('tune-buf-sl',   'tune-buf-val',   v => v + 'ms',   'monitor.set_buffer', 'ms');
+    bindSlider('tune-mon-sl',   'tune-mon-val',   v => v + 'ms',   'monitor.set_buffer', 'ms');
+    bindSlider('tune-delay-sl', 'tune-delay-val', v => v + 'ms',   'monitor.set_delay',  'ms');
+
+    // ── Noise param sliders ──
+    const noiseSend = () => {
+        localSend('noise.set', {
+            sigma: parseFloat(document.getElementById('ns-sigma-sl').value),
+            floor: parseFloat(document.getElementById('ns-floor-sl').value),
+            crossfade_thresh: parseFloat(document.getElementById('ns-cfthresh-sl').value),
+            crossfade_frames: parseInt(document.getElementById('ns-cfframes-sl').value, 10),
+            step_up: parseInt(document.getElementById('ns-stepup-sl').value, 10),
+            step_down: parseInt(document.getElementById('ns-stepdn-sl').value, 10),
+            stable_sec: parseInt(document.getElementById('ns-stable-sl').value, 10),
+        });
+    };
+    const bindNoise = (slId, valId, fmt) => {
+        const sl = el.querySelector('#' + slId);
+        const vl = el.querySelector('#' + valId);
+        sl.addEventListener('input', () => { vl.textContent = fmt(sl.value); });
+        sl.addEventListener('change', noiseSend);
+    };
+    bindNoise('ns-sigma-sl',    'ns-sigma-val',    v => parseFloat(v).toFixed(1));
+    bindNoise('ns-floor-sl',    'ns-floor-val',    v => parseFloat(v).toFixed(3));
+    bindNoise('ns-cfthresh-sl', 'ns-cfthresh-val', v => parseFloat(v).toFixed(3));
+    bindNoise('ns-cfframes-sl', 'ns-cfframes-val', v => v);
+    bindNoise('ns-stepup-sl',   'ns-stepup-val',   v => v + 'ms');
+    bindNoise('ns-stepdn-sl',   'ns-stepdn-val',   v => v + 'ms');
+    bindNoise('ns-stable-sl',   'ns-stable-val',   v => v + 's');
+
+    return el;
+}
+
+function patchTuneCard() {
+    const s = tuneState;
+    const $card = document.getElementById('tune-card');
+    if (!$card) return;
+
+    // Card border glow
+    $card.classList.toggle('running', s.active);
+
+    // Header
+    const $dot = document.getElementById('tune-dot');
+    const $badge = document.getElementById('tune-badge');
+    if ($dot) $dot.className = 'mon-dot' + (s.active ? ' running' : '');
+    if ($badge) { $badge.className = 'mon-badge' + (s.active ? ' running' : ''); $badge.textContent = s.active ? 'Tuning' : 'Off'; }
+
+    // Toggle switches (sync without re-triggering change)
+    const $tuneSw = document.getElementById('tune-sw');
+    if ($tuneSw && $tuneSw !== document.activeElement) $tuneSw.checked = s.active;
+    const $repairSw = document.getElementById('repair-sw');
+    if ($repairSw && $repairSw !== document.activeElement) $repairSw.checked = s.repair_enabled;
+
+    // RMS meter
+    const rmsVal = document.getElementById('tune-rms-val');
+    const rmsBar = document.getElementById('tune-rms-bar');
+    if (rmsVal) rmsVal.textContent = s.rms_db > -90 ? s.rms_db.toFixed(1) + ' dB' : 'Silent';
+    if (rmsBar) {
+        // Map -80..0 dB to 0..100%
+        const pct = Math.max(0, Math.min(100, (s.rms_db + 80) / 80 * 100));
+        rmsBar.style.width = pct + '%';
+        // Color: green < -20dB, amber -20..-6, red > -6
+        rmsBar.style.background = s.rms_db > -6 ? 'var(--red)' : s.rms_db > -20 ? 'var(--amber)' : 'var(--green)';
+    }
+
+    // Stats
+    const setText = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    setText('tune-clicks', s.clicks);
+    setText('tune-dropouts', s.dropouts);
+    setText('tune-adjusts', s.adjustments);
+    setText('tune-repaired', s.repair_clicks);
+    setText('tune-fades', s.repair_fades);
+    setText('tune-crc-errors', s.crc_errors ?? 0);
+    setText('tune-plc-frames', s.plc_frames ?? 0);
+    setText('tune-lost-pkts', s.lost_packets ?? 0);
+    setText('tune-buf-stat', s.buf_target_ms + 'ms');
+
+    // Color code clicks
+    const $clicks = document.getElementById('tune-clicks');
+    if ($clicks) { $clicks.className = 'tune-stat-val' + (s.clicks > 0 ? ' warn' : ''); }
+    const $drops = document.getElementById('tune-dropouts');
+    if ($drops) { $drops.className = 'tune-stat-val' + (s.dropouts > 0 ? ' warn' : ''); }
+    const $crc = document.getElementById('tune-crc-errors');
+    if ($crc) { $crc.className = 'tune-stat-val' + ((s.crc_errors ?? 0) > 0 ? ' warn' : ''); }
+    const $lost = document.getElementById('tune-lost-pkts');
+    if ($lost) { $lost.className = 'tune-stat-val' + ((s.lost_packets ?? 0) > 0 ? ' warn' : ''); }
+
+    // Update sliders only if not being dragged
+    const setSlider = (slId, valId, val, unit) => {
+        const sl = document.getElementById(slId);
+        if (sl && document.activeElement !== sl) {
+            sl.value = val;
+            const vl = document.getElementById(valId);
+            if (vl) vl.textContent = val + unit;
+        }
+    };
+    setSlider('tune-buf-sl', 'tune-buf-val', s.buf_target_ms, 'ms');
+    setSlider('tune-mon-sl', 'tune-mon-val', s.mon_target_ms, 'ms');
+}
+
+function applyLatency(d) {
+    const setText = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    const fmt = (ms) => ms != null ? ms.toFixed(1) + 'ms' : '—';
+    setText('lat-shm', fmt(d.shm_ms));
+    setText('lat-tx', fmt(d.tx_ring_ms));
+    setText('lat-spk', fmt(d.spk_ring_ms));
+    setText('lat-delay', fmt(d.spk_delay_ms));
+    setText('lat-mon', fmt(d.mon_ring_ms));
+    setText('lat-rx', fmt(d.rx_ring_ms));
+    setText('lat-total-local', fmt(d.total_local_ms));
+    setText('lat-total-mon', fmt(d.total_monitor_ms));
+
+    // Update speaker delay slider from latency data
+    const delaySl = document.getElementById('tune-delay-sl');
+    if (delaySl && document.activeElement !== delaySl) {
+        delaySl.value = d.spk_delay_ms ?? 40;
+        document.getElementById('tune-delay-val').textContent = (d.spk_delay_ms ?? 40).toFixed(0) + 'ms';
+    }
+
+    const box = document.getElementById('tune-lat-box');
+    if (box) box.style.display = '';
+}
+
+function applyNoiseParams(d) {
+    const setSlider = (slId, valId, val, fmt) => {
+        const sl = document.getElementById(slId);
+        const vl = document.getElementById(valId);
+        if (sl && document.activeElement !== sl) {
+            sl.value = val;
+            if (vl) vl.textContent = fmt(val);
+        }
+    };
+    setSlider('ns-sigma-sl',    'ns-sigma-val',    d.sigma,            v => parseFloat(v).toFixed(1));
+    setSlider('ns-floor-sl',    'ns-floor-val',    d.floor,            v => parseFloat(v).toFixed(3));
+    setSlider('ns-cfthresh-sl', 'ns-cfthresh-val', d.crossfade_thresh, v => parseFloat(v).toFixed(3));
+    setSlider('ns-cfframes-sl', 'ns-cfframes-val', d.crossfade_frames, v => v);
+    setSlider('ns-stepup-sl',   'ns-stepup-val',   d.step_up,          v => v + 'ms');
+    setSlider('ns-stepdn-sl',   'ns-stepdn-val',   d.step_down,        v => v + 'ms');
+    setSlider('ns-stable-sl',   'ns-stable-val',   d.stable_sec,       v => v + 's');
+    noiseParams = { ...d, loaded: true };
+}
+
+function pollTuneStatus() {
+    localSend('tune.status', {}, (resp) => {
+        if (resp.success && resp.data) {
+            try {
+                const d = JSON.parse(resp.data);
+                tuneState.active = d.active;
+                tuneState.rms_db = d.rms_db;
+                tuneState.clicks = d.clicks;
+                tuneState.dropouts = d.dropouts;
+                tuneState.adjustments = d.adjustments;
+                tuneState.buf_target_ms = d.buf_target_ms;
+                tuneState.mon_target_ms = d.mon_target_ms;
+                tuneState.repair_enabled = d.repair_enabled;
+                tuneState.repair_clicks = d.repair_clicks;
+                tuneState.repair_fades = d.repair_fades;
+                patchTuneCard();
+                // Show card on first successful response
+                const card = document.getElementById('tune-card');
+                if (card) card.style.display = '';
+            } catch (_) {}
+        }
+    });
+    localSend('latency', {}, (resp) => {
+        if (resp.success && resp.data) {
+            try { applyLatency(JSON.parse(resp.data)); } catch (_) {}
+        }
+    });
+    // Fetch noise params (only until first load, then every 10th poll)
+    if (!noiseParams.loaded || Math.random() < 0.1) {
+        localSend('noise.get', {}, (resp) => {
+            if (resp.success && resp.data) {
+                try { applyNoiseParams(JSON.parse(resp.data)); } catch (_) {}
+            }
+        });
+    }
+}
+
+function initTune() {
+    pollTuneStatus();
+    setInterval(pollTuneStatus, 1500);
+}
+
 // ── Boot ─────────────────────────────────────────────────────
-// Insert monitor card above the receiver grid
+// Insert system volume card and monitor card above the receiver grid
 (function() {
     const grid = document.getElementById('rx-grid');
     if (grid && grid.parentNode) {
+        grid.parentNode.insertBefore(buildTuneCard(), grid);
         grid.parentNode.insertBefore(buildMonitorCard(), grid);
+        grid.parentNode.insertBefore(buildInputCard(), grid);
+        grid.parentNode.insertBefore(buildSystemVolumeCard(), grid);
     }
 })();
 

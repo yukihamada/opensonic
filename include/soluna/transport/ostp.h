@@ -33,9 +33,10 @@ constexpr size_t kOstpHeaderSize = sizeof(OstpHeader);
 constexpr size_t kTotalHeaderSize = kRtpHeaderSize + kRtpExtHeaderSize + kOstpHeaderSize;
 
 // Max payload: 48 samples * 64 channels * 4 bytes = 12288
-// With headers: ~12312 bytes, well within jumbo frame
+// With headers + CRC-32 trailer: ~12316 bytes, well within jumbo frame
 constexpr size_t kMaxPayloadSize = 12288;
-constexpr size_t kMaxPacketSize = kTotalHeaderSize + kMaxPayloadSize;
+constexpr size_t kCrcTrailerSize = 4;
+constexpr size_t kMaxPacketSize = kTotalHeaderSize + kMaxPayloadSize + kCrcTrailerSize;
 
 /**
  * Build a complete OSTP/RTP packet.
@@ -56,10 +57,13 @@ size_t ostp_build_packet(
 );
 
 /**
- * Parse an OSTP/RTP packet.
- * Returns true if valid, fills out header pointers.
+ * Parse an OSTP/RTP packet with CRC-32 verification.
+ * Returns:
+ *   0  = success (valid packet, CRC ok or no CRC present)
+ *  -1  = parse error (invalid format)
+ *  -2  = CRC mismatch (payload corrupted)
  */
-bool ostp_parse_packet(
+int ostp_parse_packet(
     const uint8_t* packet_buf,
     size_t packet_size,
     RtpHeader& rtp,
@@ -67,5 +71,10 @@ bool ostp_parse_packet(
     const uint8_t*& payload,
     size_t& payload_size
 );
+
+/**
+ * Compute CRC-32 (IEEE 802.3) over a byte buffer.
+ */
+uint32_t ostp_crc32(const uint8_t* data, size_t len);
 
 } // namespace soluna::transport

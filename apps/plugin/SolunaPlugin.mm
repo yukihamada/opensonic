@@ -36,11 +36,19 @@ enum : AudioObjectID {
     kSolunaPlugInID = 1,
     kSolunaDeviceID = 2,
     kSolunaStreamID = 3,
-    kSolunaVolumeID = 4,  // master output level control
+    kSolunaVolumeID = 4,  // master output volume control
+    kSolunaMuteID   = 5,  // master output mute control
 };
 
 static const Float32 kVolMin_dB = -96.0f;
 static const Float32 kVolMax_dB =   0.0f;
+
+// These are in AudioHardware.h (client-side) but not in AudioServerPlugIn.h
+// Define them so the plugin can handle device-level volume/mute queries from macOS
+enum : AudioObjectPropertySelector {
+    kSolunaVolmSelector = 'volm',  // kAudioDevicePropertyVolumeScalar
+    kSolunaMuteSelector = 'mute',  // kAudioDevicePropertyMute
+};
 
 // ── Audio constants ──────────────────────────────────────────────────────────
 
@@ -83,6 +91,7 @@ struct SolunaDriver {
 
     // Volume control (0.0–1.0 linear scalar)
     Float32                             mVolume;
+    UInt32                              mMuted;
 
     // Host ref for property-change notifications
     AudioServerPlugInHostRef            mHost;
@@ -318,6 +327,8 @@ static Boolean Soluna_HasProperty(AudioServerPlugInDriverRef  inDriver,
         case kAudioDevicePropertyPreferredChannelLayout:
         case kAudioDevicePropertyZeroTimeStampPeriod:
         case kAudioDevicePropertyClockIsStable:
+        case kSolunaVolmSelector:
+        case kSolunaMuteSelector:
             return true;
         }
         return false;
@@ -348,9 +359,25 @@ static Boolean Soluna_HasProperty(AudioServerPlugInDriverRef  inDriver,
         case kAudioObjectPropertyOwner:
         case kAudioObjectPropertyName:
         case kAudioObjectPropertyOwnedObjects:
+        case kAudioControlPropertyScope:
+        case kAudioControlPropertyElement:
         case kAudioLevelControlPropertyScalarValue:
         case kAudioLevelControlPropertyDecibelValue:
         case kAudioLevelControlPropertyDecibelRange:
+            return true;
+        }
+        return false;
+
+    case kSolunaMuteID:
+        switch (inAddress->mSelector) {
+        case kAudioObjectPropertyBaseClass:
+        case kAudioObjectPropertyClass:
+        case kAudioObjectPropertyOwner:
+        case kAudioObjectPropertyName:
+        case kAudioObjectPropertyOwnedObjects:
+        case kAudioControlPropertyScope:
+        case kAudioControlPropertyElement:
+        case kAudioBooleanControlPropertyValue:
             return true;
         }
         return false;
@@ -371,7 +398,9 @@ static OSStatus Soluna_IsPropertySettable(AudioServerPlugInDriverRef inDriver,
     *outIsSettable = false;
 
     if (inObjectID == kSolunaDeviceID) {
-        if (inAddress->mSelector == kAudioDevicePropertyNominalSampleRate)
+        if (inAddress->mSelector == kAudioDevicePropertyNominalSampleRate ||
+            inAddress->mSelector == kSolunaVolmSelector ||
+            inAddress->mSelector == kSolunaMuteSelector)
             *outIsSettable = true;
     } else if (inObjectID == kSolunaStreamID) {
         if (inAddress->mSelector == kAudioStreamPropertyVirtualFormat ||
@@ -380,6 +409,9 @@ static OSStatus Soluna_IsPropertySettable(AudioServerPlugInDriverRef inDriver,
     } else if (inObjectID == kSolunaVolumeID) {
         if (inAddress->mSelector == kAudioLevelControlPropertyScalarValue ||
             inAddress->mSelector == kAudioLevelControlPropertyDecibelValue)
+            *outIsSettable = true;
+    } else if (inObjectID == kSolunaMuteID) {
+        if (inAddress->mSelector == kAudioBooleanControlPropertyValue)
             *outIsSettable = true;
     }
     return noErr;
@@ -422,7 +454,7 @@ static OSStatus Soluna_GetPropertyDataSize(AudioServerPlugInDriverRef inDriver,
         case kAudioObjectPropertyOwner:       *outDataSize = sizeof(AudioObjectID); return noErr;
         case kAudioObjectPropertyName:
         case kAudioObjectPropertyManufacturer:*outDataSize = sizeof(CFStringRef); return noErr;
-        case kAudioObjectPropertyOwnedObjects:*outDataSize = 2 * sizeof(AudioObjectID); return noErr;
+        case kAudioObjectPropertyOwnedObjects:*outDataSize = 3 * sizeof(AudioObjectID); return noErr;
         case kAudioDevicePropertyDeviceUID:
         case kAudioDevicePropertyModelUID:    *outDataSize = sizeof(CFStringRef); return noErr;
         case kAudioDevicePropertyTransportType:   *outDataSize = sizeof(UInt32); return noErr;
@@ -437,7 +469,7 @@ static OSStatus Soluna_GetPropertyDataSize(AudioServerPlugInDriverRef inDriver,
         case kAudioDevicePropertyLatency:
         case kAudioDevicePropertySafetyOffset:    *outDataSize = sizeof(UInt32); return noErr;
         case kAudioDevicePropertyStreams:          *outDataSize = sizeof(AudioObjectID); return noErr;
-        case kAudioObjectPropertyControlList:      *outDataSize = sizeof(AudioObjectID); return noErr;
+        case kAudioObjectPropertyControlList:      *outDataSize = 2 * sizeof(AudioObjectID); return noErr;
         case kAudioDevicePropertyNominalSampleRate:*outDataSize = sizeof(Float64); return noErr;
         case kAudioDevicePropertyAvailableNominalSampleRates:
             *outDataSize = sizeof(AudioValueRange); return noErr;
@@ -446,6 +478,8 @@ static OSStatus Soluna_GetPropertyDataSize(AudioServerPlugInDriverRef inDriver,
         case kAudioDevicePropertyPreferredChannelLayout:
             *outDataSize = offsetof(AudioChannelLayout, mChannelDescriptions[kChannels]); return noErr;
         case kAudioDevicePropertyZeroTimeStampPeriod: *outDataSize = sizeof(UInt32); return noErr;
+        case kSolunaVolmSelector:                  *outDataSize = sizeof(Float32); return noErr;
+        case kSolunaMuteSelector:                  *outDataSize = sizeof(UInt32); return noErr;
         }
         break;
 
@@ -478,9 +512,25 @@ static OSStatus Soluna_GetPropertyDataSize(AudioServerPlugInDriverRef inDriver,
         case kAudioObjectPropertyOwner:          *outDataSize = sizeof(AudioObjectID); return noErr;
         case kAudioObjectPropertyName:           *outDataSize = sizeof(CFStringRef); return noErr;
         case kAudioObjectPropertyOwnedObjects:   *outDataSize = 0; return noErr;
+        case kAudioControlPropertyScope:         *outDataSize = sizeof(AudioObjectPropertyScope); return noErr;
+        case kAudioControlPropertyElement:       *outDataSize = sizeof(AudioObjectPropertyElement); return noErr;
         case kAudioLevelControlPropertyScalarValue:
         case kAudioLevelControlPropertyDecibelValue: *outDataSize = sizeof(Float32); return noErr;
         case kAudioLevelControlPropertyDecibelRange: *outDataSize = sizeof(AudioValueRange); return noErr;
+        }
+        break;
+
+    // ── Mute control ──
+    case kSolunaMuteID:
+        switch (inAddress->mSelector) {
+        case kAudioObjectPropertyBaseClass:
+        case kAudioObjectPropertyClass:          *outDataSize = sizeof(AudioClassID); return noErr;
+        case kAudioObjectPropertyOwner:          *outDataSize = sizeof(AudioObjectID); return noErr;
+        case kAudioObjectPropertyName:           *outDataSize = sizeof(CFStringRef); return noErr;
+        case kAudioObjectPropertyOwnedObjects:   *outDataSize = 0; return noErr;
+        case kAudioControlPropertyScope:         *outDataSize = sizeof(AudioObjectPropertyScope); return noErr;
+        case kAudioControlPropertyElement:       *outDataSize = sizeof(AudioObjectPropertyElement); return noErr;
+        case kAudioBooleanControlPropertyValue:  *outDataSize = sizeof(UInt32); return noErr;
         }
         break;
     }
@@ -577,9 +627,10 @@ static OSStatus Soluna_GetPropertyData(AudioServerPlugInDriverRef inDriver,
             *((CFStringRef*)outData) = CFSTR("Soluna");
             return noErr;
         case kAudioObjectPropertyOwnedObjects:
-            *outDataSize = 2 * sizeof(AudioObjectID);
+            *outDataSize = 3 * sizeof(AudioObjectID);
             ((AudioObjectID*)outData)[0] = kSolunaStreamID;
             ((AudioObjectID*)outData)[1] = kSolunaVolumeID;
+            ((AudioObjectID*)outData)[2] = kSolunaMuteID;
             return noErr;
         case kAudioDevicePropertyStreams:
             *outDataSize = sizeof(AudioObjectID);
@@ -625,8 +676,9 @@ static OSStatus Soluna_GetPropertyData(AudioServerPlugInDriverRef inDriver,
             *((UInt32*)outData) = 0;
             return noErr;
         case kAudioObjectPropertyControlList:
-            *outDataSize = sizeof(AudioObjectID);
-            *((AudioObjectID*)outData) = kSolunaVolumeID;
+            *outDataSize = 2 * sizeof(AudioObjectID);
+            ((AudioObjectID*)outData)[0] = kSolunaVolumeID;
+            ((AudioObjectID*)outData)[1] = kSolunaMuteID;
             return noErr;
         case kAudioDevicePropertyNominalSampleRate:
             *outDataSize = sizeof(Float64);
@@ -663,6 +715,14 @@ static OSStatus Soluna_GetPropertyData(AudioServerPlugInDriverRef inDriver,
         case kAudioDevicePropertyZeroTimeStampPeriod:
             *outDataSize = sizeof(UInt32);
             *((UInt32*)outData) = kZeroTSPeriod;
+            return noErr;
+        case kSolunaVolmSelector:
+            *outDataSize = sizeof(Float32);
+            *((Float32*)outData) = ((SolunaDriver*)inDriver)->mVolume;
+            return noErr;
+        case kSolunaMuteSelector:
+            *outDataSize = sizeof(UInt32);
+            *((UInt32*)outData) = ((SolunaDriver*)inDriver)->mMuted;
             return noErr;
         }
         break;
@@ -729,11 +789,11 @@ static OSStatus Soluna_GetPropertyData(AudioServerPlugInDriverRef inDriver,
         switch (inAddress->mSelector) {
         case kAudioObjectPropertyBaseClass:
             *outDataSize = sizeof(AudioClassID);
-            *((AudioClassID*)outData) = kAudioObjectClassID;
+            *((AudioClassID*)outData) = kAudioLevelControlClassID;
             return noErr;
         case kAudioObjectPropertyClass:
             *outDataSize = sizeof(AudioClassID);
-            *((AudioClassID*)outData) = kAudioLevelControlClassID;
+            *((AudioClassID*)outData) = kAudioVolumeControlClassID;
             return noErr;
         case kAudioObjectPropertyOwner:
             *outDataSize = sizeof(AudioObjectID);
@@ -745,6 +805,14 @@ static OSStatus Soluna_GetPropertyData(AudioServerPlugInDriverRef inDriver,
             return noErr;
         case kAudioObjectPropertyOwnedObjects:
             *outDataSize = 0;
+            return noErr;
+        case kAudioControlPropertyScope:
+            *outDataSize = sizeof(AudioObjectPropertyScope);
+            *((AudioObjectPropertyScope*)outData) = kAudioObjectPropertyScopeOutput;
+            return noErr;
+        case kAudioControlPropertyElement:
+            *outDataSize = sizeof(AudioObjectPropertyElement);
+            *((AudioObjectPropertyElement*)outData) = kAudioObjectPropertyElementMain;
             return noErr;
         case kAudioLevelControlPropertyScalarValue:
             *outDataSize = sizeof(Float32);
@@ -759,6 +827,45 @@ static OSStatus Soluna_GetPropertyData(AudioServerPlugInDriverRef inDriver,
             *outDataSize = sizeof(AudioValueRange);
             ((AudioValueRange*)outData)->mMinimum = kVolMin_dB;
             ((AudioValueRange*)outData)->mMaximum = kVolMax_dB;
+            return noErr;
+        }
+        break;
+    }
+
+    // ── Mute control properties ──
+    case kSolunaMuteID: {
+        SolunaDriver* drv = (SolunaDriver*)inDriver;
+        switch (inAddress->mSelector) {
+        case kAudioObjectPropertyBaseClass:
+            *outDataSize = sizeof(AudioClassID);
+            *((AudioClassID*)outData) = kAudioBooleanControlClassID;
+            return noErr;
+        case kAudioObjectPropertyClass:
+            *outDataSize = sizeof(AudioClassID);
+            *((AudioClassID*)outData) = kAudioMuteControlClassID;
+            return noErr;
+        case kAudioObjectPropertyOwner:
+            *outDataSize = sizeof(AudioObjectID);
+            *((AudioObjectID*)outData) = kSolunaDeviceID;
+            return noErr;
+        case kAudioObjectPropertyName:
+            *outDataSize = sizeof(CFStringRef);
+            *((CFStringRef*)outData) = CFSTR("Mute");
+            return noErr;
+        case kAudioObjectPropertyOwnedObjects:
+            *outDataSize = 0;
+            return noErr;
+        case kAudioControlPropertyScope:
+            *outDataSize = sizeof(AudioObjectPropertyScope);
+            *((AudioObjectPropertyScope*)outData) = kAudioObjectPropertyScopeOutput;
+            return noErr;
+        case kAudioControlPropertyElement:
+            *outDataSize = sizeof(AudioObjectPropertyElement);
+            *((AudioObjectPropertyElement*)outData) = kAudioObjectPropertyElementMain;
+            return noErr;
+        case kAudioBooleanControlPropertyValue:
+            *outDataSize = sizeof(UInt32);
+            *((UInt32*)outData) = drv->mMuted;
             return noErr;
         }
         break;
@@ -780,8 +887,38 @@ static OSStatus Soluna_SetPropertyData(AudioServerPlugInDriverRef inDriver,
 {
     (void)inClientPID; (void)inQualifierDataSize; (void)inQualifierData; (void)inDataSize;
 
+    SolunaDriver* drv = (SolunaDriver*)inDriver;
+
+    // Device-level volume/mute (keyboard keys and System Settings slider)
+    if (inObjectID == kSolunaDeviceID) {
+        if (inAddress->mSelector == kSolunaVolmSelector) {
+            Float32 v = *((const Float32*)inData);
+            if (v < 0.0f) v = 0.0f;
+            if (v > 1.0f) v = 1.0f;
+            drv->mVolume = v;
+            if (drv->mHost) {
+                AudioObjectPropertyAddress addrs[2] = {
+                    { kSolunaVolmSelector, kAudioObjectPropertyScopeOutput, kAudioObjectPropertyElementMain },
+                    { kAudioLevelControlPropertyScalarValue, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain }
+                };
+                drv->mHost->PropertiesChanged(drv->mHost, kSolunaDeviceID, 1, &addrs[0]);
+                drv->mHost->PropertiesChanged(drv->mHost, kSolunaVolumeID, 1, &addrs[1]);
+            }
+            return noErr;
+        }
+        if (inAddress->mSelector == kSolunaMuteSelector) {
+            drv->mMuted = *((const UInt32*)inData);
+            if (drv->mHost) {
+                AudioObjectPropertyAddress addr = {
+                    kSolunaMuteSelector, kAudioObjectPropertyScopeOutput, kAudioObjectPropertyElementMain
+                };
+                drv->mHost->PropertiesChanged(drv->mHost, kSolunaDeviceID, 1, &addr);
+            }
+            return noErr;
+        }
+    }
+
     if (inObjectID == kSolunaVolumeID) {
-        SolunaDriver* drv = (SolunaDriver*)inDriver;
         Float32 v = 1.0f;
         if (inAddress->mSelector == kAudioLevelControlPropertyScalarValue) {
             v = *((const Float32*)inData);
@@ -795,7 +932,6 @@ static OSStatus Soluna_SetPropertyData(AudioServerPlugInDriverRef inDriver,
         if (v > 1.0f) v = 1.0f;
         drv->mVolume = v;
 
-        // Notify the HAL that the scalar value changed
         if (drv->mHost) {
             AudioObjectPropertyAddress addr = {
                 kAudioLevelControlPropertyScalarValue,
@@ -806,6 +942,22 @@ static OSStatus Soluna_SetPropertyData(AudioServerPlugInDriverRef inDriver,
         }
         return noErr;
     }
+
+    if (inObjectID == kSolunaMuteID) {
+        if (inAddress->mSelector == kAudioBooleanControlPropertyValue) {
+            drv->mMuted = *((const UInt32*)inData);
+            if (drv->mHost) {
+                AudioObjectPropertyAddress addr = {
+                    kAudioBooleanControlPropertyValue,
+                    kAudioObjectPropertyScopeGlobal,
+                    kAudioObjectPropertyElementMain
+                };
+                drv->mHost->PropertiesChanged(drv->mHost, kSolunaMuteID, 1, &addr);
+            }
+        }
+        return noErr;
+    }
+
     // Accept format changes silently (only one format supported)
     return noErr;
 }
@@ -958,17 +1110,18 @@ static OSStatus Soluna_DoIOOperation(AudioServerPlugInDriverRef  inDriver,
         return noErr;
     }
 
-    // Apply volume scaling in-place before forwarding to SHM
-    float vol = drv->mVolume;
-    if (vol < 1.0f) {
-        float* buf = (float*)ioMainBuffer;
-        uint32_t n  = inIOBufferFrameSize * kChannels;
-        for (uint32_t i = 0; i < n; i++) buf[i] *= vol;
+    // Apply volume + mute before writing to SHM
+    float* buf = (float*)ioMainBuffer;
+    uint32_t totalSamples = inIOBufferFrameSize * kChannels;
+    if (drv->mMuted) {
+        memset(buf, 0, totalSamples * sizeof(float));
+    } else if (drv->mVolume < 1.0f) {
+        Float32 v = drv->mVolume;
+        for (uint32_t i = 0; i < totalSamples; i++)
+            buf[i] *= v;
     }
 
-    soluna_shm_write(&drv->mShm,
-                     (const float*)ioMainBuffer,
-                     inIOBufferFrameSize);
+    soluna_shm_write(&drv->mShm, buf, inIOBufferFrameSize);
     return noErr;
 }
 

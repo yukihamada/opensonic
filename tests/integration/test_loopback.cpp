@@ -50,8 +50,8 @@ TEST(Loopback, SinglePacketRoundtrip) {
     const uint8_t* payload = nullptr;
     size_t payload_size = 0;
 
-    bool ok = ostp_parse_packet(packet.data(), pkt_size, rtp, ostp, payload, payload_size);
-    ASSERT_TRUE(ok);
+    int rc = ostp_parse_packet(packet.data(), pkt_size, rtp, ostp, payload, payload_size);
+    ASSERT_EQ(rc, 0);
     ASSERT_EQ(payload_size, kFrames * kFrameSize);
 
     // Convert back to float
@@ -119,9 +119,9 @@ TEST(Loopback, UdpRoundtrip) {
     const uint8_t* payload = nullptr;
     size_t payload_size = 0;
 
-    bool ok = ostp_parse_packet(recv_buf.data(), static_cast<size_t>(received),
-                                 rtp, ostp, payload, payload_size);
-    ASSERT_TRUE(ok);
+    int rc = ostp_parse_packet(recv_buf.data(), static_cast<size_t>(received),
+                                rtp, ostp, payload, payload_size);
+    ASSERT_EQ(rc, 0);
     EXPECT_EQ(rtp.ssrc, 0x42u);
     EXPECT_EQ(rtp.sequence, 1u);
     EXPECT_EQ(payload_size, kFrames * kFrameSize);

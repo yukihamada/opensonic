@@ -25,7 +25,7 @@ TEST(OstpPacket, BuildAndParse) {
     );
 
     ASSERT_GT(pkt_size, 0u);
-    EXPECT_EQ(pkt_size, kTotalHeaderSize + payload_size);
+    EXPECT_EQ(pkt_size, kTotalHeaderSize + payload_size + kCrcTrailerSize);
 
     // Parse
     RtpHeader rtp{};
@@ -33,8 +33,8 @@ TEST(OstpPacket, BuildAndParse) {
     const uint8_t* parsed_payload = nullptr;
     size_t parsed_payload_size = 0;
 
-    bool ok = ostp_parse_packet(packet, pkt_size, rtp, ostp, parsed_payload, parsed_payload_size);
-    ASSERT_TRUE(ok);
+    int rc = ostp_parse_packet(packet, pkt_size, rtp, ostp, parsed_payload, parsed_payload_size);
+    ASSERT_EQ(rc, 0);
 
     EXPECT_EQ(rtp.version, 2);
     EXPECT_EQ(rtp.extension, 1);
@@ -72,8 +72,8 @@ TEST(OstpPacket, ParseTooShort) {
     const uint8_t* payload = nullptr;
     size_t payload_size = 0;
 
-    bool ok = ostp_parse_packet(packet, sizeof(packet), rtp, ostp, payload, payload_size);
-    EXPECT_FALSE(ok);
+    int rc = ostp_parse_packet(packet, sizeof(packet), rtp, ostp, payload, payload_size);
+    EXPECT_NE(rc, 0);
 }
 
 TEST(OstpPacket, ParseBadVersion) {
@@ -93,8 +93,8 @@ TEST(OstpPacket, ParseBadVersion) {
     const uint8_t* payload = nullptr;
     size_t payload_size = 0;
 
-    bool ok = ostp_parse_packet(packet, pkt_size, rtp, ostp, payload, payload_size);
-    EXPECT_FALSE(ok);
+    int rc = ostp_parse_packet(packet, pkt_size, rtp, ostp, payload, payload_size);
+    EXPECT_NE(rc, 0);
 }
 
 TEST(OstpPacket, EmptyPayload) {
@@ -107,15 +107,15 @@ TEST(OstpPacket, EmptyPayload) {
         nullptr, 0
     );
 
-    ASSERT_EQ(pkt_size, kTotalHeaderSize);
+    ASSERT_EQ(pkt_size, kTotalHeaderSize + kCrcTrailerSize);
 
     RtpHeader rtp{};
     OstpHeader ostp{};
     const uint8_t* payload = nullptr;
     size_t payload_size = 0;
 
-    bool ok = ostp_parse_packet(packet, pkt_size, rtp, ostp, payload, payload_size);
-    ASSERT_TRUE(ok);
+    int rc = ostp_parse_packet(packet, pkt_size, rtp, ostp, payload, payload_size);
+    ASSERT_EQ(rc, 0);
     EXPECT_EQ(payload_size, 0u);
 }
 
@@ -139,8 +139,8 @@ TEST(OstpPacket, SequenceExtension) {
     const uint8_t* payload = nullptr;
     size_t payload_size = 0;
 
-    bool ok = ostp_parse_packet(packet, pkt_size, rtp, ostp, payload, payload_size);
-    ASSERT_TRUE(ok);
+    int rc = ostp_parse_packet(packet, pkt_size, rtp, ostp, payload, payload_size);
+    ASSERT_EQ(rc, 0);
 
     uint32_t full_seq = (static_cast<uint32_t>(ostp.sequence_ext) << 16) | rtp.sequence;
     EXPECT_EQ(full_seq, 0x0001FFFFu);
