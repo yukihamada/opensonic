@@ -1849,7 +1849,7 @@ static int run_tx(DaemonConfig cfg) {
 #endif
 
     // Speaker ring for local playback (SHM mode)
-    constexpr size_t kSpeakerRingFrames = 16384;
+    constexpr size_t kSpeakerRingFrames = 8192;
     RingBuffer speaker_ring(kSpeakerRingFrames, sizeof(float) * cfg.channels);
 
     // SHM state (populated below if use_shm)
@@ -1905,7 +1905,23 @@ static int run_tx(DaemonConfig cfg) {
                     // Repair state (persists across callbacks via static)
                     static float prev_samples[8] = {};
                     static bool had_audio = false;
+                    static thread_local std::vector<int32_t> sp_drain;
                     size_t samples = fc * sp_channels;
+
+                    // Latency trim: drain excess data to keep ring tight
+                    {
+                        uint32_t target = std::max(
+                            fc * 4u,
+                            g_speaker_delay_ms.load() * (sp_rate / 1000u));
+                        size_t avail = speaker_ring.available_read();
+                        if (avail > target + fc) {
+                            size_t excess = avail - target - fc;
+                            if (sp_drain.size() < excess * sp_channels)
+                                sp_drain.resize(excess * sp_channels);
+                            speaker_ring.read(sp_drain.data(), excess);
+                        }
+                    }
+
                     // Prefill = max(4 callbacks, configured delay)
                     const uint32_t delay_frames = std::max(
                         fc * 4u,
@@ -1920,19 +1936,7 @@ static int run_tx(DaemonConfig cfg) {
                     // speaker_ring stores float frames as raw bytes
                     // We borrow the int32_t ring interface but store floats
                     if (speaker_ring.available_read() < fc) {
-                        // Underrun: read whatever is available + fade out to silence
-                        size_t partial = speaker_ring.available_read();
-                        if (partial > 0) {
-                            speaker_ring.read(reinterpret_cast<int32_t*>(buf), partial);
-                            // Fade out the partial data
-                            for (size_t i = 0; i < partial * sp_channels; i++) {
-                                float fade = 1.0f - static_cast<float>(i) / static_cast<float>(partial * sp_channels);
-                                buf[i] *= fade;
-                            }
-                        }
-                        // Zero-fill the rest
-                        std::memset(buf + partial * sp_channels, 0,
-                                    (fc - partial) * sp_channels * sizeof(float));
+                        std::memset(buf, 0, samples * sizeof(float));
                         sp_prefilled.store(false);
                         g_mon_underruns.fetch_add(1, std::memory_order_relaxed);
                         had_audio = false;
@@ -1971,7 +1975,7 @@ static int run_tx(DaemonConfig cfg) {
             while (g_running.load()) {
                 uint32_t avail = (uint32_t)soluna_shm_available_read(&shm_map);
                 if (avail < kReadChunk) {
-                    std::this_thread::sleep_for(std::chrono::microseconds(100));
+                    std::this_thread::sleep_for(std::chrono::microseconds(500));
                     continue;
                 }
                 uint32_t rd = soluna_shm_read(&shm_map, flt_buf.data(), kReadChunk);
