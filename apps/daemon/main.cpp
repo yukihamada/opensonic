@@ -1538,7 +1538,7 @@ static void monitor_thread_fn(const DaemonConfig& cfg) {
         AudioStreamConfig acfg;
         acfg.sample_rate    = cfg.sample_rate;
         acfg.channels       = cfg.channels;
-        acfg.frames_per_buffer = std::max(kFramesPerPkt, 48u);
+        acfg.frames_per_buffer = kFramesPerPkt;
         if (!audio->open_output(dev_name, acfg)) {
             fprintf(stderr, "Monitor: cannot open '%s'\n", dev_name.c_str());
             continue;
@@ -1836,9 +1836,7 @@ static int run_tx(DaemonConfig cfg) {
     AudioStreamConfig audio_cfg;
     audio_cfg.sample_rate = cfg.sample_rate;
     audio_cfg.channels = cfg.channels;
-    // Audio callback buffer: at least 48 frames (1ms) even if network packets
-    // are smaller — most audio drivers can't reliably handle <1ms callbacks.
-    audio_cfg.frames_per_buffer = std::max(kFramesPerPacket, 48u);
+    audio_cfg.frames_per_buffer = kFramesPerPacket;
     audio_cfg.format = SampleFormat::S24_LE;
 
     // ── SHM (soluna virtual device) path ────────────────────────────────────
@@ -1849,7 +1847,7 @@ static int run_tx(DaemonConfig cfg) {
 #endif
 
     // Speaker ring for local playback (SHM mode)
-    constexpr size_t kSpeakerRingFrames = 8192;
+    constexpr size_t kSpeakerRingFrames = 4096;
     RingBuffer speaker_ring(kSpeakerRingFrames, sizeof(float) * cfg.channels);
 
     // SHM state (populated below if use_shm)
@@ -1890,7 +1888,7 @@ static int run_tx(DaemonConfig cfg) {
             AudioStreamConfig sp_cfg;
             sp_cfg.sample_rate      = cfg.sample_rate;
             sp_cfg.channels         = cfg.channels;
-            sp_cfg.frames_per_buffer = std::max(kFramesPerPacket, 48u);
+            sp_cfg.frames_per_buffer = kFramesPerPacket;
             sp_cfg.format = SampleFormat::S24_LE; // driver uses float32 for output
 
             if (!speaker_audio->open_output(cfg.local_speaker_device, sp_cfg)) {
@@ -1905,23 +1903,7 @@ static int run_tx(DaemonConfig cfg) {
                     // Repair state (persists across callbacks via static)
                     static float prev_samples[8] = {};
                     static bool had_audio = false;
-                    static thread_local std::vector<int32_t> sp_drain;
                     size_t samples = fc * sp_channels;
-
-                    // Latency trim: drain excess data to keep ring tight
-                    {
-                        uint32_t target = std::max(
-                            fc * 4u,
-                            g_speaker_delay_ms.load() * (sp_rate / 1000u));
-                        size_t avail = speaker_ring.available_read();
-                        if (avail > target + fc) {
-                            size_t excess = avail - target - fc;
-                            if (sp_drain.size() < excess * sp_channels)
-                                sp_drain.resize(excess * sp_channels);
-                            speaker_ring.read(sp_drain.data(), excess);
-                        }
-                    }
-
                     // Prefill = max(4 callbacks, configured delay)
                     const uint32_t delay_frames = std::max(
                         fc * 4u,
@@ -2288,8 +2270,7 @@ static int run_rx(DaemonConfig cfg) {
     AudioStreamConfig audio_cfg;
     audio_cfg.sample_rate = cfg.sample_rate;
     audio_cfg.channels = cfg.channels;
-    // Audio callback minimum 48 frames (1ms) — drivers glitch below this
-    audio_cfg.frames_per_buffer = std::max(kFramesPerPacket, 48u);
+    audio_cfg.frames_per_buffer = kFramesPerPacket;
 
     if (!audio->open_output(cfg.audio_device, audio_cfg)) {
         fprintf(stderr, "Error: cannot open audio output device '%s'\n", cfg.audio_device.c_str());
