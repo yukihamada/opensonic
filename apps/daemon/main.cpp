@@ -1039,7 +1039,7 @@ static LatencyParams get_latency_params(LatencyProfile profile) {
     switch (profile) {
     case LatencyProfile::UltraLow:
         //        frames  tier              prefill refill buf mon timeout label
-        return {12, soluna::PacketTier::Low, 4, 2, 1, 3, 1, "ultra-low"};
+        return {12, soluna::PacketTier::Low, 8, 4, 2, 3, 1, "ultra-low"};
     case LatencyProfile::LowLatency:
         return {48, soluna::PacketTier::Standard, 2, 1, 2, 5, 1, "low-latency"};
     case LatencyProfile::WiFi:
@@ -1836,7 +1836,9 @@ static int run_tx(DaemonConfig cfg) {
     AudioStreamConfig audio_cfg;
     audio_cfg.sample_rate = cfg.sample_rate;
     audio_cfg.channels = cfg.channels;
-    audio_cfg.frames_per_buffer = kFramesPerPacket;
+    // Audio callback buffer: at least 48 frames (1ms) even if network packets
+    // are smaller — most audio drivers can't reliably handle <1ms callbacks.
+    audio_cfg.frames_per_buffer = std::max(kFramesPerPacket, 48u);
     audio_cfg.format = SampleFormat::S24_LE;
 
     // ── SHM (soluna virtual device) path ────────────────────────────────────
@@ -1888,7 +1890,7 @@ static int run_tx(DaemonConfig cfg) {
             AudioStreamConfig sp_cfg;
             sp_cfg.sample_rate      = cfg.sample_rate;
             sp_cfg.channels         = cfg.channels;
-            sp_cfg.frames_per_buffer = kFramesPerPacket;
+            sp_cfg.frames_per_buffer = std::max(kFramesPerPacket, 48u);
             sp_cfg.format = SampleFormat::S24_LE; // driver uses float32 for output
 
             if (!speaker_audio->open_output(cfg.local_speaker_device, sp_cfg)) {
@@ -2270,7 +2272,8 @@ static int run_rx(DaemonConfig cfg) {
     AudioStreamConfig audio_cfg;
     audio_cfg.sample_rate = cfg.sample_rate;
     audio_cfg.channels = cfg.channels;
-    audio_cfg.frames_per_buffer = kFramesPerPacket;
+    // Audio callback minimum 48 frames (1ms) — drivers glitch below this
+    audio_cfg.frames_per_buffer = std::max(kFramesPerPacket, 48u);
 
     if (!audio->open_output(cfg.audio_device, audio_cfg)) {
         fprintf(stderr, "Error: cannot open audio output device '%s'\n", cfg.audio_device.c_str());
