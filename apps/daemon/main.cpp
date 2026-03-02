@@ -1538,7 +1538,7 @@ static void monitor_thread_fn(const DaemonConfig& cfg) {
         AudioStreamConfig acfg;
         acfg.sample_rate    = cfg.sample_rate;
         acfg.channels       = cfg.channels;
-        acfg.frames_per_buffer = kFramesPerPkt;
+        acfg.frames_per_buffer = std::max(kFramesPerPkt, 48u);
         if (!audio->open_output(dev_name, acfg)) {
             fprintf(stderr, "Monitor: cannot open '%s'\n", dev_name.c_str());
             continue;
@@ -1849,7 +1849,7 @@ static int run_tx(DaemonConfig cfg) {
 #endif
 
     // Speaker ring for local playback (SHM mode)
-    constexpr size_t kSpeakerRingFrames = 4096;
+    constexpr size_t kSpeakerRingFrames = 16384;
     RingBuffer speaker_ring(kSpeakerRingFrames, sizeof(float) * cfg.channels);
 
     // SHM state (populated below if use_shm)
@@ -1920,7 +1920,19 @@ static int run_tx(DaemonConfig cfg) {
                     // speaker_ring stores float frames as raw bytes
                     // We borrow the int32_t ring interface but store floats
                     if (speaker_ring.available_read() < fc) {
-                        std::memset(buf, 0, samples * sizeof(float));
+                        // Underrun: read whatever is available + fade out to silence
+                        size_t partial = speaker_ring.available_read();
+                        if (partial > 0) {
+                            speaker_ring.read(reinterpret_cast<int32_t*>(buf), partial);
+                            // Fade out the partial data
+                            for (size_t i = 0; i < partial * sp_channels; i++) {
+                                float fade = 1.0f - static_cast<float>(i) / static_cast<float>(partial * sp_channels);
+                                buf[i] *= fade;
+                            }
+                        }
+                        // Zero-fill the rest
+                        std::memset(buf + partial * sp_channels, 0,
+                                    (fc - partial) * sp_channels * sizeof(float));
                         sp_prefilled.store(false);
                         g_mon_underruns.fetch_add(1, std::memory_order_relaxed);
                         had_audio = false;
@@ -1959,7 +1971,7 @@ static int run_tx(DaemonConfig cfg) {
             while (g_running.load()) {
                 uint32_t avail = (uint32_t)soluna_shm_available_read(&shm_map);
                 if (avail < kReadChunk) {
-                    std::this_thread::sleep_for(std::chrono::microseconds(500));
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
                     continue;
                 }
                 uint32_t rd = soluna_shm_read(&shm_map, flt_buf.data(), kReadChunk);
