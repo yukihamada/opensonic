@@ -1061,7 +1061,7 @@ static LatencyParams get_latency_params(LatencyProfile profile) {
     case LatencyProfile::LowLatency:
         return {48, soluna::PacketTier::Standard, 2, 1, 2, 5, 1, "low-latency"};
     case LatencyProfile::WiFi:
-        return {96, soluna::PacketTier::WiFi, 4, 1, 12, 12, 5, "wifi-latency"};
+        return {96, soluna::PacketTier::WiFi, 6, 1, 20, 20, 5, "wifi-latency"};
     default:
         return {240, soluna::PacketTier::LAN, 4, 2, 20, 20, 10, "default"};
     }
@@ -2349,8 +2349,12 @@ static int run_rx(DaemonConfig cfg) {
         if (prev_good_buf.size() < samples) prev_good_buf.resize(samples);
 
         // Wait for prefill before starting playback to absorb jitter
+        // Must accumulate enough for at least 2 ALSA callbacks worth of data
         if (!prefilled.load()) {
-            if (ring.available_read() < kFramesPerPacket * kPrefillPackets) {
+            size_t prefill_frames = std::max(
+                static_cast<size_t>(kFramesPerPacket) * kPrefillPackets,
+                static_cast<size_t>(frame_count) * 2);
+            if (ring.available_read() < prefill_frames) {
                 std::memset(buffer, 0, samples * sizeof(float));
                 return;
             }
