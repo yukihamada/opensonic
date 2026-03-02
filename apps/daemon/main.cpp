@@ -1017,10 +1017,11 @@ static void start_mdns_advertisement() {
 
 // Latency profile for different network conditions
 enum class LatencyProfile {
-    Auto,       // detect WiFi vs wired at startup
-    Default,    // 240f/5ms packets, 20ms buffer (WiFi-safe)
-    WiFi,       // 96f/2ms packets, 8ms buffer (WiFi optimized)
-    LowLatency, // 48f/1ms packets, 2ms buffer (wired LAN only)
+    Auto,        // detect WiFi vs wired at startup
+    Default,     // 240f/5ms packets, 20ms buffer (WiFi-safe)
+    WiFi,        // 96f/2ms packets, 8ms buffer (WiFi optimized)
+    LowLatency,  // 48f/1ms packets, 2ms buffer (wired LAN only)
+    UltraLow,    // 12f/250us packets, 1ms buffer (GbE, minimum latency)
 };
 
 struct LatencyParams {
@@ -1036,6 +1037,9 @@ struct LatencyParams {
 
 static LatencyParams get_latency_params(LatencyProfile profile) {
     switch (profile) {
+    case LatencyProfile::UltraLow:
+        //        frames  tier              prefill refill buf mon timeout label
+        return {12, soluna::PacketTier::Low, 4, 2, 1, 3, 1, "ultra-low"};
     case LatencyProfile::LowLatency:
         return {48, soluna::PacketTier::Standard, 2, 1, 2, 5, 1, "low-latency"};
     case LatencyProfile::WiFi:
@@ -1060,8 +1064,8 @@ static LatencyProfile resolve_latency_profile(LatencyProfile profile, const std:
         fprintf(stderr, "[auto] Detected WiFi interface '%s' → wifi-latency profile\n", iface.c_str());
         return LatencyProfile::WiFi;
     } else {
-        fprintf(stderr, "[auto] Detected wired interface '%s' → low-latency profile\n", iface.c_str());
-        return LatencyProfile::LowLatency;
+        fprintf(stderr, "[auto] Detected wired interface '%s' → ultra-low profile\n", iface.c_str());
+        return LatencyProfile::UltraLow;
     }
 }
 
@@ -1128,6 +1132,7 @@ static void print_usage(const char* prog) {
         "  --port PORT       Listen port (RX mode, default: 5004)\n"
         "  --rate RATE       Sample rate (default: 48000)\n"
         "  --channels N      Channel count (default: 1)\n"
+        "  --ultra-low       Ultra-low latency (~1ms, GbE only)\n"
         "  --low-latency     AES67-grade low latency (~2ms, wired LAN only)\n"
         "  --wifi-latency    WiFi optimized latency (~10ms, stable on WiFi)\n"
         "  --dtls            Enable DTLS encryption\n"
@@ -1150,6 +1155,9 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
             cfg.rx_mode = true;
         } else if (arg == "--aes67-mode") {
             cfg.aes67_mode = true;
+        } else if (arg == "--ultra-low") {
+            cfg.low_latency = true;
+            cfg.latency_profile = LatencyProfile::UltraLow;
         } else if (arg == "--low-latency") {
             cfg.low_latency = true;
             cfg.latency_profile = LatencyProfile::LowLatency;
@@ -1757,7 +1765,8 @@ static int run_tx(DaemonConfig cfg) {
 
     // Auto-detect latency profile from network interface
     cfg.latency_profile = resolve_latency_profile(cfg.latency_profile, cfg.dest_ip);
-    cfg.low_latency = (cfg.latency_profile == LatencyProfile::LowLatency);
+    cfg.low_latency = (cfg.latency_profile == LatencyProfile::LowLatency ||
+                       cfg.latency_profile == LatencyProfile::UltraLow);
 
     // Expose config so ws_handle can use it for monitor
     g_cfg_channels    = cfg.channels;
@@ -2188,7 +2197,8 @@ static int run_tx(DaemonConfig cfg) {
 static int run_rx(DaemonConfig cfg) {
     // Auto-detect latency profile from network interface
     cfg.latency_profile = resolve_latency_profile(cfg.latency_profile, cfg.dest_ip);
-    cfg.low_latency = (cfg.latency_profile == LatencyProfile::LowLatency);
+    cfg.low_latency = (cfg.latency_profile == LatencyProfile::LowLatency ||
+                       cfg.latency_profile == LatencyProfile::UltraLow);
 
     g_cfg_channels    = cfg.channels;
     g_cfg_sample_rate = cfg.sample_rate;
