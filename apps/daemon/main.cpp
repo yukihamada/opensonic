@@ -2285,10 +2285,15 @@ static int run_rx(DaemonConfig cfg) {
         return 1;
     }
 
+    // ALSA period: use larger period for WiFi to reduce callback frequency.
+    // Packets arrive as 96 frames into ring buffer, but ALSA pulls 480 frames (10ms) at a time.
+    // This dramatically reduces scheduling sensitivity on Raspberry Pi over WiFi.
+    const uint32_t kAlsaPeriod = (kFramesPerPacket <= 96) ? 480 : kFramesPerPacket;
+
     AudioStreamConfig audio_cfg;
     audio_cfg.sample_rate = cfg.sample_rate;
     audio_cfg.channels = cfg.channels;
-    audio_cfg.frames_per_buffer = kFramesPerPacket;
+    audio_cfg.frames_per_buffer = kAlsaPeriod;
 
     if (!audio->open_output(cfg.audio_device, audio_cfg)) {
         fprintf(stderr, "Error: cannot open audio output device '%s'\n", cfg.audio_device.c_str());
@@ -2296,7 +2301,7 @@ static int run_rx(DaemonConfig cfg) {
     }
 
     // Conversion buffer (S24 from network → float for playback)
-    std::vector<float> conv_buf(kFramesPerPacket * cfg.channels);
+    std::vector<float> conv_buf(kAlsaPeriod * cfg.channels);
 
     // Audio callback: ring buffer (or PlayoutBuffer) → convert → playback
     static uint64_t sine_phase = 0;

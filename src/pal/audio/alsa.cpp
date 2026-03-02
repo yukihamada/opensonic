@@ -122,7 +122,8 @@ private:
         snd_pcm_uframes_t period = config.frames_per_buffer;
         snd_pcm_hw_params_set_period_size_near(handle_, params, &period, nullptr);
 
-        // Low-latency: period<=48 (1ms) → double-buffer; otherwise quad-buffer
+        // Buffer multiplier: period<=48 (1ms) → 2x, period<=96 (2ms) → 4x, larger → 4x
+        // Larger buffers give ALSA more headroom against scheduling jitter
         unsigned int buf_mult = (period <= 48) ? 2 : 4;
         snd_pcm_uframes_t buffer_size = period * buf_mult;
         snd_pcm_hw_params_set_buffer_size_near(handle_, params, &buffer_size);
@@ -254,11 +255,18 @@ private:
                 }
                 if (hw_format_ == SND_PCM_FORMAT_FLOAT_LE) {
                     snd_pcm_sframes_t n = snd_pcm_writei(handle_, float_buf.data(), frames);
-                    if (n == -EPIPE) { snd_pcm_prepare(handle_); }
+                    if (n == -EPIPE) {
+                        snd_pcm_prepare(handle_);
+                        // Re-write after recovery to avoid immediate re-underrun
+                        snd_pcm_writei(handle_, float_buf.data(), frames);
+                    }
                 } else {
                     float_to_hw(float_buf.data(), hw_buf.data(), samples);
                     snd_pcm_sframes_t n = snd_pcm_writei(handle_, hw_buf.data(), frames);
-                    if (n == -EPIPE) { snd_pcm_prepare(handle_); }
+                    if (n == -EPIPE) {
+                        snd_pcm_prepare(handle_);
+                        snd_pcm_writei(handle_, hw_buf.data(), frames);
+                    }
                 }
             }
         }
