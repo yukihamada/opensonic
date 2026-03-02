@@ -422,10 +422,10 @@ static std::atomic<uint32_t> g_tune_step_up{2};         // ms to add on noise
 static std::atomic<uint32_t> g_tune_step_down{1};       // ms to subtract on stable
 static std::atomic<uint32_t> g_tune_stable_sec{5};      // seconds before decrease
 
-// Deglitch: detect and repair isolated click spikes in interleaved audio.
+// Deglitch: detect and repair click spikes (1-4 sample bursts) in interleaved audio.
 // Returns number of repaired samples.
 static uint32_t deglitch_buffer(float* buf, uint32_t frame_count, uint32_t channels) {
-    if (frame_count < 3) return 0;
+    if (frame_count < 5) return 0;
     uint32_t repairs = 0;
     uint32_t samples = frame_count * channels;
 
@@ -442,15 +442,29 @@ static uint32_t deglitch_buffer(float* buf, uint32_t frame_count, uint32_t chann
         for (uint32_t f = 1; f < frame_count - 1; f++) {
             uint32_t idx  = f * channels + ch;
             uint32_t prev = (f - 1) * channels + ch;
-            uint32_t next = (f + 1) * channels + ch;
+            float d_in = std::fabs(buf[idx] - buf[prev]);
 
-            float d_in  = std::fabs(buf[idx] - buf[prev]);
-            float d_out = std::fabs(buf[next] - buf[idx]);
-
-            // Isolated spike: big jump in AND big jump out
-            if (d_in > threshold && d_out > threshold * 0.5f) {
-                buf[idx] = (buf[prev] + buf[next]) * 0.5f;
-                repairs++;
+            if (d_in > threshold) {
+                // Scan ahead to find end of glitch (up to 4 samples)
+                uint32_t glitch_end = f + 1;
+                for (; glitch_end < f + 5 && glitch_end < frame_count - 1; glitch_end++) {
+                    uint32_t next_idx = glitch_end * channels + ch;
+                    uint32_t after    = (glitch_end + 1) * channels + ch;
+                    float d_out = std::fabs(buf[after] - buf[next_idx]);
+                    if (d_out < threshold * 0.3f) break;
+                }
+                if (glitch_end < frame_count - 1) {
+                    // Interpolate across the glitch region
+                    float start_val = buf[prev];
+                    float end_val   = buf[(glitch_end + 1) * channels + ch];
+                    uint32_t span = glitch_end - f + 1;
+                    for (uint32_t g = 0; g < span && f + g < frame_count; g++) {
+                        float t = (float)(g + 1) / (float)(span + 1);
+                        buf[(f + g) * channels + ch] = start_val * (1.0f - t) + end_val * t;
+                        repairs++;
+                    }
+                    f = glitch_end; // skip past repaired region
+                }
             }
         }
     }
@@ -461,8 +475,11 @@ static uint32_t deglitch_buffer(float* buf, uint32_t frame_count, uint32_t chann
 // last sample from the previous callback. Prevents clicks at buffer boundaries.
 static void crossfade_boundary(float* buf, uint32_t frame_count, uint32_t channels,
                                float* prev_last_samples, bool* had_audio) {
+    // Use up to 1/4 of buffer for crossfade (adaptive), minimum from config
     uint32_t fade_frames = g_crossfade_frames.load(std::memory_order_relaxed);
-    if (fade_frames < 2) fade_frames = 2;
+    uint32_t max_fade = frame_count / 4;
+    if (max_fade > fade_frames) fade_frames = max_fade;
+    if (fade_frames < 4) fade_frames = 4;
     if (frame_count < fade_frames) return;
     float cf_thresh = g_crossfade_thresh.load(std::memory_order_relaxed);
 
@@ -474,7 +491,8 @@ static void crossfade_boundary(float* buf, uint32_t frame_count, uint32_t channe
         // Only crossfade if there's a significant discontinuity
         if (*had_audio && diff > cf_thresh) {
             for (uint32_t f = 0; f < fade_frames; f++) {
-                float t = (float)(f + 1) / (float)(fade_frames + 1);
+                // Smooth cosine-shaped crossfade (less audible than linear)
+                float t = 0.5f * (1.0f - std::cos(3.14159265f * (float)(f + 1) / (float)(fade_frames + 1)));
                 uint32_t idx = f * channels + ch;
                 buf[idx] = prev * (1.0f - t) + buf[idx] * t;
             }
@@ -2315,6 +2333,16 @@ static int run_rx(DaemonConfig cfg) {
         }
 
         // Standard RingBuffer path
+        // State persisted across callbacks (no heap allocs in RT path)
+        static std::vector<int32_t> s24_buf;
+        static std::vector<float> prev_good_buf;
+        static float rx_prev[8] = {};
+        static bool rx_had_audio = false;
+        static uint32_t consecutive_underruns = 0;
+
+        if (s24_buf.size() < samples) s24_buf.resize(samples);
+        if (prev_good_buf.size() < samples) prev_good_buf.resize(samples);
+
         // Wait for prefill before starting playback to absorb jitter
         if (!prefilled.load()) {
             if (ring.available_read() < kFramesPerPacket * kPrefillPackets) {
@@ -2322,37 +2350,48 @@ static int run_rx(DaemonConfig cfg) {
                 return;
             }
             prefilled.store(true);
+            consecutive_underruns = 0;
         }
-
-        std::vector<int32_t> s24_buf(samples);
 
         size_t read = ring.read(s24_buf.data(), frame_count);
         if (read < frame_count) {
-            // Underrun: zero-fill and re-trigger prefill
-            std::memset(s24_buf.data() + read * cfg.channels, 0,
-                (frame_count - read) * frame_size);
-            prefilled.store(false);
-        } else if (ring.available_read() < kFramesPerPacket * kRefillThreshold) {
-            // Buffer running low — re-prefill to avoid imminent dropout
-            prefilled.store(false);
+            // Underrun: use previous good buffer with fade-out instead of silence
+            consecutive_underruns++;
+            if (rx_had_audio && consecutive_underruns <= 3) {
+                float fade_base = 1.0f - 0.3f * (consecutive_underruns - 1);
+                for (size_t i = 0; i < samples; i++) {
+                    float fade = fade_base * (1.0f - (float)i / (float)samples);
+                    buffer[i] = prev_good_buf[i] * fade;
+                }
+            } else {
+                std::memset(buffer, 0, samples * sizeof(float));
+            }
+            if (consecutive_underruns > 5) prefilled.store(false);
+            g_plc_frames.fetch_add(frame_count, std::memory_order_relaxed);
+        } else {
+            consecutive_underruns = 0;
+            if (ring.available_read() < kFramesPerPacket * kRefillThreshold) {
+                // Buffer running low — re-prefill to avoid imminent dropout
+                prefilled.store(false);
+            }
+            s24_to_float(s24_buf.data(), buffer, samples);
         }
-        s24_to_float(s24_buf.data(), buffer, samples);
 
         // Apply volume / mute
         float gain = g_rx_muted.load() ? 0.0f : g_rx_volume.load();
         if (gain != 1.0f) {
             for (size_t i = 0; i < samples; i++) buffer[i] *= gain;
         }
-        // Audio repair
+        // Audio repair: deglitch + crossfade
         if (g_repair_enabled.load(std::memory_order_relaxed)) {
-            static float rx_prev[8] = {};
-            static bool rx_had_audio = false;
             uint32_t fixed = deglitch_buffer(buffer, frame_count, cfg.channels);
             if (fixed > 0)
                 g_repair_clicks.fetch_add(fixed, std::memory_order_relaxed);
             crossfade_boundary(buffer, frame_count, cfg.channels,
                                rx_prev, &rx_had_audio);
         }
+        // Save good buffer for PLC on next underrun
+        std::memcpy(prev_good_buf.data(), buffer, samples * sizeof(float));
     });
 
     // Create transport manager for optional DTLS
