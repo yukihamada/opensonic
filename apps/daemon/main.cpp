@@ -1038,8 +1038,8 @@ struct LatencyParams {
 static LatencyParams get_latency_params(LatencyProfile profile) {
     switch (profile) {
     case LatencyProfile::UltraLow:
-        //        frames  tier              prefill refill buf mon timeout label
-        return {12, soluna::PacketTier::Low, 8, 4, 2, 3, 1, "ultra-low"};
+        //        frames  tier                  prefill refill buf mon timeout label
+        return {48, soluna::PacketTier::Standard, 1, 1, 1, 3, 1, "ultra-low"};
     case LatencyProfile::LowLatency:
         return {48, soluna::PacketTier::Standard, 2, 1, 2, 5, 1, "low-latency"};
     case LatencyProfile::WiFi:
@@ -1064,8 +1064,8 @@ static LatencyProfile resolve_latency_profile(LatencyProfile profile, const std:
         fprintf(stderr, "[auto] Detected WiFi interface '%s' → wifi-latency profile\n", iface.c_str());
         return LatencyProfile::WiFi;
     } else {
-        fprintf(stderr, "[auto] Detected wired interface '%s' → ultra-low profile\n", iface.c_str());
-        return LatencyProfile::UltraLow;
+        fprintf(stderr, "[auto] Detected wired interface '%s' → low-latency profile\n", iface.c_str());
+        return LatencyProfile::LowLatency;
     }
 }
 
