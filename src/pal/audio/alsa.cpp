@@ -122,9 +122,8 @@ private:
         snd_pcm_uframes_t period = config.frames_per_buffer;
         snd_pcm_hw_params_set_period_size_near(handle_, params, &period, nullptr);
 
-        // Buffer multiplier: period<=48 (1ms) → 2x, period<=96 (2ms) → 4x, larger → 4x
-        // Larger buffers give ALSA more headroom against scheduling jitter
-        unsigned int buf_mult = (period <= 48) ? 2 : 4;
+        // Buffer multiplier: period<=48 → 2x (low-latency), larger → 8x (jitter headroom)
+        unsigned int buf_mult = (period <= 48) ? 2 : 8;
         snd_pcm_uframes_t buffer_size = period * buf_mult;
         snd_pcm_hw_params_set_buffer_size_near(handle_, params, &buffer_size);
 

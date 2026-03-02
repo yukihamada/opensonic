@@ -1061,7 +1061,7 @@ static LatencyParams get_latency_params(LatencyProfile profile) {
     case LatencyProfile::LowLatency:
         return {48, soluna::PacketTier::Standard, 2, 1, 2, 5, 1, "low-latency"};
     case LatencyProfile::WiFi:
-        return {96, soluna::PacketTier::WiFi, 6, 1, 20, 20, 5, "wifi-latency"};
+        return {96, soluna::PacketTier::WiFi, 10, 1, 40, 40, 5, "wifi-latency"};
     default:
         return {240, soluna::PacketTier::LAN, 4, 2, 20, 20, 10, "default"};
     }
@@ -2238,8 +2238,8 @@ static int run_rx(DaemonConfig cfg) {
     const uint32_t kFramesPerPacket = lp.frames_per_packet;
     const size_t frame_size = sizeof(int32_t) * cfg.channels;
 
-    // Ring buffer: 40 packets capacity
-    const uint32_t kRingPackets = 40;
+    // Ring buffer: must be large enough to absorb WiFi jitter (observed ±40ms swing)
+    const uint32_t kRingPackets = 100;
     const uint32_t kPrefillPackets = lp.prefill_packets;
     const uint32_t kRefillThreshold = lp.refill_threshold;
     RingBuffer ring(kFramesPerPacket * kRingPackets, frame_size);
