@@ -1,0 +1,1 @@
+audio,wifi,streaming,receiver,network,hifi,multiroom,airplay,alternative,lossless

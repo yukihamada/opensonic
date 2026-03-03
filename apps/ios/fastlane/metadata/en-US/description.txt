@@ -1,0 +1,13 @@
+Soluna Rx turns your iPhone into a high-quality WiFi audio receiver. Stream 24-bit/48kHz audio from your Mac to any speaker system over your local WiFi network.
+
+Features:
+• Lossless 24-bit audio streaming over WiFi
+• Ultra-low latency with adaptive jitter buffering
+• Forward Error Correction (FEC) for reliable playback
+• WSOLA packet loss concealment for seamless audio
+• Auto-detection of WiFi vs wired network
+• Multi-sample-rate support (44.1/48/96 kHz)
+• Web-based control interface
+• Works with Raspberry Pi + DAC for audiophile setups
+
+Perfect for whole-home audio, studio monitoring, and audiophile listening rooms. Simply run the Soluna transmitter on your Mac and receive pristine audio on any iOS device.

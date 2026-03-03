@@ -16,6 +16,7 @@
 		1A0030 /* SpeakersController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0030 /* SpeakersController.swift */; };
 		1A0040 /* PeerRelayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0040 /* PeerRelayManager.swift */; };
 		1A0006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2A0009 /* Assets.xcassets */; };
+		1A0050 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2A0050 /* PrivacyInfo.xcprivacy */; };
 		1A0010 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0010 /* CoreAudio.framework */; };
 		1A0011 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0011 /* AudioToolbox.framework */; };
 		1A0013 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0013 /* AVFoundation.framework */; };
@@ -36,6 +37,7 @@
 		2A0030 /* SpeakersController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakersController.swift; sourceTree = "<group>"; };
 		2A0040 /* PeerRelayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerRelayManager.swift; sourceTree = "<group>"; };
 		2A0009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		2A0050 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		2A0010 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		2A0011 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
 		2A0013 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
@@ -81,6 +83,7 @@
 				2A0040 /* PeerRelayManager.swift */,
 				5A0010 /* Bridge */,
 				2A0009 /* Assets.xcassets */,
+				2A0050 /* PrivacyInfo.xcprivacy */,
 				2A0007 /* Info.plist */,
 			);
 			path = SolunaReceiver;
@@ -176,6 +179,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1A0006 /* Assets.xcassets in Resources */,
+				1A0050 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -325,7 +329,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202601292348;
+				CURRENT_PROJECT_VERSION = 202603032000;
 				DEVELOPMENT_TEAM = 5BV85JW8US;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -367,7 +371,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202601292348;
+				CURRENT_PROJECT_VERSION = 202603032000;
 				DEVELOPMENT_TEAM = 5BV85JW8US;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;

@@ -1,0 +1,45 @@
+# Deliverfile — Soluna Rx App Store submission
+
+app_identifier "com.soluna.SolunaReceiver"
+team_id "5BV85JW8US"
+
+# Pricing — set via App Store Connect web (fastlane price_tier broken with new API)
+# price_tier 0
+
+# Category
+primary_category "MUSIC"
+secondary_category "UTILITIES"
+
+# Age rating
+app_rating_config_path "./fastlane/rating_config.json"
+
+# Copyright
+copyright "2026 Soluna"
+
+# Review info
+app_review_information(
+  first_name: "Yuki",
+  last_name: "Hamada",
+  phone_number: "+81 90 1234 5678",
+  email_address: "mail@yukihamada.jp",
+  demo_user: "",
+  demo_password: "",
+  notes: "This app receives audio over WiFi multicast. To test, run the Soluna transmitter (solunad --tx) on a Mac on the same WiFi network. The app auto-detects and plays the audio stream. No login required."
+)
+
+# Submission
+submit_for_review true
+automatic_release true
+phased_release false
+
+# Skip uploading binary (already uploaded)
+skip_binary_upload true
+
+# Screenshots
+overwrite_screenshots true
+
+# Content rights
+# submission_information({
+#   content_rights_has_rights: true,
+#   content_rights_contains_third_party_content: false,
+# })

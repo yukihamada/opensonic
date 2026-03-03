@@ -23,6 +23,14 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 Build iOS library (soluna_core)
 
+### ios create_app
+
+```sh
+[bundle exec] fastlane ios create_app
+```
+
+Create app on App Store Connect (requires Apple ID with Admin role)
+
 ### ios beta
 
 ```sh
@@ -30,6 +38,22 @@ Build iOS library (soluna_core)
 ```
 
 Submit to TestFlight
+
+### ios upload
+
+```sh
+[bundle exec] fastlane ios upload
+```
+
+Upload existing IPA to TestFlight (skip build)
+
+### ios release
+
+```sh
+[bundle exec] fastlane ios release
+```
+
+Submit to App Store review with full metadata
 
 ### ios build_local
 
