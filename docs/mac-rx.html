@@ -11,449 +11,1142 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔊</text></svg>">
     <style>
         :root {
-            --bg: #0a0a1a;
-            --surface: #12122a;
-            --surface2: #1a1a3a;
-            --border: #2a2a4a;
-            --text: #e8e8f0;
-            --text-dim: #8888aa;
-            --accent: #6c5ce7;
-            --accent-light: #a29bfe;
-            --green: #00b894;
-            --orange: #fdcb6e;
-            --gradient-start: #6c5ce7;
-            --gradient-end: #00b894;
+            --bg: #050510;
+            --surface: #0c0c20;
+            --surface2: #141430;
+            --surface3: #1c1c40;
+            --border: #252550;
+            --border-light: #353560;
+            --text: #eeeef8;
+            --text-dim: #9090b0;
+            --text-muted: #606080;
+            --accent: #7c6cf0;
+            --accent-light: #b0a4ff;
+            --accent-glow: rgba(124,108,240,0.3);
+            --green: #00d4a0;
+            --green-dim: rgba(0,212,160,0.15);
+            --blue: #4ca0ff;
+            --blue-dim: rgba(76,160,255,0.15);
+            --orange: #ffb040;
+            --orange-dim: rgba(255,176,64,0.15);
+            --pink: #ff6090;
+            --pink-dim: rgba(255,96,144,0.15);
+            --cyan: #40d0e0;
+            --cyan-dim: rgba(64,208,224,0.15);
+            --yellow: #e0d060;
+            --yellow-dim: rgba(224,208,96,0.15);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Helvetica, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
             background: var(--bg);
             color: var(--text);
             line-height: 1.7;
             overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
         }
-        .container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+        .container { max-width: 1120px; margin: 0 auto; padding: 0 28px; }
 
-        /* Hero */
+        /* ── Nav ── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(5,5,16,0.82);
+            -webkit-backdrop-filter: blur(20px) saturate(1.4);
+            backdrop-filter: blur(20px) saturate(1.4);
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            transition: box-shadow 0.3s;
+        }
+        nav.scrolled { box-shadow: 0 4px 30px rgba(0,0,0,0.5); }
+        .nav-inner {
+            max-width: 1120px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 28px; height: 60px;
+        }
+        .nav-brand {
+            display: flex; align-items: center; gap: 10px;
+            font-size: 1.1rem; font-weight: 700; color: var(--text);
+            text-decoration: none;
+        }
+        .nav-brand .logo {
+            width: 32px; height: 32px; border-radius: 8px;
+            background: linear-gradient(135deg, var(--accent), var(--green));
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px; color: white; font-weight: 800;
+        }
+        .nav-right { display: flex; align-items: center; gap: 8px; }
+        .lang-switcher {
+            position: relative;
+            display: flex; align-items: center;
+        }
+        .lang-btn {
+            display: flex; align-items: center; gap: 6px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 7px 14px;
+            border-radius: 10px;
+            font-size: 0.82rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .lang-btn:hover { background: var(--surface3); border-color: var(--border-light); }
+        .lang-btn svg { width: 14px; height: 14px; opacity: 0.5; transition: transform 0.2s; }
+        .lang-btn.open svg { transform: rotate(180deg); }
+        .lang-dropdown {
+            position: absolute; top: 100%; right: 0; margin-top: 6px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 6px;
+            min-width: 200px;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+            opacity: 0; visibility: hidden;
+            transform: translateY(-8px);
+            transition: all 0.2s;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
+        }
+        .lang-dropdown.open { opacity: 1; visibility: visible; transform: translateY(0); }
+        .lang-opt {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            cursor: pointer;
+            transition: all 0.15s;
+            border: none; background: none; width: 100%; text-align: left;
+        }
+        .lang-opt:hover { background: var(--surface3); color: var(--text); }
+        .lang-opt.active { color: var(--accent-light); background: rgba(124,108,240,0.1); }
+        .lang-opt .flag { font-size: 1.1rem; }
+        .nav-download {
+            display: none;
+            padding: 7px 18px;
+            border-radius: 10px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: white;
+            background: var(--accent);
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .nav-download:hover { background: #6a5ae0; }
+        @media (min-width: 640px) { .nav-download { display: inline-flex; } }
+
+        /* ── Hero ── */
         .hero {
             text-align: center;
-            padding: 100px 24px 80px;
+            padding: 140px 28px 60px;
             position: relative;
         }
         .hero::before {
             content: '';
             position: absolute;
-            top: -200px; left: 50%; transform: translateX(-50%);
-            width: 800px; height: 800px;
-            background: radial-gradient(circle, rgba(108,92,231,0.15) 0%, transparent 70%);
+            top: -100px; left: 50%; transform: translateX(-50%);
+            width: 1000px; height: 1000px;
+            background:
+                radial-gradient(ellipse 60% 50% at 40% 40%, rgba(124,108,240,0.12) 0%, transparent 70%),
+                radial-gradient(ellipse 50% 60% at 65% 55%, rgba(0,212,160,0.08) 0%, transparent 70%);
             pointer-events: none;
         }
         .hero-badge {
-            display: inline-block;
-            font-size: 0.8rem;
-            font-weight: 600;
-            letter-spacing: 0.05em;
-            color: var(--accent-light);
-            background: rgba(108,92,231,0.15);
-            border: 1px solid rgba(108,92,231,0.3);
-            padding: 6px 16px;
-            border-radius: 20px;
-            margin-bottom: 24px;
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 0.78rem; font-weight: 600;
+            letter-spacing: 0.06em; text-transform: uppercase;
+            color: var(--green);
+            background: var(--green-dim);
+            border: 1px solid rgba(0,212,160,0.2);
+            padding: 8px 18px;
+            border-radius: 100px;
+            margin-bottom: 28px;
+        }
+        .hero-badge .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
         }
         .hero h1 {
-            font-size: clamp(2.5rem, 6vw, 4rem);
+            font-size: clamp(2.8rem, 7vw, 4.5rem);
             font-weight: 800;
-            letter-spacing: -0.03em;
-            line-height: 1.1;
-            margin-bottom: 20px;
+            letter-spacing: -0.04em;
+            line-height: 1.08;
+            margin-bottom: 24px;
         }
         .hero h1 .gradient {
-            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            background: linear-gradient(135deg, #b0a4ff 0%, #7c6cf0 40%, #00d4a0 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-        .hero p {
+        .hero-desc {
             font-size: 1.2rem;
             color: var(--text-dim);
-            max-width: 560px;
-            margin: 0 auto 40px;
+            max-width: 520px;
+            margin: 0 auto 44px;
+            line-height: 1.7;
         }
         .hero-buttons {
             display: flex;
-            gap: 16px;
+            gap: 14px;
             justify-content: center;
             flex-wrap: wrap;
         }
         .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 14px 28px;
-            border-radius: 12px;
-            font-size: 1rem;
+            display: inline-flex; align-items: center; gap: 10px;
+            padding: 15px 30px;
+            border-radius: 14px;
+            font-size: 0.95rem;
             font-weight: 600;
             text-decoration: none;
-            transition: all 0.2s;
+            transition: all 0.25s;
+            position: relative;
         }
         .btn-primary {
-            background: linear-gradient(135deg, var(--gradient-start), #5a4bd1);
-            color: white;
-            border: none;
+            background: linear-gradient(135deg, var(--accent), #5a4bd1);
+            color: white; border: none;
+            box-shadow: 0 4px 20px var(--accent-glow);
         }
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(108,92,231,0.4); text-decoration: none; }
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 32px var(--accent-glow);
+            text-decoration: none;
+        }
         .btn-secondary {
             background: var(--surface2);
             color: var(--text);
             border: 1px solid var(--border);
         }
-        .btn-secondary:hover { background: var(--border); text-decoration: none; }
-        .btn svg { width: 20px; height: 20px; }
-
-        /* Screenshot */
-        .screenshot-section {
-            text-align: center;
-            padding: 0 24px 80px;
-        }
-        .screenshot-frame {
-            max-width: 720px;
-            margin: 0 auto;
-            border-radius: 16px;
-            overflow: hidden;
-            box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
-        }
-        .screenshot-frame img {
-            width: 100%;
-            display: block;
-        }
-        .screenshot-placeholder {
-            width: 100%;
-            aspect-ratio: 16/10;
-            background: linear-gradient(160deg, #1a1040, #0d2040);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 16px;
+        .btn-secondary:hover { background: var(--surface3); border-color: var(--border-light); text-decoration: none; }
+        .btn-outline {
+            background: transparent;
             color: var(--text-dim);
+            border: 1px solid var(--border);
         }
-        .screenshot-placeholder .icon { font-size: 64px; }
-        .screenshot-placeholder .label { font-size: 1.1rem; font-weight: 500; }
+        .btn-outline:hover { background: var(--surface2); color: var(--text); text-decoration: none; }
+        .btn svg { width: 18px; height: 18px; flex-shrink: 0; }
 
-        /* Features */
-        .features {
-            padding: 80px 0;
+        /* ── App Preview (Mock) ── */
+        .preview-section {
+            padding: 40px 28px 100px;
+            display: flex; justify-content: center;
+        }
+        .mac-window {
+            width: 100%; max-width: 680px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow:
+                0 40px 100px rgba(0,0,0,0.5),
+                0 0 0 1px rgba(255,255,255,0.03),
+                0 0 80px rgba(124,108,240,0.06);
+        }
+        .mac-titlebar {
+            display: flex; align-items: center; gap: 7px;
+            padding: 13px 16px;
+            background: var(--surface2);
+            border-bottom: 1px solid var(--border);
+        }
+        .mac-dot { width: 11px; height: 11px; border-radius: 50%; }
+        .mac-dot.red { background: #ff5f57; }
+        .mac-dot.yellow { background: #febc2e; }
+        .mac-dot.green { background: #28c840; }
+        .mac-titlebar-text {
+            flex: 1; text-align: center;
+            font-size: 0.78rem; color: var(--text-muted); font-weight: 500;
+            margin-right: 40px;
+        }
+        .mac-content {
+            padding: 32px 28px;
+            display: flex; flex-direction: column; align-items: center; gap: 24px;
+        }
+        .mock-hero-circle {
+            width: 80px; height: 80px; border-radius: 50%;
+            background: linear-gradient(135deg, rgba(0,212,160,0.15), rgba(0,212,160,0.05));
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px; color: var(--green);
+            box-shadow: 0 0 30px rgba(0,212,160,0.15);
+        }
+        .mock-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 14px; border-radius: 100px;
+            font-size: 0.8rem; font-weight: 600;
+        }
+        .mock-pill.green { background: var(--green-dim); color: var(--green); }
+        .mock-stats {
+            display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+        }
+        .mock-stat {
+            padding: 8px 14px; border-radius: 10px;
+            text-align: center;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+        }
+        .mock-stat-val { font-size: 0.95rem; font-weight: 700; font-family: "SF Mono", monospace; }
+        .mock-stat-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; }
+        .mock-speakers {
+            width: 100%;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+        }
+        .mock-speaker-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+        }
+        .mock-speaker-header span { font-size: 0.9rem; font-weight: 600; }
+        .mock-speaker-row {
+            display: flex; align-items: center; gap: 12px;
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        .mock-speaker-row:last-child { border-bottom: none; }
+        .mock-speaker-icon {
+            width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+            font-size: 16px; position: relative;
+        }
+        .mock-speaker-icon .online {
+            position: absolute; bottom: -2px; right: -2px;
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--green);
+            border: 2px solid var(--surface2);
+        }
+        .mock-slider {
+            flex: 1; height: 4px; border-radius: 2px;
+            background: var(--border);
+            position: relative;
+        }
+        .mock-slider-fill {
+            position: absolute; top: 0; left: 0;
+            height: 100%; border-radius: 2px;
+            background: var(--accent-light);
+        }
+        .mock-speaker-vol { font-size: 0.75rem; color: var(--text-muted); font-family: "SF Mono", monospace; width: 36px; text-align: right; }
+
+        /* ── Section styles ── */
+        .section { padding: 100px 0; }
+        .section-header { text-align: center; margin-bottom: 64px; }
+        .section-label {
+            display: inline-block;
+            font-size: 0.72rem; font-weight: 700;
+            letter-spacing: 0.1em; text-transform: uppercase;
+            color: var(--accent-light);
+            margin-bottom: 16px;
         }
         .section-title {
-            text-align: center;
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 12px;
+            font-size: clamp(1.8rem, 4vw, 2.6rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
+            margin-bottom: 16px;
         }
-        .section-subtitle {
-            text-align: center;
+        .section-desc {
             color: var(--text-dim);
             font-size: 1.1rem;
-            margin-bottom: 60px;
+            max-width: 560px;
+            margin: 0 auto;
         }
+
+        /* ── Features ── */
         .feature-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
         }
+        @media (max-width: 900px) { .feature-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 600px) { .feature-grid { grid-template-columns: 1fr; } }
         .feature-card {
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 28px;
-            transition: border-color 0.2s, transform 0.2s;
+            border-radius: 18px;
+            padding: 30px 26px;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        .feature-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0;
+            transition: opacity 0.3s;
         }
         .feature-card:hover {
-            border-color: var(--accent);
-            transform: translateY(-2px);
+            border-color: var(--border-light);
+            transform: translateY(-4px);
+            box-shadow: 0 16px 40px rgba(0,0,0,0.3);
         }
+        .feature-card:hover::before { opacity: 1; }
         .feature-icon {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            margin-bottom: 16px;
+            width: 48px; height: 48px;
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px;
+            margin-bottom: 18px;
         }
         .feature-card h3 {
-            font-size: 1.1rem;
-            font-weight: 600;
+            font-size: 1.05rem;
+            font-weight: 700;
             margin-bottom: 8px;
+            letter-spacing: -0.01em;
         }
         .feature-card p {
             color: var(--text-dim);
-            font-size: 0.95rem;
-            line-height: 1.6;
+            font-size: 0.88rem;
+            line-height: 1.65;
         }
 
-        /* Architecture */
-        .architecture {
-            padding: 80px 0;
+        /* ── How it works ── */
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            max-width: 900px;
+            margin: 0 auto;
         }
-        .arch-diagram {
+        @media (max-width: 700px) { .steps-grid { grid-template-columns: 1fr; } }
+        .step-card {
+            text-align: center;
+            padding: 36px 24px;
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 40px;
-            max-width: 800px;
-            margin: 0 auto;
-            font-family: "SF Mono", "Fira Code", Consolas, monospace;
-            font-size: 0.85rem;
-            line-height: 2;
+            border-radius: 18px;
+            position: relative;
+        }
+        .step-num {
+            width: 44px; height: 44px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent), #5a4bd1);
+            color: white;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; font-weight: 800;
+            margin-bottom: 18px;
+        }
+        .step-card h3 {
+            font-size: 1.05rem; font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .step-card p {
             color: var(--text-dim);
-            overflow-x: auto;
-            white-space: pre;
+            font-size: 0.88rem;
+            line-height: 1.65;
         }
-        .arch-diagram .highlight { color: var(--accent-light); font-weight: 600; }
-        .arch-diagram .green { color: var(--green); }
-        .arch-diagram .orange { color: var(--orange); }
+        .step-arrow {
+            display: none;
+            position: absolute; right: -18px; top: 50%;
+            transform: translateY(-50%);
+            color: var(--border-light); font-size: 1.5rem;
+        }
+        @media (min-width: 701px) {
+            .step-card:not(:last-child) .step-arrow { display: block; }
+        }
 
-        /* Specs */
-        .specs {
-            padding: 80px 0;
-        }
+        /* ── Specs ── */
         .specs-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            grid-template-columns: repeat(4, 1fr);
             gap: 16px;
-            max-width: 800px;
+            max-width: 960px;
             margin: 0 auto;
         }
+        @media (max-width: 800px) { .specs-grid { grid-template-columns: repeat(2, 1fr); } }
         .spec-item {
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
+            border-radius: 16px;
+            padding: 24px 18px;
             text-align: center;
+            transition: all 0.25s;
         }
+        .spec-item:hover { border-color: var(--border-light); transform: translateY(-2px); }
         .spec-value {
-            font-size: 1.4rem;
-            font-weight: 700;
-            color: var(--accent-light);
-            margin-bottom: 4px;
+            font-size: 1.5rem; font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-light), var(--green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 6px;
         }
-        .spec-label {
-            font-size: 0.85rem;
-            color: var(--text-dim);
-        }
+        .spec-label { font-size: 0.8rem; color: var(--text-dim); }
 
-        /* CTA */
+        /* ── Platforms ── */
+        .platforms-row {
+            display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;
+            max-width: 700px; margin: 0 auto;
+        }
+        .platform-card {
+            flex: 1; min-width: 200px; max-width: 320px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 32px 24px;
+            text-align: center;
+            transition: all 0.25s;
+        }
+        .platform-card:hover { border-color: var(--border-light); transform: translateY(-3px); }
+        .platform-icon { font-size: 36px; margin-bottom: 16px; }
+        .platform-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+        .platform-card p { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 18px; }
+        .platform-link {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 0.85rem; font-weight: 600;
+            color: var(--accent-light);
+            text-decoration: none;
+        }
+        .platform-link:hover { text-decoration: underline; }
+
+        /* ── CTA ── */
         .cta {
             text-align: center;
-            padding: 80px 24px;
+            padding: 100px 28px 80px;
             position: relative;
         }
         .cta::before {
             content: '';
             position: absolute;
-            bottom: -100px; left: 50%; transform: translateX(-50%);
-            width: 600px; height: 600px;
-            background: radial-gradient(circle, rgba(0,184,148,0.1) 0%, transparent 70%);
+            top: 0; left: 50%; transform: translateX(-50%);
+            width: 800px; height: 500px;
+            background: radial-gradient(ellipse at center, rgba(124,108,240,0.08) 0%, transparent 70%);
             pointer-events: none;
         }
         .cta h2 {
-            font-size: 2rem;
-            font-weight: 700;
+            font-size: clamp(1.8rem, 4vw, 2.4rem);
+            font-weight: 800;
             margin-bottom: 16px;
+            letter-spacing: -0.02em;
         }
         .cta p {
             color: var(--text-dim);
             font-size: 1.1rem;
-            margin-bottom: 32px;
+            margin-bottom: 36px;
         }
 
-        /* Footer */
+        /* ── Footer ── */
         footer {
             text-align: center;
-            padding: 40px 24px;
-            color: var(--text-dim);
-            font-size: 0.85rem;
+            padding: 40px 28px;
+            color: var(--text-muted);
+            font-size: 0.82rem;
             border-top: 1px solid var(--border);
         }
-        footer a { color: var(--accent-light); text-decoration: none; }
-        footer a:hover { text-decoration: underline; }
+        footer a { color: var(--text-dim); text-decoration: none; }
+        footer a:hover { color: var(--accent-light); }
+        .footer-links { display: flex; gap: 24px; justify-content: center; margin-bottom: 16px; }
 
-        @media (max-width: 640px) {
-            .hero { padding: 60px 16px 40px; }
-            .feature-grid { grid-template-columns: 1fr; }
-            .arch-diagram { font-size: 0.7rem; padding: 20px; }
+        /* ── Animations ── */
+        .fade-in {
+            opacity: 0; transform: translateY(24px);
+            transition: opacity 0.7s, transform 0.7s;
         }
+        .fade-in.visible { opacity: 1; transform: translateY(0); }
     </style>
 </head>
 <body>
 
-    <!-- Hero -->
-    <section class="hero">
-        <div class="hero-badge">FREE ON MAC APP STORE</div>
-        <h1>
-            <span class="gradient">Soluna Rx</span><br>
-            for Mac
-        </h1>
-        <p>
-            Stream audio to your Mac over WiFi.
-            Low-latency network audio receiver with multi-speaker sync.
-        </p>
-        <div class="hero-buttons">
-            <a href="https://apps.apple.com/app/soluna-rx-for-mac/id6759965876" class="btn btn-primary">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-                Download on Mac App Store
-            </a>
-            <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                View Source
-            </a>
-        </div>
-    </section>
-
-    <!-- Screenshot -->
-    <section class="screenshot-section">
-        <div class="screenshot-frame">
-            <div class="screenshot-placeholder">
-                <div class="icon">🎵</div>
-                <div class="label">Soluna Rx for Mac</div>
-                <div style="font-size: 0.9rem">Network Audio Receiver</div>
+<!-- Nav -->
+<nav id="nav">
+    <div class="nav-inner">
+        <a href="#" class="nav-brand">
+            <div class="logo">S</div>
+            <span>Soluna Rx</span>
+        </a>
+        <div class="nav-right">
+            <div class="lang-switcher">
+                <button class="lang-btn" id="langBtn" onclick="toggleLang()">
+                    <span id="langFlag">🌐</span>
+                    <span id="langName">EN</span>
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                </button>
+                <div class="lang-dropdown" id="langDrop"></div>
             </div>
+            <a href="https://apps.apple.com/app/soluna-rx-for-mac/id6759965876" class="nav-download" data-i18n="nav_download">Download</a>
         </div>
-    </section>
+    </div>
+</nav>
 
-    <!-- Features -->
-    <section class="features">
-        <div class="container">
-            <h2 class="section-title">Features</h2>
-            <p class="section-subtitle">Everything you need for seamless network audio</p>
-            <div class="feature-grid">
-                <div class="feature-card">
-                    <div class="feature-icon" style="background: rgba(108,92,231,0.15); color: #a29bfe;">📡</div>
-                    <h3>Multicast RTP/OSTP</h3>
-                    <p>Automatically receives audio streams on 239.69.0.1:5004. Zero configuration required &mdash; just start and listen.</p>
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-badge">
+        <span class="dot"></span>
+        <span data-i18n="badge">FREE ON MAC APP STORE</span>
+    </div>
+    <h1>
+        <span class="gradient">Soluna Rx</span><br>
+        <span data-i18n="hero_sub">for Mac</span>
+    </h1>
+    <p class="hero-desc" data-i18n="hero_desc">
+        Stream audio to your Mac over WiFi. Low-latency network audio receiver with multi-speaker sync.
+    </p>
+    <div class="hero-buttons">
+        <a href="https://apps.apple.com/app/soluna-rx-for-mac/id6759965876" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+            <span data-i18n="btn_download">Download on Mac App Store</span>
+        </a>
+        <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            <span data-i18n="btn_source">View Source</span>
+        </a>
+    </div>
+</section>
+
+<!-- App Preview -->
+<section class="preview-section fade-in">
+    <div class="mac-window">
+        <div class="mac-titlebar">
+            <div class="mac-dot red"></div>
+            <div class="mac-dot yellow"></div>
+            <div class="mac-dot green"></div>
+            <div class="mac-titlebar-text">Soluna Rx</div>
+        </div>
+        <div class="mac-content">
+            <div class="mock-hero-circle">&#9654;</div>
+            <div class="mock-pill green" data-i18n="mock_receiving">Receiving</div>
+            <div class="mock-stats">
+                <div class="mock-stat">
+                    <div class="mock-stat-val" style="color:var(--green)">12.4K</div>
+                    <div class="mock-stat-label">PKTS</div>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon" style="background: rgba(0,184,148,0.15); color: #00b894;">🔍</div>
-                    <h3>Bonjour Auto-Discovery</h3>
-                    <p>Finds Soluna transmitters on your local network automatically. No manual IP configuration needed.</p>
+                <div class="mock-stat">
+                    <div class="mock-stat-val" style="color:var(--orange)">0.1%</div>
+                    <div class="mock-stat-label">DROP</div>
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon" style="background: rgba(253,203,110,0.15); color: #fdcb6e;">🔊</div>
-                    <h3>Multi-Speaker Control</h3>
-                    <p>Control multiple speakers from one place. Adjust volume, mute, and delay for each speaker independently or all at once.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon" style="background: rgba(116,185,255,0.15); color: #74b9ff;">⚡</div>
-                    <h3>Auto-Sync</h3>
-                    <p>Measures WebSocket round-trip time to automatically synchronize audio latency across all speakers.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon" style="background: rgba(255,118,117,0.15); color: #ff7675;">🛡️</div>
-                    <h3>Packet Loss Compensation</h3>
-                    <p>Built-in PLC algorithm fills in lost packets to keep playback smooth even on congested networks.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon" style="background: rgba(162,155,254,0.15); color: #a29bfe;">📊</div>
-                    <h3>Real-time Statistics</h3>
-                    <p>Monitor packet count, drop rate, buffer size, and PLC count in real-time. Know exactly what's happening.</p>
+                <div class="mock-stat">
+                    <div class="mock-stat-val">20ms</div>
+                    <div class="mock-stat-label">BUF</div>
                 </div>
             </div>
-        </div>
-    </section>
-
-    <!-- Architecture -->
-    <section class="architecture">
-        <div class="container">
-            <h2 class="section-title">How It Works</h2>
-            <p class="section-subtitle">Built on proven C++ audio engine with native SwiftUI interface</p>
-            <div class="arch-diagram">
-<span class="highlight">  [Mac TX]</span>                          <span class="green">[Mac RX]</span>
-  <span class="highlight">solunad</span>                          <span class="green">Soluna Rx for Mac</span>
-
-  System Audio                    SwiftUI ContentView
-      |                                  |
-  Virtual Driver                  AudioReceiver.swift
-      |                                  |
-  soluna_core (C++)               AudioReceiverBridge (Obj-C++)
-      |                                  |
-  UDP Multicast  <span class="orange">───239.69.0.1:5004───▶</span>  soluna_core (C++)
-  (RTP / OSTP)                           |
-                                    CoreAudio Output
-                                         |
-                                     <span class="green">🔊 Speakers</span></div>
-        </div>
-    </section>
-
-    <!-- Specs -->
-    <section class="specs">
-        <div class="container">
-            <h2 class="section-title">Specifications</h2>
-            <p class="section-subtitle">Lightweight, efficient, and purpose-built</p>
-            <div class="specs-grid">
-                <div class="spec-item">
-                    <div class="spec-value">macOS 13+</div>
-                    <div class="spec-label">Minimum OS Version</div>
+            <div class="mock-speakers">
+                <div class="mock-speaker-header">
+                    <span data-i18n="mock_speakers">Speakers</span>
+                    <span style="color:var(--accent-light);font-size:1.1rem">+</span>
                 </div>
-                <div class="spec-item">
-                    <div class="spec-value">arm64</div>
-                    <div class="spec-label">Apple Silicon Native</div>
+                <div class="mock-speaker-row">
+                    <div class="mock-speaker-icon">🖥<div class="online"></div></div>
+                    <div style="flex:0 0 auto;font-size:0.85rem;font-weight:600" data-i18n="mock_this_mac">This Mac</div>
+                    <div class="mock-slider"><div class="mock-slider-fill" style="width:72%"></div></div>
+                    <div class="mock-speaker-vol">72%</div>
                 </div>
-                <div class="spec-item">
-                    <div class="spec-value">~20ms</div>
-                    <div class="spec-label">Default Buffer Latency</div>
-                </div>
-                <div class="spec-item">
-                    <div class="spec-value">Free</div>
-                    <div class="spec-label">Price</div>
-                </div>
-                <div class="spec-item">
-                    <div class="spec-value">SwiftUI</div>
-                    <div class="spec-label">Native macOS UI</div>
-                </div>
-                <div class="spec-item">
-                    <div class="spec-value">C++17</div>
-                    <div class="spec-label">Audio Engine</div>
-                </div>
-                <div class="spec-item">
-                    <div class="spec-value">48kHz</div>
-                    <div class="spec-label">Sample Rate</div>
-                </div>
-                <div class="spec-item">
-                    <div class="spec-value">Open Source</div>
-                    <div class="spec-label">License</div>
+                <div class="mock-speaker-row">
+                    <div class="mock-speaker-icon">🔈<div class="online"></div></div>
+                    <div style="flex:0 0 auto;font-size:0.85rem;font-weight:600">Living Room</div>
+                    <div class="mock-slider"><div class="mock-slider-fill" style="width:85%;background:var(--blue)"></div></div>
+                    <div class="mock-speaker-vol">85%</div>
                 </div>
             </div>
         </div>
-    </section>
+    </div>
+</section>
 
-    <!-- CTA -->
-    <section class="cta">
-        <h2>Ready to stream?</h2>
-        <p>Download Soluna Rx for free from the Mac App Store.</p>
-        <div class="hero-buttons">
-            <a href="https://apps.apple.com/app/soluna-rx-for-mac/id6759965876" class="btn btn-primary">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-                Download for Free
-            </a>
-            <a href="https://apps.apple.com/app/soluna-rx/id6741468938" class="btn btn-secondary">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
-                iOS Version
-            </a>
+<!-- Features -->
+<section class="section features fade-in">
+    <div class="container">
+        <div class="section-header">
+            <div class="section-label" data-i18n="features_label">FEATURES</div>
+            <h2 class="section-title" data-i18n="features_title">Everything you need</h2>
+            <p class="section-desc" data-i18n="features_desc">Seamless network audio with zero configuration</p>
         </div>
-    </section>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--accent-glow);color:var(--accent-light)">📡</div>
+                <h3 data-i18n="f1_title">Multicast RTP/OSTP</h3>
+                <p data-i18n="f1_desc">Automatically receives audio streams on 239.69.0.1:5004. Zero configuration &mdash; just start and listen.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--green-dim);color:var(--green)">🔍</div>
+                <h3 data-i18n="f2_title">Bonjour Auto-Discovery</h3>
+                <p data-i18n="f2_desc">Finds Soluna transmitters on your local network automatically. No manual IP setup needed.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--orange-dim);color:var(--orange)">🔊</div>
+                <h3 data-i18n="f3_title">Multi-Speaker Control</h3>
+                <p data-i18n="f3_desc">Control multiple speakers from one place. Adjust volume, mute, and delay independently or all at once.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--blue-dim);color:var(--blue)">⚡</div>
+                <h3 data-i18n="f4_title">Auto-Sync</h3>
+                <p data-i18n="f4_desc">Measures round-trip time to automatically synchronize audio latency across all speakers.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--pink-dim);color:var(--pink)">🛡</div>
+                <h3 data-i18n="f5_title">Packet Loss Compensation</h3>
+                <p data-i18n="f5_desc">Built-in PLC algorithm fills in lost packets to keep playback smooth on congested networks.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--cyan-dim);color:var(--cyan)">📊</div>
+                <h3 data-i18n="f6_title">Real-time Statistics</h3>
+                <p data-i18n="f6_desc">Monitor packets, drop rate, buffer, and PLC count in real-time. Know exactly what's happening.</p>
+            </div>
+        </div>
+    </div>
+</section>
 
-    <!-- Footer -->
-    <footer>
-        <p>
-            Soluna Rx is part of the <a href="https://github.com/yukihamada/opensonic">OpenSonic</a> project.
-            <br>
-            <a href="index.html">Documentation</a> &middot;
-            <a href="https://github.com/yukihamada/opensonic">GitHub</a> &middot;
-            <a href="https://github.com/yukihamada/opensonic/issues">Issues</a>
-        </p>
-    </footer>
+<!-- How it works -->
+<section class="section fade-in">
+    <div class="container">
+        <div class="section-header">
+            <div class="section-label" data-i18n="how_label">HOW IT WORKS</div>
+            <h2 class="section-title" data-i18n="how_title">Three simple steps</h2>
+            <p class="section-desc" data-i18n="how_desc">Get whole-home audio running in minutes</p>
+        </div>
+        <div class="steps-grid">
+            <div class="step-card">
+                <div class="step-num">1</div>
+                <h3 data-i18n="s1_title">Install Soluna TX</h3>
+                <p data-i18n="s1_desc">Set up the Soluna transmitter (solunad) on your source Mac. It captures system audio via a virtual driver.</p>
+                <div class="step-arrow">→</div>
+            </div>
+            <div class="step-card">
+                <div class="step-num">2</div>
+                <h3 data-i18n="s2_title">Open Soluna Rx</h3>
+                <p data-i18n="s2_desc">Launch Soluna Rx on any Mac on the same network. It auto-discovers the transmitter and starts receiving.</p>
+                <div class="step-arrow">→</div>
+            </div>
+            <div class="step-card">
+                <div class="step-num">3</div>
+                <h3 data-i18n="s3_title">Enjoy Music</h3>
+                <p data-i18n="s3_desc">Audio plays through your Mac speakers in perfect sync. Add more speakers and control them all from one place.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Specs -->
+<section class="section fade-in">
+    <div class="container">
+        <div class="section-header">
+            <div class="section-label" data-i18n="specs_label">SPECIFICATIONS</div>
+            <h2 class="section-title" data-i18n="specs_title">Built for performance</h2>
+            <p class="section-desc" data-i18n="specs_desc">Lightweight, efficient, and purpose-built for audio</p>
+        </div>
+        <div class="specs-grid">
+            <div class="spec-item">
+                <div class="spec-value">macOS 13+</div>
+                <div class="spec-label" data-i18n="sp1">Minimum OS</div>
+            </div>
+            <div class="spec-item">
+                <div class="spec-value">Apple Silicon</div>
+                <div class="spec-label" data-i18n="sp2">Native arm64</div>
+            </div>
+            <div class="spec-item">
+                <div class="spec-value">~20ms</div>
+                <div class="spec-label" data-i18n="sp3">Buffer Latency</div>
+            </div>
+            <div class="spec-item">
+                <div class="spec-value" data-i18n="sp4_val">Free</div>
+                <div class="spec-label" data-i18n="sp4">Price</div>
+            </div>
+            <div class="spec-item">
+                <div class="spec-value">SwiftUI</div>
+                <div class="spec-label" data-i18n="sp5">Native macOS UI</div>
+            </div>
+            <div class="spec-item">
+                <div class="spec-value">C++17</div>
+                <div class="spec-label" data-i18n="sp6">Audio Engine</div>
+            </div>
+            <div class="spec-item">
+                <div class="spec-value">48 kHz / 16-bit</div>
+                <div class="spec-label" data-i18n="sp7">Audio Format</div>
+            </div>
+            <div class="spec-item">
+                <div class="spec-value" data-i18n="sp8_val">Open Source</div>
+                <div class="spec-label" data-i18n="sp8">License</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Platforms -->
+<section class="section fade-in">
+    <div class="container">
+        <div class="section-header">
+            <div class="section-label" data-i18n="plat_label">CROSS PLATFORM</div>
+            <h2 class="section-title" data-i18n="plat_title">Available everywhere</h2>
+            <p class="section-desc" data-i18n="plat_desc">Soluna Rx runs on macOS and iOS. More platforms coming soon.</p>
+        </div>
+        <div class="platforms-row">
+            <div class="platform-card">
+                <div class="platform-icon">🖥</div>
+                <h3>macOS</h3>
+                <p data-i18n="plat_mac_desc">Native Mac App Store app for Apple Silicon</p>
+                <a href="https://apps.apple.com/app/soluna-rx-for-mac/id6759965876" class="platform-link">
+                    Mac App Store →
+                </a>
+            </div>
+            <div class="platform-card">
+                <div class="platform-icon">📱</div>
+                <h3>iOS</h3>
+                <p data-i18n="plat_ios_desc">iPhone and iPad receiver with background playback</p>
+                <a href="https://apps.apple.com/app/soluna-rx/id6741468938" class="platform-link">
+                    App Store →
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="cta fade-in">
+    <h2 data-i18n="cta_title">Ready to stream?</h2>
+    <p data-i18n="cta_desc">Download Soluna Rx for free and turn your Mac into a network audio receiver.</p>
+    <div class="hero-buttons">
+        <a href="https://apps.apple.com/app/soluna-rx-for-mac/id6759965876" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+            <span data-i18n="cta_btn">Download for Free</span>
+        </a>
+        <a href="https://github.com/yukihamada/opensonic" class="btn btn-outline">
+            <span data-i18n="btn_source">View Source</span>
+        </a>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer>
+    <div class="footer-links">
+        <a href="index.html" data-i18n="footer_docs">Documentation</a>
+        <a href="https://github.com/yukihamada/opensonic">GitHub</a>
+        <a href="https://github.com/yukihamada/opensonic/issues" data-i18n="footer_issues">Issues</a>
+    </div>
+    <p>Soluna Rx &mdash; part of the <a href="https://github.com/yukihamada/opensonic" style="color:var(--accent-light)">OpenSonic</a> project</p>
+</footer>
+
+<script>
+// ─── i18n ───
+const LANGS = {
+    en: { flag:"🇺🇸", name:"English" },
+    ja: { flag:"🇯🇵", name:"日本語" },
+    zh: { flag:"🇨🇳", name:"中文" },
+    ko: { flag:"🇰🇷", name:"한국어" },
+    es: { flag:"🇪🇸", name:"Español" },
+    fr: { flag:"🇫🇷", name:"Français" },
+    de: { flag:"🇩🇪", name:"Deutsch" },
+    pt: { flag:"🇧🇷", name:"Português" },
+};
+
+const T = {
+en: {
+    nav_download:"Download",
+    badge:"FREE ON MAC APP STORE",
+    hero_sub:"for Mac",
+    hero_desc:"Stream audio to your Mac over WiFi. Low-latency network audio receiver with multi-speaker sync.",
+    btn_download:"Download on Mac App Store",
+    btn_source:"View Source",
+    mock_receiving:"Receiving",
+    mock_speakers:"Speakers",
+    mock_this_mac:"This Mac",
+    features_label:"FEATURES",
+    features_title:"Everything you need",
+    features_desc:"Seamless network audio with zero configuration",
+    f1_title:"Multicast RTP/OSTP",f1_desc:"Automatically receives audio on 239.69.0.1:5004. Zero configuration \u2014 just start and listen.",
+    f2_title:"Bonjour Auto-Discovery",f2_desc:"Finds Soluna transmitters on your local network automatically. No manual IP setup needed.",
+    f3_title:"Multi-Speaker Control",f3_desc:"Control multiple speakers from one place. Adjust volume, mute, and delay independently or all at once.",
+    f4_title:"Auto-Sync",f4_desc:"Measures round-trip time to automatically synchronize audio latency across all speakers.",
+    f5_title:"Packet Loss Compensation",f5_desc:"Built-in PLC algorithm fills in lost packets to keep playback smooth on congested networks.",
+    f6_title:"Real-time Statistics",f6_desc:"Monitor packets, drop rate, buffer, and PLC count in real-time. Know exactly what\u2019s happening.",
+    how_label:"HOW IT WORKS",how_title:"Three simple steps",how_desc:"Get whole-home audio running in minutes",
+    s1_title:"Install Soluna TX",s1_desc:"Set up the Soluna transmitter (solunad) on your source Mac. It captures system audio via a virtual driver.",
+    s2_title:"Open Soluna Rx",s2_desc:"Launch Soluna Rx on any Mac on the same network. It auto-discovers the transmitter and starts receiving.",
+    s3_title:"Enjoy Music",s3_desc:"Audio plays through your Mac speakers in perfect sync. Add more speakers and control them all from one place.",
+    specs_label:"SPECIFICATIONS",specs_title:"Built for performance",specs_desc:"Lightweight, efficient, and purpose-built for audio",
+    sp1:"Minimum OS",sp2:"Native arm64",sp3:"Buffer Latency",sp4_val:"Free",sp4:"Price",sp5:"Native macOS UI",sp6:"Audio Engine",sp7:"Audio Format",sp8_val:"Open Source",sp8:"License",
+    plat_label:"CROSS PLATFORM",plat_title:"Available everywhere",plat_desc:"Soluna Rx runs on macOS and iOS. More platforms coming soon.",
+    plat_mac_desc:"Native Mac App Store app for Apple Silicon",plat_ios_desc:"iPhone and iPad receiver with background playback",
+    cta_title:"Ready to stream?",cta_desc:"Download Soluna Rx for free and turn your Mac into a network audio receiver.",cta_btn:"Download for Free",
+    footer_docs:"Documentation",footer_issues:"Issues",
+},
+ja: {
+    nav_download:"ダウンロード",
+    badge:"MAC APP STOREで無料公開中",
+    hero_sub:"for Mac",
+    hero_desc:"WiFi経由でMacにオーディオをストリーミング。低遅延ネットワークオーディオレシーバー。",
+    btn_download:"Mac App Storeでダウンロード",
+    btn_source:"ソースコード",
+    mock_receiving:"受信中",
+    mock_speakers:"スピーカー",
+    mock_this_mac:"このMac",
+    features_label:"機能",
+    features_title:"必要なものすべて",
+    features_desc:"設定不要のシームレスなネットワークオーディオ",
+    f1_title:"マルチキャスト RTP/OSTP",f1_desc:"239.69.0.1:5004でオーディオを自動受信。設定不要で、起動するだけで再生開始。",
+    f2_title:"Bonjour 自動検出",f2_desc:"ローカルネットワーク上のSolunaトランスミッターを自動検出。IP設定は不要です。",
+    f3_title:"マルチスピーカー制御",f3_desc:"複数スピーカーを一元管理。音量・ミュート・ディレイを個別または一括で調整。",
+    f4_title:"自動同期",f4_desc:"往復時間を計測し、全スピーカーのオーディオ遅延を自動的に同期します。",
+    f5_title:"パケットロス補償",f5_desc:"内蔵PLCアルゴリズムにより、ネットワーク混雑時でもスムーズな再生を維持。",
+    f6_title:"リアルタイム統計",f6_desc:"パケット数、ドロップ率、バッファ、PLC回数をリアルタイムで監視。",
+    how_label:"使い方",how_title:"3つの簡単なステップ",how_desc:"数分でホームオーディオを構築",
+    s1_title:"Soluna TXをインストール",s1_desc:"ソースMacにSolunaトランスミッター（solunad）をセットアップ。仮想ドライバーでシステム音声をキャプチャ。",
+    s2_title:"Soluna Rxを起動",s2_desc:"同じネットワーク上の任意のMacでSoluna Rxを起動。トランスミッターを自動検出して受信開始。",
+    s3_title:"音楽を楽しむ",s3_desc:"Macのスピーカーから完全同期で再生。スピーカーを追加して一元管理できます。",
+    specs_label:"仕様",specs_title:"パフォーマンス重視",specs_desc:"軽量・高効率・オーディオ専用設計",
+    sp1:"最小OS",sp2:"ネイティブarm64",sp3:"バッファ遅延",sp4_val:"無料",sp4:"価格",sp5:"ネイティブmacOS UI",sp6:"オーディオエンジン",sp7:"オーディオ形式",sp8_val:"オープンソース",sp8:"ライセンス",
+    plat_label:"クロスプラットフォーム",plat_title:"どこでも利用可能",plat_desc:"Soluna RxはmacOSとiOSに対応。他のプラットフォームも近日対応予定。",
+    plat_mac_desc:"Apple Silicon対応のMac App Storeアプリ",plat_ios_desc:"バックグラウンド再生対応のiPhone/iPadレシーバー",
+    cta_title:"ストリーミングを始めよう",cta_desc:"Soluna Rxを無料でダウンロードして、Macをネットワークオーディオレシーバーに。",cta_btn:"無料ダウンロード",
+    footer_docs:"ドキュメント",footer_issues:"問題を報告",
+},
+zh: {
+    nav_download:"下载",
+    badge:"MAC APP STORE 免费下载",
+    hero_sub:"Mac 版",
+    hero_desc:"通过WiFi将音频传输到Mac。低延迟网络音频接收器，支持多扬声器同步。",
+    btn_download:"在Mac App Store下载",
+    btn_source:"查看源码",
+    mock_receiving:"接收中",
+    mock_speakers:"扬声器",
+    mock_this_mac:"本机Mac",
+    features_label:"功能",
+    features_title:"一应俱全",
+    features_desc:"零配置的无缝网络音频",
+    f1_title:"组播 RTP/OSTP",f1_desc:"在239.69.0.1:5004自动接收音频流。无需配置，启动即可收听。",
+    f2_title:"Bonjour 自动发现",f2_desc:"自动发现局域网上的Soluna发射器。无需手动设置IP。",
+    f3_title:"多扬声器控制",f3_desc:"在一个界面控制多个扬声器。独立或统一调节音量、静音和延迟。",
+    f4_title:"自动同步",f4_desc:"测量往返时间，自动同步所有扬声器的音频延迟。",
+    f5_title:"丢包补偿",f5_desc:"内置PLC算法填补丢失的数据包，在网络拥塞时保持流畅播放。",
+    f6_title:"实时统计",f6_desc:"实时监控数据包数、丢包率、缓冲区和PLC计数。",
+    how_label:"使用方法",how_title:"三个简单步骤",how_desc:"几分钟即可搭建全屋音频",
+    s1_title:"安装Soluna TX",s1_desc:"在源Mac上设置Soluna发射器(solunad)。通过虚拟驱动捕获系统音频。",
+    s2_title:"打开Soluna Rx",s2_desc:"在同一网络的任意Mac上启动Soluna Rx。自动发现发射器并开始接收。",
+    s3_title:"享受音乐",s3_desc:"音频通过Mac扬声器完美同步播放。添加更多扬声器并统一管理。",
+    specs_label:"规格",specs_title:"为性能而生",specs_desc:"轻量、高效、专为音频打造",
+    sp1:"最低系统",sp2:"原生arm64",sp3:"缓冲延迟",sp4_val:"免费",sp4:"价格",sp5:"原生macOS界面",sp6:"音频引擎",sp7:"音频格式",sp8_val:"开源",sp8:"许可证",
+    plat_label:"跨平台",plat_title:"随处可用",plat_desc:"Soluna Rx支持macOS和iOS。更多平台即将推出。",
+    plat_mac_desc:"Apple Silicon原生Mac App Store应用",plat_ios_desc:"支持后台播放的iPhone/iPad接收器",
+    cta_title:"准备开始串流？",cta_desc:"免费下载Soluna Rx，将您的Mac变成网络音频接收器。",cta_btn:"免费下载",
+    footer_docs:"文档",footer_issues:"反馈问题",
+},
+ko: {
+    nav_download:"다운로드",
+    badge:"MAC APP STORE 무료",
+    hero_sub:"Mac용",
+    hero_desc:"WiFi로 Mac에 오디오를 스트리밍합니다. 멀티 스피커 동기화를 지원하는 저지연 네트워크 오디오 리시버.",
+    btn_download:"Mac App Store에서 다운로드",
+    btn_source:"소스 코드",
+    mock_receiving:"수신 중",
+    mock_speakers:"스피커",
+    mock_this_mac:"이 Mac",
+    features_label:"기능",
+    features_title:"필요한 모든 것",
+    features_desc:"설정 없이 원활한 네트워크 오디오",
+    f1_title:"멀티캐스트 RTP/OSTP",f1_desc:"239.69.0.1:5004에서 오디오를 자동 수신. 설정 없이 시작하면 바로 재생.",
+    f2_title:"Bonjour 자동 검색",f2_desc:"로컬 네트워크에서 Soluna 송신기를 자동으로 검색합니다. 수동 IP 설정 불필요.",
+    f3_title:"멀티 스피커 제어",f3_desc:"한 곳에서 여러 스피커를 제어. 볼륨, 음소거, 딜레이를 개별 또는 일괄 조정.",
+    f4_title:"자동 동기화",f4_desc:"왕복 시간을 측정하여 모든 스피커의 오디오 지연을 자동 동기화.",
+    f5_title:"패킷 손실 보상",f5_desc:"내장 PLC 알고리즘으로 손실된 패킷을 보완하여 원활한 재생 유지.",
+    f6_title:"실시간 통계",f6_desc:"패킷 수, 손실률, 버퍼, PLC 횟수를 실시간으로 모니터링.",
+    how_label:"사용 방법",how_title:"3단계로 간단하게",how_desc:"몇 분 만에 홈 오디오 구축",
+    s1_title:"Soluna TX 설치",s1_desc:"소스 Mac에 Soluna 송신기(solunad)를 설정합니다. 가상 드라이버로 시스템 오디오를 캡처.",
+    s2_title:"Soluna Rx 실행",s2_desc:"같은 네트워크의 Mac에서 Soluna Rx를 실행. 송신기를 자동 검색하고 수신 시작.",
+    s3_title:"음악 즐기기",s3_desc:"Mac 스피커에서 완벽하게 동기화된 오디오 재생. 스피커를 추가하고 한 곳에서 관리.",
+    specs_label:"사양",specs_title:"성능을 위한 설계",specs_desc:"가볍고 효율적인 오디오 전용 설계",
+    sp1:"최소 OS",sp2:"네이티브 arm64",sp3:"버퍼 지연",sp4_val:"무료",sp4:"가격",sp5:"네이티브 macOS UI",sp6:"오디오 엔진",sp7:"오디오 형식",sp8_val:"오픈 소스",sp8:"라이선스",
+    plat_label:"크로스 플랫폼",plat_title:"어디서나 사용 가능",plat_desc:"Soluna Rx는 macOS와 iOS를 지원합니다. 더 많은 플랫폼이 곧 추가됩니다.",
+    plat_mac_desc:"Apple Silicon 네이티브 Mac App Store 앱",plat_ios_desc:"백그라운드 재생 지원 iPhone/iPad 리시버",
+    cta_title:"스트리밍을 시작할까요?",cta_desc:"Soluna Rx를 무료로 다운로드하고 Mac을 네트워크 오디오 리시버로 만드세요.",cta_btn:"무료 다운로드",
+    footer_docs:"문서",footer_issues:"문제 보고",
+},
+es: {
+    nav_download:"Descargar",
+    badge:"GRATIS EN MAC APP STORE",
+    hero_sub:"para Mac",
+    hero_desc:"Transmite audio a tu Mac por WiFi. Receptor de audio en red de baja latencia con sincronización multi-altavoz.",
+    btn_download:"Descargar en Mac App Store",
+    btn_source:"Ver código",
+    mock_receiving:"Recibiendo",
+    mock_speakers:"Altavoces",
+    mock_this_mac:"Este Mac",
+    features_label:"FUNCIONES",
+    features_title:"Todo lo que necesitas",
+    features_desc:"Audio en red sin configuración",
+    f1_title:"Multicast RTP/OSTP",f1_desc:"Recibe audio automáticamente en 239.69.0.1:5004. Sin configuración: solo inicia y escucha.",
+    f2_title:"Descubrimiento Bonjour",f2_desc:"Encuentra transmisores Soluna en tu red local automáticamente. Sin configuración de IP manual.",
+    f3_title:"Control Multi-Altavoz",f3_desc:"Controla múltiples altavoces desde un solo lugar. Ajusta volumen, silencio y retardo individual o globalmente.",
+    f4_title:"Sincronización Auto",f4_desc:"Mide el tiempo de ida y vuelta para sincronizar automáticamente la latencia de audio.",
+    f5_title:"Compensación de Pérdida",f5_desc:"Algoritmo PLC integrado que rellena paquetes perdidos para mantener la reproducción fluida.",
+    f6_title:"Estadísticas en Tiempo Real",f6_desc:"Monitorea paquetes, tasa de pérdida, búfer y conteo PLC en tiempo real.",
+    how_label:"CÓMO FUNCIONA",how_title:"Tres simples pasos",how_desc:"Configura audio en toda la casa en minutos",
+    s1_title:"Instala Soluna TX",s1_desc:"Configura el transmisor Soluna (solunad) en tu Mac de origen. Captura el audio del sistema con un driver virtual.",
+    s2_title:"Abre Soluna Rx",s2_desc:"Inicia Soluna Rx en cualquier Mac de la misma red. Descubre automáticamente el transmisor y comienza a recibir.",
+    s3_title:"Disfruta la Música",s3_desc:"El audio se reproduce perfectamente sincronizado. Agrega más altavoces y controla todo desde un solo lugar.",
+    specs_label:"ESPECIFICACIONES",specs_title:"Diseñado para rendimiento",specs_desc:"Ligero, eficiente y construido para audio",
+    sp1:"OS Mínimo",sp2:"arm64 Nativo",sp3:"Latencia Buffer",sp4_val:"Gratis",sp4:"Precio",sp5:"UI macOS Nativa",sp6:"Motor de Audio",sp7:"Formato de Audio",sp8_val:"Código Abierto",sp8:"Licencia",
+    plat_label:"MULTIPLATAFORMA",plat_title:"Disponible en todas partes",plat_desc:"Soluna Rx funciona en macOS e iOS. Más plataformas próximamente.",
+    plat_mac_desc:"App nativa del Mac App Store para Apple Silicon",plat_ios_desc:"Receptor para iPhone/iPad con reproducción en segundo plano",
+    cta_title:"¿Listo para transmitir?",cta_desc:"Descarga Soluna Rx gratis y convierte tu Mac en un receptor de audio en red.",cta_btn:"Descarga Gratis",
+    footer_docs:"Documentación",footer_issues:"Reportar problema",
+},
+fr: {
+    nav_download:"Télécharger",
+    badge:"GRATUIT SUR LE MAC APP STORE",
+    hero_sub:"pour Mac",
+    hero_desc:"Diffusez l'audio vers votre Mac en WiFi. Récepteur audio réseau à faible latence avec synchronisation multi-enceintes.",
+    btn_download:"Télécharger sur le Mac App Store",
+    btn_source:"Code source",
+    mock_receiving:"Réception",
+    mock_speakers:"Enceintes",
+    mock_this_mac:"Ce Mac",
+    features_label:"FONCTIONNALITÉS",
+    features_title:"Tout ce qu'il faut",
+    features_desc:"Audio réseau fluide sans configuration",
+    f1_title:"Multicast RTP/OSTP",f1_desc:"Reçoit automatiquement l'audio sur 239.69.0.1:5004. Aucune configuration \u2014 lancez et écoutez.",
+    f2_title:"Découverte Bonjour",f2_desc:"Détecte automatiquement les émetteurs Soluna sur votre réseau local. Aucune configuration IP manuelle.",
+    f3_title:"Contrôle Multi-Enceintes",f3_desc:"Contrôlez plusieurs enceintes depuis un seul endroit. Ajustez le volume, le silence et le délai individuellement ou globalement.",
+    f4_title:"Synchronisation Auto",f4_desc:"Mesure le temps aller-retour pour synchroniser automatiquement la latence audio sur toutes les enceintes.",
+    f5_title:"Compensation de Perte",f5_desc:"L'algorithme PLC intégré comble les paquets perdus pour une lecture fluide même en réseau congestionné.",
+    f6_title:"Statistiques en Temps Réel",f6_desc:"Surveillez les paquets, le taux de perte, le tampon et le compteur PLC en temps réel.",
+    how_label:"FONCTIONNEMENT",how_title:"Trois étapes simples",how_desc:"Configurez l'audio dans toute la maison en quelques minutes",
+    s1_title:"Installer Soluna TX",s1_desc:"Configurez l'émetteur Soluna (solunad) sur votre Mac source. Il capture l'audio système via un pilote virtuel.",
+    s2_title:"Ouvrir Soluna Rx",s2_desc:"Lancez Soluna Rx sur n'importe quel Mac du même réseau. Il détecte automatiquement l'émetteur et commence à recevoir.",
+    s3_title:"Profitez de la Musique",s3_desc:"L'audio est diffusé en parfaite synchronisation. Ajoutez d'autres enceintes et contrôlez-les toutes depuis un seul endroit.",
+    specs_label:"SPÉCIFICATIONS",specs_title:"Conçu pour la performance",specs_desc:"Léger, efficace et dédié à l'audio",
+    sp1:"OS Minimum",sp2:"arm64 Natif",sp3:"Latence Tampon",sp4_val:"Gratuit",sp4:"Prix",sp5:"Interface macOS Native",sp6:"Moteur Audio",sp7:"Format Audio",sp8_val:"Open Source",sp8:"Licence",
+    plat_label:"MULTIPLATEFORME",plat_title:"Disponible partout",plat_desc:"Soluna Rx fonctionne sur macOS et iOS. D'autres plateformes arrivent bientôt.",
+    plat_mac_desc:"Application Mac App Store native pour Apple Silicon",plat_ios_desc:"Récepteur iPhone/iPad avec lecture en arrière-plan",
+    cta_title:"Prêt à diffuser ?",cta_desc:"Téléchargez Soluna Rx gratuitement et transformez votre Mac en récepteur audio réseau.",cta_btn:"Télécharger Gratuitement",
+    footer_docs:"Documentation",footer_issues:"Signaler un problème",
+},
+de: {
+    nav_download:"Download",
+    badge:"KOSTENLOS IM MAC APP STORE",
+    hero_sub:"für Mac",
+    hero_desc:"Streame Audio über WiFi auf deinen Mac. Netzwerk-Audio-Empfänger mit niedriger Latenz und Multi-Lautsprecher-Sync.",
+    btn_download:"Im Mac App Store laden",
+    btn_source:"Quellcode",
+    mock_receiving:"Empfang",
+    mock_speakers:"Lautsprecher",
+    mock_this_mac:"Dieser Mac",
+    features_label:"FUNKTIONEN",
+    features_title:"Alles was du brauchst",
+    features_desc:"Nahtloses Netzwerk-Audio ohne Konfiguration",
+    f1_title:"Multicast RTP/OSTP",f1_desc:"Empfängt Audio automatisch auf 239.69.0.1:5004. Keine Konfiguration \u2014 einfach starten und zuhören.",
+    f2_title:"Bonjour Auto-Erkennung",f2_desc:"Findet Soluna-Sender automatisch im lokalen Netzwerk. Keine manuelle IP-Einrichtung nötig.",
+    f3_title:"Multi-Lautsprecher-Steuerung",f3_desc:"Steuere mehrere Lautsprecher von einem Ort. Lautstärke, Stummschaltung und Verzögerung einzeln oder gemeinsam anpassen.",
+    f4_title:"Auto-Synchronisierung",f4_desc:"Misst die Rundlaufzeit und synchronisiert automatisch die Audio-Latenz aller Lautsprecher.",
+    f5_title:"Paketverlust-Kompensation",f5_desc:"Eingebauter PLC-Algorithmus füllt verlorene Pakete auf für flüssige Wiedergabe auch bei Netzwerkstau.",
+    f6_title:"Echtzeit-Statistiken",f6_desc:"Überwache Pakete, Verlustrate, Puffer und PLC-Zähler in Echtzeit.",
+    how_label:"SO FUNKTIONIERT'S",how_title:"Drei einfache Schritte",how_desc:"Richte Heim-Audio in wenigen Minuten ein",
+    s1_title:"Soluna TX installieren",s1_desc:"Richte den Soluna-Sender (solunad) auf deinem Quell-Mac ein. Er erfasst System-Audio über einen virtuellen Treiber.",
+    s2_title:"Soluna Rx öffnen",s2_desc:"Starte Soluna Rx auf einem beliebigen Mac im selben Netzwerk. Er erkennt den Sender automatisch und beginnt den Empfang.",
+    s3_title:"Musik genießen",s3_desc:"Audio wird perfekt synchronisiert wiedergegeben. Füge weitere Lautsprecher hinzu und steuere alle von einem Ort.",
+    specs_label:"SPEZIFIKATIONEN",specs_title:"Für Leistung gebaut",specs_desc:"Leichtgewichtig, effizient und für Audio entwickelt",
+    sp1:"Minimum OS",sp2:"Natives arm64",sp3:"Puffer-Latenz",sp4_val:"Kostenlos",sp4:"Preis",sp5:"Native macOS UI",sp6:"Audio-Engine",sp7:"Audio-Format",sp8_val:"Open Source",sp8:"Lizenz",
+    plat_label:"PLATTFORMÜBERGREIFEND",plat_title:"Überall verfügbar",plat_desc:"Soluna Rx läuft auf macOS und iOS. Weitere Plattformen folgen.",
+    plat_mac_desc:"Native Mac App Store App für Apple Silicon",plat_ios_desc:"iPhone/iPad-Empfänger mit Hintergrundwiedergabe",
+    cta_title:"Bereit zum Streamen?",cta_desc:"Lade Soluna Rx kostenlos herunter und mache deinen Mac zum Netzwerk-Audio-Empfänger.",cta_btn:"Kostenlos laden",
+    footer_docs:"Dokumentation",footer_issues:"Problem melden",
+},
+pt: {
+    nav_download:"Baixar",
+    badge:"GRÁTIS NA MAC APP STORE",
+    hero_sub:"para Mac",
+    hero_desc:"Transmita áudio para seu Mac via WiFi. Receptor de áudio em rede com baixa latência e sincronização multi-caixas.",
+    btn_download:"Baixar na Mac App Store",
+    btn_source:"Código fonte",
+    mock_receiving:"Recebendo",
+    mock_speakers:"Caixas de Som",
+    mock_this_mac:"Este Mac",
+    features_label:"RECURSOS",
+    features_title:"Tudo que você precisa",
+    features_desc:"Áudio em rede sem configuração",
+    f1_title:"Multicast RTP/OSTP",f1_desc:"Recebe áudio automaticamente em 239.69.0.1:5004. Sem configuração \u2014 basta iniciar e ouvir.",
+    f2_title:"Descoberta Bonjour",f2_desc:"Encontra transmissores Soluna na sua rede local automaticamente. Sem configuração manual de IP.",
+    f3_title:"Controle Multi-Caixas",f3_desc:"Controle múltiplas caixas de som de um só lugar. Ajuste volume, mudo e atraso individualmente ou em conjunto.",
+    f4_title:"Sincronização Auto",f4_desc:"Mede o tempo de ida e volta para sincronizar automaticamente a latência de áudio em todas as caixas.",
+    f5_title:"Compensação de Perda",f5_desc:"Algoritmo PLC integrado preenche pacotes perdidos para manter a reprodução suave em redes congestionadas.",
+    f6_title:"Estatísticas em Tempo Real",f6_desc:"Monitore pacotes, taxa de perda, buffer e contagem PLC em tempo real.",
+    how_label:"COMO FUNCIONA",how_title:"Três passos simples",how_desc:"Configure áudio em toda a casa em minutos",
+    s1_title:"Instale o Soluna TX",s1_desc:"Configure o transmissor Soluna (solunad) no seu Mac de origem. Ele captura o áudio do sistema via driver virtual.",
+    s2_title:"Abra o Soluna Rx",s2_desc:"Inicie o Soluna Rx em qualquer Mac na mesma rede. Ele descobre automaticamente o transmissor e começa a receber.",
+    s3_title:"Curta a Música",s3_desc:"O áudio toca perfeitamente sincronizado. Adicione mais caixas e controle todas de um só lugar.",
+    specs_label:"ESPECIFICAÇÕES",specs_title:"Projetado para desempenho",specs_desc:"Leve, eficiente e feito para áudio",
+    sp1:"OS Mínimo",sp2:"arm64 Nativo",sp3:"Latência Buffer",sp4_val:"Grátis",sp4:"Preço",sp5:"UI macOS Nativa",sp6:"Motor de Áudio",sp7:"Formato de Áudio",sp8_val:"Código Aberto",sp8:"Licença",
+    plat_label:"MULTIPLATAFORMA",plat_title:"Disponível em todo lugar",plat_desc:"Soluna Rx funciona no macOS e iOS. Mais plataformas em breve.",
+    plat_mac_desc:"App nativa do Mac App Store para Apple Silicon",plat_ios_desc:"Receptor para iPhone/iPad com reprodução em segundo plano",
+    cta_title:"Pronto para transmitir?",cta_desc:"Baixe o Soluna Rx gratuitamente e transforme seu Mac em um receptor de áudio em rede.",cta_btn:"Baixar Grátis",
+    footer_docs:"Documentação",footer_issues:"Relatar problema",
+},
+};
+
+let currentLang = "en";
+
+function detectLang() {
+    const saved = localStorage.getItem("soluna-lang");
+    if (saved && T[saved]) return saved;
+    const nav = (navigator.language || "en").toLowerCase();
+    if (nav.startsWith("ja")) return "ja";
+    if (nav.startsWith("zh")) return "zh";
+    if (nav.startsWith("ko")) return "ko";
+    if (nav.startsWith("es")) return "es";
+    if (nav.startsWith("fr")) return "fr";
+    if (nav.startsWith("de")) return "de";
+    if (nav.startsWith("pt")) return "pt";
+    return "en";
+}
+
+function setLang(lang) {
+    currentLang = lang;
+    localStorage.setItem("soluna-lang", lang);
+    document.documentElement.lang = lang;
+    const t = T[lang] || T.en;
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+        const key = el.getAttribute("data-i18n");
+        if (t[key]) el.textContent = t[key];
+    });
+    document.getElementById("langFlag").textContent = LANGS[lang].flag;
+    document.getElementById("langName").textContent = LANGS[lang].name;
+    buildDropdown();
+    closeLang();
+}
+
+function buildDropdown() {
+    const drop = document.getElementById("langDrop");
+    drop.innerHTML = "";
+    for (const [code, info] of Object.entries(LANGS)) {
+        const btn = document.createElement("button");
+        btn.className = "lang-opt" + (code === currentLang ? " active" : "");
+        btn.innerHTML = '<span class="flag">' + info.flag + '</span>' + info.name;
+        btn.onclick = (e) => { e.stopPropagation(); setLang(code); };
+        drop.appendChild(btn);
+    }
+}
+
+function toggleLang() {
+    const drop = document.getElementById("langDrop");
+    const btn = document.getElementById("langBtn");
+    const open = drop.classList.toggle("open");
+    btn.classList.toggle("open", open);
+}
+
+function closeLang() {
+    document.getElementById("langDrop").classList.remove("open");
+    document.getElementById("langBtn").classList.remove("open");
+}
+
+document.addEventListener("click", (e) => {
+    if (!e.target.closest(".lang-switcher")) closeLang();
+});
+
+// ─── Scroll effects ───
+const navEl = document.getElementById("nav");
+window.addEventListener("scroll", () => {
+    navEl.classList.toggle("scrolled", window.scrollY > 20);
+});
+
+// ─── Fade-in ───
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add("visible"); });
+}, { threshold: 0.1 });
+document.querySelectorAll(".fade-in").forEach(el => observer.observe(el));
+
+// ─── Init ───
+setLang(detectLang());
+</script>
 
 </body>
 </html>
