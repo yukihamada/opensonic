@@ -7,7 +7,7 @@
  *   solunad --tx --device hw:0 --dest 239.69.0.1:5004
  *   solunad --rx --device hw:0 --port 5004
  *
- * SPDX-License-Identifier: MIT
+ * SPDX-License-Identifier: OpenSonic-Community-1.0
  */
 
 #include <soluna/soluna.h>
