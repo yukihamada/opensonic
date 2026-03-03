@@ -593,8 +593,8 @@ function buildCard(idx) {
 <div class="rxc-body">
   <div class="vol-row">
     <span class="vol-label-txt">Vol</span>
-    <input type="range" min="0" max="100" value="100" class="vol-slider" id="rxc-vol-${idx}">
-    <span class="vol-pct" id="rxc-vpct-${idx}">100%</span>
+    <input type="range" min="0" max="100" value="50" class="vol-slider" id="rxc-vol-${idx}">
+    <span class="vol-pct" id="rxc-vpct-${idx}">50%</span>
   </div>
   <div class="buf-row">
     <span class="buf-label-txt">Buf</span>
@@ -806,12 +806,12 @@ function patchCard(idx) {
     // ── volume slider (skip if user is dragging) ──
     const $vol  = document.getElementById('rxc-vol-'  + idx);
     const $vpct = document.getElementById('rxc-vpct-' + idx);
-    const volPct = Math.round(conn.volume * 100);
+    const sliderVal = gainToSlider(conn.volume);
     if ($vol && document.activeElement !== $vol) {
-        $vol.value = volPct;
-        updateSliderTrack($vol, conn.volume);
+        $vol.value = sliderVal;
+        updateSliderTrack($vol, sliderVal / 100);
     }
-    if ($vpct) $vpct.textContent = volPct + '%';
+    if ($vpct) $vpct.textContent = sliderVal + '%';
 
     // ── buffer selector ──
     const $bsel = document.getElementById('rxc-bsel-' + idx);
@@ -853,11 +853,23 @@ function setCardConn(idx, on) {
 }
 
 // ── Volume (debounced 50ms) ───────────────────────────────────
+// Logarithmic curve: slider 0-100 maps to gain 0.0-0.015
+// PCM1794A DAC has very hot output; 0.015 = loud, 0.005 = normal
+function sliderToGain(pct) {
+    if (pct <= 0) return 0;
+    const maxGain = 0.015;
+    return maxGain * Math.pow(pct / 100, 2);
+}
+function gainToSlider(gain) {
+    if (gain <= 0) return 0;
+    const maxGain = 0.015;
+    return Math.min(100, Math.round(100 * Math.pow(gain / maxGain, 0.5)));
+}
 function onVolInput(idx, slider) {
-    const vol  = slider.value / 100;
+    const vol  = sliderToGain(parseFloat(slider.value));
     const $pct = document.getElementById('rxc-vpct-' + idx);
     if ($pct) $pct.textContent = slider.value + '%';
-    updateSliderTrack(slider, vol);
+    updateSliderTrack(slider, parseFloat(slider.value) / 100);
 
     const rx = receivers[idx]; if (!rx) return;
     const conn = rxConns[rx.host]; if (!conn) return;
@@ -1333,6 +1345,8 @@ let tuneState = {
     active: false, rms_db: -100, clicks: 0, dropouts: 0, adjustments: 0,
     buf_target_ms: 20, mon_target_ms: 20,
     repair_enabled: true, repair_clicks: 0, repair_fades: 0,
+    wifi_dup_send: true, wifi_fec: true, wifi_nack: true,
+    wifi_wsola_plc: true, wifi_adaptive_jitter: true, wifi_dedup: true,
     lat: null
 };
 let noiseParams = {
@@ -1370,6 +1384,35 @@ function buildTuneCard() {
       <div class="tune-toggle-desc">Declicker + crossfade on speaker output</div>
     </div>
     <label class="toggle green"><input type="checkbox" id="repair-sw" checked><span class="toggle-track"></span></label>
+  </div>
+
+  <!-- WiFi Reliability -->
+  <div class="tune-section-label" style="margin-top:0.7rem;font-size:0.72rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em">WiFi Reliability</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.25rem 0.5rem;margin-top:0.3rem">
+    <div class="tune-toggle-row" style="padding:0.25rem 0">
+      <div><div class="tune-toggle-label" style="font-size:0.75rem">Dup Send</div></div>
+      <label class="toggle green"><input type="checkbox" id="wifi-dup-sw" checked><span class="toggle-track"></span></label>
+    </div>
+    <div class="tune-toggle-row" style="padding:0.25rem 0">
+      <div><div class="tune-toggle-label" style="font-size:0.75rem">FEC</div></div>
+      <label class="toggle green"><input type="checkbox" id="wifi-fec-sw" checked><span class="toggle-track"></span></label>
+    </div>
+    <div class="tune-toggle-row" style="padding:0.25rem 0">
+      <div><div class="tune-toggle-label" style="font-size:0.75rem">NACK</div></div>
+      <label class="toggle green"><input type="checkbox" id="wifi-nack-sw" checked><span class="toggle-track"></span></label>
+    </div>
+    <div class="tune-toggle-row" style="padding:0.25rem 0">
+      <div><div class="tune-toggle-label" style="font-size:0.75rem">WSOLA PLC</div></div>
+      <label class="toggle green"><input type="checkbox" id="wifi-plc-sw" checked><span class="toggle-track"></span></label>
+    </div>
+    <div class="tune-toggle-row" style="padding:0.25rem 0">
+      <div><div class="tune-toggle-label" style="font-size:0.75rem">Adaptive Jitter</div></div>
+      <label class="toggle green"><input type="checkbox" id="wifi-jitter-sw" checked><span class="toggle-track"></span></label>
+    </div>
+    <div class="tune-toggle-row" style="padding:0.25rem 0">
+      <div><div class="tune-toggle-label" style="font-size:0.75rem">Dedup</div></div>
+      <label class="toggle green"><input type="checkbox" id="wifi-dedup-sw" checked><span class="toggle-track"></span></label>
+    </div>
   </div>
 
   <!-- Presets -->
@@ -1525,6 +1568,23 @@ function buildTuneCard() {
         tuneState.repair_enabled = e.target.checked;
     });
 
+    // ── WiFi feature toggles ──
+    const wifiToggles = [
+        ['#wifi-dup-sw', 'dup_send', 'wifi_dup_send'],
+        ['#wifi-fec-sw', 'fec', 'wifi_fec'],
+        ['#wifi-nack-sw', 'nack', 'wifi_nack'],
+        ['#wifi-plc-sw', 'wsola_plc', 'wifi_wsola_plc'],
+        ['#wifi-jitter-sw', 'adaptive_jitter', 'wifi_adaptive_jitter'],
+        ['#wifi-dedup-sw', 'dedup', 'wifi_dedup'],
+    ];
+    wifiToggles.forEach(([sel, param, stateKey]) => {
+        el.querySelector(sel).addEventListener('change', (e) => {
+            const p = {}; p[param] = e.target.checked;
+            localSend('wifi.set', p);
+            tuneState[stateKey] = e.target.checked;
+        });
+    });
+
     // ── Presets ──
     const presets = {
         low:  { sigma: 3.5, floor: 0.003, crossfade_thresh: 0.008, crossfade_frames: 32, step_up: 1, step_down: 1, stable_sec: 3, buf: 6,  mon: 8,  delay: 15 },
@@ -1634,6 +1694,20 @@ function patchTuneCard() {
     const $repairSw = document.getElementById('repair-sw');
     if ($repairSw && $repairSw !== document.activeElement) $repairSw.checked = s.repair_enabled;
 
+    // WiFi feature toggles sync
+    const wifiSwitches = [
+        ['wifi-dup-sw', 'wifi_dup_send'],
+        ['wifi-fec-sw', 'wifi_fec'],
+        ['wifi-nack-sw', 'wifi_nack'],
+        ['wifi-plc-sw', 'wifi_wsola_plc'],
+        ['wifi-jitter-sw', 'wifi_adaptive_jitter'],
+        ['wifi-dedup-sw', 'wifi_dedup'],
+    ];
+    wifiSwitches.forEach(([swId, key]) => {
+        const $sw = document.getElementById(swId);
+        if ($sw && $sw !== document.activeElement) $sw.checked = s[key];
+    });
+
     // RMS meter
     const rmsVal = document.getElementById('tune-rms-val');
     const rmsBar = document.getElementById('tune-rms-bar');
@@ -1738,6 +1812,12 @@ function pollTuneStatus() {
                 tuneState.repair_enabled = d.repair_enabled;
                 tuneState.repair_clicks = d.repair_clicks;
                 tuneState.repair_fades = d.repair_fades;
+                if (d.wifi_dup_send !== undefined) tuneState.wifi_dup_send = d.wifi_dup_send;
+                if (d.wifi_fec !== undefined) tuneState.wifi_fec = d.wifi_fec;
+                if (d.wifi_nack !== undefined) tuneState.wifi_nack = d.wifi_nack;
+                if (d.wifi_wsola_plc !== undefined) tuneState.wifi_wsola_plc = d.wifi_wsola_plc;
+                if (d.wifi_adaptive_jitter !== undefined) tuneState.wifi_adaptive_jitter = d.wifi_adaptive_jitter;
+                if (d.wifi_dedup !== undefined) tuneState.wifi_dedup = d.wifi_dedup;
                 patchTuneCard();
                 // Show card on first successful response
                 const card = document.getElementById('tune-card');

@@ -83,8 +83,9 @@ private:
 
         snd_pcm_hw_params_set_access(handle_, params, SND_PCM_ACCESS_RW_INTERLEAVED);
 
-        // Try formats: FLOAT_LE > S16_LE > S32_LE > S24_LE
-        // S16_LE is prioritized because many I2S DAC overlays only output with S16
+        // Try formats: FLOAT_LE > S24_3LE > S24_LE > S32_LE > S16_LE
+        // S24_3LE (packed 24-bit) preferred for DACs with native 24-bit support
+        // (+48dB dynamic range over S16). plughw: handles format conversion if needed.
         struct FormatOption {
             snd_pcm_format_t fmt;
             int bytes_per_sample;
@@ -92,9 +93,10 @@ private:
         };
         static const FormatOption formats[] = {
             {SND_PCM_FORMAT_FLOAT_LE, 4, "FLOAT_LE"},
-            {SND_PCM_FORMAT_S16_LE, 2, "S16_LE"},
-            {SND_PCM_FORMAT_S32_LE, 4, "S32_LE"},
+            {SND_PCM_FORMAT_S24_3LE, 3, "S24_3LE"},
             {SND_PCM_FORMAT_S24_LE, 4, "S24_LE"},
+            {SND_PCM_FORMAT_S32_LE, 4, "S32_LE"},
+            {SND_PCM_FORMAT_S16_LE, 2, "S16_LE"},
         };
         hw_format_ = SND_PCM_FORMAT_UNKNOWN;
         for (const auto& f : formats) {
@@ -135,8 +137,10 @@ private:
             return false;
         }
 
-        // Low-latency: start playback immediately (start_threshold = 1 period)
-        if (stream == SND_PCM_STREAM_PLAYBACK && period <= 48) {
+        // Start playback after 1 period: minimizes silence gap on xrun recovery.
+        // Without this, default start_threshold = buffer_size, meaning after an
+        // xrun, ALSA waits until the entire buffer refills (80ms gap = audible click).
+        if (stream == SND_PCM_STREAM_PLAYBACK) {
             snd_pcm_sw_params_t* sw_params;
             snd_pcm_sw_params_alloca(&sw_params);
             snd_pcm_sw_params_current(handle_, sw_params);
@@ -168,6 +172,16 @@ private:
                 float_buf[i] = static_cast<float>(src[i] >> 8) / 8388607.0f;
             break;
         }
+        case SND_PCM_FORMAT_S24_3LE: {
+            // Packed 24-bit: 3 bytes per sample, little-endian
+            const auto* src = static_cast<const uint8_t*>(hw_buf);
+            for (size_t i = 0; i < samples; i++) {
+                int32_t s = src[i * 3] | (src[i * 3 + 1] << 8) | (src[i * 3 + 2] << 16);
+                if (s & 0x800000) s |= 0xFF000000; // sign extend
+                float_buf[i] = static_cast<float>(s) / 8388607.0f;
+            }
+            break;
+        }
         case SND_PCM_FORMAT_S16_LE: {
             const auto* src = static_cast<const int16_t*>(hw_buf);
             for (size_t i = 0; i < samples; i++)
@@ -185,14 +199,35 @@ private:
             break;
         case SND_PCM_FORMAT_S32_LE: {
             auto* dst = static_cast<int32_t*>(hw_buf);
-            for (size_t i = 0; i < samples; i++)
-                dst[i] = static_cast<int32_t>(float_buf[i] * 2147483647.0f);
+            for (size_t i = 0; i < samples; i++) {
+                float clamped = float_buf[i];
+                if (clamped > 1.0f) clamped = 1.0f;
+                else if (clamped < -1.0f) clamped = -1.0f;
+                dst[i] = static_cast<int32_t>(clamped * 2147483647.0f);
+            }
             break;
         }
         case SND_PCM_FORMAT_S24_LE: {
             auto* dst = static_cast<int32_t*>(hw_buf);
-            for (size_t i = 0; i < samples; i++)
-                dst[i] = static_cast<int32_t>(float_buf[i] * 8388607.0f) << 8;
+            for (size_t i = 0; i < samples; i++) {
+                float clamped = float_buf[i];
+                if (clamped > 1.0f) clamped = 1.0f;
+                else if (clamped < -1.0f) clamped = -1.0f;
+                dst[i] = static_cast<int32_t>(clamped * 8388607.0f) << 8;
+            }
+            break;
+        }
+        case SND_PCM_FORMAT_S24_3LE: {
+            // Packed 24-bit: 3 bytes per sample, little-endian
+            auto* dst = static_cast<uint8_t*>(hw_buf);
+            for (size_t i = 0; i < samples; i++) {
+                int32_t s = static_cast<int32_t>(float_buf[i] * 8388607.0f);
+                if (s >  8388607) s =  8388607;
+                if (s < -8388608) s = -8388608;
+                dst[i * 3]     = static_cast<uint8_t>(s & 0xFF);
+                dst[i * 3 + 1] = static_cast<uint8_t>((s >> 8) & 0xFF);
+                dst[i * 3 + 2] = static_cast<uint8_t>((s >> 16) & 0xFF);
+            }
             break;
         }
         case SND_PCM_FORMAT_S16_LE: {
@@ -252,20 +287,20 @@ private:
                 if (callback_) {
                     callback_(float_buf.data(), static_cast<uint32_t>(frames));
                 }
+                void* write_buf;
                 if (hw_format_ == SND_PCM_FORMAT_FLOAT_LE) {
-                    snd_pcm_sframes_t n = snd_pcm_writei(handle_, float_buf.data(), frames);
-                    if (n == -EPIPE) {
-                        snd_pcm_prepare(handle_);
-                        // Re-write after recovery to avoid immediate re-underrun
-                        snd_pcm_writei(handle_, float_buf.data(), frames);
-                    }
+                    write_buf = float_buf.data();
                 } else {
                     float_to_hw(float_buf.data(), hw_buf.data(), samples);
-                    snd_pcm_sframes_t n = snd_pcm_writei(handle_, hw_buf.data(), frames);
-                    if (n == -EPIPE) {
-                        snd_pcm_prepare(handle_);
-                        snd_pcm_writei(handle_, hw_buf.data(), frames);
-                    }
+                    write_buf = hw_buf.data();
+                }
+                snd_pcm_sframes_t n = snd_pcm_writei(handle_, write_buf, frames);
+                if (n == -EPIPE) {
+                    xrun_count_++;
+                    if (xrun_count_ <= 10 || (xrun_count_ % 100) == 0)
+                        fprintf(stderr, "ALSA: xrun #%u (playback underrun)\n", xrun_count_);
+                    snd_pcm_prepare(handle_);
+                    snd_pcm_writei(handle_, write_buf, frames);
                 }
             }
         }
@@ -279,6 +314,7 @@ private:
     bool is_capture_ = false;
     snd_pcm_format_t hw_format_ = SND_PCM_FORMAT_FLOAT_LE;
     int bytes_per_sample_ = 4;
+    uint32_t xrun_count_ = 0;
 };
 
 std::vector<AudioDeviceInfo> AudioDevice::enumerate() {

@@ -58,6 +58,12 @@ public:
     /** Bytes per frame. */
     size_t frame_size() const { return frame_size_; }
 
+    /**
+     * Discard frames without copying data (advance read pointer).
+     * Returns number of frames actually discarded.
+     */
+    size_t discard(size_t frame_count);
+
     /** Reset to empty state. Only safe when no concurrent access. */
     void reset();
 

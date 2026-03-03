@@ -107,6 +107,18 @@ size_t RingBuffer::available_write() const {
     return capacity_ - (wr - rd);
 }
 
+size_t RingBuffer::discard(size_t frame_count) {
+    const size_t wr = write_pos_.load(std::memory_order_acquire);
+    const size_t rd = read_pos_.load(std::memory_order_relaxed);
+
+    const size_t avail = wr - rd;
+    const size_t to_discard = std::min(frame_count, avail);
+    if (to_discard == 0) return 0;
+
+    read_pos_.store(rd + to_discard, std::memory_order_release);
+    return to_discard;
+}
+
 void RingBuffer::reset() {
     write_pos_.store(0, std::memory_order_relaxed);
     read_pos_.store(0, std::memory_order_relaxed);

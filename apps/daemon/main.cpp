@@ -27,6 +27,8 @@
 #include <soluna/control/websocket_server.h>
 #include "web_embedded.h"
 
+#include <soluna/wifi/fec.h>
+
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -339,7 +341,7 @@ static void start_soluna_volume_listener() {
 #endif
 
 static std::atomic<bool>     g_running{true};
-static std::atomic<float>    g_rx_volume{1.0f};
+static std::atomic<float>    g_rx_volume{0.00375f}; // slider 50% with quadratic curve (max 0.015)
 static std::atomic<bool>     g_rx_muted{false};
 static std::atomic<uint64_t> g_packets{0};
 static std::atomic<uint64_t> g_seq_errors{0};
@@ -407,6 +409,14 @@ static std::atomic<uint32_t> g_tune_clicks{0};     // total clicks detected
 static std::atomic<uint32_t> g_tune_dropouts{0};   // total silence gaps detected
 static std::atomic<float>    g_tune_rms_db{-100.0f}; // current RMS in dBFS
 static std::atomic<uint32_t> g_tune_adjustments{0}; // total buffer increases
+
+// ── WiFi reliability features (toggleable via Web UI) ────────────────────────
+static std::atomic<bool> g_wifi_dup_send{true};      // duplicate packet send (TX)
+static std::atomic<bool> g_wifi_fec{true};            // FEC XOR parity (TX+RX)
+static std::atomic<bool> g_wifi_nack{true};           // NACK retransmission (TX+RX)
+static std::atomic<bool> g_wifi_wsola_plc{true};      // WSOLA PLC (RX)
+static std::atomic<bool> g_wifi_adaptive_jitter{true}; // adaptive jitter buffer (RX)
+static std::atomic<bool> g_wifi_dedup{true};           // duplicate packet detection (RX)
 
 // ── Audio repair (declicker + crossfade) ─────────────────────────────────────
 static std::atomic<uint64_t> g_repair_clicks{0};    // total clicks repaired
@@ -527,18 +537,32 @@ static void persist_config_save() {
     std::string mkdir_cmd = "mkdir -p '" + dir + "'";
     ::system(mkdir_cmd.c_str());
 
-    char buf[256];
+    char buf[512];
     snprintf(buf, sizeof(buf),
         "{\"speaker_delay_ms\":%u,"
         "\"monitor_volume\":%.3f,"
         "\"monitor_muted\":%s,"
         "\"monitor_buffer_ms\":%u,"
-        "\"rx_delay_ms\":%u}\n",
+        "\"rx_delay_ms\":%u,"
+        "\"buf_target_ms\":%u,"
+        "\"wifi_dup_send\":%s,"
+        "\"wifi_fec\":%s,"
+        "\"wifi_nack\":%s,"
+        "\"wifi_wsola_plc\":%s,"
+        "\"wifi_adaptive_jitter\":%s,"
+        "\"wifi_dedup\":%s}\n",
         g_speaker_delay_ms.load(),
         (double)g_mon_volume.load(),
         g_mon_muted.load() ? "true" : "false",
         g_mon_target_ms.load(),
-        g_rx_delay_ms.load());
+        g_rx_delay_ms.load(),
+        g_buf_target_ms.load(),
+        g_wifi_dup_send.load() ? "true" : "false",
+        g_wifi_fec.load() ? "true" : "false",
+        g_wifi_nack.load() ? "true" : "false",
+        g_wifi_wsola_plc.load() ? "true" : "false",
+        g_wifi_adaptive_jitter.load() ? "true" : "false",
+        g_wifi_dedup.load() ? "true" : "false");
 
     std::ofstream f(path);
     if (f.is_open()) f << buf;
@@ -577,6 +601,18 @@ static void persist_config_load() {
     g_mon_muted.store(get_bool("monitor_muted", false));
     g_mon_target_ms.store(std::max(5u, std::min(2000u, get_uint("monitor_buffer_ms", 20))));
     g_rx_delay_ms.store(std::min(2000u, get_uint("rx_delay_ms", 0)));
+
+    // WiFi feature toggles
+    g_wifi_dup_send.store(get_bool("wifi_dup_send", true));
+    g_wifi_fec.store(get_bool("wifi_fec", true));
+    g_wifi_nack.store(get_bool("wifi_nack", true));
+    g_wifi_wsola_plc.store(get_bool("wifi_wsola_plc", true));
+    g_wifi_adaptive_jitter.store(get_bool("wifi_adaptive_jitter", true));
+    g_wifi_dedup.store(get_bool("wifi_dedup", true));
+
+    // buf_target_ms: only load if saved (otherwise use profile default)
+    uint32_t saved_buf = get_uint("buf_target_ms", 0);
+    if (saved_buf > 0) g_buf_target_ms.store(std::min(2000u, saved_buf));
 
     fprintf(stderr, "[config] Loaded from %s\n", persist_config_path().c_str());
 }
@@ -667,8 +703,12 @@ static std::string ws_handle(const std::string& msg) {
             try {
                 uint32_t ms = static_cast<uint32_t>(std::stoul(msg.substr(p + 5)));
                 g_buf_target_ms.store(std::max(1u, std::min(2000u, ms)));
+                // Disable adaptive jitter when user manually sets buffer
+                // (adaptive would overwrite the manual value every packet)
+                g_wifi_adaptive_jitter.store(false);
             } catch (...) {}
         }
+        persist_config_save();
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
     // ── Monitor commands (TX-mode only) ────────────────────────────────────
     } else if (cmd == "monitor.stats") {
@@ -871,7 +911,10 @@ static std::string ws_handle(const std::string& msg) {
             "\\\"repair_enabled\\\":%s,"
             "\\\"repair_clicks\\\":%llu,\\\"repair_fades\\\":%llu,"
             "\\\"crc_errors\\\":%llu,\\\"plc_frames\\\":%llu,"
-            "\\\"lost_packets\\\":%llu}\"}",
+            "\\\"lost_packets\\\":%llu,"
+            "\\\"wifi_dup_send\\\":%s,\\\"wifi_fec\\\":%s,"
+            "\\\"wifi_nack\\\":%s,\\\"wifi_wsola_plc\\\":%s,"
+            "\\\"wifi_adaptive_jitter\\\":%s,\\\"wifi_dedup\\\":%s}\"}",
             id,
             g_tune_active.load() ? "true" : "false",
             (double)g_tune_rms_db.load(),
@@ -885,7 +928,13 @@ static std::string ws_handle(const std::string& msg) {
             (unsigned long long)g_repair_fades.load(),
             (unsigned long long)g_crc_errors.load(),
             (unsigned long long)g_plc_frames.load(),
-            (unsigned long long)g_lost_packets.load());
+            (unsigned long long)g_lost_packets.load(),
+            g_wifi_dup_send.load() ? "true" : "false",
+            g_wifi_fec.load() ? "true" : "false",
+            g_wifi_nack.load() ? "true" : "false",
+            g_wifi_wsola_plc.load() ? "true" : "false",
+            g_wifi_adaptive_jitter.load() ? "true" : "false",
+            g_wifi_dedup.load() ? "true" : "false");
     } else if (cmd == "repair.enable") {
         g_repair_enabled.store(true);
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
@@ -958,6 +1007,26 @@ static std::string ws_handle(const std::string& msg) {
         iv = get_u("step_up");    if (iv >= 1 && iv <= 20) g_tune_step_up.store((uint32_t)iv);
         iv = get_u("step_down");  if (iv >= 1 && iv <= 20) g_tune_step_down.store((uint32_t)iv);
         iv = get_u("stable_sec"); if (iv >= 1 && iv <= 60) g_tune_stable_sec.store((uint32_t)iv);
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "wifi.set") {
+        // Toggle WiFi features: {"command":"wifi.set","params":{"dup_send":true,"fec":false,...}}
+        auto get_b = [&](const char* key) -> int {
+            std::string k = std::string("\"") + key + "\":";
+            auto pos = msg.find(k);
+            if (pos == std::string::npos) return -1;
+            auto val = msg.substr(pos + k.size(), 5);
+            if (val.find("true") == 0) return 1;
+            if (val.find("false") == 0) return 0;
+            return -1;
+        };
+        int v;
+        v = get_b("dup_send");        if (v >= 0) g_wifi_dup_send.store(v == 1);
+        v = get_b("fec");             if (v >= 0) g_wifi_fec.store(v == 1);
+        v = get_b("nack");            if (v >= 0) g_wifi_nack.store(v == 1);
+        v = get_b("wsola_plc");       if (v >= 0) g_wifi_wsola_plc.store(v == 1);
+        v = get_b("adaptive_jitter"); if (v >= 0) g_wifi_adaptive_jitter.store(v == 1);
+        v = get_b("dedup");           if (v >= 0) g_wifi_dedup.store(v == 1);
+        persist_config_save();
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
     } else if (cmd == "latency") {
         // Calculate each stage latency in ms from frame counts
@@ -1061,7 +1130,7 @@ static LatencyParams get_latency_params(LatencyProfile profile) {
     case LatencyProfile::LowLatency:
         return {48, soluna::PacketTier::Standard, 2, 1, 2, 5, 1, "low-latency"};
     case LatencyProfile::WiFi:
-        return {96, soluna::PacketTier::WiFi, 10, 1, 40, 40, 5, "wifi-latency"};
+        return {96, soluna::PacketTier::WiFi, 125, 1, 100, 500, 5, "wifi-latency"};
     default:
         return {240, soluna::PacketTier::LAN, 4, 2, 20, 20, 10, "default"};
     }
@@ -1775,6 +1844,109 @@ static void input_passthrough_thread_fn(SolunaShmMap* shm, uint32_t out_channels
 }
 #endif
 
+// ── WSOLA PLC (Waveform Similarity Overlap-Add Packet Loss Concealment) ──────
+// Detects pitch period via autocorrelation on the previous good payload,
+// then generates replacement samples by repeating that period with crossfade.
+// Operates on S24 data stored as int32_t.
+static void wsola_plc(const int32_t* prev, int32_t* out,
+                       size_t frames, uint32_t channels) {
+    const size_t total = frames * channels;
+    if (!prev || total == 0) {
+        std::memset(out, 0, total * sizeof(int32_t));
+        return;
+    }
+
+    // Normalized autocorrelation pitch detection (channel 0)
+    // Search: 1ms..20ms at 48kHz = 48..960 samples
+    const size_t min_period = 48;
+    const size_t max_period = std::min(static_cast<size_t>(960), frames / 2);
+    const size_t analysis_len = std::min(frames, max_period * 2);
+
+    size_t best_period = min_period;
+    double best_corr = -1.0;
+
+    if (analysis_len > min_period && max_period > min_period) {
+        const size_t offset = (frames > analysis_len) ? (frames - analysis_len) : 0;
+        for (size_t lag = min_period; lag <= max_period; lag++) {
+            double sum = 0.0, energy_a = 0.0, energy_b = 0.0;
+            size_t count = analysis_len - lag;
+            if (count > 512) count = 512;
+            for (size_t i = 0; i < count; i++) {
+                double a = static_cast<double>(prev[(offset + i) * channels]);
+                double b = static_cast<double>(prev[(offset + i + lag) * channels]);
+                sum += a * b;
+                energy_a += a * a;
+                energy_b += b * b;
+            }
+            double denom = std::sqrt(energy_a * energy_b);
+            double corr = (denom > 1.0) ? (sum / denom) : 0.0;
+            if (corr > best_corr) {
+                best_corr = corr;
+                best_period = lag;
+            }
+        }
+    }
+
+    // Generate: repeat last period with cosine overlap-add at boundaries.
+    // No fade-out — maintain full amplitude. PLC→real crossfade at ring
+    // write level handles the transition back to real audio.
+    const size_t period = best_period;
+    const size_t cf_len = std::min(period / 4, static_cast<size_t>(24));
+    const size_t tmpl = frames - period; // template start in prev
+
+    for (size_t f = 0; f < frames; f++) {
+        size_t pos = f % period;
+
+        for (uint32_t ch = 0; ch < channels; ch++) {
+            float sample = static_cast<float>(prev[(tmpl + pos) * channels + ch]);
+
+            // Cosine overlap-add at each period wrap (after first cycle)
+            if (f >= period && pos < cf_len && cf_len > 0) {
+                float t = 0.5f * (1.0f - std::cos(3.14159265f
+                    * static_cast<float>(pos) / static_cast<float>(cf_len)));
+                // Outgoing: tail of previous cycle at (period - cf_len + pos)
+                float tail = static_cast<float>(
+                    prev[(tmpl + period - cf_len + pos) * channels + ch]);
+                sample = tail * (1.0f - t) + sample * t;
+            }
+
+            out[f * channels + ch] = static_cast<int32_t>(sample);
+        }
+    }
+}
+
+// ── FEC constants for daemon integration ─────────────────────────────────────
+static constexpr uint8_t  kFecGroupSize = 4;   // 4 data packets per FEC group
+static constexpr uint16_t kNackPort     = 5005; // NACK feedback port = RTP + 1
+
+// ── TX packet cache for NACK retransmission ──────────────────────────────────
+struct TxPacketCache {
+    static constexpr size_t kCacheSize = 256; // cache last 256 packets
+    struct Entry {
+        uint32_t sequence = 0;
+        size_t   size = 0;
+        uint8_t  data[1500];
+    };
+    Entry entries[kCacheSize];
+    size_t write_pos = 0;
+
+    void store(uint32_t seq, const uint8_t* pkt, size_t len) {
+        auto& e = entries[write_pos % kCacheSize];
+        e.sequence = seq;
+        e.size = std::min(len, sizeof(e.data));
+        std::memcpy(e.data, pkt, e.size);
+        write_pos++;
+    }
+
+    const Entry* find(uint32_t seq) const {
+        for (size_t i = 0; i < kCacheSize; i++) {
+            if (entries[i].sequence == seq && entries[i].size > 0)
+                return &entries[i];
+        }
+        return nullptr;
+    }
+};
+
 static int run_tx(DaemonConfig cfg) {
     using namespace soluna;
     using namespace soluna::pal;
@@ -1897,32 +2069,40 @@ static int run_tx(DaemonConfig cfg) {
         fprintf(stderr, "[solunad] SHM created (%s, %zu bytes)\n",
                 soluna_shm_path(), (size_t)SOLUNA_SHM_BYTES);
 
-        // ── Local speaker output ────────────────────────────────────────────
+        // ── Local speaker output (with timeout guard) ────────────────────────
+        // CoreAudio AudioComponentInstanceNew can hang if coreaudiod is stuck
+        // (e.g. after zombie processes). Run speaker init in a thread with timeout.
         std::atomic<bool> sp_prefilled{false};
-        speaker_audio = AudioDevice::create();
-        if (!speaker_audio) {
-            fprintf(stderr, "Warning: cannot create speaker audio device\n");
-        } else {
-            AudioStreamConfig sp_cfg;
-            sp_cfg.sample_rate      = cfg.sample_rate;
-            sp_cfg.channels         = cfg.channels;
-            sp_cfg.frames_per_buffer = kFramesPerPacket;
-            sp_cfg.format = SampleFormat::S24_LE; // driver uses float32 for output
+        {
+            std::atomic<bool> sp_init_done{false};
+            std::thread sp_init_thread([&]() {
+                auto sp_dev = AudioDevice::create();
+                if (!sp_dev) {
+                    fprintf(stderr, "Warning: cannot create speaker audio device\n");
+                    sp_init_done.store(true);
+                    return;
+                }
 
-            if (!speaker_audio->open_output(cfg.local_speaker_device, sp_cfg)) {
-                fprintf(stderr, "Warning: cannot open speaker '%s'\n",
-                        cfg.local_speaker_device.c_str());
-                speaker_audio.reset();
-            } else {
+                AudioStreamConfig sp_cfg;
+                sp_cfg.sample_rate      = cfg.sample_rate;
+                sp_cfg.channels         = cfg.channels;
+                sp_cfg.frames_per_buffer = kFramesPerPacket;
+                sp_cfg.format = SampleFormat::S24_LE;
+
+                if (!sp_dev->open_output(cfg.local_speaker_device, sp_cfg)) {
+                    fprintf(stderr, "Warning: cannot open speaker '%s'\n",
+                            cfg.local_speaker_device.c_str());
+                    sp_init_done.store(true);
+                    return;
+                }
+
                 const size_t sp_channels = cfg.channels;
                 const uint32_t sp_rate = cfg.sample_rate;
-                speaker_audio->start([&sp_prefilled, &speaker_ring, sp_channels,
+                sp_dev->start([&sp_prefilled, &speaker_ring, sp_channels,
                                       sp_rate](float* buf, uint32_t fc) {
-                    // Repair state (persists across callbacks via static)
                     static float prev_samples[8] = {};
                     static bool had_audio = false;
                     size_t samples = fc * sp_channels;
-                    // Prefill = max(4 callbacks, configured delay)
                     const uint32_t delay_frames = std::max(
                         fc * 4u,
                         g_speaker_delay_ms.load() * (sp_rate / 1000u));
@@ -1933,8 +2113,6 @@ static int run_tx(DaemonConfig cfg) {
                         }
                         sp_prefilled.store(true);
                     }
-                    // speaker_ring stores float frames as raw bytes
-                    // We borrow the int32_t ring interface but store floats
                     if (speaker_ring.available_read() < fc) {
                         std::memset(buf, 0, samples * sizeof(float));
                         sp_prefilled.store(false);
@@ -1942,14 +2120,11 @@ static int run_tx(DaemonConfig cfg) {
                         had_audio = false;
                         return;
                     }
-                    // Read float frames directly into output buffer
                     speaker_ring.read(reinterpret_cast<int32_t*>(buf), fc);
-                    // Apply monitor gain
                     float gain = g_mon_muted.load() ? 0.0f : g_mon_volume.load();
                     if (gain != 1.0f) {
                         for (size_t i = 0; i < samples; i++) buf[i] *= gain;
                     }
-                    // Audio repair: declicker + crossfade
                     if (g_repair_enabled.load(std::memory_order_relaxed)) {
                         uint32_t fixed = deglitch_buffer(buf, fc, (uint32_t)sp_channels);
                         if (fixed > 0)
@@ -1958,9 +2133,22 @@ static int run_tx(DaemonConfig cfg) {
                                            prev_samples, &had_audio);
                     }
                 });
-                printf("solunad SHM: local speaker '%s' opened\n",
+                speaker_audio = std::move(sp_dev);
+                fprintf(stderr, "[speaker] Local speaker '%s' opened\n",
                        cfg.local_speaker_device.empty()
                            ? "(default)" : cfg.local_speaker_device.c_str());
+                sp_init_done.store(true);
+            });
+
+            // Wait up to 3 seconds for speaker init
+            for (int i = 0; i < 30 && !sp_init_done.load(); i++) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            if (!sp_init_done.load()) {
+                fprintf(stderr, "Warning: speaker init timed out (coreaudiod stuck?), skipping\n");
+                sp_init_thread.detach(); // let it finish in background
+            } else {
+                sp_init_thread.join();
             }
         }
 
@@ -2106,10 +2294,71 @@ static int run_tx(DaemonConfig cfg) {
             cfg.sample_rate, cfg.channels);
     }
 
+    // ── WiFi reliability: FEC encoder + packet cache + NACK listener ────────
+    const bool wifi_mode = (cfg.latency_profile == LatencyProfile::WiFi ||
+                            cfg.latency_profile == LatencyProfile::Default);
+
+    // FEC encoder (XOR parity, group_size=4)
+    wifi::FecConfig fec_cfg;
+    fec_cfg.mode = wifi::FecMode::XorParity;
+    fec_cfg.group_size = kFecGroupSize;
+    fec_cfg.parity_count = 1;
+    fec_cfg.max_packet_size = kMaxPayloadSize;
+    wifi::FecEncoder fec_encoder(fec_cfg);
+
+    // TX packet cache for NACK retransmission
+    TxPacketCache tx_cache;
+
+    // NACK listener thread — listens for retransmission requests from RX
+    std::atomic<bool> nack_stop{false};
+    std::thread nack_thread;
+    if (wifi_mode) {
+        nack_thread = std::thread([&]() {
+            auto nack_sock = transport_mgr.create_rx_socket();
+            if (!nack_sock) return;
+            uint16_t nack_port = cfg.dest_port + 1;
+            if (!nack_sock->bind(nack_port)) {
+                fprintf(stderr, "[nack] Cannot bind port %u\n", nack_port);
+                return;
+            }
+            nack_sock->set_recv_timeout_ms(100);
+            fprintf(stderr, "[nack] Listener started on port %u\n", nack_port);
+
+            uint8_t nack_buf[64];
+            while (!nack_stop.load()) {
+                SocketAddress nack_src;
+                int nr = nack_sock->recv_from(nack_buf, sizeof(nack_buf), nack_src);
+                if (nr < 6) continue; // min: 2-byte magic + 4-byte seq
+
+                // NACK format: 0x4E41 ("NA") + uint32_t missing_seq (network order)
+                if (nack_buf[0] != 0x4E || nack_buf[1] != 0x41) continue;
+
+                // Process multiple NACK entries (4 bytes each)
+                for (int off = 2; off + 4 <= nr; off += 4) {
+                    uint32_t missing_seq;
+                    std::memcpy(&missing_seq, nack_buf + off, 4);
+                    missing_seq = ntohl(missing_seq);
+
+                    const auto* entry = tx_cache.find(missing_seq);
+                    if (entry) {
+                        socket->send_to(entry->data, entry->size, dest);
+                    }
+                }
+            }
+        });
+    }
+
+    if (wifi_mode) {
+        fprintf(stderr, "[wifi] Duplicate TX + FEC(XOR,k=%u) + NACK enabled\n", kFecGroupSize);
+    }
+
     // Set RT priority on TX thread in low-latency mode
     if (cfg.low_latency) {
         pal::Thread::set_realtime_priority();
     }
+
+    // FEC parity packet buffer
+    std::vector<uint8_t> fec_pkt_buf(kMaxPacketSize);
 
     while (g_running.load()) {
         scheduler.wait_next();
@@ -2167,6 +2416,39 @@ static int run_tx(DaemonConfig cfg) {
 
         if (pkt_size > 0) {
             socket->send_to(packet_buf.data(), pkt_size, dest);
+
+            if (wifi_mode) {
+                // ── Duplicate send (toggleable via Web UI) ──
+                if (g_wifi_dup_send.load(std::memory_order_relaxed)) {
+                    socket->send_to(packet_buf.data(), pkt_size, dest);
+                }
+
+                // ── Cache for NACK retransmission ──
+                if (g_wifi_nack.load(std::memory_order_relaxed)) {
+                    tx_cache.store(static_cast<uint32_t>(sequence), packet_buf.data(), pkt_size);
+                }
+
+                // ── FEC: send parity every kFecGroupSize packets ──
+                if (g_wifi_fec.load(std::memory_order_relaxed)) {
+                    size_t audio_payload_size = kFramesPerPacket * frame_size;
+                    if (fec_encoder.feed(audio_buf.data(), audio_payload_size)) {
+                        for (const auto& parity : fec_encoder.get_parity()) {
+                            uint32_t fec_group = parity.fec_group_id;
+                            size_t hdr = 6;
+                            size_t fec_size = hdr + parity.data.size();
+                            if (fec_size <= fec_pkt_buf.size()) {
+                                fec_pkt_buf[0] = 0xFE;
+                                fec_pkt_buf[1] = 0x43;
+                                uint32_t gid_be = htonl(fec_group);
+                                std::memcpy(fec_pkt_buf.data() + 2, &gid_be, 4);
+                                std::memcpy(fec_pkt_buf.data() + hdr,
+                                            parity.data.data(), parity.data.size());
+                                socket->send_to(fec_pkt_buf.data(), fec_size, dest);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         sequence++;
@@ -2179,10 +2461,16 @@ static int run_tx(DaemonConfig cfg) {
 
         if (sequence % 1000 == 0) {
             g_packets.store(sequence);
-            printf("\rTX: %lu packets sent", static_cast<unsigned long>(sequence));
+            printf("%sTX: %lu packets sent",
+                isatty(STDOUT_FILENO) ? "\r" : "\n",
+                static_cast<unsigned long>(sequence));
             fflush(stdout);
         }
     }
+
+    // Stop NACK listener
+    nack_stop.store(true);
+    if (nack_thread.joinable()) nack_thread.join();
 
     // Stop PTP engine
     if (ptp) ptp->stop();
@@ -2238,8 +2526,12 @@ static int run_rx(DaemonConfig cfg) {
     const uint32_t kFramesPerPacket = lp.frames_per_packet;
     const size_t frame_size = sizeof(int32_t) * cfg.channels;
 
-    // Ring buffer: must be large enough to absorb WiFi jitter (observed ±40ms swing)
-    const uint32_t kRingPackets = 100;
+    // Ring buffer: large enough for WiFi jitter bursts (1+ second capacity)
+    // WiFi can buffer-bloat 200-500ms of packets then deliver in burst.
+    // Small ring → overflow → lost packets → underrun → noise cycle.
+    const bool is_wifi = (cfg.latency_profile == LatencyProfile::WiFi ||
+                          cfg.latency_profile == LatencyProfile::Default);
+    const uint32_t kRingPackets = is_wifi ? 500 : 100;
     const uint32_t kPrefillPackets = lp.prefill_packets;
     const uint32_t kRefillThreshold = lp.refill_threshold;
     RingBuffer ring(kFramesPerPacket * kRingPackets, frame_size);
@@ -2337,86 +2629,239 @@ static int run_rx(DaemonConfig cfg) {
             return;
         }
 
-        // Standard RingBuffer path
-        // State persisted across callbacks (no heap allocs in RT path)
+        // ── High-quality WiFi RingBuffer playback ─────────────────────
+        // 1. Full prefill (500ms) → ring starts at target → WiFi jitter absorbed
+        // 2. ASRC ±1 frame with linear interpolation (no clicks from dup/skip)
+        // 3. Underrun → re-prefill with smooth fade-out/fade-in
+        // 4. Crossfade at all callback boundaries (cosine window)
         static std::vector<int32_t> s24_buf;
         static std::vector<float> prev_good_buf;
-        static float rx_prev[8] = {};
+        static std::vector<float> fade_in_buf;   // for smooth fade-in after prefill
         static bool rx_had_audio = false;
         static uint32_t consecutive_underruns = 0;
+        static uint32_t fade_in_remaining = 0;    // frames left in fade-in ramp
 
-        if (s24_buf.size() < samples) s24_buf.resize(samples);
-        if (prev_good_buf.size() < samples) prev_good_buf.resize(samples);
+        const size_t max_read = static_cast<size_t>(frame_count) + 20;
+        if (s24_buf.size() < max_read * cfg.channels)
+            s24_buf.resize(max_read * cfg.channels);
+        if (prev_good_buf.size() < samples)
+            prev_good_buf.resize(samples);
+        if (fade_in_buf.size() < samples)
+            fade_in_buf.resize(samples, 0.0f);
 
-        // Wait for prefill before starting playback to absorb jitter
-        // Must fill to buf_target so buffer can absorb worst-case jitter swings
+        // ── Prefill: wait for buf_target before starting ─────────────
         if (!prefilled.load()) {
-            size_t prefill_frames = static_cast<size_t>(
+            size_t prefill_target = static_cast<size_t>(
                 g_buf_target_ms.load()) * (cfg.sample_rate / 1000u);
-            if (prefill_frames < static_cast<size_t>(frame_count) * 3)
-                prefill_frames = static_cast<size_t>(frame_count) * 3;
-            if (ring.available_read() < prefill_frames) {
+            if (prefill_target < static_cast<size_t>(cfg.sample_rate) / 10)
+                prefill_target = static_cast<size_t>(cfg.sample_rate) / 10;
+            if (ring.available_read() < prefill_target) {
                 std::memset(buffer, 0, samples * sizeof(float));
                 return;
             }
             prefilled.store(true);
             consecutive_underruns = 0;
+            // Schedule fade-in: full callback (10ms) cosine ramp from silence
+            fade_in_remaining = frame_count;
         }
 
-        size_t read = ring.read(s24_buf.data(), frame_count);
-        if (read == 0) {
-            // Complete underrun: use previous good buffer with fade-out
+        size_t avail = ring.available_read();
+        size_t target_frames = static_cast<size_t>(
+            g_buf_target_ms.load()) * (cfg.sample_rate / 1000u);
+        if (target_frames < static_cast<size_t>(frame_count) * 3)
+            target_frames = static_cast<size_t>(frame_count) * 3;
+
+        // ── Emergency overflow drain ─────────────────────────────────
+        // When ring fills beyond 75% of capacity, WiFi bursts have
+        // accumulated faster than ASRC can compensate. Discard frames
+        // to target+20% immediately. A brief discontinuity is far
+        // better than minutes of garbled audio at 65536/65536.
+        size_t cap = ring.capacity();
+        if (avail > cap * 3 / 4) {
+            size_t drain_to = target_frames + target_frames / 5;
+            if (drain_to < static_cast<size_t>(frame_count) * 4)
+                drain_to = static_cast<size_t>(frame_count) * 4;
+            if (avail > drain_to) {
+                ring.discard(avail - drain_to);
+                avail = ring.available_read();
+            }
+        }
+
+        // ── ASRC: PI controller ──────────────────────────────────────
+        // Proportional-Integral control keeps ring buffer near target.
+        // Dead zone ±5% of target: ignores tiny jitter, avoids pitch wobble.
+        // P-term: immediate proportional correction for deviations.
+        // I-term: slow integral corrects steady-state clock drift (~ppm).
+        // Max ±4 frames/callback (±0.8% pitch at 480 frames) — inaudible.
+        static double asrc_drift = 0.0;
+        static double asrc_integral = 0.0;
+        size_t want = frame_count;
+        if (avail >= static_cast<size_t>(frame_count) && target_frames > 0) {
+            double error = static_cast<double>(avail) - static_cast<double>(target_frames);
+            double norm_error = error / static_cast<double>(target_frames);
+
+            // Dead zone: ±5% of target → no correction (absorbs minor jitter)
+            constexpr double kDeadZone = 0.05;
+            if (norm_error > -kDeadZone && norm_error < kDeadZone)
+                norm_error = 0.0;
+            else if (norm_error > 0.0)
+                norm_error -= kDeadZone;
+            else
+                norm_error += kDeadZone;
+
+            // PI gains: Kp for responsiveness, Ki for clock drift
+            constexpr double kP = 0.3;   // proportional: 30% of normalized error
+            constexpr double kI = 0.002; // integral: slow accumulation for drift
+
+            asrc_integral += norm_error * kI;
+            // Clamp integral to prevent windup (max ±2 frames worth)
+            constexpr double kIMax = 2.0;
+            if (asrc_integral >  kIMax) asrc_integral =  kIMax;
+            if (asrc_integral < -kIMax) asrc_integral = -kIMax;
+
+            double correction = norm_error * kP + asrc_integral;
+
+            asrc_drift += correction;
+            if (asrc_drift < -4.0) asrc_drift = -4.0;
+            if (asrc_drift >  4.0) asrc_drift =  4.0;
+
+            if (asrc_drift <= -1.0) {
+                int adj = static_cast<int>(std::floor(asrc_drift));
+                if (adj < -4) adj = -4;
+                want = static_cast<size_t>(std::max(1, static_cast<int>(frame_count) + adj));
+                asrc_drift -= adj;
+            } else if (asrc_drift >= 1.0) {
+                int adj = static_cast<int>(std::ceil(asrc_drift));
+                if (adj > 4) adj = 4;
+                want = static_cast<size_t>(static_cast<int>(frame_count) + adj);
+                asrc_drift -= adj;
+            }
+        }
+
+        // ── Underrun → re-prefill with smooth fade-out ───────────────
+        if (avail < static_cast<size_t>(frame_count)) {
+            prefilled.store(false);
             consecutive_underruns++;
-            if (rx_had_audio && consecutive_underruns <= 3) {
-                float fade_base = 1.0f - 0.3f * (consecutive_underruns - 1);
+            if (rx_had_audio && consecutive_underruns <= 5) {
+                float base_fade = 1.0f - 0.2f * (consecutive_underruns - 1);
+                if (base_fade < 0.0f) base_fade = 0.0f;
                 for (size_t i = 0; i < samples; i++) {
-                    float fade = fade_base * (1.0f - (float)i / (float)samples);
-                    buffer[i] = prev_good_buf[i] * fade;
+                    float t = (float)i / (float)samples;
+                    float env = base_fade * 0.5f * (1.0f + std::cos(3.14159265f * t));
+                    buffer[i] = prev_good_buf[i] * env;
                 }
             } else {
                 std::memset(buffer, 0, samples * sizeof(float));
             }
-            if (consecutive_underruns > 8) prefilled.store(false);
             g_plc_frames.fetch_add(frame_count, std::memory_order_relaxed);
-        } else if (read < frame_count) {
-            // Partial read: convert available data, crossfade-fill the rest from prev
-            consecutive_underruns = 0;
-            size_t got_samples = read * cfg.channels;
-            size_t remain_samples = samples - got_samples;
-            s24_to_float(s24_buf.data(), buffer, got_samples);
-            if (rx_had_audio) {
-                // Crossfade tail from previous good buffer
-                for (size_t i = 0; i < remain_samples; i++) {
-                    float t = (float)i / (float)remain_samples;
-                    size_t idx = got_samples + i;
-                    float prev_val = (idx < prev_good_buf.size()) ? prev_good_buf[idx] : 0.0f;
-                    buffer[idx] = buffer[got_samples - cfg.channels + (i % cfg.channels)] * (1.0f - t)
-                                + prev_val * t;
-                }
-            } else {
-                std::memset(buffer + got_samples, 0, remain_samples * sizeof(float));
-            }
-            g_plc_frames.fetch_add(frame_count - read, std::memory_order_relaxed);
         } else {
+            // ── Normal playback with cubic Hermite ASRC ─────────────
+            size_t read = ring.read(s24_buf.data(), want);
             consecutive_underruns = 0;
-            s24_to_float(s24_buf.data(), buffer, samples);
+
+            if (read == 0) {
+                std::memset(buffer, 0, samples * sizeof(float));
+            } else if (read == static_cast<size_t>(frame_count)) {
+                // Exact match: no resampling needed
+                s24_to_float(s24_buf.data(), buffer, frame_count * cfg.channels);
+            } else if (read < 2) {
+                s24_to_float(s24_buf.data(), buffer, cfg.channels);
+                for (uint32_t f = 1; f < frame_count; f++)
+                    for (uint32_t ch = 0; ch < cfg.channels; ch++)
+                        buffer[f * cfg.channels + ch] = buffer[ch];
+            } else {
+                // Cubic Hermite (Catmull-Rom) resampling:
+                // 4-point interpolation preserves waveform shape far better
+                // than linear. First/last output = first/last input (no
+                // boundary discontinuity between callbacks).
+                static std::vector<float> asrc_src;
+                size_t rd_samp = read * cfg.channels;
+                if (asrc_src.size() < rd_samp) asrc_src.resize(rd_samp);
+                s24_to_float(s24_buf.data(), asrc_src.data(), rd_samp);
+
+                float ratio = static_cast<float>(read - 1)
+                            / static_cast<float>(frame_count - 1);
+                int32_t rd = static_cast<int32_t>(read);
+
+                for (uint32_t f = 0; f < frame_count; f++) {
+                    float src_pos = static_cast<float>(f) * ratio;
+                    int32_t si = static_cast<int32_t>(src_pos);
+                    float frac = src_pos - static_cast<float>(si);
+
+                    // 4 sample indices with boundary clamping
+                    int32_t i0 = (si > 0) ? si - 1 : 0;
+                    int32_t i1 = si;
+                    int32_t i2 = (si + 1 < rd) ? si + 1 : rd - 1;
+                    int32_t i3 = (si + 2 < rd) ? si + 2 : rd - 1;
+
+                    for (uint32_t ch = 0; ch < cfg.channels; ch++) {
+                        float y0 = asrc_src[i0 * cfg.channels + ch];
+                        float y1 = asrc_src[i1 * cfg.channels + ch];
+                        float y2 = asrc_src[i2 * cfg.channels + ch];
+                        float y3 = asrc_src[i3 * cfg.channels + ch];
+                        // Catmull-Rom spline
+                        float c1 = 0.5f * (y2 - y0);
+                        float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+                        float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+                        float v = ((c3 * frac + c2) * frac + c1) * frac + y1;
+                        // Soft clamp: prevent DAC clipping only
+                        if (v > 1.0f) v = 1.0f;
+                        else if (v < -1.0f) v = -1.0f;
+                        buffer[f * cfg.channels + ch] = v;
+                    }
+                }
+
+                // Only count real underreads as PLC (not ±4 ASRC corrections)
+                if (read + 5 < static_cast<size_t>(frame_count))
+                    g_plc_frames.fetch_add(frame_count - read, std::memory_order_relaxed);
+            }
         }
 
-        // Apply volume / mute
+        // ── Fade-in after prefill (prevent click on playback resume) ─
+        if (fade_in_remaining > 0 && consecutive_underruns == 0) {
+            uint32_t fade_start = (fade_in_remaining > frame_count)
+                ? 0 : frame_count - fade_in_remaining;
+            for (uint32_t f = 0; f < frame_count; f++) {
+                float env = 1.0f;
+                if (f < fade_in_remaining) {
+                    // Cosine ramp: 0 → 1 over full fade-in duration
+                    float progress = 1.0f - (float)(fade_in_remaining - f)
+                                    / static_cast<float>(frame_count);
+                    if (progress < 0.0f) progress = 0.0f;
+                    env = 0.5f * (1.0f - std::cos(3.14159265f * progress));
+                }
+                for (uint32_t ch = 0; ch < cfg.channels; ch++)
+                    buffer[f * cfg.channels + ch] *= env;
+            }
+            fade_in_remaining = (fade_in_remaining > frame_count)
+                ? fade_in_remaining - frame_count : 0;
+        }
+
+        // ── Volume / mute + soft limiter ─────────────────────────────
+        // tanh soft limiter: prevents hard clipping when gain > 1.0
+        // Knee at ±0.85: below = linear (transparent), above = tanh curve
         float gain = g_rx_muted.load() ? 0.0f : g_rx_volume.load();
         if (gain != 1.0f) {
             for (size_t i = 0; i < samples; i++) buffer[i] *= gain;
         }
-        // Audio repair: deglitch + crossfade
-        if (g_repair_enabled.load(std::memory_order_relaxed)) {
-            uint32_t fixed = deglitch_buffer(buffer, frame_count, cfg.channels);
-            if (fixed > 0)
-                g_repair_clicks.fetch_add(fixed, std::memory_order_relaxed);
-            crossfade_boundary(buffer, frame_count, cfg.channels,
-                               rx_prev, &rx_had_audio);
+        if (gain > 0.5f) {
+            for (size_t i = 0; i < samples; i++) {
+                float x = buffer[i];
+                if (x > 0.85f)
+                    buffer[i] = 0.85f + 0.15f * std::tanh((x - 0.85f) / 0.15f);
+                else if (x < -0.85f)
+                    buffer[i] = -0.85f - 0.15f * std::tanh((-x - 0.85f) / 0.15f);
+            }
         }
-        // Save good buffer for PLC on next underrun
-        std::memcpy(prev_good_buf.data(), buffer, samples * sizeof(float));
+
+        // Track audio state for fade-out on underrun
+        // (Callback boundary crossfade REMOVED: ring data is continuous,
+        //  PLC→real crossfade now handled at ring write level)
+        rx_had_audio = (consecutive_underruns == 0);
+
+        // Save good buffer for PLC (only when we had real audio)
+        if (consecutive_underruns == 0)
+            std::memcpy(prev_good_buf.data(), buffer, samples * sizeof(float));
     });
 
     // Create transport manager for optional DTLS
@@ -2451,10 +2896,43 @@ static int run_rx(DaemonConfig cfg) {
     uint64_t ostp_packets = 0;
     uint64_t sequence_errors = 0;
     int32_t last_seq = -1;
+    uint64_t fec_recoveries = 0;
+    uint64_t duplicate_drops = 0;
 
-    // PLC: previous packet payload for interpolation
+    // PLC: previous packet payload for WSOLA interpolation
     std::vector<int32_t> prev_payload;
     uint32_t plc_consecutive = 0; // consecutive PLC insertions (max 3)
+    bool prev_write_was_plc = false;   // last ring write was PLC data
+    int32_t plc_last_frame[8] = {};    // last frame of PLC per channel (for crossfade)
+
+    // ── WiFi reliability features ────────────────────────────────────────────
+    const bool wifi_mode = (cfg.latency_profile == LatencyProfile::WiFi ||
+                            cfg.latency_profile == LatencyProfile::Default);
+
+    // FEC decoder (matches TX encoder config)
+    wifi::FecConfig fec_cfg;
+    fec_cfg.mode = wifi::FecMode::XorParity;
+    fec_cfg.group_size = kFecGroupSize;
+    fec_cfg.parity_count = 1;
+    fec_cfg.max_packet_size = kMaxPayloadSize;
+    wifi::FecDecoder fec_decoder(fec_cfg);
+    uint64_t fec_data_seq_base = 0; // sequence of first packet in current tracking window
+
+    // Adaptive jitter buffer state
+    double jitter_ema_ms = 0.0;       // EMA of arrival jitter
+    int64_t last_arrival_us = 0;      // last packet arrival time (microseconds)
+    int64_t expected_interval_us = 0; // expected inter-packet interval
+    const uint32_t base_buf_target_ms = lp.buf_target_ms;
+
+    if (wifi_mode) {
+        expected_interval_us = static_cast<int64_t>(kFramesPerPacket) * 1'000'000LL / cfg.sample_rate;
+        fprintf(stderr, "[wifi] RX: Dedup + FEC(XOR,k=%u) + WSOLA-PLC + AdaptiveJitter + NACK\n",
+                kFecGroupSize);
+    }
+
+    // NACK sender socket (reuses same socket type, sends to TX source)
+    SocketAddress tx_addr; // populated on first received packet
+    bool tx_addr_known = false;
 
     // Set RT priority on RX receive thread in low-latency mode
     if (cfg.low_latency) {
@@ -2466,6 +2944,13 @@ static int run_rx(DaemonConfig cfg) {
         int n = socket->recv_from(recv_buf.data(), recv_buf.size(), src);
         if (n <= 0) continue;
 
+        // Remember TX source address for NACK
+        if (wifi_mode && !tx_addr_known) {
+            tx_addr = src;
+            tx_addr.port = cfg.listen_port + 1; // NACK port
+            tx_addr_known = true;
+        }
+
         // Check packet type
         if (static_cast<size_t>(n) < sizeof(RtpHeader)) continue;
 
@@ -2475,6 +2960,19 @@ static int run_rx(DaemonConfig cfg) {
         size_t frames = 0;
         uint32_t full_seq = 0;
 
+        // ── Handle FEC parity packets (raw UDP: 0xFE 0x43 + group_id + data) ─
+        // First byte 0xFE = RTP version 3, so old receivers skip it.
+        if (wifi_mode && n >= 6 && recv_buf[0] == 0xFE && recv_buf[1] == 0x43) {
+            uint32_t fec_group;
+            std::memcpy(&fec_group, recv_buf.data() + 2, 4);
+            fec_group = ntohl(fec_group);
+            const uint8_t* payload = recv_buf.data() + 6;
+            size_t payload_size = static_cast<size_t>(n) - 6;
+            fec_decoder.feed(fec_group, kFecGroupSize, true, payload, payload_size);
+            packets_received++;
+            continue; // FEC parity — don't process as audio
+        }
+
         if (is_aes67) {
             // AES67 packet
             RtpHeader rtp;
@@ -2482,6 +2980,15 @@ static int run_rx(DaemonConfig cfg) {
 
             uint16_t sequence = ntohs(rtp.sequence);
             full_seq = sequence;
+
+            // ── Duplicate detection (toggleable) ─────────────────────────────
+            if (wifi_mode && g_wifi_dedup.load(std::memory_order_relaxed) &&
+                last_seq >= 0 &&
+                static_cast<int32_t>(full_seq & 0xFFFF) == last_seq) {
+                duplicate_drops++;
+                packets_received++;
+                continue; // skip duplicate
+            }
 
             const uint8_t* payload = recv_buf.data() + sizeof(RtpHeader);
             size_t payload_size = static_cast<size_t>(n) - sizeof(RtpHeader);
@@ -2540,40 +3047,164 @@ static int run_rx(DaemonConfig cfg) {
 
             full_seq = (static_cast<uint32_t>(ostp.sequence_ext) << 16) | rtp.sequence;
 
+            // ── Duplicate detection (toggleable) ─────────────────────────────
+            if (wifi_mode && g_wifi_dedup.load(std::memory_order_relaxed) &&
+                last_seq >= 0 &&
+                static_cast<int32_t>(full_seq & 0xFFFF) == last_seq) {
+                duplicate_drops++;
+                packets_received++;
+                continue; // skip duplicate
+            }
+
             if (parse_rc == -2) {
-                // CRC mismatch — payload corrupted, apply PLC
+                // CRC mismatch — payload corrupted, apply WSOLA PLC
                 g_crc_errors.fetch_add(1, std::memory_order_relaxed);
                 g_lost_packets.fetch_add(1, std::memory_order_relaxed);
                 size_t plc_frames = kFramesPerPacket;
                 if (!prev_payload.empty() && prev_payload.size() >= plc_frames * cfg.channels) {
-                    // Fade out previous payload
                     std::vector<int32_t> plc_buf(plc_frames * cfg.channels);
-                    for (size_t i = 0; i < plc_buf.size(); i++) {
-                        float fade = 1.0f - static_cast<float>(i) / static_cast<float>(plc_buf.size());
-                        plc_buf[i] = static_cast<int32_t>(static_cast<float>(prev_payload[i]) * fade);
-                    }
+                    wsola_plc(prev_payload.data(), plc_buf.data(), plc_frames, cfg.channels);
                     ring.write(plc_buf.data(), plc_frames);
+                    for (uint32_t ch = 0; ch < cfg.channels && ch < 8; ch++)
+                        plc_last_frame[ch] = plc_buf[(plc_frames - 1) * cfg.channels + ch];
+                    prev_write_was_plc = true;
                 } else {
-                    // No previous data: insert silence
                     std::vector<int32_t> silence(plc_frames * cfg.channels, 0);
                     ring.write(silence.data(), plc_frames);
+                    std::memset(plc_last_frame, 0, sizeof(plc_last_frame));
+                    prev_write_was_plc = true;
                 }
                 g_plc_frames.fetch_add(plc_frames, std::memory_order_relaxed);
-                prev_payload.clear(); // Don't reuse faded data
+                prev_payload.clear();
                 ostp_packets++;
             } else {
-                // Valid packet — write to ring buffer
+                // Valid packet — fill gaps BEFORE writing (correct audio ordering)
                 frames = payload_size / frame_size;
-                ring.write(payload, frames);
 
-                // Save payload for PLC interpolation
+                // ── Gap check + PLC: fill missing packets before current ──
+                if (last_seq >= 0) {
+                    int32_t cur_lo = static_cast<int32_t>(full_seq & 0xFFFF);
+                    int32_t expected = (last_seq + 1) & 0xFFFF;
+                    if (cur_lo != expected) {
+                        int32_t gap = (cur_lo - expected + 0x10000) & 0xFFFF;
+                        if (gap > 0 && gap <= 100) {
+                            sequence_errors += gap;
+
+                            // FEC recovery
+                            bool fec_recovered = false;
+                            if (wifi_mode && g_wifi_fec.load(std::memory_order_relaxed)) {
+                                for (int32_t miss = 0; miss < gap && miss < 4; miss++) {
+                                    uint32_t miss_seq = static_cast<uint32_t>((expected + miss) & 0xFFFF);
+                                    uint32_t fec_group = miss_seq / kFecGroupSize;
+                                    if (fec_decoder.can_recover(fec_group)) {
+                                        auto recovered = fec_decoder.recover(fec_group);
+                                        for (const auto& rpkt : recovered) {
+                                            if (!rpkt.data.empty()) {
+                                                size_t rec_frames = rpkt.data.size() / frame_size;
+                                                ring.write(rpkt.data.data(), rec_frames);
+                                                fec_recoveries++;
+                                                fec_recovered = true;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // NACK for missing sequences
+                                if (!fec_recovered && tx_addr_known &&
+                                    g_wifi_nack.load(std::memory_order_relaxed)) {
+                                    uint8_t nack_buf[2 + 4 * 4];
+                                    nack_buf[0] = 0x4E; // 'N'
+                                    nack_buf[1] = 0x41; // 'A'
+                                    size_t nack_len = 2;
+                                    for (int32_t miss = 0; miss < gap && miss < 4; miss++) {
+                                        uint32_t miss_seq = static_cast<uint32_t>((expected + miss) & 0xFFFF);
+                                        uint32_t net_seq = htonl(miss_seq);
+                                        std::memcpy(nack_buf + nack_len, &net_seq, 4);
+                                        nack_len += 4;
+                                    }
+                                    socket->send_to(nack_buf, nack_len, tx_addr);
+                                }
+                            }
+
+                            // PLC for unrecovered gaps
+                            if (!fec_recovered) {
+                                uint32_t plc_count = std::min(static_cast<uint32_t>(gap), 3u);
+                                for (uint32_t p = 0; p < plc_count; p++) {
+                                    g_lost_packets.fetch_add(1, std::memory_order_relaxed);
+                                    size_t plc_fr = kFramesPerPacket;
+                                    if (g_wifi_wsola_plc.load(std::memory_order_relaxed) &&
+                                        !prev_payload.empty() &&
+                                        prev_payload.size() >= plc_fr * cfg.channels &&
+                                        plc_consecutive < 3) {
+                                        std::vector<int32_t> plc_buf(plc_fr * cfg.channels);
+                                        wsola_plc(prev_payload.data(), plc_buf.data(),
+                                                  plc_fr, cfg.channels);
+                                        ring.write(plc_buf.data(), plc_fr);
+                                        for (uint32_t ch = 0; ch < cfg.channels && ch < 8; ch++)
+                                            plc_last_frame[ch] = plc_buf[(plc_fr - 1) * cfg.channels + ch];
+                                        prev_write_was_plc = true;
+                                        plc_consecutive++;
+                                    } else {
+                                        std::vector<int32_t> silence(plc_fr * cfg.channels, 0);
+                                        ring.write(silence.data(), plc_fr);
+                                        std::memset(plc_last_frame, 0, sizeof(plc_last_frame));
+                                        prev_write_was_plc = true;
+                                    }
+                                    g_plc_frames.fetch_add(plc_fr, std::memory_order_relaxed);
+                                }
+                                if (static_cast<uint32_t>(gap) > 3) {
+                                    prev_payload.clear();
+                                    plc_consecutive = 0;
+                                }
+                            }
+                        } else {
+                            sequence_errors++;
+                        }
+                    } else {
+                        plc_consecutive = 0;
+                    }
+                }
+
+                // ── Write current packet (crossfade if after PLC) ──
+                if (prev_write_was_plc && frames > 0) {
+                    constexpr size_t kPclCfFrames = 16; // ~0.33ms at 48kHz
+                    size_t cf = std::min(frames, kPclCfFrames);
+                    std::vector<uint8_t> xfade(frames * frame_size);
+                    std::memcpy(xfade.data(), payload, frames * frame_size);
+                    auto* xf = reinterpret_cast<int32_t*>(xfade.data());
+                    for (size_t f = 0; f < cf; f++) {
+                        float t = 0.5f * (1.0f - std::cos(3.14159265f
+                            * static_cast<float>(f + 1) / static_cast<float>(cf + 1)));
+                        for (uint32_t ch = 0; ch < cfg.channels; ch++) {
+                            size_t idx = f * cfg.channels + ch;
+                            float plc_v = static_cast<float>(plc_last_frame[ch]);
+                            float real_v = static_cast<float>(xf[idx]);
+                            xf[idx] = static_cast<int32_t>(plc_v * (1.0f - t) + real_v * t);
+                        }
+                    }
+                    ring.write(xfade.data(), frames);
+                    prev_write_was_plc = false;
+                } else {
+                    ring.write(payload, frames);
+                    prev_write_was_plc = false;
+                }
+
+                // Save payload for WSOLA PLC interpolation
                 {
                     size_t samples = frames * cfg.channels;
                     if (prev_payload.size() != samples) prev_payload.resize(samples);
                     std::memcpy(prev_payload.data(), payload, samples * sizeof(int32_t));
                 }
 
-                // Also insert into PlayoutBuffer if active
+                // Feed to FEC decoder for recovery of future gaps
+                if (wifi_mode && frames > 0) {
+                    uint32_t fec_group = static_cast<uint32_t>(full_seq / kFecGroupSize);
+                    uint8_t fec_index = static_cast<uint8_t>(full_seq % kFecGroupSize);
+                    fec_decoder.feed(fec_group, fec_index, false, payload, payload_size);
+                    fec_decoder.prune(16);
+                }
+
+                // Insert into PlayoutBuffer if active
                 if (playout && frames > 0) {
                     PlayoutPacket pp;
                     pp.sequence = full_seq & 0xFFFF;
@@ -2588,86 +3219,64 @@ static int run_rx(DaemonConfig cfg) {
             }
         }
 
-        // Trim ring buffer only to prevent overflow (safety valve)
-        // For WiFi: let the buffer float freely to absorb jitter.
-        // Only drain when approaching ring capacity (>75%).
-        {
-            size_t avail = ring.available_read();
-            size_t cap = ring.capacity();
-            size_t trim_threshold = cap * 3 / 4; // 75% of capacity
-            uint32_t target = g_buf_target_ms.load() * (cfg.sample_rate / 1000u);
-            size_t trim_target = cap / 2; // drain to 50% of capacity
-            if (avail > trim_threshold) {
-                static thread_local std::vector<int32_t> drain_buf(512);
-                size_t excess = avail - trim_target;
-                while (excess > 0) {
-                    size_t chunk = std::min(excess, drain_buf.size() / cfg.channels);
-                    if (chunk == 0) break;
-                    size_t dr = ring.read(drain_buf.data(), chunk);
-                    if (dr == 0) break;
-                    excess -= dr;
-                }
+        // ── Adaptive jitter buffer (toggleable) ──────────────────────────────
+        if (wifi_mode && g_wifi_adaptive_jitter.load(std::memory_order_relaxed)) {
+            auto now_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            if (last_arrival_us > 0 && expected_interval_us > 0) {
+                int64_t actual_interval = now_us - last_arrival_us;
+                double jitter_ms = std::abs(actual_interval - expected_interval_us) / 1000.0;
+                // EMA with alpha=0.05 (smooth), but jump up fast on spikes
+                const double alpha = (jitter_ms > jitter_ema_ms) ? 0.3 : 0.02;
+                jitter_ema_ms = jitter_ema_ms * (1.0 - alpha) + jitter_ms * alpha;
+                // buf_target = max(base, jitter * 3), clamped to [base, base*2]
+                // Never go below base (WiFi profile sets the safe minimum)
+                uint32_t adaptive_target = static_cast<uint32_t>(
+                    std::max(static_cast<double>(base_buf_target_ms), jitter_ema_ms * 3.0));
+                uint32_t max_target = base_buf_target_ms * 2;
+                if (max_target > 2000) max_target = 2000;
+                if (adaptive_target > max_target) adaptive_target = max_target;
+                g_buf_target_ms.store(adaptive_target);
             }
+            last_arrival_us = now_us;
         }
 
-        // Sequence check + PLC for gaps
-        if (last_seq >= 0) {
+        // No trim: let ring float freely. With 65536-frame capacity (1.3s),
+        // WiFi bursts are absorbed without overflow. If ring somehow fills,
+        // ring.write() returns 0 (packet dropped) — correct streaming behavior.
+
+        // AES67 gap counting (OSTP gaps handled inline before ring write)
+        if (is_aes67 && last_seq >= 0) {
             int32_t cur_lo = static_cast<int32_t>(full_seq & 0xFFFF);
             int32_t expected = (last_seq + 1) & 0xFFFF;
             if (cur_lo != expected) {
-                // Sequence gap detected — count missing packets
                 int32_t gap = (cur_lo - expected + 0x10000) & 0xFFFF;
-                if (gap > 0 && gap <= 100) { // reasonable gap (not reordering wrap)
+                if (gap > 0 && gap <= 100)
                     sequence_errors += gap;
-                    // PLC: fill up to 3 missing packets
-                    uint32_t plc_count = std::min(static_cast<uint32_t>(gap), 3u);
-                    for (uint32_t p = 0; p < plc_count; p++) {
-                        g_lost_packets.fetch_add(1, std::memory_order_relaxed);
-                        size_t plc_fr = kFramesPerPacket;
-                        if (!prev_payload.empty() && prev_payload.size() >= plc_fr * cfg.channels && plc_consecutive < 3) {
-                            std::vector<int32_t> plc_buf(plc_fr * cfg.channels);
-                            float base_fade = 1.0f - 0.3f * static_cast<float>(plc_consecutive);
-                            for (size_t i = 0; i < plc_buf.size(); i++) {
-                                float fade = base_fade * (1.0f - static_cast<float>(i) / static_cast<float>(plc_buf.size()));
-                                plc_buf[i] = static_cast<int32_t>(static_cast<float>(prev_payload[i]) * fade);
-                            }
-                            ring.write(plc_buf.data(), plc_fr);
-                            plc_consecutive++;
-                        } else {
-                            std::vector<int32_t> silence(plc_fr * cfg.channels, 0);
-                            ring.write(silence.data(), plc_fr);
-                        }
-                        g_plc_frames.fetch_add(plc_fr, std::memory_order_relaxed);
-                    }
-                    if (static_cast<uint32_t>(gap) > 3) {
-                        // Beyond 3 consecutive losses — clear prev for safety
-                        prev_payload.clear();
-                        plc_consecutive = 0;
-                    }
-                } else {
+                else
                     sequence_errors++;
-                }
-            } else {
-                plc_consecutive = 0; // reset on successful receipt
             }
         }
-        last_seq = static_cast<int32_t>(full_seq);
+        last_seq = static_cast<int32_t>(full_seq & 0xFFFF);
         packets_received++;
 
         if (packets_received % 200 == 0) {
             g_packets.store(packets_received);
             g_seq_errors.store(sequence_errors);
             g_buf_fill.store(ring.available_read());
-                g_lat_rx_ring_frames.store((uint32_t)ring.available_read());
+            g_lat_rx_ring_frames.store((uint32_t)ring.available_read());
             g_buf_cap.store(ring.capacity());
         }
 
         if (packets_received % 1000 == 0) {
-            printf("\rRX: %lu pkts (OSTP:%lu AES67:%lu), %lu seq errors, ring: %zu/%zu",
+            printf("%sRX: %lu pkts, seq_err:%lu, dup:%lu, fec:%lu, jitter:%.1fms, buf:%ums, ring:%zu/%zu",
+                isatty(STDOUT_FILENO) ? "\r" : "\n",
                 static_cast<unsigned long>(packets_received),
-                static_cast<unsigned long>(ostp_packets),
-                static_cast<unsigned long>(aes67_packets),
                 static_cast<unsigned long>(sequence_errors),
+                static_cast<unsigned long>(duplicate_drops),
+                static_cast<unsigned long>(fec_recoveries),
+                jitter_ema_ms,
+                g_buf_target_ms.load(),
                 ring.available_read(), ring.capacity());
             fflush(stdout);
         }
@@ -2675,11 +3284,13 @@ static int run_rx(DaemonConfig cfg) {
 
     audio->stop();
     if (ptp) ptp->stop();
-    printf("\nRX stopped. Packets: %lu (OSTP:%lu, AES67:%lu), Errors: %lu\n",
+    printf("\nRX stopped. Packets: %lu (OSTP:%lu, AES67:%lu), Errors: %lu, Dup: %lu, FEC: %lu\n",
         static_cast<unsigned long>(packets_received),
         static_cast<unsigned long>(ostp_packets),
         static_cast<unsigned long>(aes67_packets),
-        static_cast<unsigned long>(sequence_errors));
+        static_cast<unsigned long>(sequence_errors),
+        static_cast<unsigned long>(duplicate_drops),
+        static_cast<unsigned long>(fec_recoveries));
     return 0;
 }
 

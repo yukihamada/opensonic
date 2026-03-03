@@ -29,6 +29,10 @@ constexpr uint8_t kPayloadTypeOpus   = 98;
 constexpr uint8_t kPayloadTypeAES67_L24 = 10;  // 24-bit linear PCM
 constexpr uint8_t kPayloadTypeAES67_L16 = 11;  // 16-bit linear PCM
 
+// WiFi reliability payload types
+constexpr uint8_t kPayloadTypeNACK = 126;  // NACK retransmission request
+constexpr uint8_t kPayloadTypeFEC  = 127;  // FEC parity packet
+
 // RTP extension header (RFC 3550 section 5.3.1)
 struct __attribute__((packed)) RtpExtensionHeader {
     uint16_t profile_specific;  // 0x4F53 = "OS" for OSTP
