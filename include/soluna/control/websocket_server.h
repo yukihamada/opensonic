@@ -64,6 +64,12 @@ public:
     bool start(uint16_t port = 8400);
 
     /**
+     * Enable TLS (HTTPS/WSS) with certificate and private key files.
+     * Must be called before start(). Uses OpenSSL when SOLUNA_HAS_TLS is defined.
+     */
+    bool enable_tls(const std::string& cert_path, const std::string& key_path);
+
+    /**
      * Stop the server.
      */
     void stop();

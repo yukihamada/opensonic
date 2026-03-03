@@ -11,6 +11,7 @@
  */
 
 #include <soluna/soluna.h>
+#include <soluna/security/license.h>
 #include <soluna/pal/audio.h>
 #include <soluna/pal/net.h>
 #include <soluna/pal/time.h>
@@ -1061,14 +1062,26 @@ static std::string ws_handle(const std::string& msg) {
     return buf;
 }
 
-static void start_ws_server(soluna::control::WebSocketServer& srv) {
+static void start_ws_server(soluna::control::WebSocketServer& srv,
+                            bool https_enabled = false,
+                            const std::string& cert_path = "",
+                            const std::string& key_path = "") {
     g_ws_server_ptr = &srv;
     srv.set_web_files(
         reinterpret_cast<const soluna::control::WebFile*>(embedded_web_files),
         embedded_web_file_count);
     srv.set_message_callback(ws_handle);
-    if (srv.start(8400))
-        printf("Web UI: http://localhost:8400\n");
+
+    if (https_enabled && !cert_path.empty() && !key_path.empty()) {
+        if (srv.enable_tls(cert_path, key_path)) {
+            fprintf(stderr, "HTTPS/WSS enabled on port 8400\n");
+        }
+    }
+
+    if (srv.start(8400)) {
+        const char* proto = https_enabled ? "https" : "http";
+        printf("Web UI: %s://localhost:8400\n", proto);
+    }
 }
 
 #ifdef __APPLE__
@@ -1180,6 +1193,9 @@ struct DaemonConfig {
     // Auto-tune: mic-based noise detection (default ON)
     bool auto_tune = true;
 
+    // HTTPS/TLS for WebSocket server
+    bool https_enabled = false;
+
     // Security settings from config
     soluna::config::SecurityConfig security;
 
@@ -1222,9 +1238,10 @@ static void print_usage(const char* prog) {
         "  --ultra-low       Ultra-low latency (~1ms, GbE only)\n"
         "  --low-latency     AES67-grade low latency (~2ms, wired LAN only)\n"
         "  --wifi-latency    WiFi optimized latency (~10ms, stable on WiFi)\n"
+        "  --https           Enable HTTPS/WSS for WebSocket server\n"
         "  --dtls            Enable DTLS encryption\n"
-        "  --cert FILE       DTLS certificate file (PEM)\n"
-        "  --key FILE        DTLS private key file (PEM)\n"
+        "  --cert FILE       TLS/DTLS certificate file (PEM)\n"
+        "  --key FILE        TLS/DTLS private key file (PEM)\n"
         "  --auto-tune       Enable mic-based auto buffer tuning (default: on)\n"
         "  --no-auto-tune    Disable mic-based auto buffer tuning\n"
         "  --list-devices    List available audio devices\n"
@@ -1256,6 +1273,8 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
             cfg.auto_tune = false;
         } else if (arg == "--tunnel") {
             cfg.tunnel = true;
+        } else if (arg == "--https") {
+            cfg.https_enabled = true;
         } else if (arg == "--dtls") {
             cfg.security.dtls_enabled = true;
         } else if (arg == "--cert" && i + 1 < argc) {
@@ -1979,7 +1998,8 @@ static int run_tx(DaemonConfig cfg) {
     }
 
     soluna::control::WebSocketServer ws_srv;
-    start_ws_server(ws_srv);
+    start_ws_server(ws_srv, cfg.https_enabled,
+                    cfg.security.certificate_path, cfg.security.private_key_path);
 #ifdef __APPLE__
     start_mdns_advertisement();
     start_soluna_volume_listener();
@@ -2217,9 +2237,26 @@ static int run_tx(DaemonConfig cfg) {
     {
         // ── Normal audio input path ─────────────────────────────────────────
         if (!audio->open_input(cfg.audio_device, audio_cfg)) {
-            fprintf(stderr, "Error: cannot open audio input device '%s'\n",
-                    cfg.audio_device.c_str());
-            return 1;
+            // Try fallback sample rates: 48000 → 44100 → 96000
+            static const uint32_t fallback_rates[] = {48000, 44100, 96000};
+            bool opened = false;
+            for (uint32_t rate : fallback_rates) {
+                if (rate == cfg.sample_rate) continue;
+                audio_cfg.sample_rate = rate;
+                audio = AudioDevice::create();
+                if (audio && audio->open_input(cfg.audio_device, audio_cfg)) {
+                    fprintf(stderr, "TX: fallback to %uHz (requested %uHz)\n",
+                            rate, cfg.sample_rate);
+                    cfg.sample_rate = rate;  // Update config for packet scheduler
+                    opened = true;
+                    break;
+                }
+            }
+            if (!opened) {
+                fprintf(stderr, "Error: cannot open audio input device '%s'\n",
+                        cfg.audio_device.c_str());
+                return 1;
+            }
         }
 
         // Conversion buffer (float from input → S24 for network)
@@ -2516,7 +2553,8 @@ static int run_rx(DaemonConfig cfg) {
     using namespace soluna::transport;
 
     soluna::control::WebSocketServer ws_srv;
-    start_ws_server(ws_srv);
+    start_ws_server(ws_srv, cfg.https_enabled,
+                    cfg.security.certificate_path, cfg.security.private_key_path);
 #ifdef __APPLE__
     start_mdns_advertisement();
 #endif
@@ -2588,9 +2626,29 @@ static int run_rx(DaemonConfig cfg) {
     audio_cfg.frames_per_buffer = kAlsaPeriod;
 
     if (!audio->open_output(cfg.audio_device, audio_cfg)) {
-        fprintf(stderr, "Error: cannot open audio output device '%s'\n", cfg.audio_device.c_str());
-        return 1;
+        // Try fallback sample rates: 48000 → 44100 → 96000
+        static const uint32_t fallback_rates[] = {48000, 44100, 96000};
+        bool opened = false;
+        for (uint32_t rate : fallback_rates) {
+            if (rate == cfg.sample_rate) continue;
+            audio_cfg.sample_rate = rate;
+            audio = AudioDevice::create();
+            if (audio && audio->open_output(cfg.audio_device, audio_cfg)) {
+                fprintf(stderr, "RX: fallback to %uHz (requested %uHz)\n",
+                        rate, cfg.sample_rate);
+                cfg.sample_rate = rate;  // Update for downstream calculations
+                opened = true;
+                break;
+            }
+        }
+        if (!opened) {
+            fprintf(stderr, "Error: cannot open audio output device '%s'\n",
+                    cfg.audio_device.c_str());
+            return 1;
+        }
     }
+    // Update global rate in case fallback changed it
+    g_cfg_sample_rate = cfg.sample_rate;
 
     // Conversion buffer (S24 from network → float for playback)
     std::vector<float> conv_buf(kAlsaPeriod * cfg.channels);
@@ -3306,6 +3364,27 @@ int main(int argc, char** argv) {
 
     printf("Soluna Daemon v%d.%d.%d\n",
         SOLUNA_VERSION_MAJOR, SOLUNA_VERSION_MINOR, SOLUNA_VERSION_PATCH);
+
+    // License check
+    {
+        auto key = soluna::security::load_license_key();
+        if (key.empty()) {
+            printf("License: Free tier (up to 1,000 participants)\n");
+        } else {
+            auto info = soluna::security::validate_license_key(key);
+            if (!info.valid) {
+                fprintf(stderr, "License: invalid key\n");
+            } else if (!soluna::security::is_license_active(info)) {
+                fprintf(stderr, "License: expired (%s)\n", info.expires.c_str());
+            } else {
+                printf("License: %s — %s (up to %u participants, expires %s)\n",
+                    soluna::security::tier_name(info.tier),
+                    info.licensee.c_str(),
+                    info.max_participants,
+                    info.expires.empty() ? "never" : info.expires.c_str());
+            }
+        }
+    }
 
     // Start tunnel if requested
     std::thread tun_thread;

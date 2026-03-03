@@ -91,6 +91,12 @@ enum class ErrorCode : uint16_t {
     CodecEncodeFailed = 602,
     CodecDecodeFailed = 603,
     CodecUnsupportedFormat = 604,
+
+    // License (7xx)
+    LicenseNotFound = 700,
+    LicenseInvalid = 701,
+    LicenseExpired = 702,
+    LicenseTierExceeded = 703,
 };
 
 /**
@@ -106,6 +112,7 @@ constexpr const char* error_category(ErrorCode code) {
     if (val < 500) return "Config";
     if (val < 600) return "Protocol";
     if (val < 700) return "Codec";
+    if (val < 800) return "License";
     return "Unknown";
 }
 

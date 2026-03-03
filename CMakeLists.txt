@@ -107,6 +107,7 @@ add_library(soluna_core STATIC
     src/security/auth.cpp
     src/security/acl.cpp
     src/security/token.cpp
+    src/security/license.cpp
     # Audit
     src/audit/audit_log.cpp
     # AES67 (conditional)
@@ -189,10 +190,15 @@ if(SOLUNA_ENABLE_AES67)
     target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_AES67=1)
 endif()
 
-if(SOLUNA_ENABLE_DTLS)
+if(SOLUNA_ENABLE_DTLS OR SOLUNA_ENABLE_TLS)
     find_package(OpenSSL REQUIRED)
     target_link_libraries(soluna_core PUBLIC OpenSSL::SSL OpenSSL::Crypto)
-    target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_DTLS=1)
+    if(SOLUNA_ENABLE_DTLS)
+        target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_DTLS=1)
+    endif()
+    if(SOLUNA_ENABLE_TLS)
+        target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_TLS=1)
+    endif()
 endif()
 
 if(SOLUNA_ENABLE_AAC)

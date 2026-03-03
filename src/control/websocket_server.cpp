@@ -32,16 +32,21 @@ using socket_t = int;
 #define SOCKET_ERROR_VAL (-1)
 #endif
 
+#ifdef SOLUNA_HAS_TLS
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#endif
+
 // SHA-1 for WebSocket handshake (minimal implementation)
 namespace {
 
-struct SHA1 {
+struct WsSHA1 {
     uint32_t state[5];
     uint64_t total_len;
     size_t buf_len;
     uint8_t buffer[64];
 
-    SHA1() { reset(); }
+    WsSHA1() { reset(); }
 
     void reset() {
         state[0] = 0x67452301;
@@ -228,7 +233,7 @@ std::string ws_accept_key(const std::string& client_key) {
     static const char* guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     std::string concat = client_key + guid;
 
-    SHA1 sha;
+    WsSHA1 sha;
     sha.update(concat.data(), concat.size());
     uint8_t digest[20];
     sha.final(digest);
@@ -308,6 +313,9 @@ struct ClientConn {
     socket_t fd = INVALID_SOCKET;
     bool is_websocket = false;
     std::vector<uint8_t> recv_buf;
+#ifdef SOLUNA_HAS_TLS
+    SSL* ssl = nullptr;
+#endif
 };
 
 struct WebSocketServer::Impl {
@@ -323,15 +331,64 @@ struct WebSocketServer::Impl {
     mutable std::mutex clients_mutex;
     std::vector<ClientConn> clients;
 
+#ifdef SOLUNA_HAS_TLS
+    SSL_CTX* ssl_ctx = nullptr;
+    bool tls_enabled = false;
+#endif
+
     void serve_loop(uint16_t port);
     void handle_http(ClientConn& client);
     void handle_websocket(ClientConn& client);
     void serve_file(ClientConn& client, const std::string& path);
-    void send_all(socket_t fd, const void* data, size_t len);
+    void send_all(ClientConn& client, const void* data, size_t len);
+    int recv_data(ClientConn& client, void* buf, size_t len);
+    void close_client(ClientConn& client);
 };
 
 WebSocketServer::WebSocketServer() : impl_(std::make_unique<Impl>()) {}
-WebSocketServer::~WebSocketServer() { stop(); }
+WebSocketServer::~WebSocketServer() {
+    stop();
+#ifdef SOLUNA_HAS_TLS
+    if (impl_->ssl_ctx) {
+        SSL_CTX_free(impl_->ssl_ctx);
+        impl_->ssl_ctx = nullptr;
+    }
+#endif
+}
+
+bool WebSocketServer::enable_tls(const std::string& cert_path, const std::string& key_path) {
+#ifdef SOLUNA_HAS_TLS
+    SSL_CTX* ctx = SSL_CTX_new(TLS_server_method());
+    if (!ctx) {
+        fprintf(stderr, "TLS: SSL_CTX_new failed\n");
+        return false;
+    }
+    SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
+    if (SSL_CTX_use_certificate_file(ctx, cert_path.c_str(), SSL_FILETYPE_PEM) != 1) {
+        fprintf(stderr, "TLS: failed to load cert: %s\n", cert_path.c_str());
+        SSL_CTX_free(ctx);
+        return false;
+    }
+    if (SSL_CTX_use_PrivateKey_file(ctx, key_path.c_str(), SSL_FILETYPE_PEM) != 1) {
+        fprintf(stderr, "TLS: failed to load key: %s\n", key_path.c_str());
+        SSL_CTX_free(ctx);
+        return false;
+    }
+    if (!SSL_CTX_check_private_key(ctx)) {
+        fprintf(stderr, "TLS: cert/key mismatch\n");
+        SSL_CTX_free(ctx);
+        return false;
+    }
+    impl_->ssl_ctx = ctx;
+    impl_->tls_enabled = true;
+    fprintf(stderr, "TLS: enabled (cert=%s)\n", cert_path.c_str());
+    return true;
+#else
+    (void)cert_path; (void)key_path;
+    fprintf(stderr, "TLS: not compiled (build with -DSOLUNA_ENABLE_TLS=ON)\n");
+    return false;
+#endif
+}
 
 void WebSocketServer::set_web_files(const WebFile* files, size_t count) {
     impl_->web_files = files;
@@ -368,7 +425,7 @@ void WebSocketServer::stop() {
 
     std::lock_guard<std::mutex> lock(impl_->clients_mutex);
     for (auto& c : impl_->clients) {
-        if (c.fd != INVALID_SOCKET) CLOSE_SOCKET(c.fd);
+        impl_->close_client(c);
     }
     impl_->clients.clear();
 }
@@ -382,7 +439,7 @@ void WebSocketServer::broadcast(const std::string& message) {
     std::lock_guard<std::mutex> lock(impl_->clients_mutex);
     for (auto& c : impl_->clients) {
         if (c.is_websocket && c.fd != INVALID_SOCKET) {
-            impl_->send_all(c.fd, frame.data(), frame.size());
+            impl_->send_all(c, frame.data(), frame.size());
         }
     }
 }
@@ -411,7 +468,7 @@ void WebSocketServer::broadcast_binary(const uint8_t* data, size_t len) {
     std::lock_guard<std::mutex> lock(impl_->clients_mutex);
     for (auto& c : impl_->clients) {
         if (c.is_websocket && c.fd != INVALID_SOCKET) {
-            impl_->send_all(c.fd, frame.data(), frame.size());
+            impl_->send_all(c, frame.data(), frame.size());
         }
     }
 }
@@ -425,13 +482,44 @@ size_t WebSocketServer::client_count() const {
     return count;
 }
 
-void WebSocketServer::Impl::send_all(socket_t fd, const void* data, size_t len) {
+void WebSocketServer::Impl::send_all(ClientConn& client, const void* data, size_t len) {
     auto p = static_cast<const char*>(data);
     size_t sent = 0;
     while (sent < len) {
-        int n = ::send(fd, p + sent, static_cast<int>(len - sent), 0);
+#ifdef SOLUNA_HAS_TLS
+        if (client.ssl) {
+            int n = SSL_write(client.ssl, p + sent, static_cast<int>(len - sent));
+            if (n <= 0) break;
+            sent += n;
+            continue;
+        }
+#endif
+        int n = ::send(client.fd, p + sent, static_cast<int>(len - sent), 0);
         if (n <= 0) break;
         sent += n;
+    }
+}
+
+int WebSocketServer::Impl::recv_data(ClientConn& client, void* buf, size_t len) {
+#ifdef SOLUNA_HAS_TLS
+    if (client.ssl) {
+        return SSL_read(client.ssl, buf, static_cast<int>(len));
+    }
+#endif
+    return recv(client.fd, reinterpret_cast<char*>(buf), static_cast<int>(len), 0);
+}
+
+void WebSocketServer::Impl::close_client(ClientConn& client) {
+#ifdef SOLUNA_HAS_TLS
+    if (client.ssl) {
+        SSL_shutdown(client.ssl);
+        SSL_free(client.ssl);
+        client.ssl = nullptr;
+    }
+#endif
+    if (client.fd != INVALID_SOCKET) {
+        CLOSE_SOCKET(client.fd);
+        client.fd = INVALID_SOCKET;
     }
 }
 
@@ -503,8 +591,21 @@ void WebSocketServer::Impl::serve_loop(uint16_t port) {
             socket_t client_fd = accept(listen_fd,
                 reinterpret_cast<struct sockaddr*>(&client_addr), &client_len);
             if (client_fd != INVALID_SOCKET) {
+                ClientConn conn;
+                conn.fd = client_fd;
+#ifdef SOLUNA_HAS_TLS
+                if (tls_enabled && ssl_ctx) {
+                    conn.ssl = SSL_new(ssl_ctx);
+                    SSL_set_fd(conn.ssl, client_fd);
+                    if (SSL_accept(conn.ssl) <= 0) {
+                        SSL_free(conn.ssl);
+                        CLOSE_SOCKET(client_fd);
+                        continue;
+                    }
+                }
+#endif
                 std::lock_guard<std::mutex> lock(clients_mutex);
-                clients.push_back({client_fd, false, {}});
+                clients.push_back(std::move(conn));
             }
         }
 
@@ -517,10 +618,9 @@ void WebSocketServer::Impl::serve_loop(uint16_t port) {
             for (auto& c : clients) {
                 if (c.fd == fds[i].fd) {
                     uint8_t buf[4096];
-                    int n = recv(c.fd, reinterpret_cast<char*>(buf), sizeof(buf), 0);
+                    int n = recv_data(c, buf, sizeof(buf));
                     if (n <= 0) {
-                        CLOSE_SOCKET(c.fd);
-                        c.fd = INVALID_SOCKET;
+                        close_client(c);
                         break;
                     }
 
@@ -552,8 +652,7 @@ void WebSocketServer::Impl::handle_http(ClientConn& client) {
 
     HttpRequest req;
     if (!parse_http_request(data, req)) {
-        CLOSE_SOCKET(client.fd);
-        client.fd = INVALID_SOCKET;
+        close_client(client);
         return;
     }
 
@@ -568,7 +667,7 @@ void WebSocketServer::Impl::handle_http(ClientConn& client) {
             "Connection: Upgrade\r\n"
             "Sec-WebSocket-Accept: " + accept + "\r\n\r\n";
 
-        send_all(client.fd, response.data(), response.size());
+        send_all(client, response.data(), response.size());
         client.is_websocket = true;
         return;
     }
@@ -585,8 +684,8 @@ void WebSocketServer::Impl::serve_file(ClientConn& client, const std::string& pa
         if (resolved == web_files[i].path) {
             std::string hdr = http_response(200, web_files[i].mime_type,
                                              web_files[i].size);
-            send_all(client.fd, hdr.data(), hdr.size());
-            send_all(client.fd, web_files[i].data, web_files[i].size);
+            send_all(client, hdr.data(), hdr.size());
+            send_all(client, web_files[i].data, web_files[i].size);
             return;
         }
     }
@@ -594,8 +693,8 @@ void WebSocketServer::Impl::serve_file(ClientConn& client, const std::string& pa
     // 404
     std::string body = "Not Found";
     std::string hdr = http_response(404, "text/plain", body.size());
-    send_all(client.fd, hdr.data(), hdr.size());
-    send_all(client.fd, body.data(), body.size());
+    send_all(client, hdr.data(), hdr.size());
+    send_all(client, body.data(), body.size());
 }
 
 void WebSocketServer::Impl::handle_websocket(ClientConn& client) {
@@ -611,8 +710,7 @@ void WebSocketServer::Impl::handle_websocket(ClientConn& client) {
 
         if (frame.opcode == 0x08) {
             // Close frame
-            CLOSE_SOCKET(client.fd);
-            client.fd = INVALID_SOCKET;
+            close_client(client);
             return;
         }
 
@@ -620,7 +718,7 @@ void WebSocketServer::Impl::handle_websocket(ClientConn& client) {
             // Ping → Pong
             auto pong = ws_build_text_frame(frame.payload);
             pong[0] = 0x8A; // Pong opcode
-            send_all(client.fd, pong.data(), pong.size());
+            send_all(client, pong.data(), pong.size());
             continue;
         }
 
@@ -628,7 +726,7 @@ void WebSocketServer::Impl::handle_websocket(ClientConn& client) {
             // Text frame
             std::string response = message_cb(frame.payload);
             auto resp_frame = ws_build_text_frame(response);
-            send_all(client.fd, resp_frame.data(), resp_frame.size());
+            send_all(client, resp_frame.data(), resp_frame.size());
         }
     }
 }

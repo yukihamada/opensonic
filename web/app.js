@@ -20,7 +20,8 @@ let localRetryDelay = 1000; // exponential backoff: 1→2→4→8→…→30s
 
 function localConnect() {
     const host = location.host || 'localhost:8400';
-    localWs = new WebSocket('ws://' + host + '/ws');
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    localWs = new WebSocket(proto + '//' + host + '/ws');
     localWs.onopen  = () => {
         localRetryDelay = 1000;
         setBadge('connected');
@@ -669,7 +670,8 @@ function connectReceiver(idx) {
 
     function doConnect() {
         let ws;
-        try { ws = new WebSocket('ws://' + rx.host + '/ws'); }
+        const rxProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        try { ws = new WebSocket(rxProto + '//' + rx.host + '/ws'); }
         catch (_) {
             setTimeout(doConnect, conn.retryDelay);
             conn.retryDelay = Math.min(conn.retryDelay * 2, 30000);
