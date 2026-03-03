@@ -1,0 +1,87 @@
+default_platform(:mac)
+
+platform :mac do
+  PROJECT_ROOT = File.expand_path("../../..", __dir__)
+  APP_IDENTIFIER = "com.soluna.SolunaReceiverMac"
+  APP_NAME = "Soluna Rx for Mac"
+
+  desc "Build C++ library (soluna_core) for macOS"
+  lane :build_lib do
+    Dir.chdir(PROJECT_ROOT) do
+      sh("mkdir -p build-mac")
+      Dir.chdir("build-mac") do
+        sh('cmake .. -DCMAKE_OSX_ARCHITECTURES="arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET="13.0"')
+        sh("make -j$(sysctl -n hw.ncpu) soluna_core")
+      end
+    end
+  end
+
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"],
+      key_filepath: ENV["APP_STORE_CONNECT_API_KEY_PATH"]
+    )
+
+    # Increment build number
+    increment_build_number(
+      build_number: Time.now.strftime("%Y%m%d%H%M"),
+      xcodeproj: "SolunaReceiverMac.xcodeproj"
+    )
+
+    # Build library
+    build_lib
+
+    # Build (arm64 only — libsoluna_core.a is arm64)
+    build_mac_app(
+      project: "SolunaReceiverMac.xcodeproj",
+      scheme: "SolunaReceiverMac",
+      export_method: "app-store",
+      clean: true,
+      output_directory: "./build",
+      xcargs: "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO"
+    )
+
+    # Upload to TestFlight
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+      changelog: "Bug fixes and improvements"
+    )
+  end
+
+  desc "Submit to App Store"
+  lane :release do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"],
+      key_filepath: ENV["APP_STORE_CONNECT_API_KEY_PATH"]
+    )
+
+    # Build (arm64 only — libsoluna_core.a is arm64)
+    build_mac_app(
+      project: "SolunaReceiverMac.xcodeproj",
+      scheme: "SolunaReceiverMac",
+      export_method: "app-store",
+      clean: true,
+      output_directory: "./build",
+      xcargs: "ARCHS=arm64 ONLY_ACTIVE_ARCH=NO"
+    )
+
+    # Upload to App Store
+    upload_to_app_store(
+      api_key: api_key,
+      skip_screenshots: true,
+      skip_metadata: false,
+      force: true
+    )
+  end
+
+  desc "Build for local testing (no signing)"
+  lane :build_local do
+    build_lib
+
+    sh("xcodebuild -project ../SolunaReceiverMac.xcodeproj -scheme SolunaReceiverMac -configuration Release -sdk macosx CODE_SIGN_IDENTITY='-' CODE_SIGNING_ALLOWED=NO build")
+  end
+end

@@ -1,0 +1,15 @@
+Soluna Rx receives high-quality network audio streams over your local network using RTP multicast.
+
+Features:
+- Receive audio from Soluna transmitters on your local network
+- Support for both OSTP and AES67 audio protocols
+- Adaptive jitter buffer with automatic health management
+- Remote speaker control via WebSocket
+- Bonjour auto-discovery of nearby Soluna daemons
+- Multi-speaker synchronization with latency measurement
+- Packet loss concealment (PLC) for smooth playback
+- Real-time statistics: packets, drops, buffer, concealment
+
+Perfect for multi-room audio setups, professional audio monitoring, and synchronized playback across devices.
+
+Requires a Soluna-compatible audio transmitter on the same network.

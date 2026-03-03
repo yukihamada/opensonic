@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="fastlane.lanes">
+    
+    
+    
+      
+      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000231">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="1: app_store_connect_api_key" time="0.004922">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="2: increment_build_number" time="0.330079">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="3: Switch to mac build_lib lane" time="0.000299">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="4: mkdir -p build-mac" time="0.009276">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="5: cmake .. -DCMAKE_OSX_ARCHITECTURES=&quot;arm64&quot; -DCMAKE_OSX_DEPLOYMENT_TARGET=&quot;13.0&quot;" time="2.502229">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="6: make -j$(sysctl -n hw.ncpu) soluna_core" time="1.552118">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="7: build_mac_app" time="37.881348">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="8: upload_to_testflight" time="147.772062">
+        
+      </testcase>
+    
+  </testsuite>
+</testsuites>

@@ -1,0 +1,17 @@
+# Deliverfile for Soluna Rx macOS
+
+app_identifier "com.soluna.SolunaReceiverMac"
+username "yuki@enablerdao.com"
+
+# Metadata path
+metadata_path "./metadata"
+screenshots_path "./screenshots"
+
+# Pricing
+price_tier 0  # Free
+
+# Auto-release after approval
+automatic_release true
+
+# Platform
+platform "osx"
