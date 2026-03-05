@@ -56,6 +56,17 @@ public:
         callback_ = std::move(callback);
         running_.store(true);
 
+        // Workaround: On macOS, HALOutput's IOProc can fail to fire after
+        // process restarts (stale device state). Uninit+reinit forces CoreAudio
+        // to tear down and re-register the IOProc.
+#if TARGET_OS_MAC && !TARGET_OS_IPHONE
+        AudioUnitUninitialize(audio_unit_);
+        OSStatus init_status = AudioUnitInitialize(audio_unit_);
+        if (init_status != noErr) {
+            fprintf(stderr, "CoreAudio: re-init failed: %d\n", (int)init_status);
+        }
+#endif
+
         OSStatus status = AudioOutputUnitStart(audio_unit_);
         if (status != noErr) {
             fprintf(stderr, "CoreAudio start error: %d\n", (int)status);
@@ -288,6 +299,56 @@ private:
             }
 
             if (dev_id != 0) {
+                // Log device name for debugging
+                CFStringRef dev_name_ref = nullptr;
+                UInt32 dev_name_sz = sizeof(dev_name_ref);
+                AudioObjectPropertyAddress name_addr = {
+                    kAudioDevicePropertyDeviceNameCFString,
+                    kAudioObjectPropertyScopeGlobal,
+                    kAudioObjectPropertyElementMain
+                };
+                if (AudioObjectGetPropertyData(dev_id, &name_addr, 0, nullptr, &dev_name_sz, &dev_name_ref) == noErr && dev_name_ref) {
+                    char dev_name_buf[256];
+                    CFStringGetCString(dev_name_ref, dev_name_buf, sizeof(dev_name_buf), kCFStringEncodingUTF8);
+                    CFRelease(dev_name_ref);
+                    fprintf(stderr, "CoreAudio: Using output device %u: '%s'\n", dev_id, dev_name_buf);
+                } else {
+                    fprintf(stderr, "CoreAudio: Using output device %u\n", dev_id);
+                }
+
+                // Ensure device sample rate matches our stream.
+                // IMPORTANT: Always force-set the rate (even if it appears to match)
+                // because HALOutput's IOProc can fail to start after a process restart
+                // if the device state is stale. Toggling the rate forces CoreAudio to
+                // reinitialize its IO path.
+                {
+                    Float64 desired_rate = static_cast<Float64>(config.sample_rate);
+                    Float64 current_rate = 0;
+                    UInt32 rate_sz = sizeof(current_rate);
+                    AudioObjectPropertyAddress rate_addr = {
+                        kAudioDevicePropertyNominalSampleRate,
+                        kAudioObjectPropertyScopeGlobal,
+                        kAudioObjectPropertyElementMain
+                    };
+                    AudioObjectGetPropertyData(dev_id, &rate_addr, 0, nullptr, &rate_sz, &current_rate);
+                    fprintf(stderr, "CoreAudio: Device sample rate: %.0f, desired: %.0f\n", current_rate, desired_rate);
+
+                    if (current_rate == desired_rate) {
+                        // Toggle to a different rate and back to force IOProc reinitialization
+                        Float64 alt_rate = (desired_rate == 48000.0) ? 44100.0 : 48000.0;
+                        AudioObjectSetPropertyData(dev_id, &rate_addr, 0, nullptr, sizeof(alt_rate), &alt_rate);
+                        usleep(50000); // 50ms for the rate change to take effect
+                    }
+                    OSStatus rate_status = AudioObjectSetPropertyData(dev_id, &rate_addr, 0, nullptr, sizeof(desired_rate), &desired_rate);
+                    if (rate_status == noErr) {
+                        fprintf(stderr, "CoreAudio: Device sample rate set to %.0f\n", desired_rate);
+                    } else {
+                        fprintf(stderr, "CoreAudio: Could not set sample rate (err %d), will use %.0f\n", (int)rate_status, current_rate);
+                        config_.sample_rate = static_cast<uint32_t>(current_rate);
+                    }
+                    usleep(50000); // 50ms settle time after rate change
+                }
+
                 status = AudioUnitSetProperty(audio_unit_,
                                               kAudioOutputUnitProperty_CurrentDevice,
                                               kAudioUnitScope_Global,
@@ -297,15 +358,17 @@ private:
                 if (status != noErr) {
                     fprintf(stderr, "CoreAudio: Failed to set device %u: %d\n", dev_id, (int)status);
                 }
+            } else {
+                fprintf(stderr, "CoreAudio: WARNING — dev_id=0, no explicit device set (will use system default output)\n");
             }
         }
 #else
         (void)device_id;
 #endif
 
-        // Set stream format
+        // Set stream format (use config_.sample_rate which may have been adjusted to match device)
         AudioStreamBasicDescription stream_format = {};
-        stream_format.mSampleRate = config.sample_rate;
+        stream_format.mSampleRate = config_.sample_rate ? config_.sample_rate : config.sample_rate;
         stream_format.mFormatID = kAudioFormatLinearPCM;
         stream_format.mFormatFlags = kAudioFormatFlagIsFloat |
                                      kAudioFormatFlagIsPacked;
@@ -453,6 +516,19 @@ private:
             fprintf(stderr, "CoreAudio: Failed to activate audio session: %s\n",
                     error.localizedDescription.UTF8String);
             return false;
+        }
+
+        // Check ACTUAL sample rate (may differ from preferred)
+        double actual_rate = session.sampleRate;
+        double actual_buf_dur = session.IOBufferDuration;
+        fprintf(stderr, "CoreAudio iOS: actual sampleRate=%.0f (requested %u), IOBufferDuration=%.4f (%.1f frames)\n",
+                actual_rate, config_.sample_rate, actual_buf_dur,
+                actual_rate * actual_buf_dur);
+
+        // If actual rate differs, update config to match actual hardware
+        if (static_cast<uint32_t>(actual_rate) != config_.sample_rate) {
+            fprintf(stderr, "CoreAudio iOS: WARNING — sample rate mismatch! Adjusting config to %.0f\n", actual_rate);
+            config_.sample_rate = static_cast<uint32_t>(actual_rate);
         }
 
         return true;
@@ -648,6 +724,63 @@ std::vector<AudioDeviceInfo> AudioDevice::enumerate() {
 
         if (info.supported_sample_rates.empty()) {
             info.supported_sample_rates = {44100, 48000};
+        }
+
+        // Get transport type
+        {
+            UInt32 transport = 0;
+            UInt32 sz = sizeof(transport);
+            AudioObjectPropertyAddress taddr = {
+                kAudioDevicePropertyTransportType,
+                kAudioObjectPropertyScopeGlobal,
+                kAudioObjectPropertyElementMain
+            };
+            if (AudioObjectGetPropertyData(dev_id, &taddr, 0, nullptr, &sz, &transport) == noErr) {
+                switch (transport) {
+                    case kAudioDeviceTransportTypeBuiltIn:
+                        info.transport_type = TransportType::BuiltIn; break;
+                    case kAudioDeviceTransportTypeUSB:
+                        info.transport_type = TransportType::USB; break;
+                    case kAudioDeviceTransportTypeBluetooth:
+                    case kAudioDeviceTransportTypeBluetoothLE:
+                        info.transport_type = TransportType::Bluetooth; break;
+                    case kAudioDeviceTransportTypeAirPlay:
+                        info.transport_type = TransportType::AirPlay; break;
+                    case kAudioDeviceTransportTypeVirtual:
+                    case kAudioDeviceTransportTypeAggregate:
+                        info.transport_type = TransportType::Virtual; break;
+                    default:
+                        info.transport_type = TransportType::Unknown; break;
+                }
+            }
+        }
+
+        // Get hardware latency (output scope)
+        {
+            UInt32 latency = 0;
+            UInt32 sz = sizeof(latency);
+            AudioObjectPropertyAddress laddr = {
+                kAudioDevicePropertyLatency,
+                kAudioDevicePropertyScopeOutput,
+                kAudioObjectPropertyElementMain
+            };
+            if (AudioObjectGetPropertyData(dev_id, &laddr, 0, nullptr, &sz, &latency) == noErr) {
+                info.hardware_latency_frames = latency;
+            }
+        }
+
+        // Get safety offset (output scope)
+        {
+            UInt32 offset = 0;
+            UInt32 sz = sizeof(offset);
+            AudioObjectPropertyAddress saddr = {
+                kAudioDevicePropertySafetyOffset,
+                kAudioDevicePropertyScopeOutput,
+                kAudioObjectPropertyElementMain
+            };
+            if (AudioObjectGetPropertyData(dev_id, &saddr, 0, nullptr, &sz, &offset) == noErr) {
+                info.safety_offset_frames = offset;
+            }
         }
 
         devices.push_back(std::move(info));

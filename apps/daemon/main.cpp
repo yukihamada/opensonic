@@ -1708,6 +1708,7 @@ static void monitor_thread_fn(const DaemonConfig& cfg) {
         // --- Receive loop ---
         std::vector<uint8_t> recv_buf(kMaxPacketSize);
         std::vector<int32_t> audio_buf(kMaxPayloadSize / sizeof(int32_t));
+        int32_t mon_last_seq = -1;  // for duplicate detection
 
         while (g_running.load() && !g_mon_stop_req.load()) {
             // Check for restart request
@@ -1727,6 +1728,16 @@ static void monitor_thread_fn(const DaemonConfig& cfg) {
 
             if (is_aes67) {
                 RtpHeader rtp; std::memcpy(&rtp, recv_buf.data(), sizeof(RtpHeader));
+                // Duplicate detection for AES67
+                uint16_t seq = ntohs(rtp.sequence);
+                if (mon_last_seq >= 0) {
+                    int32_t diff = static_cast<int32_t>(seq) - (mon_last_seq & 0xFFFF);
+                    if (diff < -32768) diff += 65536;
+                    if (diff > 32768) diff -= 65536;
+                    if (diff <= 0) { continue; } // duplicate or old
+                }
+                mon_last_seq = seq;
+
                 const uint8_t* pl = recv_buf.data() + sizeof(RtpHeader);
                 size_t pl_sz = static_cast<size_t>(n) - sizeof(RtpHeader);
                 if (rtp.pt == kPayloadTypeAES67_L24) {
@@ -1745,6 +1756,13 @@ static void monitor_thread_fn(const DaemonConfig& cfg) {
                 RtpHeader rtp; OstpHeader ostp;
                 const uint8_t* pl = nullptr; size_t pl_sz = 0;
                 if (ostp_parse_packet(recv_buf.data(), n, rtp, ostp, pl, pl_sz) == 0) {
+                    // Duplicate detection for OSTP
+                    uint32_t full_seq = (static_cast<uint32_t>(ostp.sequence_ext) << 16) | rtp.sequence;
+                    if (mon_last_seq >= 0 && static_cast<int32_t>(full_seq) <= mon_last_seq) {
+                        continue; // duplicate or old
+                    }
+                    mon_last_seq = static_cast<int32_t>(full_seq);
+
                     frames = pl_sz / frame_size;
                     ring.write(pl, frames);
                 }
@@ -2033,8 +2051,8 @@ static int run_tx(DaemonConfig cfg) {
         }
     }
 
-    // Ring buffer: 8 packets worth
-    RingBuffer ring(kFramesPerPacket * 8, frame_size);
+    // Ring buffer: 40 packets worth (200ms @ 48kHz) — enough to absorb SHM read jitter
+    RingBuffer ring(kFramesPerPacket * 40, frame_size);
 
     // Audio device
     auto audio = AudioDevice::create();
@@ -2176,7 +2194,7 @@ static int run_tx(DaemonConfig cfg) {
         // Reads float32 frames from SHM, converts to S24 for TX ring,
         // and also feeds the speaker ring.
         shm_reader_thread = std::thread([&]() {
-            constexpr uint32_t kReadChunk = 256; // frames per iteration
+            const uint32_t kReadChunk = kFramesPerPacket; // align to TX packet size
             std::vector<float>   flt_buf(kReadChunk * cfg.channels);
             std::vector<int32_t> s24_buf(kReadChunk * cfg.channels);
 
@@ -2401,10 +2419,11 @@ static int run_tx(DaemonConfig cfg) {
         scheduler.wait_next();
 
         if (ring.available_read() < kFramesPerPacket) {
-            continue; // underrun, skip
+            // Underrun: send silence instead of skipping to maintain timing
+            std::memset(audio_buf.data(), 0, kFramesPerPacket * cfg.channels * sizeof(int32_t));
+        } else {
+            ring.read(audio_buf.data(), kFramesPerPacket);
         }
-
-        ring.read(audio_buf.data(), kFramesPerPacket);
 
         // Use PTP-synchronized timestamps when available
         if (ptp && ptp->sync_info().synchronized) {

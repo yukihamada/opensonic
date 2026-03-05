@@ -76,6 +76,14 @@ struct SettingsView: View {
                     ) {
                         Text("Mono (1)").tag(1)
                         Text("Stereo (2)").tag(2)
+                        Text("5.1 Surround (6)").tag(6)
+                        Text("7.1 Surround (8)").tag(8)
+                    }
+
+                    if tempChannels > 2 {
+                        Text(channelLayoutDescription(tempChannels))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                 }
 
@@ -183,6 +191,14 @@ struct SettingsView: View {
         tempChannels = 2
         tempChannel = "soluna"
         autoConnect = false
+    }
+
+    private func channelLayoutDescription(_ ch: Int) -> String {
+        switch ch {
+        case 6:  return "FL · FR · C · LFE · SL · SR"
+        case 8:  return "FL · FR · C · LFE · SL · SR · BL · BR"
+        default: return "\(ch) channels"
+        }
     }
 }
 

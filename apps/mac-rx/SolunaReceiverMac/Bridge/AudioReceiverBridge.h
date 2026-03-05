@@ -9,6 +9,30 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// Transport type of an audio output device
+typedef NS_ENUM(NSInteger, SolunaTransportType) {
+    SolunaTransportTypeBuiltIn   = 0,
+    SolunaTransportTypeUsb       = 1,
+    SolunaTransportTypeBluetooth = 2,
+    SolunaTransportTypeAirPlay   = 3,
+    SolunaTransportTypeVirtual   = 4,
+    SolunaTransportTypeUnknown   = 255,
+};
+
+/// Information about a local audio output device
+@interface SolunaDeviceInfo : NSObject
+@property (nonatomic, readonly) uint32_t deviceId;
+@property (nonatomic, readonly, copy) NSString *name;
+@property (nonatomic, readonly) SolunaTransportType transportType;
+@property (nonatomic, readonly) uint32_t outputChannels;
+@property (nonatomic, readonly) uint32_t hardwareLatencyFrames;
+@property (nonatomic, readonly) uint32_t safetyOffsetFrames;
+/// Approximate hardware latency in milliseconds (at 48kHz)
+@property (nonatomic, readonly) float hardwareLatencyMs;
+/// Native sample rate of the device (Hz)
+@property (nonatomic, readonly) double nativeSampleRate;
+@end
+
 /// Device health state based on underrun rate
 typedef NS_ENUM(NSInteger, SolunaDeviceHealth) {
     SolunaDeviceHealthGood     = 0,  ///< Functioning normally
@@ -78,6 +102,95 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 
 /// Singleton instance
 + (instancetype)sharedInstance;
+
+// ── Local output devices ─────────────────────────────────────────────────
+
+/// List all available local output devices (BT, AirPlay, USB, built-in)
++ (NSArray<SolunaDeviceInfo *> *)availableOutputDevices;
+
+/// Add an extra output device by CoreAudio device ID. Returns sink index or -1.
+- (int)addOutputDevice:(uint32_t)deviceId;
+
+/// Remove an extra output device by CoreAudio device ID.
+- (void)removeOutputDevice:(uint32_t)deviceId;
+
+/// Set volume for an extra output (by sink index)
+- (void)setVolume:(float)volume forOutput:(int)sinkIndex;
+
+/// Set muted for an extra output (by sink index)
+- (void)setMuted:(BOOL)muted forOutput:(int)sinkIndex;
+
+/// Set delay in frames for an extra output (by sink index)
+- (void)setDelay:(uint32_t)frames forOutput:(int)sinkIndex;
+
+/// Set delay in frames for the primary output (This Mac)
+- (void)setPrimaryDelay:(uint32_t)frames;
+
+/// Number of active extra outputs
+- (int)outputCount;
+
+/// Get measured latency (ms) for an output device (EMA-smoothed, includes HW transport)
+- (float)measuredLatencyForDevice:(uint32_t)deviceId;
+
+/// VU meter: primary output RMS level (0.0-1.0)
+- (float)primaryLevelRms;
+/// VU meter: primary output peak level (0.0-1.0, with decay)
+- (float)primaryLevelPeak;
+
+/// Spectrum analyzer: 32-band FFT magnitudes (0.0-1.0). Returns NSArray of 32 NSNumber (float).
+- (NSArray<NSNumber *> *)spectrumBands;
+/// VU meter: extra output RMS level by device ID
+- (float)levelRmsForDevice:(uint32_t)deviceId;
+/// VU meter: extra output peak level by device ID
+- (float)levelPeakForDevice:(uint32_t)deviceId;
+
+/// Set L/R balance for an extra output (-1.0 = left, 0.0 = center, 1.0 = right)
+- (void)setBalance:(float)balance forOutput:(int)sinkIndex;
+
+/// Set L/R balance for the primary output (-1.0 = left, 0.0 = center, 1.0 = right)
+- (void)setPrimaryBalance:(float)balance;
+
+/// Set exclusive (hog) mode for an extra output device. Returns YES on success.
+- (BOOL)setExclusive:(BOOL)exclusive forOutput:(int)sinkIndex;
+
+/// Set 3-band parametric EQ gain for an extra output (band: 0=low 200Hz, 1=mid 1kHz, 2=high 5kHz; gain in dB, -12..+12)
+- (void)setEQBand:(int)band gain:(float)gainDb forOutput:(int)sinkIndex;
+
+/// Set 3-band parametric EQ gain for the primary output
+- (void)setPrimaryEQBand:(int)band gain:(float)gainDb;
+
+/// Set compressor on primary output (threshold dB, ratio, attack ms, release ms, enabled)
+- (void)setPrimaryCompressorThreshold:(float)thresh ratio:(float)ratio attack:(float)attackMs release:(float)releaseMs enabled:(BOOL)enabled;
+
+/// Set compressor on an extra output
+- (void)setCompressorThreshold:(float)thresh ratio:(float)ratio attack:(float)attackMs release:(float)releaseMs enabled:(BOOL)enabled forOutput:(int)sinkIndex;
+
+/// Set crossover filter on primary output (mode: 0=off, 1=LPF, 2=HPF; freq in Hz)
+- (void)setPrimaryCrossoverMode:(int)mode frequency:(float)freqHz;
+
+/// Set crossover filter on an extra output
+- (void)setCrossoverMode:(int)mode frequency:(float)freqHz forOutput:(int)sinkIndex;
+
+/// Set spatial audio on primary output (width: 0-2, crossfeed: 0-0.5)
+- (void)setPrimarySpatialEnabled:(BOOL)enabled width:(float)width crossfeed:(float)crossfeed;
+
+/// Set spatial audio on an extra output
+- (void)setSpatialEnabled:(BOOL)enabled width:(float)width crossfeed:(float)crossfeed forOutput:(int)sinkIndex;
+
+/// Set a callback to be notified when audio devices change (hot-plug)
+- (void)setDeviceChangeCallback:(nullable void(^)(void))callback;
+
+// ── Recording ──────────────────────────────────────────────────────────────
+
+/// Start recording received audio to a WAV file at the given path.
+/// Returns YES on success. Recording captures primary output audio.
+- (BOOL)startRecordingToFile:(NSString *)path;
+
+/// Stop recording and finalize the WAV file.
+- (void)stopRecording;
+
+/// Whether currently recording
+@property (nonatomic, readonly) BOOL isRecording;
 
 /// Initialize with custom settings
 - (instancetype)initWithMulticastGroup:(NSString *)group

@@ -76,6 +76,8 @@ private final class BonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetSe
 @MainActor
 final class SpeakersController: ObservableObject {
 
+    static let shared = SpeakersController()
+
     struct Speaker: Identifiable, Codable {
         var id:   UUID   = UUID()
         var name: String
@@ -125,16 +127,37 @@ final class SpeakersController: ObservableObject {
 
     func client(for id: UUID) -> DaemonClient? { clients[id] }
 
-    /// True if at least one remote speaker is connected
-    var anyConnected: Bool { clients.values.contains { $0.isConnected } }
+    /// True if at least one remote speaker is connected OR local device is active
+    var anyConnected: Bool {
+        clients.values.contains { $0.isConnected } ||
+        (audioReceiver?.activeOutputs.isEmpty == false)
+    }
 
-    /// Set volume on all connected remote speakers
+    /// Set volume on all speakers (local + remote)
     func setAllVolume(_ v: Float) {
+        // Primary
+        audioReceiver?.volume = v
+        // Local extra outputs
+        if let ar = audioReceiver {
+            for dev in ar.availableDevices where dev.isActive {
+                ar.setDeviceVolume(dev.id, volume: v)
+            }
+        }
+        // Remote
         clients.values.forEach { $0.setMonitorVolume(v) }
     }
 
-    /// Mute/unmute all connected remote speakers
+    /// Mute/unmute all speakers (local + remote)
     func setAllMute(_ m: Bool) {
+        // Primary
+        audioReceiver?.isMuted = m
+        // Local extra outputs
+        if let ar = audioReceiver {
+            for dev in ar.availableDevices where dev.isActive {
+                ar.setDeviceMuted(dev.id, muted: m)
+            }
+        }
+        // Remote
         clients.values.forEach { $0.setMonitorMute(m) }
     }
 
@@ -150,6 +173,49 @@ final class SpeakersController: ObservableObject {
     func applyServerRxDelay() {
         guard let rxMs = clients.values.first(where: { $0.isConnected && $0.rxDelayMs > 0 })?.rxDelayMs else { return }
         audioReceiver?.bufferMs = UInt32(rxMs)
+    }
+
+    /// Recalculate sync delays across ALL outputs (primary + local devices + remotes).
+    /// Strategy: find the max latency among all active outputs, then set compensation
+    /// delay on each so they all align to the slowest.
+    func recalculateAllDelays() {
+        guard let ar = audioReceiver else { return }
+
+        // 1. Primary: built-in CoreAudio latency (~5ms)
+        var maxLatency = ar.primaryLatencyMs
+
+        // 2. Local devices: prefer measured latency, fall back to hardware-reported
+        for dev in ar.availableDevices where dev.isActive {
+            let measured = ar.measuredLatencyMs(for: dev.id)
+            let latency = measured > 0 ? measured : dev.hardwareLatencyMs
+            maxLatency = max(maxLatency, latency)
+        }
+
+        // 3. Remote speakers: WS RTT latency
+        for client in clients.values where client.isConnected {
+            let ms = Float(client.measuredLatencyMs)
+            maxLatency = max(maxLatency, ms)
+        }
+
+        // Set compensation delays
+        // Primary
+        let primaryComp = maxLatency - ar.primaryLatencyMs
+        ar.setPrimaryDelayMs(primaryComp)
+
+        // Local extra outputs
+        for dev in ar.availableDevices where dev.isActive {
+            let measured = ar.measuredLatencyMs(for: dev.id)
+            let latency = measured > 0 ? measured : dev.hardwareLatencyMs
+            let comp = maxLatency - latency
+            ar.setDeviceDelayMs(dev.id, ms: max(0, comp))
+        }
+
+        // Remote speakers
+        for client in clients.values where client.isConnected {
+            let ms = Float(client.measuredLatencyMs)
+            let comp = Int(maxLatency - ms)
+            client.setMonitorDelay(max(0, comp))
+        }
     }
 
     // MARK: - Private

@@ -159,6 +159,9 @@ private:
         stats_.packets_received++;
         stats_.ostp_packets++;
 
+        // Discard duplicate packets (gap <= 0 means same or older sequence)
+        if (gap < 0) return true;  // duplicate — already received
+
         // OSTP payload is int32_t (4 bytes/sample, native byte order) — not S24_LE 3-byte
         size_t frames = payload_size / (sizeof(int32_t) * config_.channels);
 
@@ -282,8 +285,8 @@ public:
         , volume_(1.0f)
         , muted_(false)
         , running_(false)
-        , target_fill_frames_(1920)  // 40ms default — good for WiFi without over-buffering
-        , ring_buffer_(96000, channels * sizeof(int32_t))  // 2000ms capacity
+        , target_fill_frames_(7200)  // 150ms default — absorbs iPhone WiFi multicast bursts
+        , ring_buffer_(96000, channels * sizeof(int32_t))  // 2s capacity (pow2=131072)
         , read_buffer_(4096 * channels)
         , drain_buf_(4096 * channels)
         , held_sample_(channels, 0)
@@ -328,23 +331,40 @@ public:
 
         running_.store(true);
 
-        // Start receive thread
-        receive_thread_ = std::thread([this]() {
-            receive_loop();
-        });
-
-        // Start audio playback
+        // Start audio playback FIRST so the render callback is active before data arrives
         auto callback = [this](float* buffer, uint32_t frame_count) {
             audio_callback(buffer, frame_count);
         };
 
         if (!audio_device_->start(callback)) {
+            fprintf(stderr, "[SolunaRx] Failed to start audio device\n");
             running_.store(false);
-            if (receive_thread_.joinable()) {
-                receive_thread_.join();
-            }
             return false;
         }
+
+        // Flush ALL stale packets from the UDP socket buffer.
+        if (rtp_receiver_) {
+            pipeline::RingBuffer discard_buf(65536, channels_ * sizeof(int32_t));
+            int flushed = 0;
+            for (int i = 0; i < 100000; i++) {
+                if (!rtp_receiver_->receive_packet(discard_buf)) break;
+                flushed++;
+                if (discard_buf.available_write() < 1024) discard_buf.reset();
+            }
+            if (flushed > 0) {
+                fprintf(stderr, "[SolunaRx] Flushed %d stale packets from socket\n", flushed);
+            }
+        }
+
+        // Reset ring buffer and state for a clean start
+        ring_buffer_.reset();
+        prefilled_ = false;
+        ramp_ = 0.0f;
+
+        // NOW start the receive thread with a clean slate
+        receive_thread_ = std::thread([this]() {
+            receive_loop();
+        });
 
         // Start WebSocket control server on port 8400
         ws_server_.set_web_files(
@@ -473,12 +493,25 @@ private:
         if (relay_callback_ && rtp_receiver_) {
             rtp_receiver_->relay_callback = relay_callback_;
         }
+        uint64_t log_counter = 0;
         while (running_.load()) {
             // When network_disabled_, audio arrives via inject_raw_packet instead
             if (!network_disabled_.load() && rtp_receiver_) {
                 for (int i = 0; i < 10 && running_.load(); i++) {
                     if (!rtp_receiver_->receive_packet(ring_buffer_)) break;
                 }
+            }
+            // Periodic debug log every ~2 seconds
+            if (++log_counter % 20000 == 0) {
+                auto st = rtp_receiver_ ? rtp_receiver_->stats_snapshot() : SimpleRtpReceiver::Stats{};
+                fprintf(stderr, "[SolunaRx] pkts=%llu seq_err=%llu dropped=%llu fill=%zu prefilled=%d target=%u underruns=%u\n",
+                        (unsigned long long)st.packets_received,
+                        (unsigned long long)st.sequence_errors,
+                        (unsigned long long)st.packets_dropped,
+                        ring_buffer_.available_read(),
+                        (int)prefilled_,
+                        target_fill_frames_.load() / 48u,
+                        health_underruns_in_window_);
             }
             std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
@@ -599,15 +632,15 @@ private:
             target_fill_frames_.store(target);
         }
 
-        // ── Gentle latency nudge ──────────────────────────────────────────────
-        // When buffer has grown >50ms above target, silently discard 2 frames per
-        // callback (~7.8ms/s drain rate, ≈0.8% speed-up — completely inaudible).
-        // Never resets prefilled_ so playback is never interrupted.
+        // ── Gradual drift correction ─────────────────────────────────────────
+        // When buffer exceeds target, discard up to 10% of frame_count per callback.
+        // This creates an imperceptible speed-up instead of audible gaps.
         {
             size_t avail_now = ring_buffer_.available_read();
-            const size_t hi_watermark = static_cast<size_t>(target) + 2400; // +50ms
-            if (prefilled_ && avail_now > hi_watermark + 2) {
-                ring_buffer_.read(drain_buf_.data(), 2);
+            if (prefilled_ && avail_now > static_cast<size_t>(target) + frame_count * 2) {
+                size_t drift = std::min(avail_now - static_cast<size_t>(target),
+                                        static_cast<size_t>(frame_count / 10 + 1));
+                ring_buffer_.discard(drift);
             }
         }
 

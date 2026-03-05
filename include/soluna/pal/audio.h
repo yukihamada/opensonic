@@ -8,12 +8,25 @@
 
 namespace soluna::pal {
 
+/// Transport type of an audio device
+enum class TransportType : uint8_t {
+    BuiltIn   = 0,
+    USB       = 1,
+    Bluetooth = 2,
+    AirPlay   = 3,
+    Virtual   = 4,
+    Unknown   = 255
+};
+
 struct AudioDeviceInfo {
     std::string id;
     std::string name;
     uint32_t max_input_channels;
     uint32_t max_output_channels;
     std::vector<uint32_t> supported_sample_rates;
+    TransportType transport_type = TransportType::Unknown;
+    uint32_t hardware_latency_frames = 0;
+    uint32_t safety_offset_frames = 0;
 };
 
 struct AudioStreamConfig {

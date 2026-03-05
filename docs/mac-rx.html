@@ -640,6 +640,12 @@
                     <div class="mock-slider"><div class="mock-slider-fill" style="width:85%;background:var(--blue)"></div></div>
                     <div class="mock-speaker-vol">85%</div>
                 </div>
+                <div class="mock-speaker-row">
+                    <div class="mock-speaker-icon" style="font-size:0.9rem">🎧<div class="online"></div></div>
+                    <div style="flex:0 0 auto;font-size:0.85rem;font-weight:600">AirPods Pro</div>
+                    <div class="mock-slider"><div class="mock-slider-fill" style="width:60%;background:var(--green)"></div></div>
+                    <div class="mock-speaker-vol">60%</div>
+                </div>
             </div>
         </div>
     </div>
@@ -683,6 +689,126 @@
                 <div class="feature-icon" style="background:var(--cyan-dim);color:var(--cyan)">📊</div>
                 <h3 data-i18n="f6_title">Real-time Statistics</h3>
                 <p data-i18n="f6_desc">Monitor packets, drop rate, buffer, and PLC count in real-time. Know exactly what's happening.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--yellow-dim);color:var(--yellow)">🎧</div>
+                <h3 data-i18n="f7_title">Bluetooth &amp; AirPlay Sync</h3>
+                <p data-i18n="f7_desc">Add Bluetooth, AirPlay, or USB speakers and play them all in perfect sync. Each device gets its own AudioUnit with independent volume and delay.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--pink-dim);color:var(--pink)">🎯</div>
+                <h3 data-i18n="f8_title">Measured Latency Sync</h3>
+                <p data-i18n="f8_desc">Real-time latency measurement with EMA smoothing. Automatically compensates for BT (~40-200ms) and AirPlay (~2000ms) transport delays.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--green-dim);color:var(--green)">📊</div>
+                <h3 data-i18n="f9_title">VU Meter</h3>
+                <p data-i18n="f9_desc">Real-time RMS/Peak level meter for every output at 20fps. Green, orange, red color coding shows signal health at a glance.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--orange-dim);color:var(--orange)">⏱</div>
+                <h3 data-i18n="f10_title">Manual Delay Offset</h3>
+                <p data-i18n="f10_desc">Fine-tune sync with a &plusmn;50ms per-device delay slider. Saved automatically, perfect for room-specific adjustments.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--accent-glow);color:var(--accent-light)">💾</div>
+                <h3 data-i18n="f11_title">Routing Presets</h3>
+                <p data-i18n="f11_desc">Save your speaker configurations as named presets. Switch between &ldquo;Living Room&rdquo;, &ldquo;Bedroom&rdquo;, or &ldquo;Party&rdquo; setups with one tap.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--cyan-dim);color:var(--cyan)">🔗</div>
+                <h3 data-i18n="f12_title">Mac-to-Mac P2P Relay</h3>
+                <p data-i18n="f12_desc">Bonjour + UDP relay between Macs. When multicast can't reach across subnets, one Mac relays packets to others automatically.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--green-dim);color:var(--green)">🔄</div>
+                <h3 data-i18n="f13_title">Auto-Reconnect</h3>
+                <p data-i18n="f13_desc">Automatically reconnects when network returns. Uses NWPathMonitor to detect connectivity changes.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--purple-dim);color:var(--purple)">⌨️</div>
+                <h3 data-i18n="f14_title">Keyboard Shortcuts</h3>
+                <p data-i18n="f14_desc">Space to play/stop, ⌘↑↓ for volume, ⇧⌘M to mute, ⇧⌘S to sync. Full control without touching the mouse.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--orange-dim);color:var(--orange)">🎛️</div>
+                <h3 data-i18n="f15_title">3-Band Parametric EQ</h3>
+                <p data-i18n="f15_desc">Per-device 3-band EQ (200Hz/1kHz/5kHz, ±12dB). Tune each speaker independently for the perfect sound.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--blue-dim);color:var(--blue)">⏺️</div>
+                <h3 data-i18n="f16_title">Audio Recording</h3>
+                <p data-i18n="f16_desc">Record incoming audio to WAV files (48kHz/16-bit). Non-blocking ExtAudioFile writes from the audio thread.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--cyan-dim);color:var(--cyan)">📊</div>
+                <h3 data-i18n="f17_title">Spectrum Analyzer</h3>
+                <p data-i18n="f17_desc">32-band FFT spectrum display powered by Accelerate vDSP. Real-time frequency visualization with logarithmic band mapping (20Hz-20kHz).</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--orange-dim);color:var(--orange)">🎚️</div>
+                <h3 data-i18n="f18_title">Compressor / Limiter</h3>
+                <p data-i18n="f18_desc">Per-output dynamics compressor with threshold, ratio, attack, and release controls. Prevent clipping and tame transients on any speaker.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--green-dim);color:var(--green)">📂</div>
+                <h3 data-i18n="f19_title">Preset Import / Export</h3>
+                <p data-i18n="f19_desc">Export routing presets to JSON files and import them on other Macs. Share your perfect speaker setups easily.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--yellow-dim);color:var(--yellow)">⭐</div>
+                <h3 data-i18n="f20_title">Favorite Devices</h3>
+                <p data-i18n="f20_desc">Star your favorite speakers. They auto-connect when plugged in or powered on &mdash; no manual setup each time.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--accent-glow);color:var(--accent-light)">🎵</div>
+                <h3 data-i18n="f21_title">Now Playing &amp; Siri</h3>
+                <p data-i18n="f21_desc">Media key support via MPRemoteCommandCenter plus Siri Shortcuts. Control playback from your keyboard, Touch Bar, or voice.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--pink-dim);color:var(--pink)">👥</div>
+                <h3 data-i18n="f22_title">Speaker Groups</h3>
+                <p data-i18n="f22_desc">Group speakers into named zones like &ldquo;Kitchen&rdquo; or &ldquo;Upstairs&rdquo;. Control volume and mute for the whole group at once.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--blue-dim);color:var(--blue)">🌐</div>
+                <h3 data-i18n="f23_title">HTTP Remote API</h3>
+                <p data-i18n="f23_desc">Built-in REST API on port 9400. Control from Stream Deck, Home Assistant, curl, or any HTTP client. JSON responses with CORS.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--cyan-dim);color:var(--cyan)">🎼</div>
+                <h3 data-i18n="f24_title">Crossover &amp; Spatial Audio</h3>
+                <p data-i18n="f24_desc">LPF/HPF crossover filter for sub/satellite splitting, plus stereo spatializer with width control and HRTF-inspired cross-feed for headphones.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--yellow-dim);color:var(--yellow)">🎚️</div>
+                <h3 data-i18n="f25_title">Sample Rate Display</h3>
+                <p data-i18n="f25_desc">Shows each device's native sample rate as a badge (44.1kHz, 96kHz, etc.). Instantly see format compatibility at a glance.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--accent-glow);color:var(--accent-light)">🔈</div>
+                <h3 data-i18n="f26_title">Multi-Channel Surround</h3>
+                <p data-i18n="f26_desc">5.1 and 7.1 surround sound support with channel layout display (FL, FR, C, LFE, SL, SR). Full immersion beyond stereo.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--green-dim);color:var(--green)">🔀</div>
+                <h3 data-i18n="f27_title">L/R Balance &amp; Exclusive Mode</h3>
+                <p data-i18n="f27_desc">Per-device constant-power L/R panning. Plus USB DAC hog mode to block other apps from the output device.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--orange-dim);color:var(--orange)">📈</div>
+                <h3 data-i18n="f28_title">Latency Graph</h3>
+                <p data-i18n="f28_desc">Real-time line chart showing per-device latency trends. Spot network issues before they affect your listening.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--pink-dim);color:var(--pink)">🔌</div>
+                <h3 data-i18n="f29_title">Hot-Plug &amp; Persistence</h3>
+                <p data-i18n="f29_desc">Instantly detects BT/AirPlay connect and disconnect. Enabled devices and offsets are saved to UserDefaults and restored on launch.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon" style="background:var(--blue-dim);color:var(--blue)">🖥️</div>
+                <h3 data-i18n="f30_title">Menu Bar Player</h3>
+                <p data-i18n="f30_desc">MenuBarExtra keeps Soluna in your menu bar. Quick access to status, volume, sync, and playback without opening the main window.</p>
             </div>
         </div>
     </div>
@@ -850,6 +976,30 @@ en: {
     f4_title:"Auto-Sync",f4_desc:"Measures round-trip time to automatically synchronize audio latency across all speakers.",
     f5_title:"Packet Loss Compensation",f5_desc:"Built-in PLC algorithm fills in lost packets to keep playback smooth on congested networks.",
     f6_title:"Real-time Statistics",f6_desc:"Monitor packets, drop rate, buffer, and PLC count in real-time. Know exactly what\u2019s happening.",
+    f7_title:"Bluetooth & AirPlay Sync",f7_desc:"Add Bluetooth, AirPlay, or USB speakers and play them all in perfect sync. Each device gets its own AudioUnit with independent volume and delay.",
+    f8_title:"Measured Latency Sync",f8_desc:"Real-time latency measurement with EMA smoothing. Automatically compensates for BT (~40\u2013200ms) and AirPlay (~2000ms) transport delays.",
+    f9_title:"VU Meter",f9_desc:"Real-time RMS/Peak level meter for every output at 20fps. Green, orange, red color coding shows signal health at a glance.",
+    f10_title:"Manual Delay Offset",f10_desc:"Fine-tune sync with a \u00b150ms per-device delay slider. Saved automatically, perfect for room-specific adjustments.",
+    f11_title:"Routing Presets",f11_desc:"Save your speaker configurations as named presets. Switch between \u201cLiving Room\u201d, \u201cBedroom\u201d, or \u201cParty\u201d setups with one tap.",
+    f12_title:"Mac-to-Mac P2P Relay",f12_desc:"Bonjour + UDP relay between Macs. When multicast can\u2019t reach across subnets, one Mac relays packets to others automatically.",
+    f13_title:"Auto-Reconnect",f13_desc:"Automatically reconnects when network returns. Uses NWPathMonitor to detect connectivity changes instantly.",
+    f14_title:"Keyboard Shortcuts",f14_desc:"Space to play/stop, \u2318\u2191\u2193 for volume, \u21e7\u2318M to mute, \u21e7\u2318S to sync. Full control without touching the mouse.",
+    f15_title:"3-Band Parametric EQ",f15_desc:"Per-device 3-band EQ (200Hz/1kHz/5kHz, \u00b112dB). Tune each speaker independently with biquad filters.",
+    f16_title:"Audio Recording",f16_desc:"Record incoming audio to WAV files (48kHz/16-bit). Non-blocking ExtAudioFile writes from the real-time audio thread.",
+    f17_title:"Spectrum Analyzer",f17_desc:"32-band FFT spectrum display powered by Accelerate vDSP. Real-time frequency visualization with logarithmic band mapping (20Hz-20kHz).",
+    f18_title:"Compressor / Limiter",f18_desc:"Per-output dynamics compressor with threshold, ratio, attack, and release controls. Prevent clipping and tame transients on any speaker.",
+    f19_title:"Preset Import / Export",f19_desc:"Export routing presets to JSON files and import them on other Macs. Share your perfect speaker setups easily.",
+    f20_title:"Favorite Devices",f20_desc:"Star your favorite speakers. They auto-connect when plugged in or powered on — no manual setup each time.",
+    f21_title:"Now Playing & Siri",f21_desc:"Media key support via MPRemoteCommandCenter plus Siri Shortcuts. Control playback from your keyboard, Touch Bar, or voice.",
+    f22_title:"Speaker Groups",f22_desc:"Group speakers into named zones like 'Kitchen' or 'Upstairs'. Control volume and mute for the whole group at once.",
+    f23_title:"HTTP Remote API",f23_desc:"Built-in REST API on port 9400. Control from Stream Deck, Home Assistant, curl, or any HTTP client. JSON responses with CORS.",
+    f24_title:"Crossover & Spatial Audio",f24_desc:"LPF/HPF crossover filter for sub/satellite splitting, plus stereo spatializer with width control and HRTF-inspired cross-feed for headphones.",
+    f25_title:"Sample Rate Display",f25_desc:"Shows each device\u2019s native sample rate as a badge (44.1kHz, 96kHz, etc.). Instantly see format compatibility at a glance.",
+    f26_title:"Multi-Channel Surround",f26_desc:"5.1 and 7.1 surround sound support with channel layout display (FL, FR, C, LFE, SL, SR). Full immersion beyond stereo.",
+    f27_title:"L/R Balance & Exclusive Mode",f27_desc:"Per-device constant-power L/R panning. Plus USB DAC hog mode to block other apps from the output device.",
+    f28_title:"Latency Graph",f28_desc:"Real-time line chart showing per-device latency trends. Spot network issues before they affect your listening.",
+    f29_title:"Hot-Plug & Persistence",f29_desc:"Instantly detects BT/AirPlay connect and disconnect. Enabled devices and offsets are saved to UserDefaults and restored on launch.",
+    f30_title:"Menu Bar Player",f30_desc:"MenuBarExtra keeps Soluna in your menu bar. Quick access to status, volume, sync, and playback without opening the main window.",
     how_label:"HOW IT WORKS",how_title:"Three simple steps",how_desc:"Get whole-home audio running in minutes",
     s1_title:"Install Soluna TX",s1_desc:"Set up the Soluna transmitter (solunad) on your source Mac. It captures system audio via a virtual driver.",
     s2_title:"Open Soluna Rx",s2_desc:"Launch Soluna Rx on any Mac on the same network. It auto-discovers the transmitter and starts receiving.",
@@ -880,6 +1030,30 @@ ja: {
     f4_title:"自動同期",f4_desc:"往復時間を計測し、全スピーカーのオーディオ遅延を自動的に同期します。",
     f5_title:"パケットロス補償",f5_desc:"内蔵PLCアルゴリズムにより、ネットワーク混雑時でもスムーズな再生を維持。",
     f6_title:"リアルタイム統計",f6_desc:"パケット数、ドロップ率、バッファ、PLC回数をリアルタイムで監視。",
+    f7_title:"Bluetooth / AirPlay 同期出力",f7_desc:"Bluetooth・AirPlay・USBスピーカーを追加して全デバイス同期再生。各デバイスに独立したAudioUnitとボリューム・ディレイ制御。",
+    f8_title:"実測遅延補正",f8_desc:"EMA平滑化によるリアルタイム遅延計測。BT（約40〜200ms）やAirPlay（約2000ms）の転送遅延を自動補正。",
+    f9_title:"VU メーター",f9_desc:"各出力デバイスのRMS/Peakレベルを20fpsでリアルタイム表示。緑→橙→赤の色分けで信号状態を一目で確認。",
+    f10_title:"手動遅延オフセット",f10_desc:"デバイスごと±50msの微調整スライダー。自動保存で部屋ごとの調整に最適。",
+    f11_title:"ルーティングプリセット",f11_desc:"スピーカー構成を名前付きプリセットとして保存。「リビング」「寝室」「パーティー」をワンタップで切替。",
+    f12_title:"Mac間P2Pリレー",f12_desc:"Bonjour+UDPでMac間パケット転送。マルチキャストが届かないサブネット間でも自動リレーで再生可能。",
+    f13_title:"自動再接続",f13_desc:"ネットワーク復帰時に自動再接続。NWPathMonitorで接続状態変化を即座に検出。",
+    f14_title:"キーボードショートカット",f14_desc:"Space=再生/停止、⌘↑↓=音量、⇧⌘M=ミュート、⇧⌘S=同期。マウス不要でフル操作。",
+    f15_title:"3バンドパラメトリックEQ",f15_desc:"デバイスごと独立の3バンドEQ（200Hz/1kHz/5kHz、±12dB）。バイクワッドフィルタで高精度。",
+    f16_title:"オーディオ録音",f16_desc:"受信音声をWAVファイルに録音（48kHz/16bit）。リアルタイムスレッドからノンブロッキング書き込み。",
+    f17_title:"スペクトラムアナライザー",f17_desc:"Accelerate vDSP による32バンドFFTスペクトル表示。対数バンドマッピング(20Hz-20kHz)でリアルタイム周波数可視化。",
+    f18_title:"コンプレッサー/リミッター",f18_desc:"出力ごとのダイナミクスコンプレッサー。スレッショルド・レシオ・アタック・リリースを個別制御。クリッピング防止に。",
+    f19_title:"プリセット入出力",f19_desc:"ルーティングプリセットをJSONファイルにエクスポート。他のMacにインポートしてスピーカー設定を共有。",
+    f20_title:"お気に入りデバイス",f20_desc:"スピーカーをお気に入り登録。電源ON・接続時に自動で有効化。毎回の手動設定が不要に。",
+    f21_title:"Now Playing & Siri",f21_desc:"MPRemoteCommandCenterでメディアキー対応。Siriショートカットで音声操作も可能。",
+    f22_title:"スピーカーグループ",f22_desc:"スピーカーを「キッチン」「2階」などの名前付きゾーンにグループ化。グループ単位で音量・ミュート制御。",
+    f23_title:"HTTPリモートAPI",f23_desc:"ポート9400のREST API内蔵。Stream Deck・Home Assistant・curlなどから制御可能。CORS対応JSON応答。",
+    f24_title:"クロスオーバー＆空間オーディオ",f24_desc:"サブ/サテライト分割用LPF/HPFクロスオーバーフィルタ。ヘッドホン向けHRTFクロスフィード付きステレオスペーシャライザー。",
+    f25_title:"サンプルレート表示",f25_desc:"各デバイスのネイティブサンプルレートをバッジ表示（44.1kHz、96kHz等）。フォーマット互換性を一目で確認。",
+    f26_title:"マルチチャンネルサラウンド",f26_desc:"5.1 / 7.1 サラウンド対応。チャンネルレイアウト表示（FL, FR, C, LFE, SL, SR）付き。ステレオを超える没入感。",
+    f27_title:"L/Rバランス＆排他モード",f27_desc:"デバイスごとの定電力L/Rパンニング。USB DAC向けホグモードで他アプリの出力をブロック。",
+    f28_title:"レイテンシグラフ",f28_desc:"デバイスごとの遅延推移をリアルタイム折れ線グラフ表示。ネットワーク問題を音質に影響する前に発見。",
+    f29_title:"ホットプラグ＆永続化",f29_desc:"BT/AirPlayの接続・切断を即座に検出。有効デバイス・オフセットをUserDefaultsに保存し起動時に復元。",
+    f30_title:"メニューバープレーヤー",f30_desc:"MenuBarExtraでメニューバーに常駐。メインウィンドウを開かずにステータス・音量・同期・再生をクイック操作。",
     how_label:"使い方",how_title:"3つの簡単なステップ",how_desc:"数分でホームオーディオを構築",
     s1_title:"Soluna TXをインストール",s1_desc:"ソースMacにSolunaトランスミッター（solunad）をセットアップ。仮想ドライバーでシステム音声をキャプチャ。",
     s2_title:"Soluna Rxを起動",s2_desc:"同じネットワーク上の任意のMacでSoluna Rxを起動。トランスミッターを自動検出して受信開始。",
@@ -910,6 +1084,30 @@ zh: {
     f4_title:"自动同步",f4_desc:"测量往返时间，自动同步所有扬声器的音频延迟。",
     f5_title:"丢包补偿",f5_desc:"内置PLC算法填补丢失的数据包，在网络拥塞时保持流畅播放。",
     f6_title:"实时统计",f6_desc:"实时监控数据包数、丢包率、缓冲区和PLC计数。",
+    f7_title:"蓝牙 / AirPlay 同步输出",f7_desc:"添加蓝牙、AirPlay或USB扬声器，所有设备完美同步播放。每个设备独立AudioUnit，独立音量和延迟控制。",
+    f8_title:"实测延迟补偿",f8_desc:"EMA平滑实时延迟测量。自动补偿蓝牙（约40-200ms）和AirPlay（约2000ms）传输延迟。",
+    f9_title:"VU 电平表",f9_desc:"每个输出设备的RMS/Peak电平以20fps实时显示。绿色、橙色、红色颜色编码一目了然地显示信号状态。",
+    f10_title:"手动延迟偏移",f10_desc:"每设备±50ms微调滑块。自动保存，适合按房间调整。",
+    f11_title:"路由预设",f11_desc:"将扬声器配置保存为命名预设。一键切换"客厅"、"卧室"或"派对"设置。",
+    f12_title:"Mac间P2P中继",f12_desc:"Bonjour+UDP实现Mac间数据包转发。当多播无法跨子网到达时，一台Mac自动中继给其他Mac。",
+    f13_title:"自动重连",f13_desc:"网络恢复时自动重连。使用NWPathMonitor即时检测网络变化。",
+    f14_title:"键盘快捷键",f14_desc:"空格=播放/停止，⌘↑↓=音量，⇧⌘M=静音，⇧⌘S=同步。无需鼠标即可完全控制。",
+    f15_title:"三段参量均衡器",f15_desc:"每设备独立的3段EQ（200Hz/1kHz/5kHz，±12dB）。双二阶滤波器实现精准调音。",
+    f16_title:"音频录制",f16_desc:"将接收的音频录制为WAV文件（48kHz/16位）。实时线程非阻塞写入。",
+    f17_title:"频谱分析仪",f17_desc:"基于Accelerate vDSP的32频段FFT频谱显示。对数频段映射(20Hz-20kHz)实时频率可视化。",
+    f18_title:"压缩器/限制器",f18_desc:"每个输出独立的动态压缩器。阈值、比率、起音、释放独立控制，防止削波。",
+    f19_title:"预设导入/导出",f19_desc:"将路由预设导出为JSON文件，在其他Mac上导入。轻松共享扬声器配置。",
+    f20_title:"收藏设备",f20_desc:"将常用扬声器加入收藏。插入或开机时自动连接，无需每次手动设置。",
+    f21_title:"Now Playing & Siri",f21_desc:"通过MPRemoteCommandCenter支持媒体键，加上Siri快捷指令。从键盘、Touch Bar或语音控制播放。",
+    f22_title:"扬声器分组",f22_desc:"将扬声器分组为"厨房"、"楼上"等命名区域。统一控制分组音量和静音。",
+    f23_title:"HTTP远程API",f23_desc:"内置端口9400 REST API。支持Stream Deck、Home Assistant、curl等控制。CORS跨域JSON响应。",
+    f24_title:"分频器与空间音频",f24_desc:"用于低音/卫星分频的LPF/HPF分频滤波器，加上带宽度控制和HRTF交叉馈送的立体声空间化器。",
+    f25_title:"采样率显示",f25_desc:"以徽章形式显示每个设备的原生采样率（44.1kHz、96kHz等）。一目了然地查看格式兼容性。",
+    f26_title:"多声道环绕声",f26_desc:"支持5.1和7.1环绕声，带声道布局显示（FL, FR, C, LFE, SL, SR）。超越立体声的沉浸体验。",
+    f27_title:"左右平衡与独占模式",f27_desc:"每设备恒定功率左右声像控制。USB DAC独占模式阻止其他应用的音频输出。",
+    f28_title:"延迟图表",f28_desc:"实时折线图显示每个设备的延迟趋势。在影响听感之前发现网络问题。",
+    f29_title:"热插拔与持久化",f29_desc:"即时检测蓝牙/AirPlay的连接与断开。已启用设备和偏移保存到UserDefaults，启动时自动恢复。",
+    f30_title:"菜单栏播放器",f30_desc:"MenuBarExtra常驻菜单栏。无需打开主窗口即可快速访问状态、音量、同步和播放控制。",
     how_label:"使用方法",how_title:"三个简单步骤",how_desc:"几分钟即可搭建全屋音频",
     s1_title:"安装Soluna TX",s1_desc:"在源Mac上设置Soluna发射器(solunad)。通过虚拟驱动捕获系统音频。",
     s2_title:"打开Soluna Rx",s2_desc:"在同一网络的任意Mac上启动Soluna Rx。自动发现发射器并开始接收。",
@@ -940,6 +1138,30 @@ ko: {
     f4_title:"자동 동기화",f4_desc:"왕복 시간을 측정하여 모든 스피커의 오디오 지연을 자동 동기화.",
     f5_title:"패킷 손실 보상",f5_desc:"내장 PLC 알고리즘으로 손실된 패킷을 보완하여 원활한 재생 유지.",
     f6_title:"실시간 통계",f6_desc:"패킷 수, 손실률, 버퍼, PLC 횟수를 실시간으로 모니터링.",
+    f7_title:"블루투스 / AirPlay 동기 출력",f7_desc:"블루투스, AirPlay, USB 스피커를 추가하여 모든 장치에서 완벽하게 동기화된 재생. 각 장치에 독립적인 AudioUnit과 볼륨/딜레이 제어.",
+    f8_title:"실측 지연 보정",f8_desc:"EMA 평활화를 통한 실시간 지연 측정. BT(약 40~200ms) 및 AirPlay(약 2000ms) 전송 지연을 자동 보정.",
+    f9_title:"VU 미터",f9_desc:"모든 출력 장치의 RMS/Peak 레벨을 20fps로 실시간 표시. 녹색, 주황색, 빨간색으로 신호 상태를 한눈에 확인.",
+    f10_title:"수동 지연 오프셋",f10_desc:"장치별 ±50ms 미세 조정 슬라이더. 자동 저장으로 방별 조정에 최적.",
+    f11_title:"라우팅 프리셋",f11_desc:"스피커 구성을 이름 있는 프리셋으로 저장. '거실', '침실', '파티' 설정을 원탭으로 전환.",
+    f12_title:"Mac 간 P2P 릴레이",f12_desc:"Bonjour+UDP로 Mac 간 패킷 전달. 멀티캐스트가 서브넷을 넘지 못할 때 자동 릴레이로 재생 가능.",
+    f13_title:"자동 재연결",f13_desc:"네트워크 복구 시 자동 재연결. NWPathMonitor로 연결 상태 변화를 즉시 감지.",
+    f14_title:"키보드 단축키",f14_desc:"Space=재생/정지, ⌘↑↓=볼륨, ⇧⌘M=음소거, ⇧⌘S=동기화. 마우스 없이 완전 제어.",
+    f15_title:"3밴드 파라메트릭 EQ",f15_desc:"디바이스별 독립 3밴드 EQ (200Hz/1kHz/5kHz, ±12dB). 바이쿼드 필터로 정밀 튜닝.",
+    f16_title:"오디오 녹음",f16_desc:"수신 오디오를 WAV 파일로 녹음 (48kHz/16비트). 실시간 스레드에서 논블로킹 기록.",
+    f17_title:"스펙트럼 분석기",f17_desc:"Accelerate vDSP 기반 32밴드 FFT 스펙트럼 표시. 대수 밴드 매핑(20Hz-20kHz)으로 실시간 주파수 시각화.",
+    f18_title:"컴프레서/리미터",f18_desc:"출력별 독립 다이내믹스 컴프레서. 스레숄드, 비율, 어택, 릴리즈를 개별 제어. 클리핑 방지에 효과적.",
+    f19_title:"프리셋 가져오기/내보내기",f19_desc:"라우팅 프리셋을 JSON 파일로 내보내고 다른 Mac에서 가져오기. 스피커 설정을 쉽게 공유.",
+    f20_title:"즐겨찾기 장치",f20_desc:"자주 쓰는 스피커를 즐겨찾기에 등록. 전원 켜거나 연결하면 자동으로 활성화.",
+    f21_title:"Now Playing & Siri",f21_desc:"MPRemoteCommandCenter로 미디어 키 지원. Siri 단축어로 음성 제어도 가능.",
+    f22_title:"스피커 그룹",f22_desc:"스피커를 '주방', '2층' 등 이름 있는 존으로 그룹화. 그룹 단위로 볼륨과 음소거 제어.",
+    f23_title:"HTTP 리모트 API",f23_desc:"포트 9400 내장 REST API. Stream Deck, Home Assistant, curl 등에서 제어 가능. CORS 지원 JSON 응답.",
+    f24_title:"크로스오버 & 공간 오디오",f24_desc:"서브/새틀라이트 분리용 LPF/HPF 크로스오버 필터. 헤드폰용 HRTF 크로스피드 스테레오 스페이셜라이저.",
+    f25_title:"샘플레이트 표시",f25_desc:"각 장치의 네이티브 샘플레이트를 배지로 표시 (44.1kHz, 96kHz 등). 포맷 호환성을 한눈에 확인.",
+    f26_title:"멀티채널 서라운드",f26_desc:"5.1 및 7.1 서라운드 사운드 지원. 채널 레이아웃 표시 (FL, FR, C, LFE, SL, SR) 포함. 스테레오를 넘는 몰입감.",
+    f27_title:"L/R 밸런스 & 독점 모드",f27_desc:"디바이스별 정전력 L/R 패닝. USB DAC 호그 모드로 다른 앱의 출력을 차단.",
+    f28_title:"레이턴시 그래프",f28_desc:"디바이스별 지연 추이를 실시간 꺾은선 그래프로 표시. 음질에 영향을 미치기 전에 네트워크 문제를 감지.",
+    f29_title:"핫플러그 & 영속화",f29_desc:"BT/AirPlay 연결 및 해제를 즉시 감지. 활성화된 장치와 오프셋을 UserDefaults에 저장하고 실행 시 복원.",
+    f30_title:"메뉴 바 플레이어",f30_desc:"MenuBarExtra로 메뉴 바에 상주. 메인 창을 열지 않고도 상태, 볼륨, 동기화, 재생을 빠르게 조작.",
     how_label:"사용 방법",how_title:"3단계로 간단하게",how_desc:"몇 분 만에 홈 오디오 구축",
     s1_title:"Soluna TX 설치",s1_desc:"소스 Mac에 Soluna 송신기(solunad)를 설정합니다. 가상 드라이버로 시스템 오디오를 캡처.",
     s2_title:"Soluna Rx 실행",s2_desc:"같은 네트워크의 Mac에서 Soluna Rx를 실행. 송신기를 자동 검색하고 수신 시작.",

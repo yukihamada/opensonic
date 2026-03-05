@@ -15,12 +15,15 @@
 		1A0020 /* DaemonClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0020 /* DaemonClient.swift */; };
 		1A0030 /* SpeakersController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0030 /* SpeakersController.swift */; };
 		1A0040 /* PeerRelayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0040 /* PeerRelayManager.swift */; };
+		1A0041 /* SolunaAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0041 /* SolunaAppIntents.swift */; };
+		1A0042 /* RemoteControlServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0042 /* RemoteControlServer.swift */; };
 		1A0006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2A0009 /* Assets.xcassets */; };
 		1A0050 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2A0050 /* PrivacyInfo.xcprivacy */; };
 		1A0010 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0010 /* CoreAudio.framework */; };
 		1A0011 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0011 /* AudioToolbox.framework */; };
 		1A0013 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0013 /* AVFoundation.framework */; };
 		1A0014 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0014 /* CoreFoundation.framework */; };
+		1A0015 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0015 /* Accelerate.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +38,8 @@
 		2A0020 /* DaemonClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonClient.swift; sourceTree = "<group>"; };
 		2A0030 /* SpeakersController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakersController.swift; sourceTree = "<group>"; };
 		2A0040 /* PeerRelayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerRelayManager.swift; sourceTree = "<group>"; };
+		2A0041 /* SolunaAppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaAppIntents.swift; sourceTree = "<group>"; };
+		2A0042 /* RemoteControlServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteControlServer.swift; sourceTree = "<group>"; };
 		2A0009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2A0050 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		2A0060 /* SolunaReceiverMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SolunaReceiverMac.entitlements; sourceTree = "<group>"; };
@@ -42,6 +47,7 @@
 		2A0011 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
 		2A0013 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		2A0014 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
+		2A0015 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		3A0000 /* SolunaReceiverMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SolunaReceiverMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -54,6 +60,7 @@
 				1A0011 /* AudioToolbox.framework in Frameworks */,
 				1A0013 /* AVFoundation.framework in Frameworks */,
 				1A0014 /* CoreFoundation.framework in Frameworks */,
+				1A0015 /* Accelerate.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -79,6 +86,8 @@
 				2A0020 /* DaemonClient.swift */,
 				2A0030 /* SpeakersController.swift */,
 				2A0040 /* PeerRelayManager.swift */,
+				2A0041 /* SolunaAppIntents.swift */,
+				2A0042 /* RemoteControlServer.swift */,
 				5A0010 /* Bridge */,
 				2A0009 /* Assets.xcassets */,
 				2A0050 /* PrivacyInfo.xcprivacy */,
@@ -95,6 +104,7 @@
 				2A0011 /* AudioToolbox.framework */,
 				2A0013 /* AVFoundation.framework */,
 				2A0014 /* CoreFoundation.framework */,
+				2A0015 /* Accelerate.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -195,6 +205,8 @@
 				1A0020 /* DaemonClient.swift in Sources */,
 				1A0030 /* SpeakersController.swift in Sources */,
 				1A0040 /* PeerRelayManager.swift in Sources */,
+				1A0041 /* SolunaAppIntents.swift in Sources */,
+				1A0042 /* RemoteControlServer.swift in Sources */,
 				1A0004 /* AudioReceiverBridge.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
