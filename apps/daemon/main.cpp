@@ -49,6 +49,7 @@
 #include <net/if.h>
 #include <ifaddrs.h>
 #include <sys/ioctl.h>
+#include <sys/file.h>
 #include <unistd.h>
 #ifdef __APPLE__
 #include <net/if_media.h>
@@ -418,6 +419,66 @@ static std::atomic<bool> g_wifi_nack{true};           // NACK retransmission (TX
 static std::atomic<bool> g_wifi_wsola_plc{true};      // WSOLA PLC (RX)
 static std::atomic<bool> g_wifi_adaptive_jitter{true}; // adaptive jitter buffer (RX)
 static std::atomic<bool> g_wifi_dedup{true};           // duplicate packet detection (RX)
+
+// ── Unicast relay (P2P) — forward TX packets to registered peers ──────────────
+static constexpr uint16_t kRelayPort = 5099;
+struct RelayPeer {
+    sockaddr_in addr;
+    std::chrono::steady_clock::time_point last_seen;
+};
+static std::mutex g_relay_mutex;
+static std::vector<RelayPeer> g_relay_peers;
+static int g_relay_sock = -1;
+static std::atomic<bool> g_relay_running{false};
+
+static void relay_forward(const uint8_t* data, size_t len) {
+    if (g_relay_sock < 0) return;
+    auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(g_relay_mutex);
+    // Remove stale peers (>15s no heartbeat)
+    g_relay_peers.erase(
+        std::remove_if(g_relay_peers.begin(), g_relay_peers.end(),
+            [&](const RelayPeer& p) {
+                return std::chrono::duration_cast<std::chrono::seconds>(
+                    now - p.last_seen).count() > 15;
+            }),
+        g_relay_peers.end());
+    // Send to all active peers
+    for (const auto& peer : g_relay_peers) {
+        sendto(g_relay_sock, data, len, 0,
+               (const sockaddr*)&peer.addr, sizeof(peer.addr));
+    }
+}
+
+static void relay_listener_thread() {
+    uint8_t buf[64];
+    while (g_relay_running.load()) {
+        sockaddr_in from{};
+        socklen_t from_len = sizeof(from);
+        ssize_t n = recvfrom(g_relay_sock, buf, sizeof(buf), 0,
+                             (sockaddr*)&from, &from_len);
+        if (n <= 0) continue;
+
+        // Any packet = peer registration / heartbeat
+        auto now = std::chrono::steady_clock::now();
+        std::lock_guard<std::mutex> lock(g_relay_mutex);
+        bool found = false;
+        for (auto& peer : g_relay_peers) {
+            if (peer.addr.sin_addr.s_addr == from.sin_addr.s_addr &&
+                peer.addr.sin_port == from.sin_port) {
+                peer.last_seen = now;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            char ip[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &from.sin_addr, ip, sizeof(ip));
+            fprintf(stderr, "[relay] New peer: %s:%u\n", ip, ntohs(from.sin_port));
+            g_relay_peers.push_back({from, now});
+        }
+    }
+}
 
 // ── Audio repair (declicker + crossfade) ─────────────────────────────────────
 static std::atomic<uint64_t> g_repair_clicks{0};    // total clicks repaired
@@ -1029,6 +1090,27 @@ static std::string ws_handle(const std::string& msg) {
         v = get_b("dedup");           if (v >= 0) g_wifi_dedup.store(v == 1);
         persist_config_save();
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "relay.stats") {
+        std::lock_guard<std::mutex> lock(g_relay_mutex);
+        auto now = std::chrono::steady_clock::now();
+        std::string peers_json = "[";
+        for (size_t i = 0; i < g_relay_peers.size(); i++) {
+            char ip[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &g_relay_peers[i].addr.sin_addr, ip, sizeof(ip));
+            auto age = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now - g_relay_peers[i].last_seen).count();
+            if (i > 0) peers_json += ",";
+            peers_json += "{\"ip\":\"" + std::string(ip) + "\",\"port\":"
+                + std::to_string(ntohs(g_relay_peers[i].addr.sin_port))
+                + ",\"age_ms\":" + std::to_string(age) + "}";
+        }
+        peers_json += "]";
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":true,\"data\":\"{\\\"enabled\\\":%s,"
+            "\\\"port\\\":%d,\\\"peer_count\\\":%zu,\\\"peers\\\":%s}\"}",
+            id, (g_relay_sock >= 0 ? "true" : "false"),
+            (g_relay_sock >= 0 ? kRelayPort : 0),
+            g_relay_peers.size(), peers_json.c_str());
     } else if (cmd == "latency") {
         // Calculate each stage latency in ms from frame counts
         float sr = (float)g_cfg_sample_rate;
@@ -1193,6 +1275,14 @@ struct DaemonConfig {
     // Auto-tune: mic-based noise detection (default ON)
     bool auto_tune = true;
 
+    // TX audio recording for quality comparison
+    std::string record_tx_path;
+    uint32_t record_tx_duration = 30; // seconds
+
+    // Unicast relay for P2P (bypass multicast packet loss)
+    uint16_t relay_port = 5099;
+    bool relay_enabled = true; // auto-start relay on TX
+
     // HTTPS/TLS for WebSocket server
     bool https_enabled = false;
 
@@ -1242,6 +1332,10 @@ static void print_usage(const char* prog) {
         "  --dtls            Enable DTLS encryption\n"
         "  --cert FILE       TLS/DTLS certificate file (PEM)\n"
         "  --key FILE        TLS/DTLS private key file (PEM)\n"
+        "  --relay-port PORT Unicast relay port for P2P peers (default: 5099)\n"
+        "  --no-relay        Disable unicast relay\n"
+        "  --record-tx FILE  Record TX audio to WAV file (for comparison)\n"
+        "  --record-dur SEC  Recording duration in seconds (default: 30)\n"
         "  --auto-tune       Enable mic-based auto buffer tuning (default: on)\n"
         "  --no-auto-tune    Disable mic-based auto buffer tuning\n"
         "  --list-devices    List available audio devices\n"
@@ -1281,6 +1375,14 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
             cfg.security.certificate_path = argv[++i];
         } else if (arg == "--key" && i + 1 < argc) {
             cfg.security.private_key_path = argv[++i];
+        } else if (arg == "--relay-port" && i + 1 < argc) {
+            cfg.relay_port = static_cast<uint16_t>(std::stoi(argv[++i]));
+        } else if (arg == "--no-relay") {
+            cfg.relay_enabled = false;
+        } else if (arg == "--record-tx" && i + 1 < argc) {
+            cfg.record_tx_path = argv[++i];
+        } else if (arg == "--record-dur" && i + 1 < argc) {
+            cfg.record_tx_duration = static_cast<uint32_t>(std::stoi(argv[++i]));
         } else if (arg == "--config" && i + 1 < argc) {
             cfg.config_file = argv[++i];
         } else if (arg == "--device" && i + 1 < argc) {
@@ -2023,6 +2125,33 @@ static int run_tx(DaemonConfig cfg) {
     start_soluna_volume_listener();
 #endif
 
+    // ── Start unicast relay for P2P peers ──
+    std::thread relay_thread;
+    if (cfg.relay_enabled) {
+        g_relay_sock = socket(AF_INET, SOCK_DGRAM, 0);
+        if (g_relay_sock >= 0) {
+            int reuse = 1;
+            setsockopt(g_relay_sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+            sockaddr_in bind_addr{};
+            bind_addr.sin_family = AF_INET;
+            bind_addr.sin_addr.s_addr = INADDR_ANY;
+            bind_addr.sin_port = htons(cfg.relay_port);
+            if (bind(g_relay_sock, (sockaddr*)&bind_addr, sizeof(bind_addr)) == 0) {
+                // Set recv timeout so listener thread can check g_relay_running
+                struct timeval tv{1, 0};
+                setsockopt(g_relay_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+                g_relay_running.store(true);
+                relay_thread = std::thread(relay_listener_thread);
+                fprintf(stderr, "[relay] Unicast relay listening on port %u\n", cfg.relay_port);
+            } else {
+                fprintf(stderr, "[relay] Failed to bind port %u: %s\n",
+                        cfg.relay_port, strerror(errno));
+                close(g_relay_sock);
+                g_relay_sock = -1;
+            }
+        }
+    }
+
     // Apply latency profile
     const auto lp = get_latency_params(cfg.latency_profile);
     const uint32_t kFramesPerPacket = lp.frames_per_packet;
@@ -2280,11 +2409,67 @@ static int run_tx(DaemonConfig cfg) {
         // Conversion buffer (float from input → S24 for network)
         std::vector<int32_t> conv_buf(kFramesPerPacket * cfg.channels);
 
+        // TX WAV recording (for quality comparison with RX)
+        FILE* tx_wav_fp = nullptr;
+        uint32_t tx_wav_data_bytes = 0;
+        uint64_t tx_wav_frames_max = 0;
+        uint64_t tx_wav_frames_written = 0;
+        if (!cfg.record_tx_path.empty()) {
+            tx_wav_fp = fopen(cfg.record_tx_path.c_str(), "wb");
+            if (tx_wav_fp) {
+                // Write placeholder header
+                uint8_t hdr[44] = {};
+                fwrite(hdr, 1, 44, tx_wav_fp);
+                tx_wav_frames_max = (uint64_t)cfg.record_tx_duration * cfg.sample_rate;
+                fprintf(stderr, "[tx] Recording to %s (%u seconds)\n",
+                        cfg.record_tx_path.c_str(), cfg.record_tx_duration);
+            } else {
+                fprintf(stderr, "[tx] Cannot open WAV file '%s'\n", cfg.record_tx_path.c_str());
+            }
+        }
+
         // Audio callback: capture → convert → ring buffer
         audio->start([&](float* buffer, uint32_t frame_count) {
             size_t samples = frame_count * cfg.channels;
             float_to_s24(buffer, conv_buf.data(), samples);
             ring.write(conv_buf.data(), frame_count);
+
+            // Record TX audio to WAV (S16LE)
+            if (tx_wav_fp && tx_wav_frames_written < tx_wav_frames_max) {
+                thread_local std::vector<int16_t> rec_buf;
+                rec_buf.resize(samples);
+                for (size_t i = 0; i < samples; i++)
+                    rec_buf[i] = static_cast<int16_t>(buffer[i] * 32767.0f);
+                size_t remaining = (size_t)(tx_wav_frames_max - tx_wav_frames_written);
+                size_t to_write = frame_count < remaining ? frame_count : remaining;
+                fwrite(rec_buf.data(), sizeof(int16_t) * cfg.channels, to_write, tx_wav_fp);
+                tx_wav_data_bytes += (uint32_t)(to_write * cfg.channels * sizeof(int16_t));
+                tx_wav_frames_written += to_write;
+                if (tx_wav_frames_written >= tx_wav_frames_max) {
+                    // Finalize WAV header
+                    fseek(tx_wav_fp, 0, SEEK_SET);
+                    uint32_t file_size = 36 + tx_wav_data_bytes;
+                    uint16_t bits = 16;
+                    uint16_t ch16 = (uint16_t)cfg.channels;
+                    uint16_t block_align = ch16 * (bits / 8);
+                    uint32_t byte_rate = cfg.sample_rate * block_align;
+                    uint8_t h[44];
+                    memcpy(h,      "RIFF", 4); memcpy(h+4,  &file_size, 4);
+                    memcpy(h+8,    "WAVE", 4); memcpy(h+12, "fmt ", 4);
+                    uint32_t fmt_sz = 16; memcpy(h+16, &fmt_sz, 4);
+                    uint16_t pcm_fmt = 1; memcpy(h+20, &pcm_fmt, 2);
+                    memcpy(h+22, &ch16, 2); memcpy(h+24, &cfg.sample_rate, 4);
+                    memcpy(h+28, &byte_rate, 4); memcpy(h+32, &block_align, 2);
+                    memcpy(h+34, &bits, 2);
+                    memcpy(h+36, "data", 4); memcpy(h+40, &tx_wav_data_bytes, 4);
+                    fwrite(h, 1, 44, tx_wav_fp);
+                    fclose(tx_wav_fp);
+                    tx_wav_fp = nullptr;
+                    fprintf(stderr, "[tx] Recording complete: %llu frames\n",
+                            (unsigned long long)tx_wav_frames_written);
+                }
+            }
+
             // Browser audio streaming (batched, same as SHM path)
             if (g_audio_streaming.load() && g_ws_server_ptr) {
                 constexpr uint32_t kWsChunkFrames = 960;
@@ -2473,6 +2658,9 @@ static int run_tx(DaemonConfig cfg) {
         if (pkt_size > 0) {
             socket->send_to(packet_buf.data(), pkt_size, dest);
 
+            // Forward to unicast relay peers (P2P)
+            relay_forward(packet_buf.data(), pkt_size);
+
             if (wifi_mode) {
                 // ── Duplicate send (toggleable via Web UI) ──
                 if (g_wifi_dup_send.load(std::memory_order_relaxed)) {
@@ -2553,6 +2741,12 @@ static int run_tx(DaemonConfig cfg) {
     tune_thread.join();
     g_mon_stop_req.store(true);
     mon_thread.join();
+
+    // Stop relay
+    g_relay_running.store(false);
+    if (relay_thread.joinable()) relay_thread.join();
+    if (g_relay_sock >= 0) { close(g_relay_sock); g_relay_sock = -1; }
+
     return 0;
 }
 
@@ -3375,6 +3569,15 @@ int main(int argc, char** argv) {
     DaemonConfig cfg;
     if (!parse_args(argc, argv, cfg)) {
         print_usage(argv[0]);
+        return 1;
+    }
+
+    // Prevent multiple instances via lock file
+    const char* lock_path = "/tmp/solunad.lock";
+    int lock_fd = open(lock_path, O_CREAT | O_RDWR, 0600);
+    if (lock_fd >= 0 && flock(lock_fd, LOCK_EX | LOCK_NB) != 0) {
+        fprintf(stderr, "[solunad] Another instance is already running. Exiting.\n");
+        close(lock_fd);
         return 1;
     }
 

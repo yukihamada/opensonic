@@ -92,7 +92,7 @@ public:
         if (!socket_) return false;
         if (!socket_->bind(config_.listen_port)) return false;
         if (!socket_->join_multicast(config_.multicast_group)) return false;
-        socket_->set_recv_timeout_ms(1);
+        socket_->set_recv_timeout_ms(5);  // 5ms — batches WiFi bursts better than 1ms
         return true;
     }
 
@@ -285,8 +285,8 @@ public:
         , volume_(1.0f)
         , muted_(false)
         , running_(false)
-        , target_fill_frames_(7200)  // 150ms default — absorbs iPhone WiFi multicast bursts
-        , ring_buffer_(96000, channels * sizeof(int32_t))  // 2s capacity (pow2=131072)
+        , target_fill_frames_(14400) // 300ms — iPhone WiFi needs larger buffer for burst loss
+        , ring_buffer_(192000, channels * sizeof(int32_t)) // 4s capacity for WiFi jitter
         , read_buffer_(4096 * channels)
         , drain_buf_(4096 * channels)
         , held_sample_(channels, 0)
@@ -322,7 +322,7 @@ public:
         pal::AudioStreamConfig audio_config;
         audio_config.sample_rate = kDefaultSampleRate;
         audio_config.channels = channels_;
-        audio_config.frames_per_buffer = 256;  // ~5ms
+        audio_config.frames_per_buffer = 512;  // ~10ms — more headroom for WiFi jitter
         audio_config.format = SampleFormat::S24_LE;
 
         if (!audio_device_->open_output("default", audio_config)) {

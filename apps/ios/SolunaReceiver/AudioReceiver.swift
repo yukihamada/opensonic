@@ -7,6 +7,9 @@
 
 import Foundation
 import Combine
+import AVFoundation
+import UIKit
+import Network
 
 /// Observable wrapper for SolunaAudioReceiver
 @MainActor
@@ -101,12 +104,17 @@ final class AudioReceiver: ObservableObject {
 
     private let receiver: SolunaAudioReceiver
     private let delegateHandler: DelegateHandler
+    private let networkMonitor = NWPathMonitor()
+    private var wasPlayingBeforeDisconnect = false
+    private var interruptionObserver: Any?
 
     init() {
         receiver = SolunaAudioReceiver.sharedInstance()
         delegateHandler = DelegateHandler()
         delegateHandler.audioReceiver = self
         receiver.delegate = delegateHandler
+        setupNetworkMonitor()
+        setupAudioInterruptionHandler()
     }
 
     /// Start receiving audio with discovery-first P2P.
@@ -117,6 +125,19 @@ final class AudioReceiver: ObservableObject {
         guard state == .stopped || state == .error else { return }
         errorMessage = nil
         state = .connecting   // visual feedback during scan
+
+        // Configure audio session for reliable background playback
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default, options: [.duckOthers])
+            try session.setPreferredIOBufferDuration(0.01) // 10ms
+            try session.setActive(true)
+        } catch {
+            print("[AudioReceiver] AVAudioSession error: \(error)")
+        }
+
+        // Prevent screen lock during playback
+        UIApplication.shared.isIdleTimerDisabled = true
 
         let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
 
@@ -145,6 +166,8 @@ final class AudioReceiver: ObservableObject {
         state = .stopped
         receiver.stop()
         PeerRelayManager.shared.stop()
+        UIApplication.shared.isIdleTimerDisabled = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     /// Toggle play/stop
@@ -153,6 +176,57 @@ final class AudioReceiver: ObservableObject {
             stop()
         } else {
             start()
+        }
+    }
+
+    // MARK: - Auto-Reconnect
+
+    private func setupNetworkMonitor() {
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in
+                guard let self else { return }
+                if path.status == .satisfied && self.wasPlayingBeforeDisconnect {
+                    print("[AudioReceiver] Network restored — reconnecting")
+                    self.wasPlayingBeforeDisconnect = false
+                    // Brief delay for WiFi to stabilize
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    self.start()
+                } else if path.status != .satisfied && self.isPlaying {
+                    print("[AudioReceiver] Network lost — will reconnect when available")
+                    self.wasPlayingBeforeDisconnect = true
+                    self.stop()
+                }
+            }
+        }
+        networkMonitor.start(queue: DispatchQueue.global(qos: .utility))
+    }
+
+    private func setupAudioInterruptionHandler() {
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let info = notification.userInfo,
+                  let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+            Task { @MainActor in
+                if type == .ended {
+                    print("[AudioReceiver] Audio interruption ended — resuming")
+                    try? AVAudioSession.sharedInstance().setActive(true)
+                    if self.wasPlayingBeforeDisconnect {
+                        self.wasPlayingBeforeDisconnect = false
+                        self.start()
+                    }
+                } else if type == .began {
+                    print("[AudioReceiver] Audio interruption began")
+                    if self.isPlaying {
+                        self.wasPlayingBeforeDisconnect = true
+                        self.stop()
+                    }
+                }
+            }
         }
     }
 
