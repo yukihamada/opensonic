@@ -20,8 +20,6 @@ struct ContentView: View {
     @State private var masterMuted    = false
     @State private var masterDelayMs: Int = 40
 
-    @AppStorage("autoConnect") private var autoConnect = false
-
     var body: some View {
         NavigationView {
             ScrollView {
@@ -53,7 +51,7 @@ struct ContentView: View {
             .onAppear {
                 speakers.audioReceiver = receiver
                 loadSavedSettings()
-                if autoConnect { receiver.start() }
+                receiver.autoStart()
                 // Apply global RX delay from server once connected
                 Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
                     Task { @MainActor in speakers.applyServerRxDelay() }
@@ -149,26 +147,23 @@ struct ContentView: View {
     // MARK: - Hero
 
     private var heroSection: some View {
-        VStack(spacing: 20) {
-            Button(action: togglePlayback) {
-                ZStack {
-                    Circle()
-                        .fill(heroAccent.opacity(0.12))
-                        .frame(width: 100, height: 100)
-                        .shadow(color: heroAccent.opacity(0.25), radius: 16, y: 4)
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(heroAccent.opacity(0.12))
+                    .frame(width: 80, height: 80)
+                    .shadow(color: heroAccent.opacity(0.25), radius: 16, y: 4)
 
-                    if receiver.state == .connecting {
-                        ProgressView()
-                            .scaleEffect(1.3)
-                            .accentColor(heroAccent)
-                    } else {
-                        Image(systemName: heroIcon)
-                            .font(.system(size: 36, weight: .semibold))
-                            .foregroundColor(heroAccent)
-                    }
+                if receiver.state == .connecting {
+                    ProgressView()
+                        .scaleEffect(1.3)
+                        .accentColor(heroAccent)
+                } else {
+                    Image(systemName: heroIcon)
+                        .font(.system(size: 30, weight: .semibold))
+                        .foregroundColor(heroAccent)
                 }
             }
-            .disabled(receiver.state == .connecting)
 
             // Status pill
             HStack(spacing: 6) {
@@ -183,9 +178,24 @@ struct ContentView: View {
             .padding(.vertical, 6)
             .background(heroAccent.opacity(0.1))
             .clipShape(Capsule())
+
+            // Manual stop/start (small text button)
+            if receiver.state == .receiving {
+                Button(action: { receiver.stop() }) {
+                    Text("Stop")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(.secondary)
+                }
+            } else if receiver.state == .stopped || receiver.state == .error {
+                Button(action: { receiver.start() }) {
+                    Text("Reconnect")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(.blue)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
+        .padding(.vertical, 24)
         .background(Color(.secondarySystemGroupedBackground))
         .cornerRadius(20)
     }
@@ -315,22 +325,14 @@ struct ContentView: View {
 
     private var heroIcon: String {
         switch receiver.state {
-        case .receiving: return "stop.fill"
-        case .error:     return "arrow.clockwise"
-        default:         return "play.fill"
+        case .receiving:  return "waveform"
+        case .connecting: return "antenna.radiowaves.left.and.right"
+        case .error:      return "exclamationmark.triangle.fill"
+        case .stopped:    return "moon.zzz.fill"
         }
     }
 
     // MARK: - Helpers
-
-    private func togglePlayback() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        if receiver.state == .error {
-            receiver.start()
-        } else {
-            receiver.toggle()
-        }
-    }
 
     private func loadSavedSettings() {
         let d = UserDefaults.standard

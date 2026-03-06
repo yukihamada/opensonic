@@ -107,6 +107,9 @@ final class AudioReceiver: ObservableObject {
     private let networkMonitor = NWPathMonitor()
     private var wasPlayingBeforeDisconnect = false
     private var interruptionObserver: Any?
+    private var watchdogTimer: Timer?
+    private var lastPacketCount: UInt64 = 0
+    private var staleTicks: Int = 0
 
     init() {
         receiver = SolunaAudioReceiver.sharedInstance()
@@ -158,11 +161,15 @@ final class AudioReceiver: ObservableObject {
                 guard state == .receiving else { return }
                 PeerRelayManager.shared.becomeDirectRelay()
             }
+
+            // Start watchdog for auto-reconnect
+            startWatchdog()
         }
     }
 
     /// Stop receiving audio
     func stop() {
+        stopWatchdog()
         state = .stopped
         receiver.stop()
         PeerRelayManager.shared.stop()
@@ -179,7 +186,57 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
-    // MARK: - Auto-Reconnect
+    /// Auto-start on app launch (called from ContentView.onAppear)
+    func autoStart() {
+        guard state == .stopped else { return }
+        start()
+    }
+
+    // MARK: - Watchdog (auto-reconnect on stream loss)
+
+    private func startWatchdog() {
+        stopWatchdog()
+        lastPacketCount = packetsReceived
+        staleTicks = 0
+        watchdogTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.watchdogTick()
+            }
+        }
+    }
+
+    private func stopWatchdog() {
+        watchdogTimer?.invalidate()
+        watchdogTimer = nil
+        staleTicks = 0
+    }
+
+    private func watchdogTick() {
+        guard state == .receiving || state == .connecting else { return }
+
+        if packetsReceived == lastPacketCount {
+            staleTicks += 1
+            // 3 ticks × 3s = 9 seconds with no new packets → reconnect
+            if staleTicks >= 3 && state == .receiving {
+                print("[AudioReceiver] Watchdog: no packets for \(staleTicks * 3)s — reconnecting")
+                reconnect()
+            }
+        } else {
+            staleTicks = 0
+            lastPacketCount = packetsReceived
+        }
+    }
+
+    /// Reconnect: stop then start with a brief delay
+    private func reconnect() {
+        stop()
+        Task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1s
+            start()
+        }
+    }
+
+    // MARK: - Auto-Reconnect (network / interruption)
 
     private func setupNetworkMonitor() {
         networkMonitor.pathUpdateHandler = { [weak self] path in

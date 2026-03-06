@@ -14,7 +14,6 @@ struct SettingsView: View {
     @AppStorage("multicastGroup") private var multicastGroup = "239.69.0.1"
     @AppStorage("port") private var port = 5004
     @AppStorage("channels") private var channels = 2
-    @AppStorage("autoConnect") private var autoConnect = false
     @AppStorage("channel") private var channel = "soluna"
     @State private var tempMulticastGroup: String = ""
     @State private var tempPort: String = ""
@@ -68,17 +67,6 @@ struct SettingsView: View {
                     ) {
                         Text("Mono (1)").tag(1)
                         Text("Stereo (2)").tag(2)
-                    }
-                }
-
-                Section(header: Text("Behavior")) {
-                    Toggle(isOn: $autoConnect) {
-                        HStack {
-                            Image(systemName: "play.circle")
-                                .foregroundColor(.purple)
-                                .frame(width: 28)
-                            Text("Auto-connect on launch")
-                        }
                     }
                 }
 
@@ -176,8 +164,6 @@ struct SettingsView: View {
         tempPort = "5004"
         tempChannels = 2
         tempChannel = "soluna"
-        autoConnect = false
-
         // Haptic feedback
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
