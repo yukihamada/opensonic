@@ -989,6 +989,19 @@ function refreshStats() {
                                                        : (oNs / 1000).toFixed(1) + ' µs');
         } catch (_) {}
     });
+    // Audio quality engine stats
+    localSend('rx.stats', {}, (resp) => {
+        if (!resp.success || !resp.data) return;
+        try {
+            const d = JSON.parse(resp.data);
+            if (d.dll_ratio !== undefined) {
+                const ppm = ((d.dll_ratio - 1.0) * 1e6).toFixed(1);
+                setVal('stat-dll-ratio', ppm + ' ppm');
+            }
+            if (d.opus_fec !== undefined) setVal('stat-fec', d.opus_fec ? 'ON' : 'OFF');
+            if (d.deglitch !== undefined) setVal('stat-deglitch', d.deglitch ? 'ON' : 'OFF');
+        } catch (_) {}
+    });
 }
 
 // ── Helpers ──────────────────────────────────────────────────

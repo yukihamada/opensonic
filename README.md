@@ -98,7 +98,10 @@ soluna-rx --output pipe | aplay -f S16_LE -r 48000 -c 2
 | **Opus コーデック** | Opus 圧縮で帯域を 1/10 に削減（48kHz ステレオ: 128kbps）|
 | **DSP エフェクト** | コンプレッサー・3バンド EQ・リバーブを内蔵。WebSocket で操作 |
 | **WAN リレーサーバー** | インターネット越しにグループ接続。パスワード保護付き |
-| パケットロス補間 (PLC) | WSOLA ベースの PLC で最大 2 パケット欠落を補完 |
+| **ロックフリージッタバッファ** | 512 スロット固定配列、atomic 操作のみ。ヒープ割り当て・ミューテックスなし |
+| **Adriaensen DLL** | Delay-Locked Loop でクロックドリフトを ±500ppm 精度で推定。ピッチ揺れゼロ |
+| **Opus FEC** | Opus 帯域内 FEC でパケットロス時に次パケットから欠落フレームを復元 |
+| **4 段 PLC** | Opus FEC → Opus PLC → WSOLA → 無音の優先順位で欠落補間 |
 | FEC (前方誤り訂正) | XOR パリティ (k=4) でパケットロス耐性を向上 |
 | NACK 再送要求 | 受信側からの再送要求で欠落パケットを回復 |
 | Bonjour 自動検出 | 同一ネットワークの solunad を iPhone が自動で見つける |
@@ -228,10 +231,51 @@ apps/
 deploy/
   rpi/            soluna-rx.service + install-rx.sh
 src/              libsoluna_core（コアライブラリ）
+include/soluna/
+  sync/drift_dll.h  Adriaensen DLL（クロック同期）
+  wifi/jitter_buffer.h  ロックフリージッタバッファ
+third_party/
+  r8brain/          r8brain-free-src sinc リサンプラー
 tools/
   auto_optimize.py  自動品質最適化スクリプト
   audio_compare.py  TX/RX 音質比較分析ツール
 web/              Web UI（index.html / app.js / style.css / guide.html）
+```
+
+---
+
+## 音質エンジン（v2 — SonoBus 比較ベース）
+
+SonoBus のソースコードと 2024〜2026 年の最新論文を解析し、以下を実装。
+
+| 改善項目 | Before | After |
+|---------|--------|-------|
+| ジッタバッファ | `std::map` + `std::mutex`（ヒープ・優先度逆転） | ロックフリー 512 スロット固定配列 `atomic<bool>` |
+| クロック同期 | PI 制御 Kp=0.3（ピッチ揺れ大） | Adriaensen DLL (BW=0.01Hz) + buffer PI (Kp=0.01) |
+| PLC | WSOLA のみ | Opus FEC → Opus PLC → WSOLA → 無音（4 段） |
+| Opus FEC | なし | `use_fec=true`, `packet_loss_pct=5` |
+| デグリッチ | デフォルト ON（誤検出でトランジェント破壊） | デフォルト OFF |
+| オーバーフロー排出 | 75% でドレイン → グリッチ | 95% → 50% に緩和 |
+
+### Adriaensen DLL
+
+Fons Adriaensen の "Using a DLL to filter time" (2005) に基づく 2 次遅延ロックループ。
+コールバック間隔のジッタから真のサンプルレートを推定し、±500ppm の精度でリサンプリング比を出力。
+
+```
+BW = 0.01 Hz（収束 2〜5 秒、ピッチ揺れ不可聴）
+ω = 2π × BW × (block_size / rate)
+b = √2 × ω,  c = ω²
+ratio = nominal_rate / estimated_rate  (clamped to ±500ppm)
+```
+
+### PLC 優先チェーン
+
+```
+Gap == 1: Opus FEC decode（次パケットのFECデータから復元）
+Gap ≥ 1: Opus PLC（opus_decode_float(NULL, 0) — 心理音響補間）
+Gap ≥ 3: WSOLA（ピッチ同期オーバーラップ加算）
+最終手段: 無音フェードアウト
 ```
 
 ---
