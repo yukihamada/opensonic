@@ -30,6 +30,13 @@
 
 #include <soluna/wifi/fec.h>
 
+#ifdef SOLUNA_HAS_OPUS
+#include <soluna/codec/opus_wrapper.h>
+#endif
+
+#include <soluna/pipeline/dsp_chain.h>
+#include <soluna/pipeline/builtin_plugins.h>
+
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -420,6 +427,9 @@ static std::atomic<bool> g_wifi_wsola_plc{true};      // WSOLA PLC (RX)
 static std::atomic<bool> g_wifi_adaptive_jitter{true}; // adaptive jitter buffer (RX)
 static std::atomic<bool> g_wifi_dedup{true};           // duplicate packet detection (RX)
 
+// ── DSP chain pointer (set by run_rx so ws_handle can access it) ─────────────
+static soluna::pipeline::DspChain* g_dsp_chain_ptr = nullptr;
+
 // ── Unicast relay (P2P) — forward TX packets to registered peers ──────────────
 static constexpr uint16_t kRelayPort = 5099;
 struct RelayPeer {
@@ -477,6 +487,70 @@ static void relay_listener_thread() {
             fprintf(stderr, "[relay] New peer: %s:%u\n", ip, ntohs(from.sin_port));
             g_relay_peers.push_back({from, now});
         }
+    }
+}
+
+// ── WAN relay (forward TX to remote soluna-relay server) ─────────────────────
+static int g_wan_relay_sock = -1;
+static sockaddr_in g_wan_relay_addr{};
+static std::atomic<bool> g_wan_relay_running{false};
+static std::chrono::steady_clock::time_point g_wan_relay_last_hello;
+
+static void wan_relay_init(const std::string& host, uint16_t port,
+                           const std::string& group, const std::string& password) {
+    g_wan_relay_sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (g_wan_relay_sock < 0) {
+        fprintf(stderr, "[wan-relay] Failed to create socket\n");
+        return;
+    }
+
+    g_wan_relay_addr.sin_family = AF_INET;
+    g_wan_relay_addr.sin_port = htons(port);
+    if (inet_pton(AF_INET, host.c_str(), &g_wan_relay_addr.sin_addr) <= 0) {
+        fprintf(stderr, "[wan-relay] Invalid host: %s\n", host.c_str());
+        close(g_wan_relay_sock);
+        g_wan_relay_sock = -1;
+        return;
+    }
+
+    // Send JOIN message
+    std::string join_msg = "JOIN:" + group;
+    if (!password.empty()) join_msg += ":" + password;
+    join_msg += "\n";
+    sendto(g_wan_relay_sock, join_msg.c_str(), join_msg.size(), 0,
+           (const sockaddr*)&g_wan_relay_addr, sizeof(g_wan_relay_addr));
+
+    g_wan_relay_running.store(true);
+    g_wan_relay_last_hello = std::chrono::steady_clock::now();
+
+    fprintf(stderr, "[wan-relay] Connected to %s:%u group='%s'\n",
+            host.c_str(), port, group.c_str());
+}
+
+static void wan_relay_forward(const uint8_t* data, size_t len) {
+    if (g_wan_relay_sock < 0 || !g_wan_relay_running.load()) return;
+
+    sendto(g_wan_relay_sock, data, len, 0,
+           (const sockaddr*)&g_wan_relay_addr, sizeof(g_wan_relay_addr));
+
+    // Send HELLO heartbeat every 5 seconds
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+        now - g_wan_relay_last_hello).count();
+    if (elapsed >= 5) {
+        const char hello[] = "HELLO\n";
+        sendto(g_wan_relay_sock, hello, strlen(hello), 0,
+               (const sockaddr*)&g_wan_relay_addr, sizeof(g_wan_relay_addr));
+        g_wan_relay_last_hello = now;
+    }
+}
+
+static void wan_relay_shutdown() {
+    g_wan_relay_running.store(false);
+    if (g_wan_relay_sock >= 0) {
+        close(g_wan_relay_sock);
+        g_wan_relay_sock = -1;
+        fprintf(stderr, "[wan-relay] Disconnected\n");
     }
 }
 
@@ -1111,6 +1185,88 @@ static std::string ws_handle(const std::string& msg) {
             id, (g_relay_sock >= 0 ? "true" : "false"),
             (g_relay_sock >= 0 ? kRelayPort : 0),
             g_relay_peers.size(), peers_json.c_str());
+    } else if (cmd == "dsp.list") {
+        // List all DSP plugins with their parameters and bypass state
+        std::string json = "[";
+        if (g_dsp_chain_ptr) {
+            auto names = g_dsp_chain_ptr->get_plugin_names();
+            for (size_t i = 0; i < names.size(); i++) {
+                auto* plugin = g_dsp_chain_ptr->get_plugin(names[i]);
+                bool bypassed = g_dsp_chain_ptr->is_bypassed(names[i]);
+                if (i > 0) json += ",";
+                json += "{\\\"name\\\":\\\"" + names[i] + "\\\","
+                      + "\\\"bypassed\\\":" + (bypassed ? "true" : "false") + ","
+                      + "\\\"params\\\":[";
+                if (plugin) {
+                    for (size_t p = 0; p < plugin->param_count(); p++) {
+                        if (p > 0) json += ",";
+                        json += "{\\\"name\\\":\\\"";
+                        json += plugin->param_name(p);
+                        json += "\\\",\\\"value\\\":";
+                        char vbuf[32];
+                        snprintf(vbuf, sizeof(vbuf), "%.4f", plugin->param_value(p));
+                        json += vbuf;
+                        json += "}";
+                    }
+                }
+                json += "]}";
+            }
+        }
+        json += "]";
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":true,\"data\":\"%s\"}", id, json.c_str());
+    } else if (cmd == "dsp.set") {
+        // Set DSP plugin parameter: {"command":"dsp.set","plugin":"EQ","param":"low_gain_db","value":3.0}
+        auto get_str = [&](const char* key) -> std::string {
+            std::string k = std::string("\"") + key + "\":\"";
+            auto p = msg.find(k);
+            if (p == std::string::npos) return "";
+            p += k.size();
+            auto e = msg.find('"', p);
+            return (e != std::string::npos) ? msg.substr(p, e - p) : "";
+        };
+        auto get_num = [&](const char* key) -> float {
+            std::string k = std::string("\"") + key + "\":";
+            auto p = msg.find(k);
+            if (p == std::string::npos) return 0.0f;
+            return std::strtof(msg.c_str() + p + k.size(), nullptr);
+        };
+        std::string plugin_name = get_str("plugin");
+        std::string param_name = get_str("param");
+        float value = get_num("value");
+        bool ok = false;
+        if (g_dsp_chain_ptr && !plugin_name.empty() && !param_name.empty()) {
+            auto* plugin = g_dsp_chain_ptr->get_plugin(plugin_name);
+            if (plugin) {
+                for (size_t p = 0; p < plugin->param_count(); p++) {
+                    if (param_name == plugin->param_name(p)) {
+                        plugin->set_param(p, value);
+                        ok = true;
+                        break;
+                    }
+                }
+            }
+        }
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":%s,\"data\":\"\"}", id, ok ? "true" : "false");
+    } else if (cmd == "dsp.bypass") {
+        // Toggle bypass: {"command":"dsp.bypass","plugin":"Compressor","bypassed":false}
+        auto get_str = [&](const char* key) -> std::string {
+            std::string k = std::string("\"") + key + "\":\"";
+            auto p = msg.find(k);
+            if (p == std::string::npos) return "";
+            p += k.size();
+            auto e = msg.find('"', p);
+            return (e != std::string::npos) ? msg.substr(p, e - p) : "";
+        };
+        std::string plugin_name = get_str("plugin");
+        bool bypassed = (msg.find("\"bypassed\":true") != std::string::npos);
+        bool ok = false;
+        if (g_dsp_chain_ptr && !plugin_name.empty()) {
+            ok = g_dsp_chain_ptr->set_bypass(plugin_name, bypassed);
+        }
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":%s,\"data\":\"\"}", id, ok ? "true" : "false");
     } else if (cmd == "latency") {
         // Calculate each stage latency in ms from frame counts
         float sr = (float)g_cfg_sample_rate;
@@ -1283,6 +1439,15 @@ struct DaemonConfig {
     uint16_t relay_port = 5099;
     bool relay_enabled = true; // auto-start relay on TX
 
+    // Codec: "pcm" (default) or "opus"
+    std::string codec = "pcm";
+
+    // WAN relay (forward TX to remote soluna-relay server)
+    std::string wan_relay_host;       // empty = disabled
+    uint16_t    wan_relay_port = 5100;
+    std::string wan_relay_group = "default";
+    std::string wan_relay_password;
+
     // HTTPS/TLS for WebSocket server
     bool https_enabled = false;
 
@@ -1325,6 +1490,7 @@ static void print_usage(const char* prog) {
         "  --port PORT       Listen port (RX mode, default: 5004)\n"
         "  --rate RATE       Sample rate (default: 48000)\n"
         "  --channels N      Channel count (default: 1)\n"
+        "  --codec pcm|opus  Audio codec (default: pcm)\n"
         "  --ultra-low       Ultra-low latency (~1ms, GbE only)\n"
         "  --low-latency     AES67-grade low latency (~2ms, wired LAN only)\n"
         "  --wifi-latency    WiFi optimized latency (~10ms, stable on WiFi)\n"
@@ -1334,6 +1500,9 @@ static void print_usage(const char* prog) {
         "  --key FILE        TLS/DTLS private key file (PEM)\n"
         "  --relay-port PORT Unicast relay port for P2P peers (default: 5099)\n"
         "  --no-relay        Disable unicast relay\n"
+        "  --wan-relay HOST:PORT  WAN relay server address (default port: 5100)\n"
+        "  --wan-group NAME  WAN relay group name (default: default)\n"
+        "  --wan-password PW WAN relay group password (optional)\n"
         "  --record-tx FILE  Record TX audio to WAV file (for comparison)\n"
         "  --record-dur SEC  Recording duration in seconds (default: 30)\n"
         "  --auto-tune       Enable mic-based auto buffer tuning (default: on)\n"
@@ -1379,6 +1548,19 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
             cfg.relay_port = static_cast<uint16_t>(std::stoi(argv[++i]));
         } else if (arg == "--no-relay") {
             cfg.relay_enabled = false;
+        } else if (arg == "--wan-relay" && i + 1 < argc) {
+            std::string hp = argv[++i];
+            auto colon = hp.rfind(':');
+            if (colon != std::string::npos) {
+                cfg.wan_relay_host = hp.substr(0, colon);
+                cfg.wan_relay_port = static_cast<uint16_t>(std::stoi(hp.substr(colon + 1)));
+            } else {
+                cfg.wan_relay_host = hp;
+            }
+        } else if (arg == "--wan-group" && i + 1 < argc) {
+            cfg.wan_relay_group = argv[++i];
+        } else if (arg == "--wan-password" && i + 1 < argc) {
+            cfg.wan_relay_password = argv[++i];
         } else if (arg == "--record-tx" && i + 1 < argc) {
             cfg.record_tx_path = argv[++i];
         } else if (arg == "--record-dur" && i + 1 < argc) {
@@ -1404,6 +1586,12 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
             cfg.sample_rate = static_cast<uint32_t>(std::stoi(argv[++i]));
         } else if (arg == "--channels" && i + 1 < argc) {
             cfg.channels = static_cast<uint32_t>(std::stoi(argv[++i]));
+        } else if (arg == "--codec" && i + 1 < argc) {
+            cfg.codec = argv[++i];
+            if (cfg.codec != "pcm" && cfg.codec != "opus") {
+                fprintf(stderr, "Unknown codec: %s (expected pcm or opus)\n", cfg.codec.c_str());
+                return false;
+            }
         } else if (arg == "--list-devices") {
             auto devices = soluna::pal::AudioDevice::enumerate();
             printf("Available audio devices:\n");
@@ -2152,6 +2340,12 @@ static int run_tx(DaemonConfig cfg) {
         }
     }
 
+    // ── Start WAN relay (forward TX to remote soluna-relay) ──
+    if (!cfg.wan_relay_host.empty()) {
+        wan_relay_init(cfg.wan_relay_host, cfg.wan_relay_port,
+                       cfg.wan_relay_group, cfg.wan_relay_password);
+    }
+
     // Apply latency profile
     const auto lp = get_latency_params(cfg.latency_profile);
     const uint32_t kFramesPerPacket = lp.frames_per_packet;
@@ -2165,6 +2359,21 @@ static int run_tx(DaemonConfig cfg) {
                 (float)kFramesPerPacket / cfg.sample_rate * 1000.0f,
                 lp.buf_target_ms, lp.mon_target_ms);
     }
+
+    // Opus encoder (TX)
+#ifdef SOLUNA_HAS_OPUS
+    std::unique_ptr<soluna::codec::OpusEncoder> opus_enc;
+    if (cfg.codec == "opus") {
+        soluna::codec::OpusEncoderConfig ocfg;
+        ocfg.sample_rate = cfg.sample_rate;
+        ocfg.channels = cfg.channels;
+        ocfg.bitrate = 128000;
+        ocfg.application = soluna::codec::OpusApplication::Audio;
+        ocfg.frame_size_samples = kFramesPerPacket;
+        opus_enc = std::make_unique<soluna::codec::OpusEncoder>(ocfg);
+        fprintf(stderr, "[tx] Opus encoder: %u kbps\n", ocfg.bitrate / 1000);
+    }
+#endif
 
     // PTP engine for clock synchronization (low-latency mode)
     std::unique_ptr<sync::PtpEngine> ptp;
@@ -2646,12 +2855,33 @@ static int run_tx(DaemonConfig cfg) {
             uint16_t seq_lo = static_cast<uint16_t>(sequence & 0xFFFF);
             uint16_t seq_hi = static_cast<uint16_t>((sequence >> 16) & 0xFFFF);
 
+            uint8_t payload_type = kPayloadTypePCM24;
+            const void* send_payload = audio_buf.data();
+            size_t send_payload_size = payload_size;
+
+#ifdef SOLUNA_HAS_OPUS
+            std::vector<uint8_t> opus_data;
+            if (opus_enc) {
+                std::vector<float> float_buf(kFramesPerPacket * cfg.channels);
+                for (size_t i = 0; i < float_buf.size(); i++) {
+                    float_buf[i] = static_cast<float>(audio_buf[i]) / 8388608.0f;
+                }
+                auto result = opus_enc->encode(float_buf.data(), kFramesPerPacket);
+                if (result.success && !result.data.empty()) {
+                    opus_data = std::move(result.data);
+                    payload_type = kPayloadTypeOpus;
+                    send_payload = opus_data.data();
+                    send_payload_size = opus_data.size();
+                }
+            }
+#endif
+
             pkt_size = ostp_build_packet(
                 packet_buf.data(), packet_buf.size(),
                 cfg.ssrc, seq_lo, rtp_timestamp,
-                kPayloadTypePCM24,
+                payload_type,
                 cfg.stream_id, seq_hi, media_ts,
-                audio_buf.data(), payload_size
+                send_payload, send_payload_size
             );
         }
 
@@ -2660,6 +2890,9 @@ static int run_tx(DaemonConfig cfg) {
 
             // Forward to unicast relay peers (P2P)
             relay_forward(packet_buf.data(), pkt_size);
+
+            // Forward to WAN relay server
+            wan_relay_forward(packet_buf.data(), pkt_size);
 
             if (wifi_mode) {
                 // ── Duplicate send (toggleable via Web UI) ──
@@ -2747,6 +2980,9 @@ static int run_tx(DaemonConfig cfg) {
     if (relay_thread.joinable()) relay_thread.join();
     if (g_relay_sock >= 0) { close(g_relay_sock); g_relay_sock = -1; }
 
+    // Stop WAN relay
+    wan_relay_shutdown();
+
     return 0;
 }
 
@@ -2787,6 +3023,22 @@ static int run_rx(DaemonConfig cfg) {
     const uint32_t kRefillThreshold = lp.refill_threshold;
     RingBuffer ring(kFramesPerPacket * kRingPackets, frame_size);
     std::atomic<bool> prefilled{false};
+
+    // Opus decoder (RX) — lazily initialized on first Opus packet
+#ifdef SOLUNA_HAS_OPUS
+    std::unique_ptr<soluna::codec::OpusDecoder> opus_dec;
+#endif
+
+    // DSP chain (compressor, EQ, reverb — all bypassed by default)
+    soluna::pipeline::DspChain dsp_chain;
+    dsp_chain.init(cfg.sample_rate, cfg.channels, kFramesPerPacket);
+    dsp_chain.add_plugin("Compressor", soluna::pipeline::create_compressor());
+    dsp_chain.add_plugin("EQ", soluna::pipeline::create_eq());
+    dsp_chain.add_plugin("Reverb", soluna::pipeline::create_reverb());
+    dsp_chain.set_bypass("Compressor", true);
+    dsp_chain.set_bypass("EQ", true);
+    dsp_chain.set_bypass("Reverb", true);
+    g_dsp_chain_ptr = &dsp_chain;
 
     // PTP engine + PlayoutBuffer (low-latency wired only)
     std::unique_ptr<sync::PtpEngine> ptp;
@@ -3108,6 +3360,11 @@ static int run_rx(DaemonConfig cfg) {
                 ? fade_in_remaining - frame_count : 0;
         }
 
+        // ── DSP chain (compressor → EQ → reverb) ─────────────────────
+        if (g_dsp_chain_ptr && consecutive_underruns == 0) {
+            g_dsp_chain_ptr->process(buffer, frame_count);
+        }
+
         // ── Volume / mute + soft limiter ─────────────────────────────
         // tanh soft limiter: prevents hard clipping when gain > 1.0
         // Knee at ±0.85: below = linear (transparent), above = tanh curve
@@ -3349,7 +3606,29 @@ static int run_rx(DaemonConfig cfg) {
                 prev_payload.clear();
                 ostp_packets++;
             } else {
-                // Valid packet — fill gaps BEFORE writing (correct audio ordering)
+                // Valid packet — decode payload to PCM
+#ifdef SOLUNA_HAS_OPUS
+                if (rtp.pt == kPayloadTypeOpus) {
+                    if (!opus_dec) {
+                        soluna::codec::OpusDecoderConfig dcfg;
+                        dcfg.sample_rate = cfg.sample_rate;
+                        dcfg.channels = cfg.channels;
+                        opus_dec = std::make_unique<soluna::codec::OpusDecoder>(dcfg);
+                        fprintf(stderr, "[rx] Opus decoder initialized\n");
+                    }
+                    auto result = opus_dec->decode(payload, payload_size, kFramesPerPacket);
+                    if (result.success) {
+                        for (size_t i = 0; i < result.frames_decoded * cfg.channels; i++) {
+                            audio_buf[i] = static_cast<int32_t>(result.samples[i] * 8388608.0f);
+                        }
+                        payload = reinterpret_cast<const uint8_t*>(audio_buf.data());
+                        payload_size = result.frames_decoded * frame_size;
+                    } else {
+                        continue;
+                    }
+                }
+#endif
+                // Fill gaps BEFORE writing (correct audio ordering)
                 frames = payload_size / frame_size;
 
                 // ── Gap check + PLC: fill missing packets before current ──
@@ -3562,6 +3841,7 @@ static int run_rx(DaemonConfig cfg) {
         static_cast<unsigned long>(sequence_errors),
         static_cast<unsigned long>(duplicate_drops),
         static_cast<unsigned long>(fec_recoveries));
+    g_dsp_chain_ptr = nullptr;
     return 0;
 }
 

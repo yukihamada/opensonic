@@ -1,7 +1,7 @@
 option(SOLUNA_BUILD_TESTS "Build unit tests" ON)
 option(SOLUNA_BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(SOLUNA_BUILD_STRESS_TESTS "Build stress tests" OFF)
-option(SOLUNA_ENABLE_OPUS "Enable Opus codec for WiFi" OFF)
+option(SOLUNA_ENABLE_OPUS "Enable Opus codec for WiFi" ON)
 option(SOLUNA_ENABLE_AAC "Enable AAC codec (requires FDK-AAC)" OFF)
 option(SOLUNA_ENABLE_FLAC "Enable FLAC codec (requires libFLAC)" OFF)
 option(SOLUNA_ENABLE_AES67 "Enable AES67 compatibility mode" ON)

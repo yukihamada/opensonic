@@ -95,6 +95,9 @@ soluna-rx --output pipe | aplay -f S16_LE -r 48000 -c 2
 | **手動遅延オフセット** | デバイスごと ±50ms の微調整スライダー（永続化あり） |
 | **ルーティングプリセット** | デバイスグループを名前付きで保存・ワンタップ切替・削除 |
 | **Mac P2P リレー** | Bonjour + UDP で Mac 間パケット転送。マルチキャスト不達時も再生可 |
+| **Opus コーデック** | Opus 圧縮で帯域を 1/10 に削減（48kHz ステレオ: 128kbps）|
+| **DSP エフェクト** | コンプレッサー・3バンド EQ・リバーブを内蔵。WebSocket で操作 |
+| **WAN リレーサーバー** | インターネット越しにグループ接続。パスワード保護付き |
 | パケットロス補間 (PLC) | WSOLA ベースの PLC で最大 2 パケット欠落を補完 |
 | FEC (前方誤り訂正) | XOR パリティ (k=4) でパケットロス耐性を向上 |
 | NACK 再送要求 | 受信側からの再送要求で欠落パケットを回復 |
@@ -231,6 +234,67 @@ web/              Web UI（index.html / app.js / style.css / guide.html）
 
 ---
 
+## Opus コーデック
+
+PCM（非圧縮）とOpus（圧縮）を選択可能。WiFi/WAN環境では帯域削減に有効。
+
+```bash
+# Opus で送信（デフォルトは PCM）
+solunad --tx --device soluna --codec opus
+
+# PCM で送信（従来どおり）
+solunad --tx --device soluna --codec pcm
+```
+
+| 項目 | PCM | Opus |
+|------|-----|------|
+| 帯域（48kHz/2ch） | 3.07 Mbps | 128 kbps |
+| 遅延 | 2ms | +5ms（エンコード） |
+| 音質 | ロスレス | 透過品質 |
+
+---
+
+## DSP エフェクト
+
+コンプレッサー・3バンドパラメトリックEQ・リバーブを内蔵。デフォルトは全バイパス。WebSocket API で制御。
+
+```json
+// エフェクト一覧取得
+{"command":"dsp.list"}
+
+// EQ の Low バンドゲインを +6dB に設定
+{"command":"dsp.set","plugin":"EQ","param":"low_gain_db","value":6.0}
+
+// コンプレッサーを有効化
+{"command":"dsp.bypass","plugin":"Compressor","bypassed":false}
+```
+
+| プラグイン | パラメータ |
+|-----------|-----------|
+| Compressor | threshold_db, ratio, attack_ms, release_ms, makeup_db |
+| EQ | low_gain_db, low_freq_hz, low_q, mid_gain_db, mid_freq_hz, mid_q, high_gain_db, high_freq_hz, high_q |
+| Reverb | mix, decay, pre_delay_ms |
+
+---
+
+## WAN リレー（インターネット越し配信）
+
+LAN 外のリスナーにもリレーサーバー経由で配信可能。
+
+```bash
+# リレーサーバーを起動（VPS やクラウドで）
+soluna-relay --port 5100
+
+# TX 側（solunad）→ リレーに転送
+solunad --tx --device soluna --wan-relay <relay_host>:5100 \
+  --wan-group myroom --wan-password secret123
+
+# RX 側（soluna-rx）→ リレーから受信
+soluna-rx --relay <relay_host>:5100 --group-name myroom --group-password secret123
+```
+
+---
+
 ## ビルドオプション
 
 ```bash
@@ -242,7 +306,7 @@ cmake -B build \
 | オプション | デフォルト | 説明 |
 |-----------|----------|------|
 | `SOLUNA_BUILD_TESTS` | ON | ユニット・統合テストをビルド |
-| `SOLUNA_ENABLE_OPUS` | OFF | Opus コーデック有効化 |
+| `SOLUNA_ENABLE_OPUS` | ON | Opus コーデック有効化 |
 | `SOLUNA_ENABLE_AES67` | OFF | AES67 互換モード |
 | `SOLUNA_ENABLE_DTLS` | OFF | DTLS 暗号化 |
 

@@ -76,6 +76,10 @@ add_library(soluna_core STATIC
     src/pipeline/playout_buffer.cpp
     src/pipeline/dsp_plugin.cpp
     src/pipeline/dsp_chain.cpp
+    # Built-in DSP plugins
+    src/plugins/compressor_plugin.cpp
+    src/plugins/eq_plugin.cpp
+    src/plugins/reverb_plugin.cpp
     # Control
     src/control/discovery.cpp
     src/control/session_manager.cpp
@@ -201,6 +205,19 @@ if(SOLUNA_ENABLE_DTLS OR SOLUNA_ENABLE_TLS)
     endif()
 endif()
 
+if(SOLUNA_ENABLE_OPUS)
+    find_library(OPUS_LIB opus)
+    find_path(OPUS_INCLUDE_DIR opus/opus.h)
+    if(OPUS_LIB AND OPUS_INCLUDE_DIR)
+        target_link_libraries(soluna_core PUBLIC ${OPUS_LIB})
+        target_include_directories(soluna_core PUBLIC ${OPUS_INCLUDE_DIR})
+        target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_OPUS=1)
+    else()
+        message(WARNING "libopus not found, Opus support disabled")
+        set(SOLUNA_ENABLE_OPUS OFF)
+    endif()
+endif()
+
 if(SOLUNA_ENABLE_AAC)
     find_library(FDK_AAC_LIB fdk-aac)
     if(FDK_AAC_LIB)
@@ -238,6 +255,16 @@ if(OS_LINUX)
     target_link_libraries(soluna-rx PRIVATE asound pthread)
     target_compile_options(soluna-rx PRIVATE -Wall -Wextra $<$<CONFIG:Release>:-O2>)
     install(TARGETS soluna-rx RUNTIME DESTINATION bin)
+endif()
+
+# WAN relay server (standalone, no soluna_core dependency)
+if(NOT OS_IOS AND NOT OS_ANDROID)
+    add_executable(soluna-relay apps/relay/main.cpp)
+    if(NOT OS_WINDOWS)
+        target_link_libraries(soluna-relay PRIVATE pthread)
+    endif()
+    target_compile_options(soluna-relay PRIVATE -Wall -Wextra $<$<CONFIG:Release>:-O2>)
+    install(TARGETS soluna-relay RUNTIME DESTINATION bin)
 endif()
 
 # Soluna CoreAudio virtual device plugin (macOS only)

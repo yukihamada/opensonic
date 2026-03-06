@@ -12,6 +12,9 @@
  *   --group <ip>      Multicast group (default: 239.69.0.1)
  *   --port <n>        UDP port (default: 5004)
  *   --peer <host:port> P2P unicast mode (connect to solunad relay)
+ *   --relay <host:port> WAN relay mode (connect to soluna-relay server)
+ *   --group-name <name> Group name for WAN relay (default: "default")
+ *   --group-password <pw> Group password for WAN relay (optional)
  *   --channels <n>    Channel count (default: 2)
  *   --output alsa     Output to ALSA default device
  *   --output pipe     Output raw S16LE to stdout
@@ -281,6 +284,10 @@ int main(int argc, char** argv) {
     uint32_t    metrics_interval = 5;
     std::string peer_host;       // P2P mode: solunad relay host
     uint16_t    peer_port = 5099; // P2P mode: solunad relay port
+    std::string relay_host;      // WAN relay mode: relay server host
+    uint16_t    relay_port = 5100; // WAN relay mode: relay server port
+    std::string relay_group = "default"; // WAN relay: group name
+    std::string relay_password;          // WAN relay: group password
 
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
@@ -303,6 +310,18 @@ int main(int argc, char** argv) {
                 peer_host = hp;
             }
         }
+        else if (a == "--relay") {
+            std::string hp = next();
+            auto colon = hp.rfind(':');
+            if (colon != std::string::npos) {
+                relay_host = hp.substr(0, colon);
+                relay_port = (uint16_t)atoi(hp.substr(colon + 1).c_str());
+            } else {
+                relay_host = hp;
+            }
+        }
+        else if (a == "--group-name")     relay_group = next();
+        else if (a == "--group-password") relay_password = next();
         else if (a == "--output") {
             std::string mode = next();
             if (mode == "alsa") {
@@ -320,6 +339,9 @@ int main(int argc, char** argv) {
                 "  --group <ip>           Multicast group (default: 239.69.0.1)\n"
                 "  --port <n>             UDP port        (default: 5004)\n"
                 "  --peer <host:port>     P2P unicast via solunad relay (default port: 5099)\n"
+                "  --relay <host:port>    WAN relay mode via soluna-relay (default port: 5100)\n"
+                "  --group-name <name>    Group name for WAN relay (default: default)\n"
+                "  --group-password <pw>  Group password for WAN relay (optional)\n"
                 "  --channels <n>         Channels        (default: 2)\n"
                 "  --output alsa          Output to ALSA  (default)\n"
                 "  --output pipe          Output raw S16LE to stdout\n"
@@ -333,9 +355,11 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ── Open socket: P2P unicast or multicast ───────────────────────────────
+    // ── Open socket: WAN relay, P2P unicast, or multicast ────────────────
     bool peer_mode = !peer_host.empty();
+    bool relay_mode = !relay_host.empty();
     sockaddr_in peer_addr{};
+    sockaddr_in relay_addr{};
 
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) { perror("socket"); return 1; }
@@ -343,7 +367,30 @@ int main(int argc, char** argv) {
     int reuse = 1;
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
-    if (peer_mode) {
+    if (relay_mode) {
+        // WAN relay mode: bind to any port, send JOIN to relay server
+        sockaddr_in bind_addr{};
+        bind_addr.sin_family = AF_INET;
+        bind_addr.sin_addr.s_addr = INADDR_ANY;
+        bind_addr.sin_port = 0;
+        if (bind(sock, (sockaddr*)&bind_addr, sizeof(bind_addr)) < 0) {
+            perror("bind"); close(sock); return 1;
+        }
+        relay_addr.sin_family = AF_INET;
+        relay_addr.sin_port = htons(relay_port);
+        if (inet_pton(AF_INET, relay_host.c_str(), &relay_addr.sin_addr) <= 0) {
+            fprintf(stderr, "[rx] Invalid relay host: %s\n", relay_host.c_str());
+            close(sock); return 1;
+        }
+        // Send JOIN message
+        std::string join_msg = "JOIN:" + relay_group;
+        if (!relay_password.empty()) join_msg += ":" + relay_password;
+        join_msg += "\n";
+        sendto(sock, join_msg.c_str(), join_msg.size(), 0,
+               (sockaddr*)&relay_addr, sizeof(relay_addr));
+        fprintf(stderr, "[rx] WAN relay mode: server=%s:%u group='%s'\n",
+                relay_host.c_str(), relay_port, relay_group.c_str());
+    } else if (peer_mode) {
         // P2P mode: bind to any port, resolve relay host
         sockaddr_in bind_addr{};
         bind_addr.sin_family = AF_INET;
@@ -420,7 +467,11 @@ int main(int argc, char** argv) {
     QualityMetrics metrics;
     double last_metrics_time = now_sec();
 
-    if (peer_mode) {
+    if (relay_mode) {
+        fprintf(stderr, "[rx] WAN relay: %s:%u group='%s'%s\n",
+                relay_host.c_str(), relay_port, relay_group.c_str(),
+                metrics_enabled ? " [metrics ON]" : "");
+    } else if (peer_mode) {
         fprintf(stderr, "[rx] P2P relay: %s:%u%s\n", peer_host.c_str(), peer_port,
                 metrics_enabled ? " [metrics ON]" : "");
     } else {
@@ -436,8 +487,16 @@ int main(int argc, char** argv) {
     double last_hello_time = now_sec(); // P2P heartbeat timer
 
     while (g_running) {
-        // P2P heartbeat: send "hello" every 5s to keep relay registration alive
-        if (peer_mode) {
+        // Heartbeat: send keepalive every 5s
+        if (relay_mode) {
+            double now = now_sec();
+            if (now - last_hello_time >= 5.0) {
+                const char hello[] = "HELLO\n";
+                sendto(sock, hello, strlen(hello), 0,
+                       (sockaddr*)&relay_addr, sizeof(relay_addr));
+                last_hello_time = now;
+            }
+        } else if (peer_mode) {
             double now = now_sec();
             if (now - last_hello_time >= 5.0) {
                 const char hello[] = "hello";
