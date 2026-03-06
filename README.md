@@ -13,9 +13,38 @@ iPhone/RPi  ────┘                                    ├→ P2P ユニ
 
 ---
 
-## 5 分で動かす（Mac TX）
+## ワンコマンドインストール（Mac）
 
-### 1. ビルド
+```bash
+# クローン済みの場合
+bash scripts/install-mac.sh
+
+# ネットから直接インストール
+curl -fsSL https://raw.githubusercontent.com/yukihamada/opensonic/master/scripts/install-mac.sh | bash
+```
+
+これだけで以下が自動セットアップされます:
+1. **solunad** ビルド＆インストール (`~/.local/bin/`)
+2. **Soluna.driver** 仮想オーディオデバイス (`/Library/Audio/Plug-Ins/HAL/`)
+3. **LaunchAgent** ログイン時自動起動 (`~/Library/LaunchAgents/`)
+4. **coreaudiod** 再起動
+
+インストール後:
+- **システム設定 → サウンド → 出力 → Soluna** を選択
+- **http://localhost:8400** でダッシュボードを開く
+
+### アンインストール
+
+```bash
+bash scripts/uninstall-mac.sh
+```
+
+### 手動セットアップ
+
+<details>
+<summary>ステップごとに手動で行う場合</summary>
+
+#### 1. ビルド
 
 ```bash
 git clone https://github.com/yukihamada/opensonic.git
@@ -24,7 +53,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 ```
 
-### 2. ドライバをインストール
+#### 2. ドライバをインストール
 
 ```bash
 bash apps/plugin/install.sh
@@ -32,11 +61,11 @@ bash apps/plugin/install.sh
 
 > **初回のみ** — システム設定 → プライバシーとセキュリティ で「許可」をクリック → `sudo killall coreaudiod`
 
-### 3. 出力先を変える
+#### 3. 出力先を変える
 
 **システム設定 → サウンド → 出力 → Soluna** を選択
 
-### 4. デーモンを起動
+#### 4. デーモンを起動
 
 ```bash
 # テスト（1 回だけ）
@@ -45,6 +74,8 @@ bash apps/plugin/install.sh
 # Mac ログイン時に自動起動（推奨）
 bash apps/daemon/install-service.sh
 ```
+
+</details>
 
 起動したら **http://localhost:8400** でダッシュボードを開けます。
 
