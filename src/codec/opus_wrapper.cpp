@@ -191,6 +191,43 @@ OpusDecodeResult OpusDecoder::decode(const void* input, size_t size,
     return result;
 }
 
+OpusDecodeResult OpusDecoder::decode_fec(const void* input, size_t size,
+                                          size_t frame_count) {
+    OpusDecodeResult result;
+
+    if (!initialized_ || !input || size == 0 || frame_count == 0) {
+        return result;
+    }
+
+#ifdef SOLUNA_HAS_OPUS
+    result.samples.resize(frame_count * config_.channels);
+    int decoded = opus_decode_float(
+        impl_->decoder,
+        static_cast<const unsigned char*>(input),
+        static_cast<opus_int32>(size),
+        result.samples.data(),
+        static_cast<int>(frame_count),
+        1 /* FEC decode: recover previous frame from this packet's FEC data */);
+
+    if (decoded > 0) {
+        result.frames_decoded = static_cast<size_t>(decoded);
+        result.samples.resize(result.frames_decoded * config_.channels);
+        result.success = true;
+    }
+#else
+    // Stub: copy raw float data back (no FEC in stub mode)
+    size_t total_samples = frame_count * config_.channels;
+    size_t expected_size = total_samples * sizeof(float);
+    result.samples.resize(total_samples);
+    size_t copy_size = std::min(size, expected_size);
+    std::memcpy(result.samples.data(), input, copy_size);
+    result.frames_decoded = frame_count;
+    result.success = true;
+#endif
+
+    return result;
+}
+
 OpusDecodeResult OpusDecoder::decode_plc(size_t frame_count) {
     OpusDecodeResult result;
 

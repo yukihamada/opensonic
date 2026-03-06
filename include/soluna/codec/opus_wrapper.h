@@ -111,6 +111,14 @@ public:
     OpusDecodeResult decode(const void* input, size_t size, size_t frame_count);
 
     /**
+     * Decode with FEC recovery from the *current* packet.
+     * When a previous packet was lost, call this with the current
+     * (next) packet's data to recover the lost frame using Opus FEC.
+     * Then call decode() normally for the current packet.
+     */
+    OpusDecodeResult decode_fec(const void* input, size_t size, size_t frame_count);
+
+    /**
      * Decode with packet loss concealment (no input data).
      * Generates concealment audio for frame_count frames.
      */

@@ -1,27 +1,27 @@
 #pragma once
 
 /**
- * Adaptive Jitter Buffer — WiFi audio buffering
+ * Lock-free Jitter Buffer — WiFi audio buffering
  *
  * Reorders and buffers incoming packets to absorb network jitter.
- * Dynamically adjusts depth based on observed jitter statistics.
+ * Uses a fixed-size circular array indexed by sequence number — no heap
+ * allocations, no mutexes on the audio path.
  *
  * SPDX-License-Identifier: MIT
  */
 
 #include <cstdint>
 #include <cstddef>
-#include <map>
-#include <mutex>
-#include <vector>
-#include <functional>
+#include <atomic>
+#include <cstring>
 
 namespace soluna::wifi {
 
 struct JitterBufferConfig {
     uint32_t sample_rate = 48000;
     uint32_t channels = 1;
-    uint32_t frame_size = 4;          // bytes per sample (float32)
+    uint32_t frame_size = 4;          // bytes per sample (int32_t)
+    uint32_t max_packet_payload = 4096; // max payload bytes per packet
 
     // Buffer depth range in milliseconds
     double min_depth_ms = 2.0;
@@ -48,6 +48,15 @@ struct JitterBufferStats {
     double packet_loss_rate = 0.0;     // 0.0-1.0
 };
 
+/**
+ * Lock-free jitter buffer using a fixed-size circular slot array.
+ *
+ * Slots are indexed by (sequence % capacity). Each slot has an atomic
+ * "occupied" flag. The writer (network thread) sets occupied=true after
+ * writing; the reader (audio thread) reads the slot and sets occupied=false.
+ *
+ * No mutex, no heap allocation after construction.
+ */
 class JitterBuffer {
 public:
     explicit JitterBuffer(const JitterBufferConfig& config = {});
@@ -57,19 +66,15 @@ public:
     JitterBuffer& operator=(const JitterBuffer&) = delete;
 
     /**
-     * Push a received packet into the buffer.
-     * sequence: RTP sequence number (for ordering)
-     * timestamp_ns: arrival time in nanoseconds (monotonic)
-     * data: audio payload (float samples)
-     * data_size: payload size in bytes
+     * Push a received packet into the buffer (network thread).
+     * Lock-free. No heap allocation.
      */
     void push(uint16_t sequence, int64_t timestamp_ns,
               const void* data, size_t data_size);
 
     /**
-     * Pop the next packet for playout.
-     * Returns number of bytes copied, or 0 if buffer is empty/not ready.
-     * out_buf must be large enough for one packet.
+     * Pop the next packet for playout (audio thread).
+     * Lock-free. Returns bytes copied, or 0 if not ready.
      */
     size_t pop(void* out_buf, size_t buf_size);
 
@@ -81,50 +86,49 @@ public:
     /** Reset the buffer. */
     void reset();
 
-    /** Get current statistics. */
+    /** Get current statistics (read-only snapshot). */
     JitterBufferStats stats() const;
 
     /** Get current target depth in milliseconds. */
     double target_depth_ms() const;
 
 private:
-    struct Packet {
-        uint16_t sequence;
-        int64_t arrival_ns;
-        std::vector<uint8_t> data;
+    static constexpr size_t kSlotCount = 512; // power of 2, ~1 second at 2ms packets
+    static constexpr size_t kSlotMask = kSlotCount - 1;
+
+    struct Slot {
+        alignas(64) std::atomic<bool> occupied{false};
+        uint16_t sequence = 0;
+        size_t   data_size = 0;
+        uint8_t  data[4096]; // fixed inline storage — no heap alloc
     };
 
     JitterBufferConfig config_;
-    mutable std::mutex mutex_;
+    Slot slots_[kSlotCount];
 
-    std::map<uint16_t, Packet> packets_;
+    // Reader state (audio thread only)
     uint16_t next_sequence_ = 0;
     bool started_ = false;
 
-    // Timing
-    int64_t first_arrival_ns_ = 0;
-    int64_t last_arrival_ns_ = 0;
-
     // Adaptive depth
-    double target_depth_ms_;
+    std::atomic<double> target_depth_ms_;
+
+    // Jitter estimation (writer thread only)
     double jitter_estimate_ms_ = 0.0;
     double max_jitter_ms_ = 0.0;
-
-    // Statistics
-    uint64_t total_received_ = 0;
-    uint64_t total_played_ = 0;
-    uint64_t late_drops_ = 0;
-    uint64_t overflow_drops_ = 0;
-    uint64_t underruns_ = 0;
-    uint64_t total_expected_ = 0;
-    uint64_t total_lost_ = 0;
-
-    // Jitter calculation
     int64_t prev_arrival_ns_ = 0;
-    int64_t prev_transit_ns_ = 0;
+
+    // Atomic statistics (updated by respective threads)
+    std::atomic<uint64_t> total_received_{0};
+    std::atomic<uint64_t> total_played_{0};
+    std::atomic<uint64_t> late_drops_{0};
+    std::atomic<uint64_t> overflow_drops_{0};
+    std::atomic<uint64_t> underruns_{0};
+    std::atomic<uint64_t> total_expected_{0};
+    std::atomic<uint64_t> total_lost_{0};
+    std::atomic<uint32_t> occupancy_{0}; // approximate
 
     void adapt_depth();
-    bool is_too_old(uint16_t seq) const;
     static int16_t seq_diff(uint16_t a, uint16_t b);
 };
 

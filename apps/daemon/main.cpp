@@ -20,6 +20,7 @@
 #include <soluna/pipeline/playout_buffer.h>
 #include <soluna/pipeline/pipeline.h>
 #include <soluna/sync/ptp_engine.h>
+#include <soluna/sync/drift_dll.h>
 #include <soluna/transport/ostp.h>
 #include <soluna/transport/packet_scheduler.h>
 #include <soluna/transport/transport_manager.h>
@@ -565,7 +566,7 @@ static void wan_relay_shutdown() {
 // ── Audio repair (declicker + crossfade) ─────────────────────────────────────
 static std::atomic<uint64_t> g_repair_clicks{0};    // total clicks repaired
 static std::atomic<uint64_t> g_repair_fades{0};     // total crossfades applied
-static std::atomic<bool>     g_repair_enabled{true}; // enable/disable repair
+static std::atomic<bool>     g_repair_enabled{false}; // enable/disable repair (OFF by default — prevents false positive transient destruction)
 
 // ── Noise tuning parameters (adjustable via WS) ─────────────────────────────
 static std::atomic<float>    g_noise_sigma{6.0f};       // click detection: N× RMS
@@ -2493,8 +2494,11 @@ static int run_tx(DaemonConfig cfg) {
         ocfg.bitrate = 128000;
         ocfg.application = soluna::codec::OpusApplication::Audio;
         ocfg.frame_size_samples = kFramesPerPacket;
+        ocfg.use_fec = true;             // Opus in-band FEC for packet loss resilience
+        ocfg.packet_loss_pct = 5;        // hint: expect ~5% loss on WiFi
         opus_enc = std::make_unique<soluna::codec::OpusEncoder>(ocfg);
-        fprintf(stderr, "[tx] Opus encoder: %u kbps\n", ocfg.bitrate / 1000);
+        fprintf(stderr, "[tx] Opus encoder: %u kbps, FEC=on, loss_hint=%d%%\n",
+                ocfg.bitrate / 1000, ocfg.packet_loss_pct);
     }
 #endif
 
@@ -3338,36 +3342,65 @@ static int run_rx(DaemonConfig cfg) {
         if (target_frames < static_cast<size_t>(frame_count) * 3)
             target_frames = static_cast<size_t>(frame_count) * 3;
 
-        // ── Emergency overflow drain ─────────────────────────────────
-        // When ring fills beyond 75% of capacity, WiFi bursts have
-        // accumulated faster than ASRC can compensate. Discard frames
-        // to target+20% immediately. A brief discontinuity is far
-        // better than minutes of garbled audio at 65536/65536.
+        // ── Overflow: bias ASRC to gradually drain (no hard discard) ──
+        // Instead of discarding frames (which causes glitches), we
+        // let the ASRC PI controller handle it naturally. The PI
+        // controller will read extra frames per callback to bring
+        // the buffer back to target. Only do an emergency drain if
+        // the ring is critically full (>95%) to prevent total stall.
         size_t cap = ring.capacity();
-        if (avail > cap * 3 / 4) {
-            size_t drain_to = target_frames + target_frames / 5;
-            if (drain_to < static_cast<size_t>(frame_count) * 4)
-                drain_to = static_cast<size_t>(frame_count) * 4;
+        if (avail > cap * 19 / 20) {
+            // Critical: ring about to wrap — discard to 50% to prevent data loss
+            size_t drain_to = cap / 2;
             if (avail > drain_to) {
                 ring.discard(avail - drain_to);
                 avail = ring.available_read();
             }
         }
 
-        // ── ASRC: PI controller ──────────────────────────────────────
-        // Proportional-Integral control keeps ring buffer near target.
-        // Dead zone ±5% of target: ignores tiny jitter, avoids pitch wobble.
-        // P-term: immediate proportional correction for deviations.
-        // I-term: slow integral corrects steady-state clock drift (~ppm).
-        // Max ±4 frames/callback (±0.8% pitch at 480 frames) — inaudible.
-        static double asrc_drift = 0.0;
-        static double asrc_integral = 0.0;
+        // ── ASRC: Adriaensen DLL + buffer-level PI ────────────────────
+        // Two-layer clock drift compensation:
+        //
+        // Layer 1: DLL (Delay-Locked Loop) — Adriaensen 2005
+        //   Estimates the true ratio between TX and RX clocks from
+        //   callback timestamps. Very narrow bandwidth (0.01 Hz) so
+        //   the correction is smooth and inaudible. Handles steady-state
+        //   clock drift (typically ±50 ppm).
+        //
+        // Layer 2: Buffer-level PI (very gentle)
+        //   Corrects transient buffer excursions (WiFi jitter bursts)
+        //   that the DLL can't handle because they're not clock drift.
+        //   Much gentler than the old PI (Kp=0.01) — the DLL does the
+        //   heavy lifting.
+        //
+        // Max ±4 frames/callback (±0.8% pitch at 480 frames).
+        static soluna::sync::DriftDLL drift_dll;
+        static bool dll_inited = false;
+        static double asrc_frac = 0.0;  // fractional frame accumulator
+
+        if (!dll_inited) {
+            drift_dll.init(static_cast<double>(cfg.sample_rate),
+                          frame_count, 0.01);  // 0.01 Hz bandwidth
+            dll_inited = true;
+        }
+
+        // Get monotonic time for DLL
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        double now_sec = static_cast<double>(ts.tv_sec)
+                       + static_cast<double>(ts.tv_nsec) * 1e-9;
+        double dll_ratio = drift_dll.update(now_sec);
+
         size_t want = frame_count;
         if (avail >= static_cast<size_t>(frame_count) && target_frames > 0) {
+            // DLL-based drift correction (smooth, handles steady-state)
+            double drift_adj = (dll_ratio - 1.0) * static_cast<double>(frame_count);
+
+            // Gentle buffer-level PI for transient excursions
             double error = static_cast<double>(avail) - static_cast<double>(target_frames);
             double norm_error = error / static_cast<double>(target_frames);
 
-            // Dead zone: ±5% of target → no correction (absorbs minor jitter)
+            // Dead zone: ±5% of target
             constexpr double kDeadZone = 0.05;
             if (norm_error > -kDeadZone && norm_error < kDeadZone)
                 norm_error = 0.0;
@@ -3376,32 +3409,28 @@ static int run_rx(DaemonConfig cfg) {
             else
                 norm_error += kDeadZone;
 
-            // PI gains: Kp for responsiveness, Ki for clock drift
-            constexpr double kP = 0.3;   // proportional: 30% of normalized error
-            constexpr double kI = 0.002; // integral: slow accumulation for drift
+            // Very gentle PI (the DLL handles most of the work)
+            constexpr double kP = 0.01;
+            double buf_adj = norm_error * kP;
 
-            asrc_integral += norm_error * kI;
-            // Clamp integral to prevent windup (max ±2 frames worth)
-            constexpr double kIMax = 2.0;
-            if (asrc_integral >  kIMax) asrc_integral =  kIMax;
-            if (asrc_integral < -kIMax) asrc_integral = -kIMax;
+            // Combine DLL drift + buffer PI
+            asrc_frac += drift_adj + buf_adj;
 
-            double correction = norm_error * kP + asrc_integral;
+            // Clamp total adjustment
+            if (asrc_frac < -4.0) asrc_frac = -4.0;
+            if (asrc_frac >  4.0) asrc_frac =  4.0;
 
-            asrc_drift += correction;
-            if (asrc_drift < -4.0) asrc_drift = -4.0;
-            if (asrc_drift >  4.0) asrc_drift =  4.0;
-
-            if (asrc_drift <= -1.0) {
-                int adj = static_cast<int>(std::floor(asrc_drift));
+            // Extract integer frame adjustment
+            if (asrc_frac <= -1.0) {
+                int adj = static_cast<int>(std::floor(asrc_frac));
                 if (adj < -4) adj = -4;
                 want = static_cast<size_t>(std::max(1, static_cast<int>(frame_count) + adj));
-                asrc_drift -= adj;
-            } else if (asrc_drift >= 1.0) {
-                int adj = static_cast<int>(std::ceil(asrc_drift));
+                asrc_frac -= adj;
+            } else if (asrc_frac >= 1.0) {
+                int adj = static_cast<int>(std::ceil(asrc_frac));
                 if (adj > 4) adj = 4;
                 want = static_cast<size_t>(static_cast<int>(frame_count) + adj);
-                asrc_drift -= adj;
+                asrc_frac -= adj;
             }
         }
 
@@ -3729,18 +3758,35 @@ static int run_rx(DaemonConfig cfg) {
             }
 
             if (parse_rc == -2) {
-                // CRC mismatch — payload corrupted, apply WSOLA PLC
+                // CRC mismatch — payload corrupted, apply PLC
                 g_crc_errors.fetch_add(1, std::memory_order_relaxed);
                 g_lost_packets.fetch_add(1, std::memory_order_relaxed);
                 size_t plc_frames = kFramesPerPacket;
-                if (!prev_payload.empty() && prev_payload.size() >= plc_frames * cfg.channels) {
+                bool crc_plc_done = false;
+#ifdef SOLUNA_HAS_OPUS
+                // Prefer Opus PLC for CRC failures too
+                if (opus_dec) {
+                    auto plc_result = opus_dec->decode_plc(plc_frames);
+                    if (plc_result.success && plc_result.frames_decoded > 0) {
+                        std::vector<int32_t> plc_buf(plc_result.frames_decoded * cfg.channels);
+                        for (size_t i = 0; i < plc_result.frames_decoded * cfg.channels; i++)
+                            plc_buf[i] = static_cast<int32_t>(plc_result.samples[i] * 8388608.0f);
+                        ring.write(plc_buf.data(), plc_result.frames_decoded);
+                        for (uint32_t ch = 0; ch < cfg.channels && ch < 8; ch++)
+                            plc_last_frame[ch] = plc_buf[(plc_result.frames_decoded - 1) * cfg.channels + ch];
+                        prev_write_was_plc = true;
+                        crc_plc_done = true;
+                    }
+                }
+#endif
+                if (!crc_plc_done && !prev_payload.empty() && prev_payload.size() >= plc_frames * cfg.channels) {
                     std::vector<int32_t> plc_buf(plc_frames * cfg.channels);
                     wsola_plc(prev_payload.data(), plc_buf.data(), plc_frames, cfg.channels);
                     ring.write(plc_buf.data(), plc_frames);
                     for (uint32_t ch = 0; ch < cfg.channels && ch < 8; ch++)
                         plc_last_frame[ch] = plc_buf[(plc_frames - 1) * cfg.channels + ch];
                     prev_write_was_plc = true;
-                } else {
+                } else if (!crc_plc_done) {
                     std::vector<int32_t> silence(plc_frames * cfg.channels, 0);
                     ring.write(silence.data(), plc_frames);
                     std::memset(plc_last_frame, 0, sizeof(plc_last_frame));
@@ -3821,12 +3867,58 @@ static int run_rx(DaemonConfig cfg) {
                             }
 
                             // PLC for unrecovered gaps
+                            // Priority: Opus FEC > Opus PLC > WSOLA > silence
+                            // Opus FEC: use current packet's embedded FEC to recover
+                            // the immediately preceding lost frame (gap==1 only).
+                            // Opus PLC: decoder internal state for concealment.
                             if (!fec_recovered) {
                                 uint32_t plc_count = std::min(static_cast<uint32_t>(gap), 3u);
                                 for (uint32_t p = 0; p < plc_count; p++) {
                                     g_lost_packets.fetch_add(1, std::memory_order_relaxed);
                                     size_t plc_fr = kFramesPerPacket;
-                                    if (g_wifi_wsola_plc.load(std::memory_order_relaxed) &&
+                                    bool plc_done = false;
+
+#ifdef SOLUNA_HAS_OPUS
+                                    // Opus FEC decode: recover lost frame from current packet
+                                    // Only works for gap==1 (immediately preceding frame)
+                                    if (opus_dec && p == 0 && gap == 1 &&
+                                        rtp.pt == kPayloadTypeOpus &&
+                                        payload && payload_size > 0) {
+                                        auto fec_result = opus_dec->decode_fec(
+                                            payload, payload_size, plc_fr);
+                                        if (fec_result.success && fec_result.frames_decoded > 0) {
+                                            std::vector<int32_t> plc_buf(fec_result.frames_decoded * cfg.channels);
+                                            for (size_t i = 0; i < fec_result.frames_decoded * cfg.channels; i++)
+                                                plc_buf[i] = static_cast<int32_t>(fec_result.samples[i] * 8388608.0f);
+                                            ring.write(plc_buf.data(), fec_result.frames_decoded);
+                                            for (uint32_t ch = 0; ch < cfg.channels && ch < 8; ch++)
+                                                plc_last_frame[ch] = plc_buf[(fec_result.frames_decoded - 1) * cfg.channels + ch];
+                                            prev_write_was_plc = true;
+                                            plc_consecutive++;
+                                            plc_done = true;
+                                        }
+                                    }
+
+                                    // Opus PLC: decode with NULL input (fallback)
+                                    if (!plc_done && opus_dec && plc_consecutive < 3) {
+                                        auto plc_result = opus_dec->decode_plc(plc_fr);
+                                        if (plc_result.success && plc_result.frames_decoded > 0) {
+                                            std::vector<int32_t> plc_buf(plc_result.frames_decoded * cfg.channels);
+                                            for (size_t i = 0; i < plc_result.frames_decoded * cfg.channels; i++) {
+                                                plc_buf[i] = static_cast<int32_t>(plc_result.samples[i] * 8388608.0f);
+                                            }
+                                            ring.write(plc_buf.data(), plc_result.frames_decoded);
+                                            for (uint32_t ch = 0; ch < cfg.channels && ch < 8; ch++)
+                                                plc_last_frame[ch] = plc_buf[(plc_result.frames_decoded - 1) * cfg.channels + ch];
+                                            prev_write_was_plc = true;
+                                            plc_consecutive++;
+                                            plc_done = true;
+                                        }
+                                    }
+#endif
+                                    // WSOLA fallback (non-Opus streams)
+                                    if (!plc_done &&
+                                        g_wifi_wsola_plc.load(std::memory_order_relaxed) &&
                                         !prev_payload.empty() &&
                                         prev_payload.size() >= plc_fr * cfg.channels &&
                                         plc_consecutive < 3) {
@@ -3838,7 +3930,11 @@ static int run_rx(DaemonConfig cfg) {
                                             plc_last_frame[ch] = plc_buf[(plc_fr - 1) * cfg.channels + ch];
                                         prev_write_was_plc = true;
                                         plc_consecutive++;
-                                    } else {
+                                        plc_done = true;
+                                    }
+
+                                    // Last resort: silence
+                                    if (!plc_done) {
                                         std::vector<int32_t> silence(plc_fr * cfg.channels, 0);
                                         ring.write(silence.data(), plc_fr);
                                         std::memset(plc_last_frame, 0, sizeof(plc_last_frame));

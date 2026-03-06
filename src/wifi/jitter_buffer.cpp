@@ -1,5 +1,9 @@
 /**
- * Adaptive Jitter Buffer Implementation
+ * Lock-free Jitter Buffer Implementation
+ *
+ * Fixed-size circular slot array indexed by sequence number.
+ * No mutex, no heap allocation on push/pop paths.
+ *
  * SPDX-License-Identifier: MIT
  */
 
@@ -15,6 +19,7 @@ JitterBuffer::JitterBuffer(const JitterBufferConfig& config)
     : config_(config)
     , target_depth_ms_(config.initial_depth_ms)
 {
+    // All slots start unoccupied (default-initialized atomics)
 }
 
 JitterBuffer::~JitterBuffer() = default;
@@ -23,21 +28,13 @@ int16_t JitterBuffer::seq_diff(uint16_t a, uint16_t b) {
     return static_cast<int16_t>(a - b);
 }
 
-bool JitterBuffer::is_too_old(uint16_t seq) const {
-    if (!started_) return false;
-    return seq_diff(next_sequence_, seq) > 0;
-}
-
 void JitterBuffer::push(uint16_t sequence, int64_t timestamp_ns,
                         const void* data, size_t data_size) {
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    total_received_++;
+    total_received_.fetch_add(1, std::memory_order_relaxed);
 
     // Track inter-packet jitter (RFC 3550 style)
     if (prev_arrival_ns_ > 0) {
         double interval_ms = static_cast<double>(timestamp_ns - prev_arrival_ns_) / 1e6;
-        // Expected interval based on packet rate
         double expected_ms = static_cast<double>(
             soluna::samples_per_packet(soluna::PacketTier::WiFi)) /
             config_.sample_rate * 1000.0;
@@ -48,44 +45,47 @@ void JitterBuffer::push(uint16_t sequence, int64_t timestamp_ns,
     }
     prev_arrival_ns_ = timestamp_ns;
 
-    // Drop packets that are too old
-    if (started_ && is_too_old(sequence)) {
-        late_drops_++;
+    // Drop packets that are too old (behind read pointer)
+    if (started_ && seq_diff(next_sequence_, sequence) > 0) {
+        late_drops_.fetch_add(1, std::memory_order_relaxed);
         return;
+    }
+
+    // Clamp payload to slot capacity
+    if (data_size > sizeof(Slot::data)) {
+        data_size = sizeof(Slot::data);
     }
 
     // Initialize on first packet
     if (!started_) {
         started_ = true;
         next_sequence_ = sequence;
-        first_arrival_ns_ = timestamp_ns;
     }
 
-    // Limit buffer size to prevent unbounded growth
-    size_t max_packets = static_cast<size_t>(
-        config_.max_depth_ms * config_.sample_rate /
-        (soluna::samples_per_packet(soluna::PacketTier::WiFi) * 1000.0) * 2);
-    if (packets_.size() >= max_packets) {
-        overflow_drops_++;
+    // Write into slot indexed by sequence
+    size_t idx = sequence & kSlotMask;
+    Slot& slot = slots_[idx];
+
+    // If slot is already occupied by a different packet, it's an overflow
+    if (slot.occupied.load(std::memory_order_acquire)) {
+        if (slot.sequence != sequence) {
+            overflow_drops_.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+        // Same sequence = duplicate, ignore
         return;
     }
 
-    Packet pkt;
-    pkt.sequence = sequence;
-    pkt.arrival_ns = timestamp_ns;
-    pkt.data.resize(data_size);
-    std::memcpy(pkt.data.data(), data, data_size);
-
-    packets_[sequence] = std::move(pkt);
-    last_arrival_ns_ = timestamp_ns;
+    slot.sequence = sequence;
+    slot.data_size = data_size;
+    std::memcpy(slot.data, data, data_size);
+    slot.occupied.store(true, std::memory_order_release);
+    occupancy_.fetch_add(1, std::memory_order_relaxed);
 }
 
 size_t JitterBuffer::pop(void* out_buf, size_t buf_size) {
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    if (!started_ || packets_.empty()) {
-        underruns_++;
-        adapt_depth();
+    if (!started_) {
+        underruns_.fetch_add(1, std::memory_order_relaxed);
         return 0;
     }
 
@@ -94,99 +94,112 @@ size_t JitterBuffer::pop(void* out_buf, size_t buf_size) {
         return 0;
     }
 
-    auto it = packets_.find(next_sequence_);
-    if (it == packets_.end()) {
+    size_t idx = next_sequence_ & kSlotMask;
+    Slot& slot = slots_[idx];
+
+    if (!slot.occupied.load(std::memory_order_acquire) ||
+        slot.sequence != next_sequence_) {
         // Missing packet — count as loss and skip
-        total_lost_++;
-        total_expected_++;
+        total_lost_.fetch_add(1, std::memory_order_relaxed);
+        total_expected_.fetch_add(1, std::memory_order_relaxed);
         next_sequence_++;
-        underruns_++;
+        underruns_.fetch_add(1, std::memory_order_relaxed);
         adapt_depth();
         return 0;
     }
 
-    size_t copy_size = std::min(it->second.data.size(), buf_size);
-    std::memcpy(out_buf, it->second.data.data(), copy_size);
+    size_t copy_size = std::min(slot.data_size, buf_size);
+    std::memcpy(out_buf, slot.data, copy_size);
 
-    packets_.erase(it);
+    slot.occupied.store(false, std::memory_order_release);
+    occupancy_.fetch_sub(1, std::memory_order_relaxed);
     next_sequence_++;
-    total_played_++;
-    total_expected_++;
+    total_played_.fetch_add(1, std::memory_order_relaxed);
+    total_expected_.fetch_add(1, std::memory_order_relaxed);
 
     // Gradually decrease target depth on successful playout
-    target_depth_ms_ = std::max(
-        config_.min_depth_ms,
-        target_depth_ms_ - config_.depth_decrease_rate);
+    double cur = target_depth_ms_.load(std::memory_order_relaxed);
+    double next = std::max(config_.min_depth_ms, cur - config_.depth_decrease_rate);
+    target_depth_ms_.store(next, std::memory_order_relaxed);
 
     return copy_size;
 }
 
 bool JitterBuffer::ready() const {
-    if (!started_ || packets_.empty()) return false;
+    if (!started_) return false;
 
-    // Calculate current buffer depth in packets
-    size_t count = packets_.size();
+    // Count consecutive occupied slots from next_sequence_
+    uint32_t count = 0;
+    for (size_t i = 0; i < kSlotCount; i++) {
+        size_t idx = (next_sequence_ + i) & kSlotMask;
+        const Slot& slot = slots_[idx];
+        if (!slot.occupied.load(std::memory_order_relaxed) ||
+            slot.sequence != static_cast<uint16_t>(next_sequence_ + i)) {
+            break;
+        }
+        count++;
+    }
+
     double packet_duration_ms = static_cast<double>(
         soluna::samples_per_packet(soluna::PacketTier::WiFi)) /
         config_.sample_rate * 1000.0;
     double buffer_ms = count * packet_duration_ms;
+    double target = target_depth_ms_.load(std::memory_order_relaxed);
 
-    return buffer_ms >= target_depth_ms_;
+    return buffer_ms >= target;
 }
 
 void JitterBuffer::reset() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    packets_.clear();
+    for (size_t i = 0; i < kSlotCount; i++) {
+        slots_[i].occupied.store(false, std::memory_order_relaxed);
+    }
     started_ = false;
     next_sequence_ = 0;
-    first_arrival_ns_ = 0;
-    last_arrival_ns_ = 0;
-    target_depth_ms_ = config_.initial_depth_ms;
+    target_depth_ms_.store(config_.initial_depth_ms, std::memory_order_relaxed);
     jitter_estimate_ms_ = 0.0;
     max_jitter_ms_ = 0.0;
-    total_received_ = 0;
-    total_played_ = 0;
-    late_drops_ = 0;
-    overflow_drops_ = 0;
-    underruns_ = 0;
-    total_expected_ = 0;
-    total_lost_ = 0;
     prev_arrival_ns_ = 0;
-    prev_transit_ns_ = 0;
+    total_received_.store(0, std::memory_order_relaxed);
+    total_played_.store(0, std::memory_order_relaxed);
+    late_drops_.store(0, std::memory_order_relaxed);
+    overflow_drops_.store(0, std::memory_order_relaxed);
+    underruns_.store(0, std::memory_order_relaxed);
+    total_expected_.store(0, std::memory_order_relaxed);
+    total_lost_.store(0, std::memory_order_relaxed);
+    occupancy_.store(0, std::memory_order_relaxed);
 }
 
 JitterBufferStats JitterBuffer::stats() const {
-    std::lock_guard<std::mutex> lock(mutex_);
     JitterBufferStats s;
+    uint32_t occ = occupancy_.load(std::memory_order_relaxed);
     double packet_duration_ms = static_cast<double>(
         soluna::samples_per_packet(soluna::PacketTier::WiFi)) /
         config_.sample_rate * 1000.0;
-    s.current_depth_ms = packets_.size() * packet_duration_ms;
-    s.target_depth_ms = target_depth_ms_;
+    s.current_depth_ms = occ * packet_duration_ms;
+    s.target_depth_ms = target_depth_ms_.load(std::memory_order_relaxed);
     s.jitter_ms = jitter_estimate_ms_;
     s.max_jitter_ms = max_jitter_ms_;
-    s.packets_received = total_received_;
-    s.packets_played = total_played_;
-    s.packets_dropped_late = late_drops_;
-    s.packets_dropped_overflow = overflow_drops_;
-    s.underruns = underruns_;
-    s.buffer_occupancy = static_cast<uint32_t>(packets_.size());
-    s.packet_loss_rate = (total_expected_ > 0)
-        ? static_cast<double>(total_lost_) / total_expected_
-        : 0.0;
+    s.packets_received = total_received_.load(std::memory_order_relaxed);
+    s.packets_played = total_played_.load(std::memory_order_relaxed);
+    s.packets_dropped_late = late_drops_.load(std::memory_order_relaxed);
+    s.packets_dropped_overflow = overflow_drops_.load(std::memory_order_relaxed);
+    s.underruns = underruns_.load(std::memory_order_relaxed);
+    s.buffer_occupancy = occ;
+    uint64_t expected = total_expected_.load(std::memory_order_relaxed);
+    uint64_t lost = total_lost_.load(std::memory_order_relaxed);
+    s.packet_loss_rate = (expected > 0) ? static_cast<double>(lost) / expected : 0.0;
     return s;
 }
 
 double JitterBuffer::target_depth_ms() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return target_depth_ms_;
+    return target_depth_ms_.load(std::memory_order_relaxed);
 }
 
 void JitterBuffer::adapt_depth() {
     // Increase buffer depth on underrun
-    target_depth_ms_ = std::min(
-        config_.max_depth_ms,
-        target_depth_ms_ * config_.depth_increase_factor);
+    double cur = target_depth_ms_.load(std::memory_order_relaxed);
+    double next = std::min(config_.max_depth_ms, cur * config_.depth_increase_factor);
+    target_depth_ms_.store(next, std::memory_order_relaxed);
 }
 
 } // namespace soluna::wifi
