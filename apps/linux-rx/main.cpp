@@ -20,6 +20,7 @@
  *   --output pipe     Output raw S16LE to stdout
  *   --device <name>   ALSA device name (default: default)
  *   --record <path>   Record received audio to WAV file
+ *   --record-dir <dir> Record to directory as rx_<timestamp>.wav
  *   --duration <sec>  Recording duration in seconds (default: 30)
  *   --metrics         Output JSON quality metrics every 5s
  *   --metrics-interval <sec>  Metrics interval (default: 5)
@@ -39,11 +40,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+#include <ctime>
+#include <chrono>
 #include <string>
 
 #ifdef __linux__
 #include <alsa/asoundlib.h>
-#include <chrono>
 #include <thread>
 #endif
 
@@ -280,6 +282,7 @@ int main(int argc, char** argv) {
     std::string alsa_dev = "default";
     std::string record_path;
     uint32_t    record_duration = 30;
+    std::string record_dir;
     bool        metrics_enabled = false;
     uint32_t    metrics_interval = 5;
     std::string peer_host;       // P2P mode: solunad relay host
@@ -298,6 +301,7 @@ int main(int argc, char** argv) {
         else if (a == "--device")   alsa_dev = next();
         else if (a == "--record")   record_path = next();
         else if (a == "--duration") record_duration = (uint32_t)atoi(next());
+        else if (a == "--record-dir") record_dir = next();
         else if (a == "--metrics")  metrics_enabled = true;
         else if (a == "--metrics-interval") metrics_interval = (uint32_t)atoi(next());
         else if (a == "--peer") {
@@ -348,6 +352,7 @@ int main(int argc, char** argv) {
                 "  --device <name>        ALSA device     (default: default)\n"
                 "  --record <path>        Record to WAV   (for analysis)\n"
                 "  --duration <sec>       Record duration  (default: 30)\n"
+                "  --record-dir <dir>     Record to dir as rx_<timestamp>.wav\n"
                 "  --metrics              Output JSON quality metrics to stderr\n"
                 "  --metrics-interval <s> Metrics interval (default: 5)\n"
             );
@@ -448,6 +453,20 @@ int main(int argc, char** argv) {
         use_alsa = false;
     }
 #endif
+
+    // --record-dir: auto-generate timestamped filename if --record was not given
+    if (record_path.empty() && !record_dir.empty()) {
+        auto now = std::chrono::system_clock::now();
+        auto t = std::chrono::system_clock::to_time_t(now);
+        struct tm tm_buf;
+        localtime_r(&t, &tm_buf);
+        char ts[128];
+        snprintf(ts, sizeof(ts), "%s/rx_%04d%02d%02d_%02d%02d%02d.wav",
+                 record_dir.c_str(),
+                 tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
+                 tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
+        record_path = ts;
+    }
 
     // WAV recording
     WavWriter wav;

@@ -208,7 +208,9 @@ stderr に JSON で出力:
 | macOS | 受信（RX） | ✅ `apps/mac-rx/` |
 | iPhone (iOS) | 受信（RX） | ✅ `apps/ios/` |
 | Raspberry Pi / Linux | 受信（RX） | ✅ `soluna-rx` |
+| Windows | 受信（RX） | ✅ `soluna-rx-win` (WASAPI) |
 | ブラウザ | 受信（RX） | ✅ Dashboard → Browser タブ |
+| DAW (VST3) | 受信（RX） | ✅ `apps/vst/` |
 | ESP32 | 受信（RX） | 🔨 開発中 |
 
 ---
@@ -295,6 +297,59 @@ soluna-rx --relay <relay_host>:5100 --group-name myroom --group-password secret1
 
 ---
 
+## VST3 プラグイン（DAW 受信）
+
+DAW 内で Soluna のネットワーク音声を直接受信できる VST3 プラグイン。
+
+```bash
+cmake -B build -DSOLUNA_BUILD_VST=ON
+cmake --build build --target soluna_vst
+
+# macOS: プラグインをインストール
+cp -r build/Soluna.vst3 ~/Library/Audio/Plug-Ins/VST3/
+```
+
+DAW でインサートするとマルチキャスト `239.69.0.1:5004` を自動受信。Volume / Mute / Buffer Size パラメータ付き。
+
+---
+
+## Windows 受信
+
+```bash
+# Windows でビルド（Visual Studio / MSYS2）
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target soluna-rx-win
+
+# マルチキャスト受信
+soluna-rx-win --output wasapi
+
+# P2P ユニキャスト受信
+soluna-rx-win --peer <Mac_IP>:5099 --output wasapi
+```
+
+---
+
+## マルチトラック録音
+
+TX と Monitor の音声を同時に WAV ファイルへ記録。
+
+```bash
+# solunad: ディレクトリ指定で自動録音開始
+solunad --tx --device soluna --record-dir /tmp/soluna-rec
+
+# soluna-rx: タイムスタンプ付きで自動録音
+soluna-rx --peer <Mac_IP>:5099 --record-dir /tmp/soluna-rec
+```
+
+WebSocket API でリモート制御:
+```json
+{"command":"recording.start","dir":"/tmp/rec"}
+{"command":"recording.stop"}
+{"command":"recording.status"}
+```
+
+---
+
 ## ビルドオプション
 
 ```bash
@@ -309,6 +364,7 @@ cmake -B build \
 | `SOLUNA_ENABLE_OPUS` | ON | Opus コーデック有効化 |
 | `SOLUNA_ENABLE_AES67` | OFF | AES67 互換モード |
 | `SOLUNA_ENABLE_DTLS` | OFF | DTLS 暗号化 |
+| `SOLUNA_BUILD_VST` | OFF | VST3 プラグインをビルド |
 
 ---
 

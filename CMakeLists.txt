@@ -114,6 +114,8 @@ add_library(soluna_core STATIC
     src/security/license.cpp
     # Audit
     src/audit/audit_log.cpp
+    # Util
+    src/util/wav_writer.cpp
     # AES67 (conditional)
     $<$<BOOL:${SOLUNA_ENABLE_AES67}>:src/transport/aes67.cpp>
     # DTLS (always compiled — has internal #ifdef guards for stub)
@@ -257,6 +259,21 @@ if(OS_LINUX)
     install(TARGETS soluna-rx RUNTIME DESTINATION bin)
 endif()
 
+# Windows standalone receiver (WASAPI, no soluna_core dependency)
+if(OS_WINDOWS)
+    add_executable(soluna-rx-win apps/win-rx/main.cpp)
+    target_link_libraries(soluna-rx-win PRIVATE ws2_32 ole32 avrt)
+    target_compile_options(soluna-rx-win PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/W4>
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic>
+        $<$<CONFIG:Release>:$<IF:$<CXX_COMPILER_ID:MSVC>,/O2,-O2>>
+    )
+    target_compile_definitions(soluna-rx-win PRIVATE
+        WIN32_LEAN_AND_MEAN NOMINMAX
+    )
+    install(TARGETS soluna-rx-win RUNTIME DESTINATION bin)
+endif()
+
 # WAN relay server (standalone, no soluna_core dependency)
 if(NOT OS_IOS AND NOT OS_ANDROID)
     add_executable(soluna-relay apps/relay/main.cpp)
@@ -270,6 +287,11 @@ endif()
 # Soluna CoreAudio virtual device plugin (macOS only)
 if(OS_MACOS)
     add_subdirectory(apps/plugin)
+endif()
+
+# Soluna VST3 network audio receiver plugin
+if(SOLUNA_BUILD_VST)
+    add_subdirectory(apps/vst)
 endif()
 
 # Example plugins

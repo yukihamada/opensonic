@@ -26,6 +26,7 @@
 #include <soluna/transport/aes67.h>
 #include <soluna/config/config.h>
 #include <soluna/control/websocket_server.h>
+#include <soluna/util/wav_writer.h>
 #include "web_embedded.h"
 
 #include <soluna/wifi/fec.h>
@@ -407,6 +408,13 @@ static soluna::control::WebSocketServer* g_ws_server_ptr = nullptr;
 // ── Monitor speaker underrun counter ─────────────────────────────────────────
 static std::atomic<uint64_t> g_mon_underruns{0};
 
+// ── Multi-track recording ────────────────────────────────────────────────────
+static std::string             g_record_dir;         // --record-dir path (empty = disabled)
+static std::mutex              g_rec_mutex;
+static soluna::util::WavWriter g_rec_tx;             // TX mic capture
+static soluna::util::WavWriter g_rec_monitor;        // monitor playback capture
+static std::atomic<bool>       g_rec_active{false};  // true while recording
+
 // ── Global RX delay (pushed to all receivers, 0 = device-local) ──────────────
 static std::atomic<uint32_t> g_rx_delay_ms{0};
 
@@ -785,6 +793,59 @@ static void tunnel_thread_fn() {
 
 static void signal_handler(int) {
     g_running.store(false);
+}
+
+// ── Multi-track recording helpers ────────────────────────────────────────────
+
+static std::string recording_timestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto t = std::chrono::system_clock::to_time_t(now);
+    struct tm tm_buf;
+    localtime_r(&t, &tm_buf);
+    char ts[32];
+    snprintf(ts, sizeof(ts), "%04d%02d%02d_%02d%02d%02d",
+             tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
+             tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
+    return ts;
+}
+
+static bool recording_start(const std::string& dir) {
+    std::lock_guard<std::mutex> lk(g_rec_mutex);
+    if (g_rec_active.load()) return false;
+
+    std::string ts = recording_timestamp();
+    std::string tx_path  = dir + "/tx_"      + ts + ".wav";
+    std::string mon_path = dir + "/monitor_" + ts + ".wav";
+
+    bool any = false;
+    if (g_rec_tx.open(tx_path, g_cfg_sample_rate, g_cfg_channels, 16)) {
+        fprintf(stderr, "[rec] TX recording: %s\n", tx_path.c_str());
+        any = true;
+    }
+    if (g_rec_monitor.open(mon_path, g_cfg_sample_rate, g_cfg_channels, 16)) {
+        fprintf(stderr, "[rec] Monitor recording: %s\n", mon_path.c_str());
+        any = true;
+    }
+    if (any) g_rec_active.store(true);
+    return any;
+}
+
+static void recording_stop() {
+    std::lock_guard<std::mutex> lk(g_rec_mutex);
+    if (!g_rec_active.load()) return;
+    if (g_rec_tx.is_open()) {
+        fprintf(stderr, "[rec] TX done: %llu frames → %s\n",
+                (unsigned long long)g_rec_tx.frames_written(),
+                g_rec_tx.path().c_str());
+        g_rec_tx.close();
+    }
+    if (g_rec_monitor.is_open()) {
+        fprintf(stderr, "[rec] Monitor done: %llu frames → %s\n",
+                (unsigned long long)g_rec_monitor.frames_written(),
+                g_rec_monitor.path().c_str());
+        g_rec_monitor.close();
+    }
+    g_rec_active.store(false);
 }
 
 static std::string ws_handle(const std::string& msg) {
@@ -1293,6 +1354,51 @@ static std::string ws_handle(const std::string& msg) {
             id, shm_ms, tx_ring_ms, spk_ms, spk_delay,
             mon_ms, rx_ms, total_local, total_mon,
             g_buf_target_ms.load(), g_mon_target_ms.load());
+    // ── Multi-track recording commands ────────────────────────────────────
+    } else if (cmd == "recording.start") {
+        std::string dir;
+        p = msg.find("\"dir\":\"");
+        if (p != std::string::npos) {
+            auto s = p + 7, e = msg.find('"', s);
+            if (e != std::string::npos) dir = msg.substr(s, e - s);
+        }
+        if (dir.empty()) dir = g_record_dir;
+        if (dir.empty()) {
+            snprintf(buf, sizeof(buf),
+                "{\"id\":%d,\"success\":false,\"data\":\"no record dir set\"}", id);
+        } else {
+            bool ok = recording_start(dir);
+            snprintf(buf, sizeof(buf),
+                "{\"id\":%d,\"success\":%s,\"data\":\"\"}", id, ok ? "true" : "false");
+        }
+    } else if (cmd == "recording.stop") {
+        recording_stop();
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "recording.status") {
+        bool active = g_rec_active.load();
+        std::string tx_file, mon_file;
+        uint64_t tx_frames = 0, mon_frames = 0;
+        {
+            std::lock_guard<std::mutex> lk(g_rec_mutex);
+            if (g_rec_tx.is_open()) {
+                tx_file = g_rec_tx.path();
+                tx_frames = g_rec_tx.frames_written();
+            }
+            if (g_rec_monitor.is_open()) {
+                mon_file = g_rec_monitor.path();
+                mon_frames = g_rec_monitor.frames_written();
+            }
+        }
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":true,\"data\":"
+            "\"{\\\"active\\\":%s,"
+            "\\\"tx_file\\\":\\\"%s\\\","
+            "\\\"tx_frames\\\":%llu,"
+            "\\\"monitor_file\\\":\\\"%s\\\","
+            "\\\"monitor_frames\\\":%llu}\"}",
+            id, active ? "true" : "false",
+            tx_file.c_str(), (unsigned long long)tx_frames,
+            mon_file.c_str(), (unsigned long long)mon_frames);
     } else {
         snprintf(buf, sizeof(buf),
             "{\"id\":%d,\"success\":false,\"data\":\"unknown command\"}", id);
@@ -1505,6 +1611,7 @@ static void print_usage(const char* prog) {
         "  --wan-password PW WAN relay group password (optional)\n"
         "  --record-tx FILE  Record TX audio to WAV file (for comparison)\n"
         "  --record-dur SEC  Recording duration in seconds (default: 30)\n"
+        "  --record-dir DIR  Multi-track recording directory (tx + monitor WAVs)\n"
         "  --auto-tune       Enable mic-based auto buffer tuning (default: on)\n"
         "  --no-auto-tune    Disable mic-based auto buffer tuning\n"
         "  --list-devices    List available audio devices\n"
@@ -1565,6 +1672,8 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
             cfg.record_tx_path = argv[++i];
         } else if (arg == "--record-dur" && i + 1 < argc) {
             cfg.record_tx_duration = static_cast<uint32_t>(std::stoi(argv[++i]));
+        } else if (arg == "--record-dir" && i + 1 < argc) {
+            g_record_dir = argv[++i];
         } else if (arg == "--config" && i + 1 < argc) {
             cfg.config_file = argv[++i];
         } else if (arg == "--device" && i + 1 < argc) {
@@ -1989,6 +2098,15 @@ static void monitor_thread_fn(const DaemonConfig& cfg) {
                 crossfade_boundary(buf, fc, cfg.channels,
                                    mon_prev, &mon_had_audio);
             }
+
+            // Multi-track recording: monitor track
+            if (g_rec_active.load(std::memory_order_relaxed) && g_rec_monitor.is_open()) {
+                thread_local std::vector<int16_t> mt_mon_buf;
+                mt_mon_buf.resize(samples);
+                for (size_t i = 0; i < samples; i++)
+                    mt_mon_buf[i] = static_cast<int16_t>(buf[i] * 32767.0f);
+                g_rec_monitor.write(mt_mon_buf.data(), fc);
+            }
         });
 
         g_mon_active.store(true);
@@ -2295,6 +2413,11 @@ static int run_tx(DaemonConfig cfg) {
     // Restore persisted settings (volume, delay, mute, buffer)
     persist_config_load();
 
+    // Auto-start multi-track recording if --record-dir was given
+    if (!g_record_dir.empty()) {
+        recording_start(g_record_dir);
+    }
+
     // Spawn monitor management thread
     std::thread mon_thread(monitor_thread_fn, std::cref(cfg));
 
@@ -2574,6 +2697,15 @@ static int run_tx(DaemonConfig cfg) {
                     }
                 }
 
+                // Multi-track recording: TX track (SHM path)
+                if (g_rec_active.load(std::memory_order_relaxed) && g_rec_tx.is_open()) {
+                    thread_local std::vector<int16_t> mt_shm_buf;
+                    mt_shm_buf.resize(rd * cfg.channels);
+                    for (uint32_t i = 0; i < rd * cfg.channels; i++)
+                        mt_shm_buf[i] = static_cast<int16_t>(flt_buf[i] * 32767.0f);
+                    g_rec_tx.write(mt_shm_buf.data(), rd);
+                }
+
                 // float32 → speaker ring (stores float frames via int32_t alias)
                 static_assert(sizeof(float) == sizeof(int32_t),
                               "float/int32_t size mismatch");
@@ -2677,6 +2809,15 @@ static int run_tx(DaemonConfig cfg) {
                     fprintf(stderr, "[tx] Recording complete: %llu frames\n",
                             (unsigned long long)tx_wav_frames_written);
                 }
+            }
+
+            // Multi-track recording: TX track
+            if (g_rec_active.load(std::memory_order_relaxed) && g_rec_tx.is_open()) {
+                thread_local std::vector<int16_t> mt_buf;
+                mt_buf.resize(samples);
+                for (size_t i = 0; i < samples; i++)
+                    mt_buf[i] = static_cast<int16_t>(buffer[i] * 32767.0f);
+                g_rec_tx.write(mt_buf.data(), frame_count);
             }
 
             // Browser audio streaming (batched, same as SHM path)
@@ -2982,6 +3123,9 @@ static int run_tx(DaemonConfig cfg) {
 
     // Stop WAN relay
     wan_relay_shutdown();
+
+    // Finalize multi-track recordings
+    recording_stop();
 
     return 0;
 }
