@@ -28,6 +28,7 @@ function localConnect() {
         pollTxStats(); initMonitor(); startSyncPolling(); pollSysVol(); setInterval(pollSysVol, 2000);
         pollInputDevices(); pollInputStats(); setInterval(pollInputStats, 2000);
         initTune();
+        syncAudioControls(); setInterval(syncAudioControls, 5000);
         if (baActive) baSubscribe();
     };
     localWs.onclose = () => {
@@ -1002,6 +1003,105 @@ function refreshStats() {
             if (d.deglitch !== undefined) setVal('stat-deglitch', d.deglitch ? 'ON' : 'OFF');
         } catch (_) {}
     });
+}
+
+// ── Audio Controls toggles ──────────────────────────────────
+const acMap = {
+    'ac-fec':      'fec',
+    'ac-nack':     'nack',
+    'ac-plc':      'wsola_plc',
+    'ac-dup':      'dup_send',
+    'ac-adaptive': 'adaptive_jitter',
+};
+
+// Toggle switches → wifi.set
+Object.entries(acMap).forEach(([elId, param]) => {
+    const cb = document.getElementById(elId);
+    if (!cb) return;
+    cb.addEventListener('change', () => {
+        const p = {}; p[param] = cb.checked;
+        localSend('wifi.set', p);
+    });
+});
+
+// Deglitch → repair.enable / repair.disable
+const acDeglitch = document.getElementById('ac-deglitch');
+if (acDeglitch) {
+    acDeglitch.addEventListener('change', () => {
+        localSend(acDeglitch.checked ? 'repair.enable' : 'repair.disable');
+    });
+}
+
+// Settings expand
+const acExpand = document.getElementById('ac-expand');
+const acDetail = document.getElementById('ac-detail');
+if (acExpand && acDetail) {
+    acExpand.addEventListener('click', () => {
+        acDetail.style.display = acDetail.style.display === 'none' ? '' : 'none';
+    });
+}
+
+// Noise params sliders
+const acSigma = document.getElementById('ac-sigma');
+if (acSigma) {
+    acSigma.addEventListener('input', () => {
+        setVal('ac-sigma-val', parseFloat(acSigma.value).toFixed(1));
+    });
+    acSigma.addEventListener('change', () => {
+        localSend('noise.set', { sigma: parseFloat(acSigma.value) });
+    });
+}
+const acXfade = document.getElementById('ac-xfade');
+if (acXfade) {
+    acXfade.addEventListener('input', () => {
+        setVal('ac-xfade-val', acXfade.value);
+    });
+    acXfade.addEventListener('change', () => {
+        localSend('noise.set', { crossfade_frames: parseInt(acXfade.value) });
+    });
+}
+
+// Sync toggle states from server
+function syncAudioControls() {
+    localSend('tune.status', {}, (resp) => {
+        if (!resp.success || !resp.data) return;
+        try {
+            const d = JSON.parse(resp.data);
+            setCheck('ac-fec', d.wifi_fec);
+            setCheck('ac-nack', d.wifi_nack);
+            setCheck('ac-plc', d.wifi_wsola_plc);
+            setCheck('ac-dup', d.wifi_dup_send);
+            setCheck('ac-adaptive', d.wifi_adaptive_jitter);
+            if (d.repair_enabled !== undefined) setCheck('ac-deglitch', d.repair_enabled);
+        } catch (_) {}
+    });
+    // Noise params
+    localSend('noise.get', {}, (resp) => {
+        if (!resp.success || !resp.data) return;
+        try {
+            const d = JSON.parse(resp.data);
+            const s = document.getElementById('ac-sigma');
+            if (s && d.sigma !== undefined) { s.value = d.sigma; setVal('ac-sigma-val', d.sigma.toFixed(1)); }
+            const x = document.getElementById('ac-xfade');
+            if (x && d.crossfade_frames !== undefined) { x.value = d.crossfade_frames; setVal('ac-xfade-val', d.crossfade_frames); }
+        } catch (_) {}
+    });
+    // DLL ratio
+    localSend('rx.stats', {}, (resp) => {
+        if (!resp.success || !resp.data) return;
+        try {
+            const d = JSON.parse(resp.data);
+            if (d.dll_ratio !== undefined) {
+                const ppm = ((d.dll_ratio - 1.0) * 1e6).toFixed(1);
+                setVal('ac-dll-ratio', ppm + ' ppm');
+            }
+        } catch (_) {}
+    });
+}
+
+function setCheck(id, val) {
+    const el = document.getElementById(id);
+    if (el && val !== undefined) el.checked = !!val;
 }
 
 // ── Helpers ──────────────────────────────────────────────────

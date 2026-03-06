@@ -985,9 +985,129 @@ th { color: var(--text3); font-weight: 500; font-size: 0.75rem; text-transform: 
 }
 .tune-reset-link:hover { color: var(--text2); }
 
+/* ── Audio Controls card ───────────────────────────── */
+.audio-ctrl-card {
+    margin-top: 1.25rem;
+    background: var(--s1);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 1rem 1.25rem;
+}
+.ac-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+}
+.ac-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.ac-expand-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text3);
+    width: 26px; height: 26px;
+    border-radius: var(--r-xs);
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+}
+.ac-expand-btn:hover { background: var(--s3); color: var(--text2); }
+
+.ac-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem 1.25rem;
+}
+
+/* Toggle switch */
+.ac-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    cursor: pointer;
+    user-select: none;
+}
+.ac-toggle input { display: none; }
+.ac-sw {
+    position: relative;
+    width: 32px; height: 18px;
+    background: var(--s3);
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+.ac-sw::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 12px; height: 12px;
+    background: var(--text3);
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+.ac-toggle input:checked + .ac-sw {
+    background: var(--green-d);
+    border-color: rgba(16,185,129,0.4);
+}
+.ac-toggle input:checked + .ac-sw::after {
+    left: 16px;
+    background: var(--green);
+}
+.ac-lbl {
+    font-size: 0.78rem;
+    color: var(--text2);
+    font-weight: 500;
+}
+
+/* Settings detail */
+.ac-detail {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+}
+.ac-detail-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.5rem;
+}
+.ac-detail-label {
+    font-size: 0.72rem;
+    color: var(--text3);
+    min-width: 70px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.ac-slider {
+    flex: 1;
+    accent-color: var(--blue);
+    height: 4px;
+}
+.ac-detail-val {
+    font-size: 0.78rem;
+    color: var(--text2);
+    min-width: 40px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.ac-mono {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 0.82rem;
+    color: var(--blue);
+    font-weight: 600;
+}
+
 /* ── Responsive ────────────────────────────────────── */
 @media (max-width: 600px) {
     .rx-grid { grid-template-columns: 1fr; }
     .txc-pkts { display: none; }
     .tune-stats { grid-template-columns: repeat(2, 1fr); }
+    .ac-toggles { gap: 0.5rem 0.75rem; }
 }

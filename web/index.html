@@ -28,6 +28,39 @@
         <div id="rx-empty" class="empty-state" style="display:none">
             <p>No receivers.<br>Click <strong>＋</strong> to add one.</p>
         </div>
+
+        <!-- Audio Controls card -->
+        <div id="audio-ctrl" class="audio-ctrl-card">
+            <div class="ac-header">
+                <span class="ac-title">Audio Controls</span>
+                <button class="ac-expand-btn" id="ac-expand" title="Settings">⚙</button>
+            </div>
+            <div class="ac-toggles">
+                <label class="ac-toggle"><input type="checkbox" id="ac-fec" checked><span class="ac-sw"></span><span class="ac-lbl">FEC</span></label>
+                <label class="ac-toggle"><input type="checkbox" id="ac-nack" checked><span class="ac-sw"></span><span class="ac-lbl">NACK</span></label>
+                <label class="ac-toggle"><input type="checkbox" id="ac-plc" checked><span class="ac-sw"></span><span class="ac-lbl">PLC</span></label>
+                <label class="ac-toggle"><input type="checkbox" id="ac-dup" checked><span class="ac-sw"></span><span class="ac-lbl">Dup Send</span></label>
+                <label class="ac-toggle"><input type="checkbox" id="ac-deglitch"><span class="ac-sw"></span><span class="ac-lbl">Deglitch</span></label>
+                <label class="ac-toggle"><input type="checkbox" id="ac-adaptive" checked><span class="ac-sw"></span><span class="ac-lbl">Adaptive Buf</span></label>
+            </div>
+            <!-- Settings detail (hidden by default) -->
+            <div class="ac-detail" id="ac-detail" style="display:none">
+                <div class="ac-detail-row">
+                    <span class="ac-detail-label">Click σ</span>
+                    <input type="range" id="ac-sigma" class="ac-slider" min="2" max="12" step="0.5" value="6">
+                    <span class="ac-detail-val" id="ac-sigma-val">6.0</span>
+                </div>
+                <div class="ac-detail-row">
+                    <span class="ac-detail-label">Crossfade</span>
+                    <input type="range" id="ac-xfade" class="ac-slider" min="4" max="64" step="4" value="16">
+                    <span class="ac-detail-val" id="ac-xfade-val">16</span>
+                </div>
+                <div class="ac-detail-row">
+                    <span class="ac-detail-label">DLL Ratio</span>
+                    <span class="ac-detail-val ac-mono" id="ac-dll-ratio">—</span>
+                </div>
+            </div>
+        </div>
     </main>
 
     <nav class="bottom-nav">
