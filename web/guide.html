@@ -267,13 +267,17 @@
                 ↓
 <span class="hl">Soluna.driver</span>  ← CoreAudio HAL プラグイン
                 ↓ 共有メモリ
-<span class="hl">solunad</span> ─────────────────────────────────────┐
-   │                                              │
-   ├── <span class="grn">UDP マルチキャスト</span> → iPhone / Raspberry Pi │
-   ├── <span class="grn">WebSocket</span>        → ブラウザ (このページ)  │
-   └── <span class="grn">CoreAudio 出力</span>   → Mac スピーカー同時再生 │
-                                                   │
-              <span class="amb">Web UI</span> http://localhost:8400 ◄──────┘</div>
+<span class="hl">Soluna.app</span> ────────────────────────────────────┐
+   │                                               │
+   ├── <span class="grn">Audio TX</span>    → システム音声をネットワーク配信  │
+   ├── <span class="grn">Mic TX</span>      → マイク音声を配信             │
+   ├── <span class="grn">RX</span>          → 他の Mac / iPhone から受信   │
+   ├── <span class="grn">WAN P2P</span>     → インターネット越しにグループ共有│
+   └── <span class="grn">CoreAudio</span>   → Mac スピーカー同時再生       │
+                                                    │
+              <span class="amb">Web UI</span> http://localhost:8400 ◄───────┘
+
+  ※ solunad デーモンは不要（--headless モードで別途インストール可能）</div>
         </div>
 
         <!-- Platforms -->
@@ -283,8 +287,8 @@
                 <div class="platform-card">
                     <div class="pc-icon">💻</div>
                     <h3>Mac</h3>
-                    <p>Soluna 仮想デバイス経由で全システム音声を配信。Mac スピーカーでも同時再生。</p>
-                    <span class="pc-badge tx">TX 送信</span>
+                    <p>Soluna.app 1つで TX + RX + WAN P2P。システム音声・マイク配信、マルチスピーカー同期。</p>
+                    <span class="pc-badge tx">TX + RX + WAN</span>
                 </div>
                 <div class="platform-card">
                     <div class="pc-icon">📱</div>
@@ -309,67 +313,62 @@
 
         <!-- Mac setup -->
         <div class="guide-section">
-            <div class="guide-section-title">Mac セットアップ</div>
-            <div class="steps">
-                <div class="step">
-                    <div class="step-num">★</div>
-                    <div class="step-body">
-                        <h3>ワンコマンドインストール（推奨）</h3>
-                        <p>以下を実行するだけで、ビルド・ドライバーインストール・サービス登録まで全自動。</p>
-                        <code>curl -fsSL https://soluna-web.fly.dev/install.sh | bash</code>
-                        <p>完了後は「<strong>システム設定 → サウンド → 出力 → Soluna</strong>」を選択してください。</p>
-                    </div>
-                </div>
-                <div class="step">
-                    <div class="step-num">1</div>
-                    <div class="step-body">
-                        <h3>手動ビルド</h3>
-                        <p>手動で行う場合。Xcode Command Line Tools と CMake が必要です。</p>
-                        <code>git clone https://github.com/yukihamada/opensonic.git
-cd opensonic
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(sysctl -n hw.logicalcpu)</code>
-                    </div>
-                </div>
-                <div class="step">
-                    <div class="step-num">2</div>
-                    <div class="step-body">
-                        <h3>Soluna ドライバのインストール</h3>
-                        <p>仮想オーディオデバイスを macOS に登録します。</p>
-                        <code>bash apps/plugin/install.sh</code>
-                        <div class="note">⚠ インストール後、<strong>システム設定 → プライバシーとセキュリティ</strong> に「許可」ボタンが出ます。クリック後に <code>sudo killall coreaudiod</code> を実行してください。</div>
-                    </div>
-                </div>
-                <div class="step">
-                    <div class="step-num">3</div>
-                    <div class="step-body">
-                        <h3>出力先を "Soluna" に変更</h3>
-                        <p><strong>システム設定 → サウンド → 出力</strong> で <strong>Soluna</strong> を選択。</p>
-                        <p>これだけで、再生する音がすべて Soluna 経由になります。</p>
-                    </div>
-                </div>
-                <div class="step">
-                    <div class="step-num">4</div>
-                    <div class="step-body">
-                        <h3>solunad を起動</h3>
-                        <p>ターミナルから起動、または <strong>自動起動（推奨）</strong> に設定します。</p>
-                        <code># 手動で起動（テスト用）
-./build/solunad --tx --device soluna --speaker ""
+            <div class="guide-section-title">Mac セットアップ — 3つの方法</div>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:20px">あなたに合った方法を選んでください。どれもターミナルでコマンドを1回実行するだけです。</p>
 
-# Mac ログイン時に自動起動（推奨）
-bash apps/daemon/install-service.sh</code>
-                        <div class="note">起動後は <strong>http://localhost:8400</strong> でダッシュボードにアクセスできます。</div>
-                    </div>
-                </div>
-                <div class="step">
-                    <div class="step-num">5</div>
+            <!-- Option 1: App -->
+            <div class="steps">
+                <div class="step" style="border-color:rgba(16,185,129,0.4);box-shadow:0 0 20px rgba(16,185,129,0.08)">
+                    <div class="step-num" style="background:linear-gradient(135deg,#10b981,#059669)">★</div>
                     <div class="step-body">
-                        <h3>（任意）Menu bar アプリ</h3>
-                        <p>音量・遅延・接続状態を Menu bar からさっと確認できます。</p>
-                        <code>cd apps/mac && swift build -c release</code>
+                        <h3>🖥 方法1: Soluna アプリ（おすすめ）</h3>
+                        <p style="color:#34d399;font-size:12px;font-weight:600;margin-bottom:8px">はじめての方はこれ！いちばんカンタン</p>
+                        <p>Soluna.app をインストールして、画面の操作だけで音声配信できます。Audio TX・マイクTX・WAN P2P ぜんぶ入り。</p>
+                        <code>bash scripts/install-mac.sh</code>
+                        <p style="margin-top:12px"><strong>インストール後の使い方:</strong></p>
+                        <p>1. <strong>システム設定 → サウンド → 出力</strong> で「Soluna」を選択<br>
+                        2. <strong>/Applications/Soluna.app</strong> を開く<br>
+                        3. <strong>Audio TX</strong> をONにするだけ → 配信開始！</p>
                     </div>
                 </div>
             </div>
+
+            <!-- Option 2: solunad -->
+            <div class="steps" style="margin-top:16px">
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <h3>🔧 方法2: インストーラー + solunad（自動起動）</h3>
+                        <p style="color:#60a5fa;font-size:12px;font-weight:600;margin-bottom:8px">ログインしたら自動で配信開始 — アプリを開かなくてOK</p>
+                        <p>方法1のすべて＋<strong>solunad</strong>デーモンと<strong>LaunchAgent</strong>を追加。Mac を起動するだけで自動的に音声配信が始まります。</p>
+                        <code>bash scripts/install-mac.sh --headless</code>
+                        <p style="margin-top:12px"><strong>インストール後:</strong></p>
+                        <p>1. <strong>システム設定 → サウンド → 出力</strong> で「Soluna」を選択<br>
+                        2. これだけ。次のログインから自動配信<br>
+                        3. ステータス確認: <code class="inline">solctl status</code></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Option 3: CLI -->
+            <div class="steps" style="margin-top:16px">
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-body">
+                        <h3>⌨️ 方法3: コマンドライン（上級者向け）</h3>
+                        <p style="color:#fb923c;font-size:12px;font-weight:600;margin-bottom:8px">開発者向け — 全パラメータを手動制御</p>
+                        <p>cmake でソースからビルドし、solctl CLI ですべてを手動操作。パラメータを細かく調整したい方向け。</p>
+                        <code>cmake -B build && cmake --build build</code>
+                        <p style="margin-top:12px"><strong>ビルド後:</strong></p>
+                        <p>1. ドライバを手動で <code class="inline">/Library/Audio/Plug-Ins/HAL/</code> にコピー<br>
+                        2. <code class="inline">sudo killall coreaudiod</code> で反映<br>
+                        3. <code class="inline">solctl</code> で配信の開始/停止</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="note" style="margin-top:16px">⚠ いずれの方法も <strong>cmake</strong> と <strong>Xcode Command Line Tools</strong> が必要です。<code class="inline">brew install cmake</code> / <code class="inline">xcode-select --install</code></div>
+            <div class="note" style="margin-top:8px">⚠ 「Soluna」がサウンド出力に表示されない場合は <strong>システム設定 → プライバシーとセキュリティ</strong> でドライバを許可後、<code class="inline">sudo killall coreaudiod</code> を実行してください。</div>
         </div>
 
         <!-- iPhone setup -->
@@ -478,31 +477,31 @@ systemctl status soluna-rx</code>
                 <details class="trouble">
                     <summary>「Soluna」がサウンド設定に表示されない</summary>
                     <div class="trouble-body">
-                        ドライバの再インストールと CoreAudio の再起動で解消することがほとんどです。
-                        <code>bash apps/plugin/install.sh
+                        インストーラの再実行と CoreAudio の再起動で解消することがほとんどです。
+                        <code>bash scripts/install-mac.sh
 # システム設定 → プライバシーとセキュリティ で「許可」をクリック後
 sudo killall coreaudiod</code>
                     </div>
                 </details>
                 <details class="trouble">
-                    <summary>音が出ない（solunad 起動済みなのに）</summary>
+                    <summary>音が出ない（Soluna.app 起動済みなのに）</summary>
                     <div class="trouble-body">
-                        solunad を先に起動してから音楽を再生してください。SHM ファイルが存在しない場合、ドライバが 2〜3 秒ごとに再接続を試みます。
-                        <code># SHM ファイルを確認
-ls -la $TMPDIR/soluna_audio.shm
+                        Soluna.app の Audio TX が ON になっていることを確認してください。共有メモリが存在しない場合、ドライバが 2〜3 秒ごとに再接続を試みます。
+                        <code># 共有メモリを確認
+ls -la /private/var/db/soluna/
 
-# ログでエラーを確認
-tail -f /tmp/solunad.log</code>
+# 再インストール
+bash scripts/install-mac.sh</code>
                     </div>
                 </details>
                 <details class="trouble">
-                    <summary>Mac 再起動後に自動起動しない</summary>
+                    <summary>Mac 再起動後に自動起動しない（ヘッドレスモード）</summary>
                     <div class="trouble-body">
-                        launchd の登録状態を確認します。
+                        launchd の登録状態を確認します。ヘッドレスモードを使っている場合のみ該当。
                         <code>launchctl print gui/$UID/io.soluna.daemon
 
 # 再インストール
-bash apps/daemon/install-service.sh</code>
+bash scripts/install-mac.sh --headless</code>
                     </div>
                 </details>
                 <details class="trouble">

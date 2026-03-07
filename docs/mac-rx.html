@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Soluna Rx for Mac — Network Audio Receiver</title>
-    <meta name="description" content="Stream audio to your Mac over WiFi. Free network audio receiver for macOS.">
-    <meta property="og:title" content="Soluna Rx for Mac">
-    <meta property="og:description" content="Stream audio to your Mac over WiFi. Free network audio receiver for macOS.">
+    <title>Soluna for Mac — Network Audio System</title>
+    <meta name="description" content="Mac のシステム音声をどこでも鳴らす。TX + RX + WAN P2P をアプリ1つで。ワンコマンドインストール。">
+    <meta property="og:title" content="Soluna for Mac">
+    <meta property="og:description" content="Mac のシステム音声をどこでも鳴らす。TX + RX + WAN P2P をアプリ1つで。ワンコマンドインストール。">
     <meta property="og:type" content="website">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔊</text></svg>">
     <style>
@@ -449,6 +449,93 @@
             .step-card:not(:last-child) .step-arrow { display: block; }
         }
 
+        /* ── Install Options (3 cards) ── */
+        .install-options {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            max-width: 960px;
+            margin: 0 auto;
+        }
+        @media (max-width: 800px) { .install-options { grid-template-columns: 1fr; } }
+        .install-option {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 32px 24px;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .install-option::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .install-option:hover {
+            border-color: var(--border-light);
+            transform: translateY(-4px);
+            box-shadow: 0 16px 40px rgba(0,0,0,0.3);
+        }
+        .install-option:hover::before { opacity: 1; }
+        .install-option.recommended {
+            border-color: var(--accent);
+            box-shadow: 0 0 30px var(--accent-glow);
+        }
+        .install-option.recommended::before { opacity: 1; }
+        .io-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 0.68rem; font-weight: 700;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            padding: 5px 12px; border-radius: 100px;
+            margin-bottom: 16px; width: fit-content;
+        }
+        .io-badge.green { background: var(--green-dim); color: var(--green); }
+        .io-badge.blue { background: rgba(99,102,241,0.15); color: var(--accent-light); }
+        .io-badge.orange { background: rgba(251,146,60,0.15); color: var(--orange); }
+        .io-icon {
+            font-size: 40px;
+            margin-bottom: 14px;
+        }
+        .io-title {
+            font-size: 1.15rem; font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .io-who {
+            font-size: 0.82rem; color: var(--accent-light);
+            margin-bottom: 12px; font-weight: 500;
+        }
+        .io-desc {
+            font-size: 0.88rem; color: var(--text-dim);
+            line-height: 1.65; margin-bottom: 16px;
+            flex: 1;
+        }
+        .io-cmd {
+            display: block;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 0.8rem;
+            color: var(--green);
+            font-family: "SF Mono", "Fira Code", monospace;
+            white-space: pre;
+            overflow-x: auto;
+            margin-top: auto;
+        }
+        .io-steps {
+            margin-top: 14px;
+            font-size: 0.82rem;
+            color: var(--text-dim);
+            line-height: 1.8;
+        }
+        .io-steps strong { color: var(--text); }
+
         /* ── Specs ── */
         .specs-grid {
             display: grid;
@@ -556,7 +643,7 @@
     <div class="nav-inner">
         <a href="#" class="nav-brand">
             <div class="logo">S</div>
-            <span>Soluna Rx</span>
+            <span>Soluna</span>
         </a>
         <div class="nav-right">
             <div class="lang-switcher">
@@ -567,7 +654,7 @@
                 </button>
                 <div class="lang-dropdown" id="langDrop"></div>
             </div>
-            <a href="https://testflight.apple.com/join/CeT5Pf2e" class="nav-download" data-i18n="nav_download">Download</a>
+            <a href="#install" class="nav-download" data-i18n="nav_download">Install</a>
         </div>
     </div>
 </nav>
@@ -576,19 +663,19 @@
 <section class="hero">
     <div class="hero-badge">
         <span class="dot"></span>
-        <span data-i18n="badge">FREE ON MAC APP STORE</span>
+        <span data-i18n="badge">3 WAYS TO INSTALL</span>
     </div>
     <h1>
-        <span class="gradient">Soluna Rx</span><br>
+        <span class="gradient">Soluna</span><br>
         <span data-i18n="hero_sub">for Mac</span>
     </h1>
     <p class="hero-desc" data-i18n="hero_desc">
-        Stream audio to your Mac over WiFi. Low-latency network audio receiver with multi-speaker sync.
+        TX + RX + WAN P2P all in one app. System audio streaming, mic TX, multi-speaker sync. No separate daemon needed.
     </p>
     <div class="hero-buttons">
-        <a href="https://testflight.apple.com/join/CeT5Pf2e" class="btn btn-primary">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-            <span data-i18n="btn_download">Download on Mac App Store</span>
+        <a href="#install" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            <span data-i18n="btn_download">Install with 1 Command</span>
         </a>
         <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
@@ -604,11 +691,15 @@
             <div class="mac-dot red"></div>
             <div class="mac-dot yellow"></div>
             <div class="mac-dot green"></div>
-            <div class="mac-titlebar-text">Soluna Rx</div>
+            <div class="mac-titlebar-text">Soluna</div>
         </div>
         <div class="mac-content">
             <div class="mock-hero-circle">&#9654;</div>
-            <div class="mock-pill green" data-i18n="mock_receiving">Receiving</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">
+                <div class="mock-pill green" data-i18n="mock_receiving">Audio TX ON</div>
+                <div class="mock-pill" style="background:var(--blue-dim);color:var(--blue)">RX</div>
+                <div class="mock-pill" style="background:rgba(139,92,246,0.15);color:#a78bfa">WAN P2P</div>
+            </div>
             <div class="mock-stats">
                 <div class="mock-stat">
                     <div class="mock-stat-val" style="color:var(--green)">12.4K</div>
@@ -814,31 +905,45 @@
     </div>
 </section>
 
-<!-- How it works -->
-<section class="section fade-in">
+<!-- Install Options -->
+<section class="section fade-in" id="install">
     <div class="container">
         <div class="section-header">
             <div class="section-label" data-i18n="how_label">HOW IT WORKS</div>
-            <h2 class="section-title" data-i18n="how_title">Three simple steps</h2>
-            <p class="section-desc" data-i18n="how_desc">Get whole-home audio running in minutes</p>
+            <h2 class="section-title" data-i18n="how_title">Choose your setup</h2>
+            <p class="section-desc" data-i18n="how_desc">Pick the option that fits you best</p>
         </div>
-        <div class="steps-grid">
-            <div class="step-card">
-                <div class="step-num">1</div>
-                <h3 data-i18n="s1_title">Install Soluna TX</h3>
-                <p data-i18n="s1_desc">Set up the Soluna transmitter (solunad) on your source Mac. It captures system audio via a virtual driver.</p>
-                <div class="step-arrow">→</div>
+        <div class="install-options">
+            <!-- Option 1: App (Recommended) -->
+            <div class="install-option recommended">
+                <div class="io-badge green" data-i18n="io1_badge">RECOMMENDED</div>
+                <div class="io-icon">🖥</div>
+                <div class="io-title" data-i18n="io1_title">Soluna App</div>
+                <div class="io-who" data-i18n="io1_who">For everyone — easiest way to get started</div>
+                <div class="io-desc" data-i18n="io1_desc">Install Soluna.app and control everything from a simple GUI. Audio TX, Mic TX, WAN P2P — all built in. No terminal knowledge needed after install.</div>
+                <code class="io-cmd">bash scripts/install-mac.sh</code>
+                <div class="io-steps" data-i18n="io1_steps"><strong>1.</strong> Run the command above<br><strong>2.</strong> Sound Settings → Output → "Soluna"<br><strong>3.</strong> Open Soluna.app → Done!</div>
             </div>
-            <div class="step-card">
-                <div class="step-num">2</div>
-                <h3 data-i18n="s2_title">Open Soluna Rx</h3>
-                <p data-i18n="s2_desc">Launch Soluna Rx on any Mac on the same network. It auto-discovers the transmitter and starts receiving.</p>
-                <div class="step-arrow">→</div>
+            <!-- Option 2: solunad (Headless) -->
+            <div class="install-option">
+                <div class="io-badge blue" data-i18n="io2_badge">SET &amp; FORGET</div>
+                <div class="io-icon">🔧</div>
+                <div class="io-title" data-i18n="io2_title">Installer + solunad</div>
+                <div class="io-who" data-i18n="io2_who">Auto-start on login — runs in the background</div>
+                <div class="io-desc" data-i18n="io2_desc">Includes everything in App mode plus solunad daemon and LaunchAgent. Audio streams automatically when you log in — no need to open any app.</div>
+                <code class="io-cmd">bash scripts/install-mac.sh --headless</code>
+                <div class="io-steps" data-i18n="io2_steps"><strong>1.</strong> Run the command above<br><strong>2.</strong> Sound Settings → Output → "Soluna"<br><strong>3.</strong> That's it — streams on login</div>
             </div>
-            <div class="step-card">
-                <div class="step-num">3</div>
-                <h3 data-i18n="s3_title">Enjoy Music</h3>
-                <p data-i18n="s3_desc">Audio plays through your Mac speakers in perfect sync. Add more speakers and control them all from one place.</p>
+            <!-- Option 3: CLI -->
+            <div class="install-option">
+                <div class="io-badge orange" data-i18n="io3_badge">ADVANCED</div>
+                <div class="io-icon">⌨️</div>
+                <div class="io-title" data-i18n="io3_title">Command Line</div>
+                <div class="io-who" data-i18n="io3_who">For developers — full manual control</div>
+                <div class="io-desc" data-i18n="io3_desc">Build from source with cmake. Use solctl CLI to start/stop streams, check status, and configure options. Full control over every parameter.</div>
+                <code class="io-cmd">cmake -B build &amp;&amp; cmake --build build
+solctl status</code>
+                <div class="io-steps" data-i18n="io3_steps"><strong>1.</strong> Build with cmake<br><strong>2.</strong> Install driver manually<br><strong>3.</strong> Use solctl to control</div>
             </div>
         </div>
     </div>
@@ -895,15 +1000,15 @@
         <div class="section-header">
             <div class="section-label" data-i18n="plat_label">CROSS PLATFORM</div>
             <h2 class="section-title" data-i18n="plat_title">Available everywhere</h2>
-            <p class="section-desc" data-i18n="plat_desc">Soluna Rx runs on macOS and iOS. More platforms coming soon.</p>
+            <p class="section-desc" data-i18n="plat_desc">Soluna runs on macOS, iOS, Raspberry Pi, and browsers. TX + RX + WAN in one app on Mac.</p>
         </div>
         <div class="platforms-row">
             <div class="platform-card">
                 <div class="platform-icon">🖥</div>
                 <h3>macOS</h3>
-                <p data-i18n="plat_mac_desc">Native Mac App Store app for Apple Silicon</p>
-                <a href="https://testflight.apple.com/join/CeT5Pf2e" class="platform-link">
-                    TestFlight →
+                <p data-i18n="plat_mac_desc">Native macOS app with one-command install</p>
+                <a href="#install" class="platform-link">
+                    Install →
                 </a>
             </div>
             <div class="platform-card">
@@ -921,11 +1026,11 @@
 <!-- CTA -->
 <section class="cta fade-in">
     <h2 data-i18n="cta_title">Ready to stream?</h2>
-    <p data-i18n="cta_desc">Download Soluna Rx for free and turn your Mac into a network audio receiver.</p>
+    <p data-i18n="cta_desc">Install Soluna with one command. TX + RX + WAN P2P all in a single app.</p>
     <div class="hero-buttons">
-        <a href="https://testflight.apple.com/join/CeT5Pf2e" class="btn btn-primary">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-            <span data-i18n="cta_btn">Download for Free</span>
+        <a href="#install" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            <span data-i18n="cta_btn">Install Now</span>
         </a>
         <a href="https://github.com/yukihamada/opensonic" class="btn btn-outline">
             <span data-i18n="btn_source">View Source</span>
@@ -940,7 +1045,7 @@
         <a href="https://github.com/yukihamada/opensonic">GitHub</a>
         <a href="https://github.com/yukihamada/opensonic/issues" data-i18n="footer_issues">Issues</a>
     </div>
-    <p>Soluna Rx &mdash; part of the <a href="https://github.com/yukihamada/opensonic" style="color:var(--accent-light)">OpenSonic</a> project</p>
+    <p>Soluna &mdash; part of the <a href="https://github.com/yukihamada/opensonic" style="color:var(--accent-light)">OpenSonic</a> project</p>
 </footer>
 
 <script>
@@ -958,13 +1063,13 @@ const LANGS = {
 
 const T = {
 en: {
-    nav_download:"TestFlight",
-    badge:"BETA ON TESTFLIGHT",
+    nav_download:"Install",
+    badge:"3 WAYS TO INSTALL",
     hero_sub:"for Mac",
-    hero_desc:"Stream audio to your Mac over WiFi. Low-latency network audio receiver with multi-speaker sync.",
-    btn_download:"Get it on TestFlight",
+    hero_desc:"TX + RX + WAN P2P all in one app. System audio streaming, mic TX, multi-speaker sync. No separate daemon needed.",
+    btn_download:"Install with 1 Command",
     btn_source:"View Source",
-    mock_receiving:"Receiving",
+    mock_receiving:"Audio TX ON",
     mock_speakers:"Speakers",
     mock_this_mac:"This Mac",
     features_label:"FEATURES",
@@ -1000,25 +1105,31 @@ en: {
     f28_title:"Latency Graph",f28_desc:"Real-time line chart showing per-device latency trends. Spot network issues before they affect your listening.",
     f29_title:"Hot-Plug & Persistence",f29_desc:"Instantly detects BT/AirPlay connect and disconnect. Enabled devices and offsets are saved to UserDefaults and restored on launch.",
     f30_title:"Menu Bar Player",f30_desc:"MenuBarExtra keeps Soluna in your menu bar. Quick access to status, volume, sync, and playback without opening the main window.",
-    how_label:"HOW IT WORKS",how_title:"Three simple steps",how_desc:"Get whole-home audio running in minutes",
-    s1_title:"Install Soluna TX",s1_desc:"Set up the Soluna transmitter (solunad) on your source Mac. It captures system audio via a virtual driver.",
-    s2_title:"Open Soluna Rx",s2_desc:"Launch Soluna Rx on any Mac on the same network. It auto-discovers the transmitter and starts receiving.",
-    s3_title:"Enjoy Music",s3_desc:"Audio plays through your Mac speakers in perfect sync. Add more speakers and control them all from one place.",
+    how_label:"INSTALL",how_title:"Choose your setup",how_desc:"Pick the option that fits you best",
+    io1_badge:"RECOMMENDED",io1_title:"Soluna App",io1_who:"For everyone \u2014 easiest way to get started",
+    io1_desc:"Install Soluna.app and control everything from a simple GUI. Audio TX, Mic TX, WAN P2P \u2014 all built in. No terminal knowledge needed after install.",
+    io1_steps:"<strong>1.</strong> Run the command above<br><strong>2.</strong> Sound Settings \u2192 Output \u2192 \u201cSoluna\u201d<br><strong>3.</strong> Open Soluna.app \u2192 Done!",
+    io2_badge:"SET & FORGET",io2_title:"Installer + solunad",io2_who:"Auto-start on login \u2014 runs in the background",
+    io2_desc:"Includes everything in App mode plus solunad daemon and LaunchAgent. Audio streams automatically when you log in \u2014 no need to open any app.",
+    io2_steps:"<strong>1.</strong> Run the command above<br><strong>2.</strong> Sound Settings \u2192 Output \u2192 \u201cSoluna\u201d<br><strong>3.</strong> That\u2019s it \u2014 streams on login",
+    io3_badge:"ADVANCED",io3_title:"Command Line",io3_who:"For developers \u2014 full manual control",
+    io3_desc:"Build from source with cmake. Use solctl CLI to start/stop streams, check status, and configure options. Full control over every parameter.",
+    io3_steps:"<strong>1.</strong> Build with cmake<br><strong>2.</strong> Install driver manually<br><strong>3.</strong> Use solctl to control",
     specs_label:"SPECIFICATIONS",specs_title:"Built for performance",specs_desc:"Lightweight, efficient, and purpose-built for audio",
     sp1:"Minimum OS",sp2:"Native arm64",sp3:"Buffer Latency",sp4_val:"Free",sp4:"Price",sp5:"Native macOS UI",sp6:"Audio Engine",sp7:"Audio Format",sp8_val:"Open Source",sp8:"License",
-    plat_label:"CROSS PLATFORM",plat_title:"Available everywhere",plat_desc:"Soluna Rx runs on macOS and iOS. More platforms coming soon.",
-    plat_mac_desc:"Native macOS app for Apple Silicon via TestFlight",plat_ios_desc:"iPhone and iPad receiver with background playback",
-    cta_title:"Ready to stream?",cta_desc:"Get Soluna Rx for free on TestFlight and turn your Mac into a network audio receiver.",cta_btn:"Join TestFlight Beta",
+    plat_label:"CROSS PLATFORM",plat_title:"Available everywhere",plat_desc:"Soluna runs on macOS, iOS, Raspberry Pi, and browsers. TX + RX + WAN in one app on Mac.",
+    plat_mac_desc:"Native macOS app with one-command install",plat_ios_desc:"iPhone and iPad receiver with background playback",
+    cta_title:"Ready to stream?",cta_desc:"Install Soluna with one command. TX + RX + WAN P2P all in a single app.",cta_btn:"Install Now",
     footer_docs:"Documentation",footer_issues:"Issues",
 },
 ja: {
-    nav_download:"TestFlight",
-    badge:"TESTFLIGHTでベータ公開中",
+    nav_download:"インストール",
+    badge:"3つのインストール方法",
     hero_sub:"for Mac",
-    hero_desc:"WiFi経由でMacにオーディオをストリーミング。低遅延ネットワークオーディオレシーバー。",
-    btn_download:"TestFlightで入手",
+    hero_desc:"TX + RX + WAN P2P をアプリ1つで。システム音声配信、マイクTX、マルチスピーカー同期。デーモン不要。",
+    btn_download:"1コマンドでインストール",
     btn_source:"ソースコード",
-    mock_receiving:"受信中",
+    mock_receiving:"Audio TX ON",
     mock_speakers:"スピーカー",
     mock_this_mac:"このMac",
     features_label:"機能",
@@ -1054,25 +1165,31 @@ ja: {
     f28_title:"レイテンシグラフ",f28_desc:"デバイスごとの遅延推移をリアルタイム折れ線グラフ表示。ネットワーク問題を音質に影響する前に発見。",
     f29_title:"ホットプラグ＆永続化",f29_desc:"BT/AirPlayの接続・切断を即座に検出。有効デバイス・オフセットをUserDefaultsに保存し起動時に復元。",
     f30_title:"メニューバープレーヤー",f30_desc:"MenuBarExtraでメニューバーに常駐。メインウィンドウを開かずにステータス・音量・同期・再生をクイック操作。",
-    how_label:"使い方",how_title:"3つの簡単なステップ",how_desc:"数分でホームオーディオを構築",
-    s1_title:"Soluna TXをインストール",s1_desc:"ソースMacにSolunaトランスミッター（solunad）をセットアップ。仮想ドライバーでシステム音声をキャプチャ。",
-    s2_title:"Soluna Rxを起動",s2_desc:"同じネットワーク上の任意のMacでSoluna Rxを起動。トランスミッターを自動検出して受信開始。",
-    s3_title:"音楽を楽しむ",s3_desc:"Macのスピーカーから完全同期で再生。スピーカーを追加して一元管理できます。",
+    how_label:"インストール",how_title:"あなたに合った方法を選ぼう",how_desc:"3つの方法からお好みで",
+    io1_badge:"おすすめ",io1_title:"Soluna アプリ",io1_who:"はじめての方に — いちばんカンタン",
+    io1_desc:"Soluna.appをインストールして、画面の操作だけで音声配信。Audio TX・マイク TX・WAN P2P ぜんぶ入り。インストール後はターミナル不要。",
+    io1_steps:"<strong>1.</strong> 上のコマンドを実行<br><strong>2.</strong> サウンド設定 → 出力 → 「Soluna」<br><strong>3.</strong> Soluna.appを開く → 完了！",
+    io2_badge:"おまかせ自動",io2_title:"インストーラー + solunad",io2_who:"ログイン時に自動起動 — アプリを開かなくてOK",
+    io2_desc:"アプリ版のすべて＋solunadデーモンとLaunchAgentを追加。ログインするだけで自動的に音声配信が始まります。",
+    io2_steps:"<strong>1.</strong> 上のコマンドを実行<br><strong>2.</strong> サウンド設定 → 出力 → 「Soluna」<br><strong>3.</strong> これだけ — ログイン時に自動配信",
+    io3_badge:"上級者向け",io3_title:"コマンドライン",io3_who:"開発者向け — 全パラメータを手動制御",
+    io3_desc:"cmakeでソースからビルド。solctl CLIで配信の開始/停止、ステータス確認、設定変更。すべてを細かくコントロール。",
+    io3_steps:"<strong>1.</strong> cmakeでビルド<br><strong>2.</strong> ドライバを手動インストール<br><strong>3.</strong> solctlで操作",
     specs_label:"仕様",specs_title:"パフォーマンス重視",specs_desc:"軽量・高効率・オーディオ専用設計",
     sp1:"最小OS",sp2:"ネイティブarm64",sp3:"バッファ遅延",sp4_val:"無料",sp4:"価格",sp5:"ネイティブmacOS UI",sp6:"オーディオエンジン",sp7:"オーディオ形式",sp8_val:"オープンソース",sp8:"ライセンス",
-    plat_label:"クロスプラットフォーム",plat_title:"どこでも利用可能",plat_desc:"Soluna RxはmacOSとiOSに対応。他のプラットフォームも近日対応予定。",
-    plat_mac_desc:"Apple Silicon対応のTestFlightベータ版",plat_ios_desc:"バックグラウンド再生対応のiPhone/iPadレシーバー",
-    cta_title:"ストリーミングを始めよう",cta_desc:"TestFlightでSoluna Rxを無料で入手して、Macをネットワークオーディオレシーバーに。",cta_btn:"TestFlightベータに参加",
+    plat_label:"クロスプラットフォーム",plat_title:"どこでも利用可能",plat_desc:"SolunaはmacOS・iOS・Raspberry Pi・ブラウザに対応。MacではTX+RX+WANをアプリ1つで。",
+    plat_mac_desc:"ワンコマンドインストールのネイティブMacアプリ",plat_ios_desc:"バックグラウンド再生対応のiPhone/iPadレシーバー",
+    cta_title:"ストリーミングを始めよう",cta_desc:"1コマンドでSolunaをインストール。TX+RX+WAN P2Pをアプリ1つで。",cta_btn:"今すぐインストール",
     footer_docs:"ドキュメント",footer_issues:"問題を報告",
 },
 zh: {
-    nav_download:"TestFlight",
-    badge:"TESTFLIGHT 免费测试",
+    nav_download:"安装",
+    badge:"3种安装方式",
     hero_sub:"Mac 版",
-    hero_desc:"通过WiFi将音频传输到Mac。低延迟网络音频接收器，支持多扬声器同步。",
-    btn_download:"通过TestFlight获取",
+    hero_desc:"TX + RX + WAN P2P 一个应用搞定。系统音频流、麦克风TX、多扬声器同步。无需守护进程。",
+    btn_download:"一键安装",
     btn_source:"查看源码",
-    mock_receiving:"接收中",
+    mock_receiving:"Audio TX ON",
     mock_speakers:"扬声器",
     mock_this_mac:"本机Mac",
     features_label:"功能",
@@ -1108,25 +1225,31 @@ zh: {
     f28_title:"延迟图表",f28_desc:"实时折线图显示每个设备的延迟趋势。在影响听感之前发现网络问题。",
     f29_title:"热插拔与持久化",f29_desc:"即时检测蓝牙/AirPlay的连接与断开。已启用设备和偏移保存到UserDefaults，启动时自动恢复。",
     f30_title:"菜单栏播放器",f30_desc:"MenuBarExtra常驻菜单栏。无需打开主窗口即可快速访问状态、音量、同步和播放控制。",
-    how_label:"使用方法",how_title:"三个简单步骤",how_desc:"几分钟即可搭建全屋音频",
-    s1_title:"安装Soluna TX",s1_desc:"在源Mac上设置Soluna发射器(solunad)。通过虚拟驱动捕获系统音频。",
-    s2_title:"打开Soluna Rx",s2_desc:"在同一网络的任意Mac上启动Soluna Rx。自动发现发射器并开始接收。",
-    s3_title:"享受音乐",s3_desc:"音频通过Mac扬声器完美同步播放。添加更多扬声器并统一管理。",
+    how_label:"安装",how_title:"选择你的安装方式",how_desc:"三种方式，按需选择",
+    io1_badge:"推荐",io1_title:"Soluna 应用",io1_who:"适合所有人 — 最简单的方式",
+    io1_desc:"安装Soluna.app，通过图形界面控制一切。Audio TX、Mic TX、WAN P2P 全部内置。安装后无需终端操作。",
+    io1_steps:"<strong>1.</strong> 运行上方命令<br><strong>2.</strong> 声音设置 → 输出 → 「Soluna」<br><strong>3.</strong> 打开 Soluna.app → 完成！",
+    io2_badge:"自动运行",io2_title:"安装器 + solunad",io2_who:"登录时自动启动 — 后台运行",
+    io2_desc:"包含应用版的所有功能，加上 solunad 守护进程和 LaunchAgent。登录后自动开始音频串流，无需打开任何应用。",
+    io2_steps:"<strong>1.</strong> 运行上方命令<br><strong>2.</strong> 声音设置 → 输出 → 「Soluna」<br><strong>3.</strong> 搞定 — 登录即串流",
+    io3_badge:"进阶",io3_title:"命令行",io3_who:"开发者专用 — 完全手动控制",
+    io3_desc:"用 cmake 从源码构建。使用 solctl CLI 启动/停止串流、查看状态、配置选项。完全控制每个参数。",
+    io3_steps:"<strong>1.</strong> 用 cmake 构建<br><strong>2.</strong> 手动安装驱动<br><strong>3.</strong> 用 solctl 控制",
     specs_label:"规格",specs_title:"为性能而生",specs_desc:"轻量、高效、专为音频打造",
     sp1:"最低系统",sp2:"原生arm64",sp3:"缓冲延迟",sp4_val:"免费",sp4:"价格",sp5:"原生macOS界面",sp6:"音频引擎",sp7:"音频格式",sp8_val:"开源",sp8:"许可证",
-    plat_label:"跨平台",plat_title:"随处可用",plat_desc:"Soluna Rx支持macOS和iOS。更多平台即将推出。",
-    plat_mac_desc:"通过TestFlight获取Apple Silicon原生应用",plat_ios_desc:"支持后台播放的iPhone/iPad接收器",
-    cta_title:"准备开始串流？",cta_desc:"通过TestFlight免费获取Soluna Rx，将您的Mac变成网络音频接收器。",cta_btn:"加入TestFlight测试",
+    plat_label:"跨平台",plat_title:"随处可用",plat_desc:"Soluna支持macOS、iOS、Raspberry Pi和浏览器。Mac上TX+RX+WAN一个应用搞定。",
+    plat_mac_desc:"一键安装的原生Mac应用",plat_ios_desc:"支持后台播放的iPhone/iPad接收器",
+    cta_title:"准备开始串流？",cta_desc:"一条命令安装Soluna。TX+RX+WAN P2P一个应用搞定。",cta_btn:"立即安装",
     footer_docs:"文档",footer_issues:"反馈问题",
 },
 ko: {
-    nav_download:"TestFlight",
-    badge:"TESTFLIGHT 베타 무료",
+    nav_download:"설치",
+    badge:"3가지 설치 방법",
     hero_sub:"Mac용",
-    hero_desc:"WiFi로 Mac에 오디오를 스트리밍합니다. 멀티 스피커 동기화를 지원하는 저지연 네트워크 오디오 리시버.",
-    btn_download:"TestFlight에서 받기",
+    hero_desc:"TX + RX + WAN P2P를 하나의 앱으로. 시스템 오디오 스트리밍, 마이크 TX, 멀티 스피커 동기화. 데몬 불필요.",
+    btn_download:"1명령으로 설치",
     btn_source:"소스 코드",
-    mock_receiving:"수신 중",
+    mock_receiving:"Audio TX ON",
     mock_speakers:"스피커",
     mock_this_mac:"이 Mac",
     features_label:"기능",
@@ -1162,25 +1285,31 @@ ko: {
     f28_title:"레이턴시 그래프",f28_desc:"디바이스별 지연 추이를 실시간 꺾은선 그래프로 표시. 음질에 영향을 미치기 전에 네트워크 문제를 감지.",
     f29_title:"핫플러그 & 영속화",f29_desc:"BT/AirPlay 연결 및 해제를 즉시 감지. 활성화된 장치와 오프셋을 UserDefaults에 저장하고 실행 시 복원.",
     f30_title:"메뉴 바 플레이어",f30_desc:"MenuBarExtra로 메뉴 바에 상주. 메인 창을 열지 않고도 상태, 볼륨, 동기화, 재생을 빠르게 조작.",
-    how_label:"사용 방법",how_title:"3단계로 간단하게",how_desc:"몇 분 만에 홈 오디오 구축",
-    s1_title:"Soluna TX 설치",s1_desc:"소스 Mac에 Soluna 송신기(solunad)를 설정합니다. 가상 드라이버로 시스템 오디오를 캡처.",
-    s2_title:"Soluna Rx 실행",s2_desc:"같은 네트워크의 Mac에서 Soluna Rx를 실행. 송신기를 자동 검색하고 수신 시작.",
-    s3_title:"음악 즐기기",s3_desc:"Mac 스피커에서 완벽하게 동기화된 오디오 재생. 스피커를 추가하고 한 곳에서 관리.",
+    how_label:"설치",how_title:"나에게 맞는 방법 선택",how_desc:"3가지 방법 중 선택하세요",
+    io1_badge:"추천",io1_title:"Soluna 앱",io1_who:"모든 분께 — 가장 쉬운 방법",
+    io1_desc:"Soluna.app을 설치하고 간단한 GUI로 모든 것을 제어. Audio TX, Mic TX, WAN P2P 모두 내장. 설치 후 터미널 지식 불필요.",
+    io1_steps:"<strong>1.</strong> 위 명령 실행<br><strong>2.</strong> 사운드 설정 → 출력 → 'Soluna'<br><strong>3.</strong> Soluna.app 열기 → 완료!",
+    io2_badge:"자동 실행",io2_title:"설치 프로그램 + solunad",io2_who:"로그인 시 자동 시작 — 백그라운드 실행",
+    io2_desc:"앱 모드의 모든 기능 + solunad 데몬과 LaunchAgent. 로그인하면 자동으로 오디오 스트리밍 시작 — 앱을 열 필요 없음.",
+    io2_steps:"<strong>1.</strong> 위 명령 실행<br><strong>2.</strong> 사운드 설정 → 출력 → 'Soluna'<br><strong>3.</strong> 끝 — 로그인 시 자동 스트리밍",
+    io3_badge:"고급",io3_title:"커맨드 라인",io3_who:"개발자용 — 완전한 수동 제어",
+    io3_desc:"cmake로 소스에서 빌드. solctl CLI로 스트림 시작/중지, 상태 확인, 옵션 구성. 모든 파라미터 완전 제어.",
+    io3_steps:"<strong>1.</strong> cmake로 빌드<br><strong>2.</strong> 드라이버 수동 설치<br><strong>3.</strong> solctl로 제어",
     specs_label:"사양",specs_title:"성능을 위한 설계",specs_desc:"가볍고 효율적인 오디오 전용 설계",
     sp1:"최소 OS",sp2:"네이티브 arm64",sp3:"버퍼 지연",sp4_val:"무료",sp4:"가격",sp5:"네이티브 macOS UI",sp6:"오디오 엔진",sp7:"오디오 형식",sp8_val:"오픈 소스",sp8:"라이선스",
-    plat_label:"크로스 플랫폼",plat_title:"어디서나 사용 가능",plat_desc:"Soluna Rx는 macOS와 iOS를 지원합니다. 더 많은 플랫폼이 곧 추가됩니다.",
-    plat_mac_desc:"TestFlight에서 Apple Silicon 네이티브 앱 받기",plat_ios_desc:"백그라운드 재생 지원 iPhone/iPad 리시버",
-    cta_title:"스트리밍을 시작할까요?",cta_desc:"TestFlight에서 Soluna Rx를 무료로 받고 Mac을 네트워크 오디오 리시버로 만드세요.",cta_btn:"TestFlight 베타 참가",
+    plat_label:"크로스 플랫폼",plat_title:"어디서나 사용 가능",plat_desc:"Soluna는 macOS, iOS, Raspberry Pi, 브라우저를 지원. Mac에서 TX+RX+WAN을 하나의 앱으로.",
+    plat_mac_desc:"원커맨드 설치 네이티브 Mac 앱",plat_ios_desc:"백그라운드 재생 지원 iPhone/iPad 리시버",
+    cta_title:"스트리밍을 시작할까요?",cta_desc:"한 명령으로 Soluna를 설치. TX+RX+WAN P2P를 하나의 앱으로.",cta_btn:"지금 설치",
     footer_docs:"문서",footer_issues:"문제 보고",
 },
 es: {
-    nav_download:"TestFlight",
-    badge:"BETA GRATIS EN TESTFLIGHT",
+    nav_download:"Instalar",
+    badge:"3 FORMAS DE INSTALAR",
     hero_sub:"para Mac",
-    hero_desc:"Transmite audio a tu Mac por WiFi. Receptor de audio en red de baja latencia con sincronización multi-altavoz.",
-    btn_download:"Obtener en TestFlight",
+    hero_desc:"TX + RX + WAN P2P en una sola app. Streaming de audio del sistema, TX de micrófono, sincronización multi-altavoz. Sin daemon.",
+    btn_download:"Instalar con 1 Comando",
     btn_source:"Ver código",
-    mock_receiving:"Recibiendo",
+    mock_receiving:"Audio TX ON",
     mock_speakers:"Altavoces",
     mock_this_mac:"Este Mac",
     features_label:"FUNCIONES",
@@ -1192,25 +1321,31 @@ es: {
     f4_title:"Sincronización Auto",f4_desc:"Mide el tiempo de ida y vuelta para sincronizar automáticamente la latencia de audio.",
     f5_title:"Compensación de Pérdida",f5_desc:"Algoritmo PLC integrado que rellena paquetes perdidos para mantener la reproducción fluida.",
     f6_title:"Estadísticas en Tiempo Real",f6_desc:"Monitorea paquetes, tasa de pérdida, búfer y conteo PLC en tiempo real.",
-    how_label:"CÓMO FUNCIONA",how_title:"Tres simples pasos",how_desc:"Configura audio en toda la casa en minutos",
-    s1_title:"Instala Soluna TX",s1_desc:"Configura el transmisor Soluna (solunad) en tu Mac de origen. Captura el audio del sistema con un driver virtual.",
-    s2_title:"Abre Soluna Rx",s2_desc:"Inicia Soluna Rx en cualquier Mac de la misma red. Descubre automáticamente el transmisor y comienza a recibir.",
-    s3_title:"Disfruta la Música",s3_desc:"El audio se reproduce perfectamente sincronizado. Agrega más altavoces y controla todo desde un solo lugar.",
+    how_label:"INSTALACIÓN",how_title:"Elige tu método",how_desc:"Tres opciones según tu nivel",
+    io1_badge:"RECOMENDADO",io1_title:"Soluna App",io1_who:"Para todos — la forma más fácil",
+    io1_desc:"Instala Soluna.app y controla todo desde una interfaz gráfica. Audio TX, Mic TX, WAN P2P integrados. Sin terminal después de instalar.",
+    io1_steps:"<strong>1.</strong> Ejecuta el comando<br><strong>2.</strong> Ajustes de Sonido → Salida → 'Soluna'<br><strong>3.</strong> Abre Soluna.app → ¡Listo!",
+    io2_badge:"AUTOMÁTICO",io2_title:"Instalador + solunad",io2_who:"Inicio automático — se ejecuta en segundo plano",
+    io2_desc:"Incluye todo del modo App más solunad daemon y LaunchAgent. El audio se transmite automáticamente al iniciar sesión.",
+    io2_steps:"<strong>1.</strong> Ejecuta el comando<br><strong>2.</strong> Ajustes de Sonido → Salida → 'Soluna'<br><strong>3.</strong> Listo — transmite al iniciar sesión",
+    io3_badge:"AVANZADO",io3_title:"Línea de Comandos",io3_who:"Para desarrolladores — control manual total",
+    io3_desc:"Compila desde el código fuente con cmake. Usa solctl CLI para iniciar/detener streams y configurar opciones.",
+    io3_steps:"<strong>1.</strong> Compila con cmake<br><strong>2.</strong> Instala el driver manualmente<br><strong>3.</strong> Usa solctl para controlar",
     specs_label:"ESPECIFICACIONES",specs_title:"Diseñado para rendimiento",specs_desc:"Ligero, eficiente y construido para audio",
     sp1:"OS Mínimo",sp2:"arm64 Nativo",sp3:"Latencia Buffer",sp4_val:"Gratis",sp4:"Precio",sp5:"UI macOS Nativa",sp6:"Motor de Audio",sp7:"Formato de Audio",sp8_val:"Código Abierto",sp8:"Licencia",
-    plat_label:"MULTIPLATAFORMA",plat_title:"Disponible en todas partes",plat_desc:"Soluna Rx funciona en macOS e iOS. Más plataformas próximamente.",
-    plat_mac_desc:"App nativa para Apple Silicon vía TestFlight",plat_ios_desc:"Receptor para iPhone/iPad con reproducción en segundo plano",
-    cta_title:"¿Listo para transmitir?",cta_desc:"Obtén Soluna Rx gratis en TestFlight y convierte tu Mac en un receptor de audio en red.",cta_btn:"Unirse a TestFlight Beta",
+    plat_label:"MULTIPLATAFORMA",plat_title:"Disponible en todas partes",plat_desc:"Soluna funciona en macOS, iOS, Raspberry Pi y navegadores. TX+RX+WAN en una app en Mac.",
+    plat_mac_desc:"App nativa Mac con instalación en un comando",plat_ios_desc:"Receptor para iPhone/iPad con reproducción en segundo plano",
+    cta_title:"¿Listo para transmitir?",cta_desc:"Instala Soluna con un comando. TX+RX+WAN P2P en una sola app.",cta_btn:"Instalar Ahora",
     footer_docs:"Documentación",footer_issues:"Reportar problema",
 },
 fr: {
-    nav_download:"TestFlight",
-    badge:"BÊTA GRATUITE SUR TESTFLIGHT",
+    nav_download:"Installer",
+    badge:"3 MÉTHODES D'INSTALLATION",
     hero_sub:"pour Mac",
-    hero_desc:"Diffusez l'audio vers votre Mac en WiFi. Récepteur audio réseau à faible latence avec synchronisation multi-enceintes.",
-    btn_download:"Obtenir sur TestFlight",
+    hero_desc:"TX + RX + WAN P2P dans une seule app. Streaming audio système, TX micro, synchronisation multi-enceintes. Sans daemon.",
+    btn_download:"Installer en 1 Commande",
     btn_source:"Code source",
-    mock_receiving:"Réception",
+    mock_receiving:"Audio TX ON",
     mock_speakers:"Enceintes",
     mock_this_mac:"Ce Mac",
     features_label:"FONCTIONNALITÉS",
@@ -1222,25 +1357,31 @@ fr: {
     f4_title:"Synchronisation Auto",f4_desc:"Mesure le temps aller-retour pour synchroniser automatiquement la latence audio sur toutes les enceintes.",
     f5_title:"Compensation de Perte",f5_desc:"L'algorithme PLC intégré comble les paquets perdus pour une lecture fluide même en réseau congestionné.",
     f6_title:"Statistiques en Temps Réel",f6_desc:"Surveillez les paquets, le taux de perte, le tampon et le compteur PLC en temps réel.",
-    how_label:"FONCTIONNEMENT",how_title:"Trois étapes simples",how_desc:"Configurez l'audio dans toute la maison en quelques minutes",
-    s1_title:"Installer Soluna TX",s1_desc:"Configurez l'émetteur Soluna (solunad) sur votre Mac source. Il capture l'audio système via un pilote virtuel.",
-    s2_title:"Ouvrir Soluna Rx",s2_desc:"Lancez Soluna Rx sur n'importe quel Mac du même réseau. Il détecte automatiquement l'émetteur et commence à recevoir.",
-    s3_title:"Profitez de la Musique",s3_desc:"L'audio est diffusé en parfaite synchronisation. Ajoutez d'autres enceintes et contrôlez-les toutes depuis un seul endroit.",
+    how_label:"INSTALLATION",how_title:"Choisissez votre méthode",how_desc:"Trois options selon votre niveau",
+    io1_badge:"RECOMMANDÉ",io1_title:"Soluna App",io1_who:"Pour tous — le plus simple",
+    io1_desc:"Installez Soluna.app et contrôlez tout via une interface graphique. Audio TX, Mic TX, WAN P2P intégrés. Pas de terminal après l'installation.",
+    io1_steps:"<strong>1.</strong> Exécutez la commande<br><strong>2.</strong> Réglages Son → Sortie → « Soluna »<br><strong>3.</strong> Ouvrez Soluna.app → Terminé !",
+    io2_badge:"AUTOMATIQUE",io2_title:"Installeur + solunad",io2_who:"Démarrage auto à la connexion — tourne en arrière-plan",
+    io2_desc:"Inclut tout du mode App plus le daemon solunad et LaunchAgent. L'audio est diffusé automatiquement à la connexion.",
+    io2_steps:"<strong>1.</strong> Exécutez la commande<br><strong>2.</strong> Réglages Son → Sortie → « Soluna »<br><strong>3.</strong> C'est tout — diffuse à la connexion",
+    io3_badge:"AVANCÉ",io3_title:"Ligne de Commande",io3_who:"Pour développeurs — contrôle manuel complet",
+    io3_desc:"Compilez depuis les sources avec cmake. Utilisez solctl CLI pour démarrer/arrêter les flux et configurer les options.",
+    io3_steps:"<strong>1.</strong> Compilez avec cmake<br><strong>2.</strong> Installez le driver manuellement<br><strong>3.</strong> Utilisez solctl pour contrôler",
     specs_label:"SPÉCIFICATIONS",specs_title:"Conçu pour la performance",specs_desc:"Léger, efficace et dédié à l'audio",
     sp1:"OS Minimum",sp2:"arm64 Natif",sp3:"Latence Tampon",sp4_val:"Gratuit",sp4:"Prix",sp5:"Interface macOS Native",sp6:"Moteur Audio",sp7:"Format Audio",sp8_val:"Open Source",sp8:"Licence",
-    plat_label:"MULTIPLATEFORME",plat_title:"Disponible partout",plat_desc:"Soluna Rx fonctionne sur macOS et iOS. D'autres plateformes arrivent bientôt.",
-    plat_mac_desc:"Application native Apple Silicon via TestFlight",plat_ios_desc:"Récepteur iPhone/iPad avec lecture en arrière-plan",
-    cta_title:"Prêt à diffuser ?",cta_desc:"Obtenez Soluna Rx gratuitement sur TestFlight et transformez votre Mac en récepteur audio réseau.",cta_btn:"Rejoindre la Bêta TestFlight",
+    plat_label:"MULTIPLATEFORME",plat_title:"Disponible partout",plat_desc:"Soluna fonctionne sur macOS, iOS, Raspberry Pi et navigateurs. TX+RX+WAN dans une seule app sur Mac.",
+    plat_mac_desc:"Application Mac native avec installation en une commande",plat_ios_desc:"Récepteur iPhone/iPad avec lecture en arrière-plan",
+    cta_title:"Prêt à diffuser ?",cta_desc:"Installez Soluna avec une commande. TX+RX+WAN P2P dans une seule app.",cta_btn:"Installer Maintenant",
     footer_docs:"Documentation",footer_issues:"Signaler un problème",
 },
 de: {
-    nav_download:"TestFlight",
-    badge:"KOSTENLOSE BETA AUF TESTFLIGHT",
+    nav_download:"Installieren",
+    badge:"3 INSTALLATIONSMETHODEN",
     hero_sub:"für Mac",
-    hero_desc:"Streame Audio über WiFi auf deinen Mac. Netzwerk-Audio-Empfänger mit niedriger Latenz und Multi-Lautsprecher-Sync.",
-    btn_download:"Auf TestFlight laden",
+    hero_desc:"TX + RX + WAN P2P in einer App. System-Audio-Streaming, Mikrofon TX, Multi-Lautsprecher-Sync. Kein Daemon nötig.",
+    btn_download:"Mit 1 Befehl installieren",
     btn_source:"Quellcode",
-    mock_receiving:"Empfang",
+    mock_receiving:"Audio TX ON",
     mock_speakers:"Lautsprecher",
     mock_this_mac:"Dieser Mac",
     features_label:"FUNKTIONEN",
@@ -1252,25 +1393,31 @@ de: {
     f4_title:"Auto-Synchronisierung",f4_desc:"Misst die Rundlaufzeit und synchronisiert automatisch die Audio-Latenz aller Lautsprecher.",
     f5_title:"Paketverlust-Kompensation",f5_desc:"Eingebauter PLC-Algorithmus füllt verlorene Pakete auf für flüssige Wiedergabe auch bei Netzwerkstau.",
     f6_title:"Echtzeit-Statistiken",f6_desc:"Überwache Pakete, Verlustrate, Puffer und PLC-Zähler in Echtzeit.",
-    how_label:"SO FUNKTIONIERT'S",how_title:"Drei einfache Schritte",how_desc:"Richte Heim-Audio in wenigen Minuten ein",
-    s1_title:"Soluna TX installieren",s1_desc:"Richte den Soluna-Sender (solunad) auf deinem Quell-Mac ein. Er erfasst System-Audio über einen virtuellen Treiber.",
-    s2_title:"Soluna Rx öffnen",s2_desc:"Starte Soluna Rx auf einem beliebigen Mac im selben Netzwerk. Er erkennt den Sender automatisch und beginnt den Empfang.",
-    s3_title:"Musik genießen",s3_desc:"Audio wird perfekt synchronisiert wiedergegeben. Füge weitere Lautsprecher hinzu und steuere alle von einem Ort.",
+    how_label:"INSTALLATION",how_title:"Wähle deine Methode",how_desc:"Drei Optionen je nach Level",
+    io1_badge:"EMPFOHLEN",io1_title:"Soluna App",io1_who:"Für alle — der einfachste Weg",
+    io1_desc:"Installiere Soluna.app und steuere alles über die Benutzeroberfläche. Audio TX, Mic TX, WAN P2P integriert. Kein Terminal nach der Installation.",
+    io1_steps:"<strong>1.</strong> Befehl ausführen<br><strong>2.</strong> Toneinstellungen → Ausgabe → 'Soluna'<br><strong>3.</strong> Soluna.app öffnen → Fertig!",
+    io2_badge:"AUTOMATISCH",io2_title:"Installer + solunad",io2_who:"Autostart beim Login — läuft im Hintergrund",
+    io2_desc:"Enthält alles aus dem App-Modus plus solunad-Daemon und LaunchAgent. Audio streamt automatisch beim Login.",
+    io2_steps:"<strong>1.</strong> Befehl ausführen<br><strong>2.</strong> Toneinstellungen → Ausgabe → 'Soluna'<br><strong>3.</strong> Das war's — streamt beim Login",
+    io3_badge:"FORTGESCHRITTEN",io3_title:"Kommandozeile",io3_who:"Für Entwickler — volle manuelle Kontrolle",
+    io3_desc:"Aus dem Quellcode mit cmake bauen. Nutze solctl CLI zum Starten/Stoppen von Streams und zur Konfiguration.",
+    io3_steps:"<strong>1.</strong> Mit cmake bauen<br><strong>2.</strong> Treiber manuell installieren<br><strong>3.</strong> Mit solctl steuern",
     specs_label:"SPEZIFIKATIONEN",specs_title:"Für Leistung gebaut",specs_desc:"Leichtgewichtig, effizient und für Audio entwickelt",
     sp1:"Minimum OS",sp2:"Natives arm64",sp3:"Puffer-Latenz",sp4_val:"Kostenlos",sp4:"Preis",sp5:"Native macOS UI",sp6:"Audio-Engine",sp7:"Audio-Format",sp8_val:"Open Source",sp8:"Lizenz",
-    plat_label:"PLATTFORMÜBERGREIFEND",plat_title:"Überall verfügbar",plat_desc:"Soluna Rx läuft auf macOS und iOS. Weitere Plattformen folgen.",
-    plat_mac_desc:"Native Apple Silicon App über TestFlight",plat_ios_desc:"iPhone/iPad-Empfänger mit Hintergrundwiedergabe",
-    cta_title:"Bereit zum Streamen?",cta_desc:"Hol dir Soluna Rx kostenlos auf TestFlight und mache deinen Mac zum Netzwerk-Audio-Empfänger.",cta_btn:"TestFlight Beta beitreten",
+    plat_label:"PLATTFORMÜBERGREIFEND",plat_title:"Überall verfügbar",plat_desc:"Soluna läuft auf macOS, iOS, Raspberry Pi und Browsern. TX+RX+WAN in einer App auf dem Mac.",
+    plat_mac_desc:"Native Mac-App mit Ein-Befehl-Installation",plat_ios_desc:"iPhone/iPad-Empfänger mit Hintergrundwiedergabe",
+    cta_title:"Bereit zum Streamen?",cta_desc:"Installiere Soluna mit einem Befehl. TX+RX+WAN P2P in einer einzigen App.",cta_btn:"Jetzt Installieren",
     footer_docs:"Dokumentation",footer_issues:"Problem melden",
 },
 pt: {
-    nav_download:"TestFlight",
-    badge:"BETA GRÁTIS NO TESTFLIGHT",
+    nav_download:"Instalar",
+    badge:"3 FORMAS DE INSTALAR",
     hero_sub:"para Mac",
-    hero_desc:"Transmita áudio para seu Mac via WiFi. Receptor de áudio em rede com baixa latência e sincronização multi-caixas.",
-    btn_download:"Obter no TestFlight",
+    hero_desc:"TX + RX + WAN P2P em um único app. Streaming de áudio do sistema, TX de microfone, sincronização multi-caixas. Sem daemon.",
+    btn_download:"Instalar com 1 Comando",
     btn_source:"Código fonte",
-    mock_receiving:"Recebendo",
+    mock_receiving:"Audio TX ON",
     mock_speakers:"Caixas de Som",
     mock_this_mac:"Este Mac",
     features_label:"RECURSOS",
@@ -1282,15 +1429,21 @@ pt: {
     f4_title:"Sincronização Auto",f4_desc:"Mede o tempo de ida e volta para sincronizar automaticamente a latência de áudio em todas as caixas.",
     f5_title:"Compensação de Perda",f5_desc:"Algoritmo PLC integrado preenche pacotes perdidos para manter a reprodução suave em redes congestionadas.",
     f6_title:"Estatísticas em Tempo Real",f6_desc:"Monitore pacotes, taxa de perda, buffer e contagem PLC em tempo real.",
-    how_label:"COMO FUNCIONA",how_title:"Três passos simples",how_desc:"Configure áudio em toda a casa em minutos",
-    s1_title:"Instale o Soluna TX",s1_desc:"Configure o transmissor Soluna (solunad) no seu Mac de origem. Ele captura o áudio do sistema via driver virtual.",
-    s2_title:"Abra o Soluna Rx",s2_desc:"Inicie o Soluna Rx em qualquer Mac na mesma rede. Ele descobre automaticamente o transmissor e começa a receber.",
-    s3_title:"Curta a Música",s3_desc:"O áudio toca perfeitamente sincronizado. Adicione mais caixas e controle todas de um só lugar.",
+    how_label:"INSTALAÇÃO",how_title:"Escolha seu método",how_desc:"Três opções de acordo com seu nível",
+    io1_badge:"RECOMENDADO",io1_title:"Soluna App",io1_who:"Para todos — a forma mais fácil",
+    io1_desc:"Instale Soluna.app e controle tudo pela interface gráfica. Audio TX, Mic TX, WAN P2P integrados. Sem terminal após a instalação.",
+    io1_steps:"<strong>1.</strong> Execute o comando<br><strong>2.</strong> Ajustes de Som → Saída → 'Soluna'<br><strong>3.</strong> Abra Soluna.app → Pronto!",
+    io2_badge:"AUTOMÁTICO",io2_title:"Instalador + solunad",io2_who:"Início automático no login — roda em segundo plano",
+    io2_desc:"Inclui tudo do modo App mais o daemon solunad e LaunchAgent. O áudio é transmitido automaticamente ao fazer login.",
+    io2_steps:"<strong>1.</strong> Execute o comando<br><strong>2.</strong> Ajustes de Som → Saída → 'Soluna'<br><strong>3.</strong> Pronto — transmite no login",
+    io3_badge:"AVANÇADO",io3_title:"Linha de Comando",io3_who:"Para desenvolvedores — controle manual total",
+    io3_desc:"Compile a partir do código-fonte com cmake. Use solctl CLI para iniciar/parar streams e configurar opções.",
+    io3_steps:"<strong>1.</strong> Compile com cmake<br><strong>2.</strong> Instale o driver manualmente<br><strong>3.</strong> Use solctl para controlar",
     specs_label:"ESPECIFICAÇÕES",specs_title:"Projetado para desempenho",specs_desc:"Leve, eficiente e feito para áudio",
     sp1:"OS Mínimo",sp2:"arm64 Nativo",sp3:"Latência Buffer",sp4_val:"Grátis",sp4:"Preço",sp5:"UI macOS Nativa",sp6:"Motor de Áudio",sp7:"Formato de Áudio",sp8_val:"Código Aberto",sp8:"Licença",
-    plat_label:"MULTIPLATAFORMA",plat_title:"Disponível em todo lugar",plat_desc:"Soluna Rx funciona no macOS e iOS. Mais plataformas em breve.",
-    plat_mac_desc:"App nativa Apple Silicon via TestFlight",plat_ios_desc:"Receptor para iPhone/iPad com reprodução em segundo plano",
-    cta_title:"Pronto para transmitir?",cta_desc:"Obtenha o Soluna Rx grátis no TestFlight e transforme seu Mac em um receptor de áudio em rede.",cta_btn:"Entrar no Beta TestFlight",
+    plat_label:"MULTIPLATAFORMA",plat_title:"Disponível em todo lugar",plat_desc:"Soluna funciona em macOS, iOS, Raspberry Pi e navegadores. TX+RX+WAN em um app no Mac.",
+    plat_mac_desc:"App Mac nativo com instalação em um comando",plat_ios_desc:"Receptor para iPhone/iPad com reprodução em segundo plano",
+    cta_title:"Pronto para transmitir?",cta_desc:"Instale Soluna com um comando. TX+RX+WAN P2P em um único app.",cta_btn:"Instalar Agora",
     footer_docs:"Documentação",footer_issues:"Relatar problema",
 },
 };
@@ -1318,7 +1471,10 @@ function setLang(lang) {
     const t = T[lang] || T.en;
     document.querySelectorAll("[data-i18n]").forEach(el => {
         const key = el.getAttribute("data-i18n");
-        if (t[key]) el.textContent = t[key];
+        if (t[key]) {
+            if (key.endsWith("_steps")) { el.innerHTML = t[key]; }
+            else { el.textContent = t[key]; }
+        }
     });
     document.getElementById("langFlag").textContent = LANGS[lang].flag;
     document.getElementById("langName").textContent = LANGS[lang].name;

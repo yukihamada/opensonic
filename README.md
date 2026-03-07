@@ -5,34 +5,66 @@
 Soluna は Mac のシステム音声を iPhone・Raspberry Pi・ブラウザへ低遅延で配信し、マイク音声の双方向送信にも対応するオープンソースのネットワークオーディオシステムです。BlackHole や複雑な設定は不要。**Soluna 仮想デバイスをシステム出力に選ぶだけ**で動きます。
 
 ```
-Mac スピーカー ──┐                                    ┌→ UDP マルチキャスト
-                 ├── Soluna（仮想デバイス）→ solunad ─┼→ P2P ユニキャストリレー
-iPhone/RPi  ────┘                                    └→ WebSocket → ブラウザ
-
-iPhone/Mac マイク → OSTP マルチキャスト → 全レシーバーで再生（双方向）
+┌─ Soluna アプリ (Mac) ──────────────────────────────────────┐
+│                                                            │
+│  Soluna.driver（仮想デバイス）→ 共有メモリ → システム音声 TX  │
+│  マイク入力 ──────────────────────────────→ マイク TX        │
+│  ネットワーク受信 ───────────────────────→ スピーカー出力 RX │
+│  WAN グループ接続（P2P + リレー）                           │
+│                                                            │
+└──── LAN マルチキャスト / WAN P2P ──────────────────────────┘
+           ↕                    ↕                    ↕
+      iPhone アプリ       Raspberry Pi          ブラウザ
+      (RX + マイク TX)    (solunad RX)       (WebSocket)
 ```
 
 ---
 
-## ワンコマンドインストール（Mac）
+## Mac セットアップ — 3つの方法
+
+> **必要なもの**: cmake (`brew install cmake`) + Xcode Command Line Tools (`xcode-select --install`)
+> **初回のみ**: システム設定 → プライバシーとセキュリティ でドライバを「許可」
+
+### ★ 方法1: Soluna アプリ（おすすめ）
+
+**はじめての方はこれ！** 画面の操作だけで音声配信できます。
 
 ```bash
-# クローン済みの場合
 bash scripts/install-mac.sh
-
-# ネットから直接インストール
-curl -fsSL https://raw.githubusercontent.com/yukihamada/opensonic/master/scripts/install-mac.sh | bash
 ```
 
-これだけで以下が自動セットアップされます:
-1. **solunad** ビルド＆インストール (`~/.local/bin/`)
-2. **Soluna.driver** 仮想オーディオデバイス (`/Library/Audio/Plug-Ins/HAL/`)
-3. **LaunchAgent** ログイン時自動起動 (`~/Library/LaunchAgents/`)
-4. **coreaudiod** 再起動
-
 インストール後:
-- **システム設定 → サウンド → 出力 → Soluna** を選択
-- **http://localhost:8400** でダッシュボードを開く
+1. **システム設定 → サウンド → 出力** で「**Soluna**」を選択
+2. `/Applications/Soluna.app` を開く
+3. **Audio TX** ON → 配信開始！
+
+Soluna.app 1つで **Audio TX / Mic TX / WAN P2P** が全部できます。
+
+### 方法2: インストーラー + solunad（自動起動）
+
+**ログインしたら自動で配信開始。** アプリを開かなくてOK。
+
+```bash
+bash scripts/install-mac.sh --headless
+```
+
+方法1のすべて ＋ **solunad デーモン** + **LaunchAgent**（ログイン時自動起動）を追加インストール。
+- ステータス確認: `solctl status`
+- ログ: `tail -f /tmp/solunad.log`
+- ダッシュボード: http://localhost:8400
+
+### 方法3: コマンドライン（上級者向け）
+
+**開発者向け。** cmake でビルドして solctl で全操作。
+
+```bash
+cmake -B build && cmake --build build
+```
+
+ビルド後:
+1. `Soluna.driver` を `/Library/Audio/Plug-Ins/HAL/` にコピー（sudo）
+2. `sudo killall coreaudiod` で反映
+3. `solctl` で配信の開始/停止・設定変更
 
 ### アンインストール
 
@@ -40,63 +72,17 @@ curl -fsSL https://raw.githubusercontent.com/yukihamada/opensonic/master/scripts
 bash scripts/uninstall-mac.sh
 ```
 
-### 手動セットアップ
-
-<details>
-<summary>ステップごとに手動で行う場合</summary>
-
-#### 1. ビルド
-
-```bash
-git clone https://github.com/yukihamada/opensonic.git
-cd opensonic
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
-```
-
-#### 2. ドライバをインストール
-
-```bash
-bash apps/plugin/install.sh
-```
-
-> **初回のみ** — システム設定 → プライバシーとセキュリティ で「許可」をクリック → `sudo killall coreaudiod`
-
-#### 3. 出力先を変える
-
-**システム設定 → サウンド → 出力 → Soluna** を選択
-
-#### 4. デーモンを起動
-
-```bash
-# テスト（1 回だけ）
-./build/solunad --tx --device soluna --speaker ""
-
-# Mac ログイン時に自動起動（推奨）
-bash apps/daemon/install-service.sh
-```
-
-</details>
-
-起動したら **http://localhost:8400** でダッシュボードを開けます。
-
 ---
 
-## 受信側のセットアップ
+## 他デバイスのセットアップ
 
-### iPhone
+### iPhone / iPad
 
 1. `apps/ios/SolunaReceiver.xcodeproj` を Xcode で開いてビルド
 2. Mac と同じ Wi-Fi に繋ぐだけで **Bonjour 自動検出**
 3. 繋がったら遅延が自動キャリブレーションされます
-4. 🎤 マイクボタンで双方向音声送信（他のレシーバーで再生）
-
-### macOS レシーバー
-
-1. `apps/mac-rx/SolunaReceiverMac.xcodeproj` を Xcode で開いてビルド
-2. Start ボタンでマルチキャスト受信開始
-3. 🎤 マイクボタンで Mac のマイク音声を送信
-4. BT/AirPlay/USB スピーカーを追加して同期再生
+4. マイクボタンで双方向音声送信
+5. WAN グループコードでインターネット越し接続（P2P）
 
 ### Raspberry Pi / Linux
 
@@ -124,9 +110,11 @@ soluna-rx --output pipe | aplay -f S16_LE -r 48000 -c 2
 
 | 機能 | 説明 |
 |------|------|
+| **システム音声送信** | Soluna.driver 仮想デバイス → 共有メモリ → Soluna アプリが直接送信（solunad 不要） |
+| **マイク双方向送信** | iPhone/Mac のマイク音声を OSTP マルチキャストで送信。全レシーバーで再生 |
+| **WAN P2P 接続** | グループコードでインターネット越し接続。UDP ホールパンチングで直接通信、リレーはフォールバック |
 | 仮想オーディオデバイス | CoreAudio HAL プラグイン。システム出力を Soluna に切り替えるだけ |
 | Mac スピーカー同時再生 | ネットワーク配信と Mac 本体スピーカーを同時に出力 |
-| **🎤 マイク双方向送信** | iPhone/Mac のマイク音声を OSTP マルチキャストで送信。全レシーバーで再生 |
 | **BT / AirPlay 同期出力** | Bluetooth・AirPlay・USB スピーカーを追加して全デバイス同期再生 |
 | **同期再生モード** | OSTP タイムスタンプ + NTP で全レシーバーの再生タイミングを完全同期 |
 | **P2P ユニキャストリレー** | WiFi マルチキャストのパケットロスを回避。UDP ユニキャストで安定配信 |
@@ -248,11 +236,12 @@ stderr に JSON で出力:
 
 | プラットフォーム | 役割 | 状態 |
 |----------------|------|------|
-| macOS | 送信（TX） | ✅ 動作確認済み |
+| **macOS** | **Soluna アプリ（TX + RX + WAN 全部入り）** | ✅ `apps/mac-rx/` |
+| macOS | 仮想オーディオデバイス | ✅ `apps/plugin/` (Soluna.driver) |
+| macOS | solunad デーモン（ヘッドレス） | ✅ `apps/daemon/` |
 | macOS | Menu bar コントロール | ✅ `apps/mac/` |
-| macOS | 受信（RX） + マイク送信 | ✅ `apps/mac-rx/` |
-| iPhone (iOS) | 受信（RX） + マイク送信 | ✅ `apps/ios/` |
-| Raspberry Pi / Linux | 受信（RX） | ✅ `soluna-rx` |
+| **iPhone / iPad** | **RX + マイク TX + WAN P2P** | ✅ `apps/ios/` |
+| **Raspberry Pi / Linux** | **solunad RX + WAN P2P** | ✅ `apps/daemon/` |
 | Windows | 受信（RX） | ✅ `soluna-rx-win` (WASAPI) |
 | ブラウザ | 受信（RX） | ✅ Dashboard → Browser タブ |
 | DAW (VST3) | 受信（RX） | ✅ `apps/vst/` |
@@ -264,12 +253,13 @@ stderr に JSON で出力:
 
 ```
 apps/
-  daemon/         solunad — TX/RX デーモン（C++）
-  ios/            iPhone レシーバーアプリ（Swift）+ マイク送信
+  mac-rx/         Soluna Mac アプリ（TX + RX + WAN 全部入り）
+  ios/            Soluna iPhone アプリ（RX + マイク TX + WAN P2P）
+  daemon/         solunad — ヘッドレスデーモン（RPi / Linux / Mac CLI）
+  plugin/         CoreAudio HAL ドライバ（Soluna.driver 仮想デバイス）
+  relay/          soluna-relay — WAN リレーサーバー（P2P シグナリング）
   mac/            macOS Menu bar アプリ（Swift SPM）
-  mac-rx/         macOS レシーバーアプリ（Swift）+ マイク送信
   linux-rx/       Linux/RPi CLI レシーバー（C++）
-  plugin/         CoreAudio HAL ドライバ（Soluna.driver）
 deploy/
   rpi/            soluna-rx.service + install-rx.sh
 src/              libsoluna_core（コアライブラリ）
@@ -365,20 +355,33 @@ solunad --tx --device soluna --codec pcm
 
 ---
 
-## WAN リレー（インターネット越し配信）
+## WAN グループ接続（インターネット越し P2P）
 
-LAN 外のリスナーにもリレーサーバー経由で配信可能。
+グループコードを入力するだけでインターネット越しに音声共有。UDP ホールパンチングで直接 P2P 通信し、リレーサーバーはシグナリング＋フォールバックのみ。
+
+```
+Mac/iPhone A                  soluna-relay (VPS)              Mac/iPhone B
+─────────────                 ─────────────────               ───────────
+  JOIN:myroom ──────────────> UDP :5100
+                              PEER:A_ip:port ────────────────>
+                              <──────────────── JOIN:myroom
+  <──────── PEER:B_ip:port
+  OSTP audio ─── P2P 直接 ──────────────────────────────────> 再生
+                 (リレーはフォールバック)
+```
+
+### アプリから接続（推奨）
+
+Soluna Mac/iPhone アプリでグループコードを入力 → "Join" をタップするだけ。
+
+### CLI から接続
 
 ```bash
-# リレーサーバーを起動（VPS やクラウドで）
+# リレーサーバーを起動（VPS で）
 soluna-relay --port 5100
 
-# TX 側（solunad）→ リレーに転送
-solunad --tx --device soluna --wan-relay <relay_host>:5100 \
-  --wan-group myroom --wan-password secret123
-
-# RX 側（soluna-rx）→ リレーから受信
-soluna-rx --relay <relay_host>:5100 --group-name myroom --group-password secret123
+# solunad（RPi 等）→ WAN グループに参加
+solunad --rx --device hw:1 --wan-relay <relay_host>:5100 --wan-group myroom
 ```
 
 ---

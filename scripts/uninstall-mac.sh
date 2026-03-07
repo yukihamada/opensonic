@@ -24,6 +24,8 @@ SERVICE_ID="io.soluna.daemon"
 INSTALL_DIR="$HOME/.local/bin"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 DRIVER_DEST="/Library/Audio/Plug-Ins/HAL/Soluna.driver"
+APP_DEST="/Applications/Soluna.app"
+SHM_DIR="/private/var/db/soluna"
 
 echo ""
 echo -e "${BOLD}  ◈ Soluna Uninstaller${NC}"
@@ -53,7 +55,16 @@ for bin in solunad solctl; do
     fi
 done
 
-# ── Step 4: Remove audio driver ──────────────────────────────
+# ── Step 4: Remove Soluna.app ──────────────────────────────
+info "Removing Soluna.app..."
+if [[ -d "$APP_DEST" ]]; then
+    rm -rf "$APP_DEST"
+    ok "Removed $APP_DEST"
+else
+    warn "Soluna.app not found (already removed)"
+fi
+
+# ── Step 5: Remove audio driver ──────────────────────────────
 info "Removing audio driver..."
 if [[ -d "$DRIVER_DEST" ]]; then
     echo "  (sudo required)"
@@ -68,7 +79,16 @@ else
     warn "Driver not found (already removed)"
 fi
 
-# ── Step 5: Remove config ────────────────────────────────────
+# ── Step 6: Remove shared memory directory ───────────────────
+info "Removing shared memory directory..."
+if [[ -d "$SHM_DIR" ]]; then
+    sudo rm -rf "$SHM_DIR"
+    ok "Removed $SHM_DIR"
+else
+    warn "Shared memory directory not found"
+fi
+
+# ── Step 7: Remove config ────────────────────────────────────
 info "Removing config..."
 CONFIG_DIR="$HOME/.config/solunad"
 if [[ -d "$CONFIG_DIR" ]]; then
@@ -78,7 +98,7 @@ else
     warn "No config directory found"
 fi
 
-# ── Step 6: Remove logs ──────────────────────────────────────
+# ── Step 8: Remove logs ──────────────────────────────────────
 info "Removing logs..."
 rm -f /tmp/solunad.log 2>/dev/null && ok "Removed /tmp/solunad.log" || true
 

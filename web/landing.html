@@ -652,6 +652,7 @@
             .mock-grid { grid-template-columns: 1fr; }
             .arch-connector { display: none; }
             .arch-flow { gap: 8px; }
+            .install-card [style*="grid-template-columns:repeat(3"] { grid-template-columns: 1fr !important; }
         }
     </style>
 </head>
@@ -690,8 +691,8 @@
             <span class="h1-accent" id="hero-typing"></span><span class="typewriter" id="hero-cursor"></span>
         </h1>
         <p class="hero-sub">
-            Soluna はシステム音声をネットワーク経由で iPhone・Raspberry Pi・ブラウザへリアルタイム配信。<br>
-            近くの端末同士で自動中継。フェスでも使える P2P メッシュ。
+            Soluna.app 1 つで TX + RX + WAN P2P。システム音声・マイク配信からインターネット越しグループ共有まで。<br>
+            <code style="background:rgba(59,130,246,0.15);padding:4px 10px;border-radius:6px;font-size:14px;color:#60a5fa">bash scripts/install-mac.sh</code> のワンコマンドで完了。
         </p>
         <div class="hero-actions">
             <a href="#install" class="btn-primary">セットアップを始める</a>
@@ -702,30 +703,23 @@
         <!-- Architecture diagram -->
         <div class="arch-wrap reveal">
             <div class="arch-flow">
-                <div class="arch-node">
-                    <div class="arch-node-icon">💻</div>
-                    <div class="arch-node-label">Mac</div>
-                </div>
-                <div class="arch-connector">
-                    <div class="arch-line"></div>
-                    <div class="arch-tag">UDP Multicast</div>
-                </div>
                 <div class="arch-node hub">
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
                         <circle cx="12" cy="12" r="10" stroke="#60a5fa" stroke-width="1.5"/>
                         <path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="#60a5fa" stroke-width="1.5" fill="rgba(59,130,246,0.15)"/>
                     </svg>
-                    <div class="arch-node-label">Soluna</div>
+                    <div class="arch-node-label">Soluna.app</div>
                 </div>
                 <div class="arch-connector">
                     <div class="arch-line"></div>
-                    <div class="arch-tag">Low Latency</div>
+                    <div class="arch-tag">Audio TX / Mic TX / WAN P2P</div>
                 </div>
                 <div class="arch-receivers">
                     <div class="arch-rx"><span class="dot"></span> iPhone</div>
                     <div class="arch-rx"><span class="dot"></span> Raspberry Pi</div>
                     <div class="arch-rx"><span class="dot"></span> Browser</div>
                     <div class="arch-rx"><span class="dot" style="background:var(--blue)"></span> Mac Speaker</div>
+                    <div class="arch-rx"><span class="dot" style="background:var(--purple)"></span> WAN Group</div>
                 </div>
             </div>
         </div>
@@ -735,27 +729,28 @@
 <!-- How it works -->
 <section class="section" id="how">
     <div class="section-label reveal">使い方</div>
-    <h2 class="reveal">3 ステップで完了。</h2>
-    <p class="sub reveal">インストールから配信まで、5 分もかかりません。</p>
+    <h2 class="reveal">3 つの方法、あなたはどれ？</h2>
+    <p class="sub reveal">どの方法でも 5 分で音声配信を始められます。</p>
 
+    <p class="sub reveal" style="margin-top:-12px;margin-bottom:24px;font-size:13px">あなたに合った方法を選んで、すぐに始められます。</p>
     <div class="steps">
-        <div class="step reveal reveal-delay-1">
+        <div class="step reveal reveal-delay-1" style="border-color:rgba(16,185,129,0.3)">
             <div class="step-num">01</div>
-            <div class="step-icon">💻</div>
-            <h3>Mac にインストール</h3>
-            <p>ターミナルで 1 行コピペ。Soluna ドライバーと solunad が自動でビルド・インストールされます。</p>
+            <div class="step-icon">🖥</div>
+            <h3>アプリで使う <span style="font-size:11px;color:#34d399;font-weight:700">おすすめ</span></h3>
+            <p><code style="background:rgba(59,130,246,0.15);padding:2px 8px;border-radius:4px;font-size:13px;color:#60a5fa">bash scripts/install-mac.sh</code> を実行 → Soluna.app を開くだけ。画面の操作だけで音声配信。</p>
         </div>
         <div class="step reveal reveal-delay-2">
             <div class="step-num">02</div>
-            <div class="step-icon">📱</div>
-            <h3>出力先を設定</h3>
-            <p>システム設定 → サウンド → 出力 で「Soluna」を選択。iPhone や RPi は同じ WiFi に繋ぐだけ。</p>
+            <div class="step-icon">🔧</div>
+            <h3>solunad で自動起動</h3>
+            <p><code style="background:rgba(59,130,246,0.15);padding:2px 8px;border-radius:4px;font-size:13px;color:#60a5fa">--headless</code> を付けて実行。ログインするだけで自動配信。アプリを開く必要なし。</p>
         </div>
         <div class="step reveal reveal-delay-3">
             <div class="step-num">03</div>
-            <div class="step-icon">🎵</div>
-            <h3>音楽を再生</h3>
-            <p>Mac で Spotify、YouTube、何でも再生。全デバイスで同時に聞こえます。遅延は自動同期。</p>
+            <div class="step-icon">⌨️</div>
+            <h3>コマンドラインで制御</h3>
+            <p>cmake でビルド → solctl で全操作。パラメータを細かく調整したい開発者向け。</p>
         </div>
     </div>
 </section>
@@ -884,13 +879,13 @@
         </div>
         <div class="feat reveal reveal-delay-1">
             <div class="feat-icon-wrap blue">&#128187;</div>
-            <h4>Menu bar アプリ</h4>
-            <p>macOS メニューバーからワンタップで音量・遅延を調整。</p>
+            <h4>Soluna.app — オールインワン</h4>
+            <p>Audio TX・Mic TX・RX・WAN P2P をアプリ 1 つで。solunad デーモン不要。</p>
         </div>
         <div class="feat reveal reveal-delay-2">
             <div class="feat-icon-wrap green">&#128640;</div>
-            <h4>launchd 自動起動</h4>
-            <p>Mac ログイン時に自動起動。一度設定すれば意識しなくていい。</p>
+            <h4>ワンコマンドインストール</h4>
+            <p><code style="font-size:11px">bash scripts/install-mac.sh</code> で完了。cmake + xcodebuild を自動実行。</p>
         </div>
     </div>
 </section>
@@ -903,17 +898,42 @@
     <h2 class="reveal">始めるのは簡単。</h2>
     <p class="sub reveal">プラットフォームを選んでセットアップ。</p>
     <div class="install-grid">
-        <div class="install-card reveal reveal-delay-1">
+        <div class="install-card reveal reveal-delay-1" style="grid-column:1/-1">
             <div class="ic-header">
                 <div class="ic-icon">💻</div>
                 <div>
-                    <h3>Mac<span class="ic-tag tx">TX</span></h3>
-                    <p>Mac がオーディオの送信元。まずここから。</p>
+                    <h3>Mac<span class="ic-tag tx">TX + RX + WAN</span></h3>
+                    <p>3つの方法から選べます。はじめての方は「アプリ」がおすすめ。</p>
                 </div>
             </div>
-            <div class="code-block">
-                <span class="prompt">$ </span>curl -fsSL https://soluna-web.fly.dev/install.sh | bash
-                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:4px">
+                <div style="background:var(--s2);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px">
+                    <div style="font-size:10px;font-weight:700;color:#34d399;letter-spacing:0.06em;margin-bottom:8px">🖥 おすすめ</div>
+                    <div style="font-size:14px;font-weight:700;margin-bottom:4px">Soluna アプリ</div>
+                    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">画面操作だけでOK</div>
+                    <div class="code-block" style="font-size:11px;padding:8px 10px">
+                        <span class="prompt">$ </span>bash scripts/install-mac.sh
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                </div>
+                <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:16px">
+                    <div style="font-size:10px;font-weight:700;color:#60a5fa;letter-spacing:0.06em;margin-bottom:8px">🔧 自動起動</div>
+                    <div style="font-size:14px;font-weight:700;margin-bottom:4px">solunad 付き</div>
+                    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">ログイン時に自動配信</div>
+                    <div class="code-block" style="font-size:11px;padding:8px 10px">
+                        <span class="prompt">$ </span>bash scripts/install-mac.sh --headless
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                </div>
+                <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:16px">
+                    <div style="font-size:10px;font-weight:700;color:#fb923c;letter-spacing:0.06em;margin-bottom:8px">⌨️ 上級者向け</div>
+                    <div style="font-size:14px;font-weight:700;margin-bottom:4px">コマンドライン</div>
+                    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">手動で全制御</div>
+                    <div class="code-block" style="font-size:11px;padding:8px 10px">
+                        <span class="prompt">$ </span>cmake -B build && cmake --build build
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                </div>
             </div>
             <a href="/guide" class="ic-link">詳細なセットアップ手順 →</a>
         </div>
@@ -1038,6 +1058,8 @@
                 <tr class="hl-col"><td>自動遅延同期</td><td class="yes">&#10003;</td><td class="no">手動</td><td class="no">手動</td><td class="no">&#10005;</td></tr>
                 <tr class="hl-col"><td>デバイスヘルス管理</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
                 <tr class="hl-col"><td>Web UI</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>ワンコマンドインストール</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>アプリ1つで TX+RX+WAN</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
             </tbody>
         </table>
     </div>
@@ -1046,7 +1068,7 @@
 <!-- CTA -->
 <section class="cta-section">
     <h2 class="reveal"><span class="h1-accent">今すぐ始めよう。</span></h2>
-    <p class="sub reveal">5 分で Mac の音を全デバイスに配信。</p>
+    <p class="sub reveal"><code style="background:rgba(59,130,246,0.15);padding:4px 10px;border-radius:6px;font-size:14px;color:#60a5fa">bash scripts/install-mac.sh</code> で 5 分で完了。</p>
     <div class="reveal">
         <a href="#install" class="btn-primary" style="font-size:17px;padding:16px 32px">セットアップを始める</a>
     </div>
