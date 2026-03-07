@@ -222,19 +222,44 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .disabled(receiver.state == .connecting)
 
-            // Status pill
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(heroAccent)
-                    .frame(width: 7, height: 7)
-                Text(receiver.state.rawValue)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(heroAccent)
+            // Status pill + Mic button
+            HStack(spacing: 10) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(heroAccent)
+                        .frame(width: 7, height: 7)
+                    Text(receiver.state.rawValue)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(heroAccent)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(heroAccent.opacity(0.1))
+                .clipShape(Capsule())
+
+                if receiver.state == .receiving {
+                    Button(action: { receiver.toggleMic() }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: receiver.isMicTransmitting ? "mic.fill" : "mic.slash.fill")
+                            Text(receiver.isMicTransmitting ? "Mic ON" : "Mic OFF")
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundColor(receiver.isMicTransmitting ? .red : .secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(receiver.isMicTransmitting ? Color.red.opacity(0.12) : Color(nsColor: .tertiaryLabelColor).opacity(0.2))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(heroAccent.opacity(0.1))
-            .clipShape(Capsule())
+
+            // Mic input level meter
+            if receiver.isMicTransmitting {
+                MicLevelMeter(level: receiver.micInputLevel)
+                    .frame(height: 6)
+                    .padding(.horizontal, 40)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
@@ -256,6 +281,9 @@ struct ContentView: View {
             StatPill(value: "\(receiver.bufferMs)ms", label: "buf", color: nil)
             if receiver.packetsConcealed > 0 {
                 StatPill(value: formatNum(receiver.packetsConcealed), label: "plc", color: .yellow)
+            }
+            if receiver.isMicTransmitting {
+                StatPill(value: formatNum(receiver.txPacketsSent), label: "tx", color: .red)
             }
             Spacer()
             Button {
@@ -665,6 +693,31 @@ struct ContentView: View {
         n >= 1_000_000 ? String(format: "%.1fM", Double(n) / 1_000_000)
         : n >= 1_000   ? String(format: "%.1fK", Double(n) / 1_000)
         : "\(n)"
+    }
+}
+
+// MARK: - MicLevelMeter
+
+private struct MicLevelMeter: View {
+    let level: Float
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color(nsColor: .separatorColor))
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(meterColor)
+                    .frame(width: max(0, geo.size.width * CGFloat(min(level, 1.0))))
+                    .animation(.linear(duration: 0.1), value: level)
+            }
+        }
+    }
+
+    private var meterColor: Color {
+        if level > 0.8 { return .red }
+        if level > 0.4 { return .yellow }
+        return .green
     }
 }
 

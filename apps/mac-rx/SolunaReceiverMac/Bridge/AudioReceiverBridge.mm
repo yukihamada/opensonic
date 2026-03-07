@@ -14,6 +14,8 @@
 #include <soluna/transport/rtp.h>
 #include <soluna/transport/ostp.h>
 #include <soluna/pipeline/ring_buffer.h>
+#include <soluna/pipeline/pipeline.h>
+#include <soluna/transport/packet_scheduler.h>
 #include <soluna/control/websocket_server.h>
 
 #include <AudioToolbox/AudioToolbox.h>
@@ -1009,6 +1011,174 @@ private:
     std::vector<float>    held_sample_;
 };
 
+/// Internal microphone transmitter implementation
+class TransmitterImpl {
+public:
+    TransmitterImpl(const std::string& dest_ip, uint16_t dest_port, uint32_t channels)
+        : dest_ip_(dest_ip)
+        , dest_port_(dest_port)
+        , channels_(channels)
+        , running_(false)
+        , packets_sent_(0)
+        , ring_buffer_(kDefaultSampleRate, channels * sizeof(int32_t))
+        , ssrc_(arc4random())
+    {}
+
+    ~TransmitterImpl() { stop(); }
+
+    bool start() {
+        if (running_.load()) return false;
+
+        audio_device_ = pal::AudioDevice::create();
+        if (!audio_device_) return false;
+
+        pal::AudioStreamConfig audio_cfg;
+        audio_cfg.sample_rate = kDefaultSampleRate;
+        audio_cfg.channels = 1;  // Mono mic
+        audio_cfg.frames_per_buffer = 240;
+        audio_cfg.format = SampleFormat::S24_LE;
+
+        if (!audio_device_->open_input("", audio_cfg)) {
+            fprintf(stderr, "[SolunaTx] Failed to open mic input\n");
+            audio_device_.reset();
+            return false;
+        }
+
+        socket_ = pal::UdpSocket::create();
+        if (!socket_) {
+            audio_device_.reset();
+            return false;
+        }
+
+        running_.store(true);
+        ring_buffer_.reset();
+        packets_sent_.store(0);
+
+        // Oversized to handle OS delivering more frames than requested
+        conv_buf_.resize(4096 * channels_);
+
+        audio_device_->start([this](float* buffer, uint32_t frame_count) {
+            mic_callback(buffer, frame_count);
+        });
+
+        tx_thread_ = std::thread([this]() { tx_loop(); });
+
+        return true;
+    }
+
+    void stop() {
+        if (!running_.load()) return;
+        running_.store(false);
+
+        if (audio_device_) {
+            audio_device_->stop();
+            audio_device_->close();
+            audio_device_.reset();
+        }
+
+        if (tx_thread_.joinable()) {
+            tx_thread_.join();
+        }
+
+        socket_.reset();
+        ring_buffer_.reset();
+    }
+
+    bool is_running() const { return running_.load(); }
+    uint64_t packets_sent() const { return packets_sent_.load(); }
+    float peak_level() const { return peak_level_.load(std::memory_order_relaxed); }
+
+private:
+    void mic_callback(float* buffer, uint32_t frame_count) {
+        // Track peak level for UI meter
+        float peak = 0.0f;
+        for (uint32_t i = 0; i < frame_count; i++) {
+            float abs_val = std::fabs(buffer[i]);
+            if (abs_val > peak) peak = abs_val;
+        }
+        float prev = peak_level_.load(std::memory_order_relaxed);
+        if (peak > prev) {
+            peak_level_.store(peak, std::memory_order_relaxed);
+        } else {
+            peak_level_.store(prev * 0.85f, std::memory_order_relaxed);
+        }
+
+        size_t out_idx = 0;
+        for (uint32_t i = 0; i < frame_count; i++) {
+            int32_t sample = static_cast<int32_t>(buffer[i] * 8388607.0f);
+            for (uint32_t ch = 0; ch < channels_; ch++) {
+                conv_buf_[out_idx++] = sample;
+            }
+        }
+        ring_buffer_.write(conv_buf_.data(), frame_count);
+    }
+
+    void tx_loop() {
+        constexpr uint32_t kFramesPerPacket = 240;
+        const size_t frame_size = channels_ * sizeof(int32_t);
+
+        transport::PacketScheduler scheduler(PacketTier::LAN, kDefaultSampleRate);
+        scheduler.reset();
+
+        std::vector<int32_t> audio_buf(kFramesPerPacket * channels_);
+        std::vector<uint8_t> packet_buf(transport::kMaxPacketSize);
+
+        pal::SocketAddress dest;
+        dest.ip = dest_ip_;
+        dest.port = dest_port_;
+
+        uint32_t sequence = 0;
+        uint32_t rtp_timestamp = 0;
+
+        while (running_.load()) {
+            scheduler.wait_next();
+
+            if (ring_buffer_.available_read() < kFramesPerPacket) {
+                std::memset(audio_buf.data(), 0, kFramesPerPacket * channels_ * sizeof(int32_t));
+            } else {
+                ring_buffer_.read(audio_buf.data(), kFramesPerPacket);
+            }
+
+            uint16_t seq_lo = static_cast<uint16_t>(sequence & 0xFFFF);
+            uint16_t seq_hi = static_cast<uint16_t>((sequence >> 16) & 0xFFFF);
+
+            size_t pkt_size = transport::ostp_build_packet(
+                packet_buf.data(), packet_buf.size(),
+                ssrc_, seq_lo, rtp_timestamp,
+                96,  // kPayloadTypePCM24
+                1,   // stream_id
+                seq_hi,
+                0,   // media_timestamp
+                audio_buf.data(),
+                kFramesPerPacket * frame_size
+            );
+
+            if (pkt_size > 0) {
+                socket_->send_to(packet_buf.data(), pkt_size, dest);
+                packets_sent_.fetch_add(1);
+            }
+
+            sequence++;
+            rtp_timestamp += kFramesPerPacket;
+        }
+    }
+
+    std::string dest_ip_;
+    uint16_t dest_port_;
+    uint32_t channels_;
+    std::atomic<bool> running_;
+    std::atomic<uint64_t> packets_sent_;
+    std::atomic<float> peak_level_{0.0f};
+
+    pipeline::RingBuffer ring_buffer_;
+    uint32_t ssrc_;
+
+    std::unique_ptr<pal::AudioDevice> audio_device_;
+    std::unique_ptr<pal::UdpSocket> socket_;
+    std::vector<int32_t> conv_buf_;
+    std::thread tx_thread_;
+};
+
 /// Internal receiver implementation
 class ReceiverImpl {
 public:
@@ -1134,7 +1304,10 @@ public:
 
         running_.store(false);
 
-        // Stop extra sinks first
+        // Stop WebSocket server first (while message callback is still valid)
+        ws_server_.stop();
+
+        // Stop extra sinks
         {
             std::lock_guard<std::mutex> lock(sinks_mutex_);
             for (auto& sink : extra_sinks_) sink->stop();
@@ -1901,6 +2074,7 @@ private:
 
 @interface SolunaAudioReceiver () {
     std::unique_ptr<ReceiverImpl> _impl;
+    std::unique_ptr<TransmitterImpl> _txImpl;
     NSTimer *_statsTimer;
     uint32_t _bufferTargetMs;
     ExtAudioFileRef _recordFile;
@@ -2004,6 +2178,9 @@ private:
 }
 
 - (void)stop {
+    // Stop mic transmit if active
+    [self stopMicTransmit];
+
     [_statsTimer invalidate];
     _statsTimer = nil;
 
@@ -2390,6 +2567,47 @@ private:
 
 - (BOOL)isRecording {
     return _isRecording;
+}
+
+// ── Mic Transmit (TX) ───────────────────────────────────────────────────────
+
+- (BOOL)isMicTransmitting {
+    return _txImpl && _txImpl->is_running();
+}
+
+- (uint64_t)txPacketsSent {
+    return _txImpl ? _txImpl->packets_sent() : 0;
+}
+
+- (float)micInputLevel {
+    return _txImpl ? _txImpl->peak_level() : 0.0f;
+}
+
+- (BOOL)startMicTransmit {
+    if (_txImpl && _txImpl->is_running()) return YES;
+
+    _txImpl = std::make_unique<TransmitterImpl>(
+        std::string([_multicastGroup UTF8String]),
+        _port,
+        _channels
+    );
+
+    if (!_txImpl->start()) {
+        fprintf(stderr, "[SolunaTx] Failed to start transmitter\n");
+        _txImpl.reset();
+        return NO;
+    }
+
+    fprintf(stderr, "[SolunaTx] Mic transmit started\n");
+    return YES;
+}
+
+- (void)stopMicTransmit {
+    if (_txImpl) {
+        _txImpl->stop();
+        _txImpl.reset();
+    }
+    fprintf(stderr, "[SolunaTx] Mic transmit stopped\n");
 }
 
 @end

@@ -105,6 +105,24 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 /// bypassing the UDP socket. Thread-safe.
 - (void)injectRawPacket:(NSData * _Nonnull)data;
 
+// ── Mic Transmit (TX) ────────────────────────────────────────────────────
+
+/// Whether mic transmit is currently active
+@property (nonatomic, readonly) BOOL isMicTransmitting;
+
+/// Number of TX packets sent
+@property (nonatomic, readonly) uint64_t txPacketsSent;
+
+/// Mic input peak level (0.0 - 1.0), updated per audio callback
+@property (nonatomic, readonly) float micInputLevel;
+
+/// Start capturing from the microphone and transmitting via OSTP multicast.
+/// Switches AVAudioSession to .playAndRecord. Returns NO on failure.
+- (BOOL)startMicTransmit;
+
+/// Stop mic capture and transmission. Restores AVAudioSession to .playback.
+- (void)stopMicTransmit;
+
 @end
 
 NS_ASSUME_NONNULL_END

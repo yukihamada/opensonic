@@ -76,6 +76,15 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
+    /// Whether mic transmit is active
+    @Published private(set) var isMicTransmitting: Bool = false
+
+    /// TX packets sent
+    @Published private(set) var txPacketsSent: UInt64 = 0
+
+    /// Mic input level (0.0 - 1.0) for UI meter
+    @Published private(set) var micInputLevel: Float = 0.0
+
     /// Error message if any
     @Published private(set) var errorMessage: String?
 
@@ -106,6 +115,7 @@ final class AudioReceiver: ObservableObject {
     private let delegateHandler: DelegateHandler
     private let networkMonitor = NWPathMonitor()
     private var wasPlayingBeforeDisconnect = false
+    private var suppressInterruption = false
     private var interruptionObserver: Any?
     private var watchdogTimer: Timer?
     private var lastPacketCount: UInt64 = 0
@@ -169,12 +179,62 @@ final class AudioReceiver: ObservableObject {
 
     /// Stop receiving audio
     func stop() {
+        // Stop mic TX if active
+        if isMicTransmitting {
+            receiver.stopMicTransmit()
+            isMicTransmitting = false
+        }
+
         stopWatchdog()
         state = .stopped
         receiver.stop()
         PeerRelayManager.shared.stop()
         UIApplication.shared.isIdleTimerDisabled = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    /// Toggle microphone transmit on/off
+    func toggleMic() {
+        if isMicTransmitting {
+            suppressInterruption = true
+            receiver.stopMicTransmit()
+            isMicTransmitting = false
+            // Restore playback-only session
+            do {
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playback, mode: .default, options: [.duckOthers])
+                try session.setActive(true)
+            } catch {
+                print("[AudioReceiver] Session restore error: \(error)")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                self?.suppressInterruption = false
+            }
+        } else {
+            AVAudioSession.sharedInstance().requestRecordPermission { [weak self] granted in
+                Task { @MainActor in
+                    guard let self, granted else { return }
+                    // Switch to playAndRecord BEFORE starting mic
+                    self.suppressInterruption = true
+                    do {
+                        let session = AVAudioSession.sharedInstance()
+                        try session.setCategory(.playAndRecord, mode: .default,
+                                                options: [.defaultToSpeaker, .allowBluetooth])
+                        try session.setActive(true)
+                    } catch {
+                        print("[AudioReceiver] Session error: \(error)")
+                        self.suppressInterruption = false
+                        return
+                    }
+                    if self.receiver.startMicTransmit() {
+                        self.isMicTransmitting = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                        self?.suppressInterruption = false
+                    }
+                }
+            }
+        }
     }
 
     /// Toggle play/stop
@@ -213,6 +273,8 @@ final class AudioReceiver: ObservableObject {
 
     private func watchdogTick() {
         guard state == .receiving || state == .connecting else { return }
+        // Don't reconnect while mic is transmitting — reconnect kills the mic
+        guard !isMicTransmitting else { return }
 
         if packetsReceived == lastPacketCount {
             staleTicks += 1
@@ -269,6 +331,11 @@ final class AudioReceiver: ObservableObject {
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
             Task { @MainActor in
+                // Skip interruptions caused by our own session category switch (mic toggle)
+                if self.suppressInterruption {
+                    print("[AudioReceiver] Ignoring interruption (mic toggle in progress)")
+                    return
+                }
                 if type == .ended {
                     print("[AudioReceiver] Audio interruption ended — resuming")
                     try? AVAudioSession.sharedInstance().setActive(true)
@@ -277,6 +344,13 @@ final class AudioReceiver: ObservableObject {
                         self.start()
                     }
                 } else if type == .began {
+                    // While mic is transmitting, ignore interruptions —
+                    // the session change itself can trigger delayed interruptions.
+                    // Real interruptions (phone call) will stop AudioUnits at the OS level.
+                    if self.isMicTransmitting {
+                        print("[AudioReceiver] Ignoring interruption (mic is transmitting)")
+                        return
+                    }
                     print("[AudioReceiver] Audio interruption began")
                     if self.isPlaying {
                         self.wasPlayingBeforeDisconnect = true
@@ -298,6 +372,11 @@ final class AudioReceiver: ObservableObject {
         self.packetsDropped   = stats.packetsDropped
         self.packetsConcealed = stats.packetsConcealed
         self.deviceHealth     = receiver.deviceHealth
+        self.txPacketsSent    = receiver.txPacketsSent
+        self.micInputLevel    = receiver.micInputLevel
+        // isMicTransmitting is managed by toggleMic()/stop() only.
+        // Don't overwrite from bridge — it can cause false negatives
+        // during session transitions.
     }
 
     fileprivate func handleError(_ error: Error) {

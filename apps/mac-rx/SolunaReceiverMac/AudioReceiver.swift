@@ -9,6 +9,7 @@ import Foundation
 import Combine
 import Network
 import MediaPlayer
+import AVFoundation
 
 /// Transport type (mirrors SolunaTransportType)
 enum LocalTransportType: String {
@@ -150,6 +151,15 @@ final class AudioReceiver: ObservableObject {
             receiver.bufferTargetMs = bufferMs
         }
     }
+
+    /// Whether mic transmit is active
+    @Published private(set) var isMicTransmitting: Bool = false
+
+    /// TX packets sent
+    @Published private(set) var txPacketsSent: UInt64 = 0
+
+    /// Mic input level (0.0 - 1.0) for UI meter
+    @Published private(set) var micInputLevel: Float = 0.0
 
     /// Error message if any
     @Published private(set) var errorMessage: String?
@@ -304,10 +314,41 @@ final class AudioReceiver: ObservableObject {
 
     /// Stop receiving audio
     func stop() {
+        // Stop mic TX if active
+        if isMicTransmitting {
+            receiver.stopMicTransmit()
+            isMicTransmitting = false
+        }
+
         state = .stopped
         receiver.stop()
         PeerRelayManager.shared.stop()
         updateNowPlaying()
+    }
+
+    /// Toggle microphone transmit on/off
+    func toggleMic() {
+        if isMicTransmitting {
+            receiver.stopMicTransmit()
+            isMicTransmitting = false
+        } else {
+            // On macOS, request mic permission then start
+            if #available(macOS 14.0, *) {
+                AVAudioApplication.requestRecordPermission { [weak self] granted in
+                    Task { @MainActor in
+                        guard let self, granted else { return }
+                        if self.receiver.startMicTransmit() {
+                            self.isMicTransmitting = true
+                        }
+                    }
+                }
+            } else {
+                // macOS 13 and earlier: just start (permission granted by system)
+                if receiver.startMicTransmit() {
+                    isMicTransmitting = true
+                }
+            }
+        }
     }
 
     /// Toggle play/stop (user-initiated)
@@ -773,6 +814,9 @@ final class AudioReceiver: ObservableObject {
         self.packetsDropped   = stats.packetsDropped
         self.packetsConcealed = stats.packetsConcealed
         self.deviceHealth     = receiver.deviceHealth
+        self.txPacketsSent    = receiver.txPacketsSent
+        self.micInputLevel    = receiver.micInputLevel
+        self.isMicTransmitting = receiver.isMicTransmitting
     }
 
     fileprivate func handleError(_ error: Error) {

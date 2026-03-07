@@ -156,8 +156,9 @@ private:
         config_ = config;
         is_capture_ = capture;
 
-        // Allocate conversion buffer
-        conversion_buffer_.resize(config.frames_per_buffer * config.channels);
+        // Allocate conversion buffer — oversized to handle iOS delivering
+        // more frames than requested (IOBufferDuration is just a preference)
+        conversion_buffer_.resize(std::max(config.frames_per_buffer, 4096u) * config.channels);
 
 #if TARGET_OS_MAC && !TARGET_OS_IPHONE
         // Check microphone permission for capture mode on macOS.
@@ -491,6 +492,21 @@ private:
         AVAudioSessionCategoryOptions options = capture ?
             (AVAudioSessionCategoryOptionDefaultToSpeaker |
              AVAudioSessionCategoryOptionAllowBluetooth) : 0;
+
+        // Skip reconfiguration if session is already in the right category.
+        // This prevents redundant setCategory calls (e.g. when Swift already
+        // configured .playAndRecord before calling startMicTransmit) that
+        // trigger interruption notifications and IO buffer duration changes.
+        if ([session.category isEqualToString:category]) {
+            fprintf(stderr, "CoreAudio iOS: session already %s, skipping reconfiguration\n",
+                    [category UTF8String]);
+            // Still read actual sample rate to keep config in sync
+            double actual_rate = session.sampleRate;
+            if (static_cast<uint32_t>(actual_rate) != config_.sample_rate) {
+                config_.sample_rate = static_cast<uint32_t>(actual_rate);
+            }
+            return true;
+        }
 
         if (![session setCategory:category withOptions:options error:&error]) {
             fprintf(stderr, "CoreAudio: Failed to set audio session category: %s\n",

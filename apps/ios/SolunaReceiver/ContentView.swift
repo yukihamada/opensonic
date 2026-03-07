@@ -179,19 +179,43 @@ struct ContentView: View {
             .background(heroAccent.opacity(0.1))
             .clipShape(Capsule())
 
-            // Manual stop/start (small text button)
-            if receiver.state == .receiving {
-                Button(action: { receiver.stop() }) {
-                    Text("Stop")
-                        .font(.caption.weight(.medium))
-                        .foregroundColor(.secondary)
+            // Mic TX toggle + stop/start
+            HStack(spacing: 16) {
+                if receiver.state == .receiving {
+                    Button(action: { receiver.toggleMic() }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: receiver.isMicTransmitting ? "mic.fill" : "mic.slash.fill")
+                            Text(receiver.isMicTransmitting ? "Mic ON" : "Mic OFF")
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundColor(receiver.isMicTransmitting ? .red : .secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(receiver.isMicTransmitting ? Color.red.opacity(0.12) : Color(.tertiarySystemFill))
+                        .clipShape(Capsule())
+                    }
                 }
-            } else if receiver.state == .stopped || receiver.state == .error {
-                Button(action: { receiver.start() }) {
-                    Text("Reconnect")
-                        .font(.caption.weight(.medium))
-                        .foregroundColor(.blue)
+
+                if receiver.state == .receiving {
+                    Button(action: { receiver.stop() }) {
+                        Text("Stop")
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(.secondary)
+                    }
+                } else if receiver.state == .stopped || receiver.state == .error {
+                    Button(action: { receiver.start() }) {
+                        Text("Reconnect")
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(.blue)
+                    }
                 }
+            }
+
+            // Mic input level meter
+            if receiver.isMicTransmitting {
+                MicLevelMeter(level: receiver.micInputLevel)
+                    .frame(height: 8)
+                    .padding(.horizontal, 32)
             }
         }
         .frame(maxWidth: .infinity)
@@ -214,6 +238,9 @@ struct ContentView: View {
             StatPill(value: "\(receiver.bufferMs)ms", label: "buf", color: nil)
             if receiver.packetsConcealed > 0 {
                 StatPill(value: formatNum(receiver.packetsConcealed), label: "plc", color: .yellow)
+            }
+            if receiver.isMicTransmitting {
+                StatPill(value: formatNum(receiver.txPacketsSent), label: "tx", color: .red)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -347,6 +374,31 @@ struct ContentView: View {
         n >= 1_000_000 ? String(format: "%.1fM", Double(n) / 1_000_000)
         : n >= 1_000   ? String(format: "%.1fK", Double(n) / 1_000)
         : "\(n)"
+    }
+}
+
+// MARK: - MicLevelMeter
+
+private struct MicLevelMeter: View {
+    let level: Float
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(.tertiarySystemFill))
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(meterColor)
+                    .frame(width: max(0, geo.size.width * CGFloat(min(level, 1.0))))
+                    .animation(.linear(duration: 0.1), value: level)
+            }
+        }
+    }
+
+    private var meterColor: Color {
+        if level > 0.8 { return .red }
+        if level > 0.4 { return .yellow }
+        return .green
     }
 }
 

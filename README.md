@@ -1,14 +1,15 @@
 # ◈ Soluna
 
-**Mac の音を、どこでも鳴らす。**
+**Mac の音を、どこでも鳴らす。どこからでも話せる。**
 
-Soluna は Mac のシステム音声を iPhone・Raspberry Pi・ブラウザへ低遅延で配信するオープンソースのネットワークオーディオシステムです。BlackHole や複雑な設定は不要。**Soluna 仮想デバイスをシステム出力に選ぶだけ**で動きます。
+Soluna は Mac のシステム音声を iPhone・Raspberry Pi・ブラウザへ低遅延で配信し、マイク音声の双方向送信にも対応するオープンソースのネットワークオーディオシステムです。BlackHole や複雑な設定は不要。**Soluna 仮想デバイスをシステム出力に選ぶだけ**で動きます。
 
 ```
-Mac スピーカー ──┐
-                 ├── Soluna（仮想デバイス）→ solunad ─┬→ UDP マルチキャスト
-iPhone/RPi  ────┘                                    ├→ P2P ユニキャストリレー
-                                                     └→ WebSocket → ブラウザ
+Mac スピーカー ──┐                                    ┌→ UDP マルチキャスト
+                 ├── Soluna（仮想デバイス）→ solunad ─┼→ P2P ユニキャストリレー
+iPhone/RPi  ────┘                                    └→ WebSocket → ブラウザ
+
+iPhone/Mac マイク → OSTP マルチキャスト → 全レシーバーで再生（双方向）
 ```
 
 ---
@@ -88,6 +89,14 @@ bash apps/daemon/install-service.sh
 1. `apps/ios/SolunaReceiver.xcodeproj` を Xcode で開いてビルド
 2. Mac と同じ Wi-Fi に繋ぐだけで **Bonjour 自動検出**
 3. 繋がったら遅延が自動キャリブレーションされます
+4. 🎤 マイクボタンで双方向音声送信（他のレシーバーで再生）
+
+### macOS レシーバー
+
+1. `apps/mac-rx/SolunaReceiverMac.xcodeproj` を Xcode で開いてビルド
+2. Start ボタンでマルチキャスト受信開始
+3. 🎤 マイクボタンで Mac のマイク音声を送信
+4. BT/AirPlay/USB スピーカーを追加して同期再生
 
 ### Raspberry Pi / Linux
 
@@ -117,7 +126,9 @@ soluna-rx --output pipe | aplay -f S16_LE -r 48000 -c 2
 |------|------|
 | 仮想オーディオデバイス | CoreAudio HAL プラグイン。システム出力を Soluna に切り替えるだけ |
 | Mac スピーカー同時再生 | ネットワーク配信と Mac 本体スピーカーを同時に出力 |
+| **🎤 マイク双方向送信** | iPhone/Mac のマイク音声を OSTP マルチキャストで送信。全レシーバーで再生 |
 | **BT / AirPlay 同期出力** | Bluetooth・AirPlay・USB スピーカーを追加して全デバイス同期再生 |
+| **同期再生モード** | OSTP タイムスタンプ + NTP で全レシーバーの再生タイミングを完全同期 |
 | **P2P ユニキャストリレー** | WiFi マルチキャストのパケットロスを回避。UDP ユニキャストで安定配信 |
 | **自動品質最適化** | RX メトリクスに基づきバッファ・FEC・PLC を自動チューニング |
 | **TX/RX 録音 & 比較** | 送受信の WAV を録音し、SNR・スペクトル・ドロップアウトを分析 |
@@ -239,8 +250,8 @@ stderr に JSON で出力:
 |----------------|------|------|
 | macOS | 送信（TX） | ✅ 動作確認済み |
 | macOS | Menu bar コントロール | ✅ `apps/mac/` |
-| macOS | 受信（RX） | ✅ `apps/mac-rx/` |
-| iPhone (iOS) | 受信（RX） | ✅ `apps/ios/` |
+| macOS | 受信（RX） + マイク送信 | ✅ `apps/mac-rx/` |
+| iPhone (iOS) | 受信（RX） + マイク送信 | ✅ `apps/ios/` |
 | Raspberry Pi / Linux | 受信（RX） | ✅ `soluna-rx` |
 | Windows | 受信（RX） | ✅ `soluna-rx-win` (WASAPI) |
 | ブラウザ | 受信（RX） | ✅ Dashboard → Browser タブ |
@@ -254,9 +265,9 @@ stderr に JSON で出力:
 ```
 apps/
   daemon/         solunad — TX/RX デーモン（C++）
-  ios/            iPhone レシーバーアプリ（Swift）
+  ios/            iPhone レシーバーアプリ（Swift）+ マイク送信
   mac/            macOS Menu bar アプリ（Swift SPM）
-  mac-rx/         macOS レシーバーアプリ（Swift）
+  mac-rx/         macOS レシーバーアプリ（Swift）+ マイク送信
   linux-rx/       Linux/RPi CLI レシーバー（C++）
   plugin/         CoreAudio HAL ドライバ（Soluna.driver）
 deploy/

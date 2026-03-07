@@ -25,6 +25,10 @@
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.music</string>
 
+    <!-- Microphone access (required for TX transmit) -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Soluna uses the microphone to capture and transmit audio to other devices on the network.</string>
+
     <!-- Local network access (required for multicast) -->
     <key>NSLocalNetworkUsageDescription</key>
     <string>Soluna Rx needs access to the local network to receive audio streams from other devices.</string>

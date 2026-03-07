@@ -411,7 +411,6 @@ bool WebSocketServer::start(uint16_t port) {
 }
 
 void WebSocketServer::stop() {
-    if (!impl_->running) return;
     impl_->running = false;
 
     if (impl_->listen_fd != INVALID_SOCKET) {
