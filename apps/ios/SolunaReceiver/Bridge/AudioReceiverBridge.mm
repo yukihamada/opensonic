@@ -878,11 +878,11 @@ private:
         last_underrun_ms_ = now;
 
         int cur = health_.load(std::memory_order_relaxed);
-        if (health_underruns_in_window_ >= 20 && cur < 2) {
+        if (health_underruns_in_window_ >= 50 && cur < 2) {
             // Extreme underruns: silence device to prevent noise
             health_.store(2, std::memory_order_relaxed);
             health_silenced_.store(true, std::memory_order_relaxed);
-        } else if (health_underruns_in_window_ >= 5 && cur < 1) {
+        } else if (health_underruns_in_window_ >= 10 && cur < 1) {
             // Moderate underruns: stressed — auto-increase buffer 50%, cap at 2000ms
             health_.store(1, std::memory_order_relaxed);
             uint32_t cur_frames = target_fill_frames_.load(std::memory_order_relaxed);
@@ -896,8 +896,8 @@ private:
         if (++recovery_check_counter_ < 200) return;  // ~1 s at 5ms/callback
         recovery_check_counter_ = 0;
         if (last_underrun_ms_ == 0) return;
-        if (now_ms_() - last_underrun_ms_ >= 60000) {
-            // 60 seconds clean: restore normal operation
+        if (now_ms_() - last_underrun_ms_ >= 10000) {
+            // 10 seconds clean: restore normal operation
             health_.store(0, std::memory_order_relaxed);
             health_silenced_.store(false, std::memory_order_relaxed);
             health_window_start_ms_ = 0;
@@ -1082,6 +1082,7 @@ private:
         if (!has_data) {
             prefilled_ = false;
             record_underrun_now();
+            maybe_check_recovery(); // Also check recovery during underruns
             for (uint32_t i = 0; i < frame_count; i++) {
                 ramp_ *= (1.0f - kFadeOut);
                 for (uint32_t ch = 0; ch < channels_; ch++) {
