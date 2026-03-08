@@ -127,14 +127,24 @@ TEST_F(JitterBufferTest, NotReadyUntilDepthMet) {
 
 TEST_F(JitterBufferTest, AdaptiveDepthIncrease) {
     config.initial_depth_ms = 2.0;
+    config.min_depth_ms = 1.0;
     config.depth_increase_factor = 2.0;
     JitterBuffer jb(config);
 
     double initial = jb.target_depth_ms();
     EXPECT_DOUBLE_EQ(initial, 2.0);
 
-    // Pop from empty buffer triggers underrun → depth increase
+    auto pkt = make_packet();
+
+    // Push seq 0 to start the buffer, then push seq 2 (skip seq 1)
+    jb.push(0, 0, pkt.data(), pkt.size() * sizeof(float));
+    jb.push(2, 4000000LL, pkt.data(), pkt.size() * sizeof(float));
+
+    // Pop seq 0 successfully
     std::vector<float> out(96);
+    jb.pop(out.data(), out.size() * sizeof(float));
+
+    // Pop seq 1 — missing packet triggers underrun → adapt_depth
     jb.pop(out.data(), out.size() * sizeof(float));
 
     double after = jb.target_depth_ms();

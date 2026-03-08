@@ -96,6 +96,27 @@ size_t JitterBuffer::pop(void* out_buf, size_t buf_size) {
 
     // Wait until buffer has accumulated enough depth
     if (!ready()) {
+        // Check if next_sequence_ is a gap (missing packet with future
+        // packets present). Without this, the buffer stalls permanently
+        // when a packet is lost.
+        size_t idx0 = next_sequence_ & kSlotMask;
+        Slot& s0 = slots_[idx0];
+        if (!s0.occupied.load(std::memory_order_acquire) ||
+            s0.sequence != next_sequence_) {
+            for (size_t i = 1; i <= 16; i++) {
+                size_t fi = (next_sequence_ + i) & kSlotMask;
+                if (slots_[fi].occupied.load(std::memory_order_relaxed) &&
+                    slots_[fi].sequence == static_cast<uint16_t>(next_sequence_ + i)) {
+                    // Future packet exists → skip the missing one
+                    total_lost_.fetch_add(1, std::memory_order_relaxed);
+                    total_expected_.fetch_add(1, std::memory_order_relaxed);
+                    next_sequence_++;
+                    underruns_.fetch_add(1, std::memory_order_relaxed);
+                    adapt_depth();
+                    return 0;
+                }
+            }
+        }
         return 0;
     }
 

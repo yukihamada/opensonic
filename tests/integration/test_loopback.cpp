@@ -179,8 +179,8 @@ TEST(Loopback, PipelineRoundtrip) {
         const uint8_t* payload = nullptr;
         size_t payload_size = 0;
 
-        bool ok = ostp_parse_packet(packet.data(), pkt_size, rtp, ostp, payload, payload_size);
-        ASSERT_TRUE(ok);
+        int rc = ostp_parse_packet(packet.data(), pkt_size, rtp, ostp, payload, payload_size);
+        ASSERT_EQ(rc, 0);
 
         // Write to RX ring
         size_t frames = payload_size / kFrameSize;
