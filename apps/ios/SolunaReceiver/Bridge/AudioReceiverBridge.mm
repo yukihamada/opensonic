@@ -169,6 +169,38 @@ private:
         // Discard duplicate packets (gap <= 0 means same or older sequence)
         if (gap < 0) return true;  // duplicate — already received
 
+        // ── NTP-based sync: use media_timestamp to align with other receivers ──
+        // media_timestamp = lower 32 bits of sender's CLOCK_REALTIME in nanoseconds.
+        // By comparing with our CLOCK_REALTIME, we compute the playout offset and
+        // adjust target_fill_frames_ so all devices play in sync.
+        if (ostp.media_timestamp != 0 && sync_target_frames_ != nullptr) {
+            struct timespec now_ts;
+            clock_gettime(CLOCK_REALTIME, &now_ts);
+            uint32_t now_ns32 = static_cast<uint32_t>(
+                (static_cast<uint64_t>(now_ts.tv_sec) * 1'000'000'000ULL + now_ts.tv_nsec)
+                & 0xFFFFFFFF);
+            // age_ms = how long ago this packet was created (sender → receiver)
+            int32_t age_ns = static_cast<int32_t>(now_ns32 - ostp.media_timestamp);
+            double age_ms = age_ns / 1'000'000.0;
+            // Clamp to reasonable range (0..500ms)
+            if (age_ms >= 0.0 && age_ms < 500.0) {
+                // We want all receivers to play at exactly sync_playout_delay_ms_
+                // after the packet was created. So the buffer should hold:
+                //   target = (playout_delay - age) in frames
+                // If age < playout_delay, we need more buffer (packet arrived early).
+                // If age > playout_delay, we need less buffer (packet arrived late).
+                double needed_ms = sync_playout_delay_ms_ - age_ms;
+                if (needed_ms < 10.0) needed_ms = 10.0;   // minimum 10ms
+                if (needed_ms > 200.0) needed_ms = 200.0;  // maximum 200ms
+                uint32_t needed_frames = static_cast<uint32_t>(needed_ms * 48.0);
+                // EMA smoothing to avoid jitter in the target
+                uint32_t cur = sync_target_frames_->load(std::memory_order_relaxed);
+                uint32_t smoothed = cur == 0 ? needed_frames
+                    : static_cast<uint32_t>(cur * 0.95 + needed_frames * 0.05);
+                sync_target_frames_->store(smoothed, std::memory_order_relaxed);
+            }
+        }
+
         // OSTP payload is int32_t (4 bytes/sample, native byte order) — not S24_LE 3-byte
         size_t frames = payload_size / (sizeof(int32_t) * config_.channels);
 
@@ -280,6 +312,11 @@ private:
     std::vector<int32_t> audio_buf_;
     std::vector<int32_t> last_frame_;  // PLC: last received frame for concealment
     Stats stats_;
+
+public:
+    // NTP-based sync: pointer to ReceiverImpl's target_fill_frames_ (set externally)
+    std::atomic<uint32_t>* sync_target_frames_ = nullptr;
+    double sync_playout_delay_ms_ = 80.0;  // default playout delay matching RPi
 };
 
 /// WAN relay client — connects to soluna-relay server via UDP
@@ -698,6 +735,10 @@ public:
         if (!rtp_receiver_->init()) {
             return false;
         }
+
+        // Wire up NTP sync: receiver adjusts target_fill_frames_ based on media_timestamp
+        rtp_receiver_->sync_target_frames_ = &target_fill_frames_;
+        rtp_receiver_->sync_playout_delay_ms_ = 80.0;
 
         // Create audio output device
         audio_device_ = pal::AudioDevice::create();
