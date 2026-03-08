@@ -41,3 +41,4 @@ solctl
 
 # Generated
 compile_commands.json
+.claude/worktrees/
