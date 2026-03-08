@@ -1093,15 +1093,17 @@ private:
             target_fill_frames_.store(target);
         }
 
-        // ── Gradual drift correction ─────────────────────────────────────────
-        // When buffer exceeds target, discard up to 10% of frame_count per callback.
-        // This creates an imperceptible speed-up instead of audible gaps.
+        // ── Gradual drift correction with crossfade ────────────────────────
+        // When buffer exceeds target, discard a small amount per callback.
+        // A 48-sample crossfade from held_sample_ eliminates the click that
+        // would otherwise occur from the waveform discontinuity.
         {
             size_t avail_now = ring_buffer_.available_read();
-            if (prefilled_ && avail_now > static_cast<size_t>(target) + frame_count * 2) {
-                size_t drift = std::min(avail_now - static_cast<size_t>(target),
-                                        static_cast<size_t>(frame_count / 10 + 1));
+            if (prefilled_ && avail_now > static_cast<size_t>(target) + frame_count * 4) {
+                size_t excess = avail_now - static_cast<size_t>(target);
+                size_t drift = std::min(excess, static_cast<size_t>(frame_count / 40 + 1));
                 ring_buffer_.discard(drift);
+                drift_xfade_ = 48; // 1ms crossfade at 48kHz
             }
         }
 
@@ -1112,7 +1114,9 @@ private:
         constexpr float kFadeOut = 0.005f;
 
         if (!prefilled_) {
-            if (avail < target) {
+            // Use half-target for re-prefill so recovery from underrun is faster
+            uint32_t refill_threshold = (avail == 0) ? target : target / 2;
+            if (avail < refill_threshold) {
                 ramp_ *= (1.0f - kFadeOut);
                 std::memset(buffer, 0, total_samples * sizeof(float));
                 return;
@@ -1150,10 +1154,16 @@ private:
                 // Soft limiter: tanh-style knee at ±0.9 to prevent hard clipping
                 if (s > 0.9f)       s = 0.9f + 0.1f * std::tanh((s - 0.9f) * 5.0f);
                 else if (s < -0.9f) s = -0.9f + 0.1f * std::tanh((s + 0.9f) * 5.0f);
-                const float out = s * ramp_;
+                float out = s * ramp_;
+                // Crossfade from held_sample_ after drift discard to prevent clicks
+                if (drift_xfade_ > 0) {
+                    float alpha = 1.0f - static_cast<float>(drift_xfade_) / 49.0f;
+                    out = out * alpha + held_sample_[ch] * (1.0f - alpha);
+                }
                 buffer[idx] = out;
                 held_sample_[ch] = out;
             }
+            if (drift_xfade_ > 0) drift_xfade_--;
         }
     }
 
@@ -1177,6 +1187,8 @@ private:
     // TPDF dithering for int32→float conversion (reduces quantization noise)
     std::minstd_rand      dither_rng_;
     std::uniform_real_distribution<float> dither_dist_{-1.0f, 1.0f};
+    // Drift correction crossfade counter (audio-callback-only):
+    uint32_t drift_xfade_ = 0;
     // Health tracking — audio-callback-only (no atomic needed):
     uint64_t health_window_start_ms_    = 0;
     uint32_t health_underruns_in_window_ = 0;
