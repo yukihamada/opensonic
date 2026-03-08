@@ -168,37 +168,10 @@ private:
         // Discard duplicate packets (gap <= 0 means same or older sequence)
         if (gap < 0) return true;  // duplicate — already received
 
-        // ── NTP-based sync: use media_timestamp to align with other receivers ──
-        // media_timestamp = lower 32 bits of sender's CLOCK_REALTIME in nanoseconds.
-        // By comparing with our CLOCK_REALTIME, we compute the playout offset and
-        // adjust target_fill_frames_ so all devices play in sync.
-        if (ostp.media_timestamp != 0 && sync_target_frames_ != nullptr) {
-            struct timespec now_ts;
-            clock_gettime(CLOCK_REALTIME, &now_ts);
-            uint32_t now_ns32 = static_cast<uint32_t>(
-                (static_cast<uint64_t>(now_ts.tv_sec) * 1'000'000'000ULL + now_ts.tv_nsec)
-                & 0xFFFFFFFF);
-            // age_ms = how long ago this packet was created (sender → receiver)
-            int32_t age_ns = static_cast<int32_t>(now_ns32 - ostp.media_timestamp);
-            double age_ms = age_ns / 1'000'000.0;
-            // Clamp to reasonable range (0..500ms)
-            if (age_ms >= 0.0 && age_ms < 500.0) {
-                // We want all receivers to play at exactly sync_playout_delay_ms_
-                // after the packet was created. So the buffer should hold:
-                //   target = (playout_delay - age) in frames
-                // If age < playout_delay, we need more buffer (packet arrived early).
-                // If age > playout_delay, we need less buffer (packet arrived late).
-                double needed_ms = sync_playout_delay_ms_ - age_ms;
-                if (needed_ms < 10.0) needed_ms = 10.0;   // minimum 10ms
-                if (needed_ms > 200.0) needed_ms = 200.0;  // maximum 200ms
-                uint32_t needed_frames = static_cast<uint32_t>(needed_ms * 48.0);
-                // EMA smoothing to avoid jitter in the target
-                uint32_t cur = sync_target_frames_->load(std::memory_order_relaxed);
-                uint32_t smoothed = cur == 0 ? needed_frames
-                    : static_cast<uint32_t>(cur * 0.95 + needed_frames * 0.05);
-                sync_target_frames_->store(smoothed, std::memory_order_relaxed);
-            }
-        }
+        // NTP-based sync: measure packet age for future use.
+        // Target adjustment is disabled to prioritize playback stability.
+        // TODO: Re-enable sync with proper drift compensation.
+        (void)ostp.media_timestamp;
 
         // OSTP payload is int32_t (4 bytes/sample, native byte order) — not S24_LE 3-byte
         size_t frames = payload_size / (sizeof(int32_t) * config_.channels);
@@ -917,16 +890,13 @@ private:
         last_underrun_ms_ = now;
 
         int cur = health_.load(std::memory_order_relaxed);
-        if (health_underruns_in_window_ >= 50 && cur < 2) {
+        if (health_underruns_in_window_ >= 200 && cur < 2) {
             // Extreme underruns: silence device to prevent noise
             health_.store(2, std::memory_order_relaxed);
             health_silenced_.store(true, std::memory_order_relaxed);
-        } else if (health_underruns_in_window_ >= 10 && cur < 1) {
-            // Moderate underruns: stressed — auto-increase buffer 50%, cap at 2000ms
+        } else if (health_underruns_in_window_ >= 30 && cur < 1) {
+            // Moderate underruns: mark stressed (UI indicator only, no buffer change)
             health_.store(1, std::memory_order_relaxed);
-            uint32_t cur_frames = target_fill_frames_.load(std::memory_order_relaxed);
-            uint32_t new_frames = std::min(cur_frames + cur_frames / 2, 96000u);
-            target_fill_frames_.store(new_frames, std::memory_order_relaxed);
         }
     }
 
@@ -1083,49 +1053,42 @@ private:
                           ? 0.0f : volume_.load();
         const uint32_t total_samples = frame_count * channels_;
 
-        // Adaptive target: always >= frame_count*4 to prevent immediate underrun
         uint32_t target = target_fill_frames_.load();
-        const uint32_t min_target = frame_count * 4;
-        if (target < min_target) {
-            target = min_target;
-            target_fill_frames_.store(target);
-        }
+        // Ensure target is at least a few callbacks worth
+        const uint32_t min_target = frame_count * 3;
+        if (target < min_target) target = min_target;
 
         // ── Gradual drift correction with crossfade ────────────────────────
-        // When buffer exceeds target, discard a small amount per callback.
-        // A 48-sample crossfade from held_sample_ eliminates the click that
-        // would otherwise occur from the waveform discontinuity.
         {
             size_t avail_now = ring_buffer_.available_read();
-            if (prefilled_ && avail_now > static_cast<size_t>(target) + frame_count * 4) {
+            if (prefilled_ && avail_now > static_cast<size_t>(target) * 2) {
                 size_t excess = avail_now - static_cast<size_t>(target);
                 size_t drift = std::min(excess, static_cast<size_t>(frame_count / 40 + 1));
                 ring_buffer_.discard(drift);
-                drift_xfade_ = 48; // 1ms crossfade at 48kHz
+                drift_xfade_ = 48;
             }
         }
 
         const size_t avail = ring_buffer_.available_read();
-        const bool has_data = (avail >= frame_count);
 
-        constexpr float kFadeIn  = 0.001f;
-        constexpr float kFadeOut = 0.005f;
+        constexpr float kFadeIn  = 0.002f;  // faster fade-in for snappier recovery
+        constexpr float kFadeOut = 0.004f;
 
+        // ── Initial prefill (only at startup, NOT reset on underrun) ───────
         if (!prefilled_) {
-            // Use half-target for re-prefill so recovery from underrun is faster
-            uint32_t refill_threshold = (avail == 0) ? target : target / 2;
-            if (avail < refill_threshold) {
-                ramp_ *= (1.0f - kFadeOut);
+            if (avail < min_target) {
                 std::memset(buffer, 0, total_samples * sizeof(float));
                 return;
             }
             prefilled_ = true;
+            ramp_ = 0.0f;  // ensure clean fade-in
         }
 
-        if (!has_data) {
-            prefilled_ = false;
+        // ── Underrun: fade out but DON'T reset prefilled_ ─────────────────
+        // Next callback with data will immediately resume playback.
+        if (avail < frame_count) {
             record_underrun_now();
-            maybe_check_recovery(); // Also check recovery during underruns
+            maybe_check_recovery();
             for (uint32_t i = 0; i < frame_count; i++) {
                 ramp_ *= (1.0f - kFadeOut);
                 for (uint32_t ch = 0; ch < channels_; ch++) {
@@ -1135,10 +1098,9 @@ private:
             return;
         }
 
-        // Periodically check if health can be recovered
         maybe_check_recovery();
 
-        // Normal playback with soft limiter to prevent clipping
+        // ── Normal playback ────────────────────────────────────────────────
         ring_buffer_.read(read_buffer_.data(), frame_count);
         const int32_t* src = read_buffer_.data();
         for (uint32_t i = 0; i < frame_count; i++) {
@@ -1146,11 +1108,9 @@ private:
             for (uint32_t ch = 0; ch < channels_; ch++) {
                 const uint32_t idx = i * channels_ + ch;
                 float s = static_cast<float>(src[idx]) / 8388608.0f;
-                // Safety clamp (no distortion — 24-bit data never exceeds ±1.0)
                 if (s > 1.0f) s = 1.0f;
                 else if (s < -1.0f) s = -1.0f;
                 float out = s * ramp_;
-                // Crossfade from held_sample_ after drift discard to prevent clicks
                 if (drift_xfade_ > 0) {
                     float alpha = 1.0f - static_cast<float>(drift_xfade_) / 49.0f;
                     out = out * alpha + held_sample_[ch] * (1.0f - alpha);
@@ -1268,7 +1228,7 @@ private:
         _port = port;
         _channels = channels;
         _volume = 1.0f;
-        _bufferTargetMs = 40;
+        _bufferTargetMs = 80;
         _state = SolunaReceiverStateStopped;
     }
     return self;
