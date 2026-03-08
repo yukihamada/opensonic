@@ -26,7 +26,6 @@
 #include <cstdio>
 #include <vector>
 #include <string>
-#include <random>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -713,7 +712,6 @@ public:
         , drain_buf_(4096 * channels)
         , held_sample_(channels, 0)
         , ramp_(0.0f)
-        , dither_rng_(std::random_device{}())
     {}
 
     ~ReceiverImpl() {
@@ -1147,13 +1145,10 @@ private:
             ramp_ += kFadeIn * (vol - ramp_);
             for (uint32_t ch = 0; ch < channels_; ch++) {
                 const uint32_t idx = i * channels_ + ch;
-                // TPDF dithering: two uniform random values → triangular distribution
-                // Reduces quantization noise at low signal levels
-                const float d = (dither_dist_(dither_rng_) + dither_dist_(dither_rng_)) * 0.5f;
-                float s = (static_cast<float>(src[idx]) + d) / 8388608.0f;
-                // Soft limiter: tanh-style knee at ±0.9 to prevent hard clipping
-                if (s > 0.9f)       s = 0.9f + 0.1f * std::tanh((s - 0.9f) * 5.0f);
-                else if (s < -0.9f) s = -0.9f + 0.1f * std::tanh((s + 0.9f) * 5.0f);
+                float s = static_cast<float>(src[idx]) / 8388608.0f;
+                // Safety clamp (no distortion — 24-bit data never exceeds ±1.0)
+                if (s > 1.0f) s = 1.0f;
+                else if (s < -1.0f) s = -1.0f;
                 float out = s * ramp_;
                 // Crossfade from held_sample_ after drift discard to prevent clicks
                 if (drift_xfade_ > 0) {
@@ -1184,9 +1179,6 @@ private:
     bool                  prefilled_ = false;
     float                 ramp_      = 0.0f;
     std::vector<float>    held_sample_;
-    // TPDF dithering for int32→float conversion (reduces quantization noise)
-    std::minstd_rand      dither_rng_;
-    std::uniform_real_distribution<float> dither_dist_{-1.0f, 1.0f};
     // Drift correction crossfade counter (audio-callback-only):
     uint32_t drift_xfade_ = 0;
     // Health tracking — audio-callback-only (no atomic needed):
