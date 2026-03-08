@@ -75,7 +75,7 @@ struct SettingsView: View {
                     Picker(selection: $streamMode, label:
                         HStack {
                             Image(systemName: "waveform.path")
-                                .foregroundColor(.indigo)
+                                .foregroundColor(.purple)
                                 .frame(width: 28)
                             Text("Mode")
                         }
