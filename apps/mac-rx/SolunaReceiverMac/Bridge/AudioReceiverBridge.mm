@@ -21,6 +21,8 @@
 #include <AudioToolbox/AudioToolbox.h>
 #include <Accelerate/Accelerate.h>
 
+#include "../../../plugin/soluna_shm.h"
+
 #include <atomic>
 #include <thread>
 #include <mutex>
@@ -35,6 +37,9 @@
 #include <winsock2.h>
 #else
 #include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #endif
 
 using namespace soluna;
@@ -93,6 +98,9 @@ public:
     {}
 
     Stats stats_snapshot() const { return stats_; }
+
+    /// Last received OSTP media_timestamp (wall-clock nanoseconds, lower 32 bits)
+    std::atomic<uint32_t> last_media_timestamp{0};
 
     bool init() {
         socket_ = pal::UdpSocket::create();
@@ -169,6 +177,9 @@ private:
 
         stats_.packets_received++;
         stats_.ostp_packets++;
+
+        // Store media_timestamp for sync mode
+        last_media_timestamp.store(ostp.media_timestamp, std::memory_order_relaxed);
 
         // Discard duplicate packets (gap <= 0 means same or older sequence)
         if (gap < 0) return true;  // duplicate — already received
@@ -1011,6 +1022,240 @@ private:
     std::vector<float>    held_sample_;
 };
 
+// ============================================================================
+// WanRelayClient — UDP relay for internet-based group audio (SonoBus-style)
+// ============================================================================
+
+class WanRelayClient {
+public:
+    enum class State { Disconnected, Connecting, Connected, Error };
+
+    using RxCallback = std::function<void(const uint8_t*, size_t)>;
+
+    WanRelayClient() = default;
+    ~WanRelayClient() { disconnect(); }
+
+    bool connect(const std::string& host, uint16_t port,
+                 const std::string& group, const std::string& password,
+                 const std::string& device_name) {
+        if (state_.load() == State::Connected || state_.load() == State::Connecting)
+            return false;
+
+        state_.store(State::Connecting, std::memory_order_relaxed);
+        group_ = group;
+        error_.clear();
+
+        // DNS resolve
+        struct addrinfo hints{}, *res = nullptr;
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+        char port_str[8];
+        snprintf(port_str, sizeof(port_str), "%u", port);
+
+        int err = getaddrinfo(host.c_str(), port_str, &hints, &res);
+        if (err != 0 || !res) {
+            error_ = std::string("DNS resolve failed: ") + gai_strerror(err);
+            state_.store(State::Error, std::memory_order_relaxed);
+            return false;
+        }
+        relay_addr_ = *reinterpret_cast<sockaddr_in*>(res->ai_addr);
+        freeaddrinfo(res);
+
+        // Create UDP socket
+        udp_sock_ = socket(AF_INET, SOCK_DGRAM, 0);
+        if (udp_sock_ < 0) {
+            error_ = "socket() failed";
+            state_.store(State::Error, std::memory_order_relaxed);
+            return false;
+        }
+
+        // Set recv timeout 1s
+        struct timeval tv{1, 0};
+        setsockopt(udp_sock_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+        // Send JOIN:<group>:<password>:<device_name>\n
+        std::string join_msg = "JOIN:" + group;
+        join_msg += ":" + password;
+        join_msg += ":" + device_name;
+        join_msg += "\n";
+        sendto(udp_sock_, join_msg.c_str(), join_msg.size(), 0,
+               reinterpret_cast<const sockaddr*>(&relay_addr_), sizeof(relay_addr_));
+
+        // Wait for OK:joined (up to 3 seconds), also collect PEER messages
+        char buf[256];
+        bool joined = false;
+        for (int attempt = 0; attempt < 6 && !joined; attempt++) {
+            sockaddr_in from{};
+            socklen_t from_len = sizeof(from);
+            ssize_t n = recvfrom(udp_sock_, buf, sizeof(buf) - 1, 0,
+                                 reinterpret_cast<sockaddr*>(&from), &from_len);
+            if (n > 0) {
+                buf[n] = '\0';
+                if (strncmp(buf, "OK:joined", 9) == 0) {
+                    joined = true;
+                } else if (strncmp(buf, "ERR:", 4) == 0) {
+                    std::string e(buf, n);
+                    while (!e.empty() && (e.back() == '\n' || e.back() == '\r')) e.pop_back();
+                    error_ = e;
+                    ::close(udp_sock_);
+                    udp_sock_ = -1;
+                    state_.store(State::Error, std::memory_order_relaxed);
+                    return false;
+                } else if (n >= 6 && strncmp(buf, "PEER:", 5) == 0) {
+                    std::string msg(buf, n);
+                    while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r'))
+                        msg.pop_back();
+                    auto colon = msg.rfind(':');
+                    if (colon != std::string::npos && colon > 5) {
+                        std::string ip = msg.substr(5, colon - 5);
+                        uint16_t pport = (uint16_t)atoi(msg.substr(colon + 1).c_str());
+                        sockaddr_in peer{};
+                        peer.sin_family = AF_INET;
+                        peer.sin_port = htons(pport);
+                        inet_pton(AF_INET, ip.c_str(), &peer.sin_addr);
+                        add_peer(peer);
+                        fprintf(stderr, "[wan-p2p] Peer discovered (during join): %s:%u\n", ip.c_str(), pport);
+                    }
+                }
+            }
+        }
+
+        if (!joined) {
+            error_ = "JOIN timeout (no response from relay)";
+            ::close(udp_sock_);
+            udp_sock_ = -1;
+            state_.store(State::Error, std::memory_order_relaxed);
+            return false;
+        }
+
+        state_.store(State::Connected, std::memory_order_relaxed);
+        running_.store(true);
+
+        // Start recv thread
+        recv_thread_ = std::thread([this]() { recv_loop(); });
+
+        fprintf(stderr, "[WanRelay] Connected to group '%s'\n", group_.c_str());
+        return true;
+    }
+
+    void disconnect() {
+        running_.store(false);
+        if (recv_thread_.joinable()) {
+            recv_thread_.join();
+        }
+        if (udp_sock_ >= 0) {
+            ::close(udp_sock_);
+            udp_sock_ = -1;
+        }
+        {
+            std::lock_guard<std::mutex> lk(peers_mutex_);
+            peers_.clear();
+        }
+        state_.store(State::Disconnected, std::memory_order_relaxed);
+        group_.clear();
+    }
+
+    /// Send an OSTP audio packet to peers (P2P) and relay (fallback)
+    void send_audio(const uint8_t* data, size_t len) {
+        if (udp_sock_ < 0 || state_.load() != State::Connected) return;
+        // Send to all direct peers (P2P)
+        {
+            std::lock_guard<std::mutex> lk(peers_mutex_);
+            for (const auto& peer : peers_) {
+                sendto(udp_sock_, data, len, 0,
+                       reinterpret_cast<const sockaddr*>(&peer), sizeof(peer));
+            }
+        }
+        // Also send via relay as fallback
+        sendto(udp_sock_, data, len, 0,
+               reinterpret_cast<const sockaddr*>(&relay_addr_), sizeof(relay_addr_));
+    }
+
+    void set_rx_callback(RxCallback cb) {
+        std::lock_guard<std::mutex> lock(cb_mutex_);
+        rx_callback_ = std::move(cb);
+    }
+
+    State state() const { return state_.load(std::memory_order_relaxed); }
+    const std::string& group() const { return group_; }
+    const std::string& error() const { return error_; }
+
+private:
+    void recv_loop() {
+        uint8_t buf[65536];
+        auto last_hello = std::chrono::steady_clock::now();
+
+        while (running_.load()) {
+            sockaddr_in from{};
+            socklen_t from_len = sizeof(from);
+            ssize_t n = recvfrom(udp_sock_, buf, sizeof(buf), 0,
+                                 reinterpret_cast<sockaddr*>(&from), &from_len);
+
+            if (n > 0) {
+                // PEER message: "PEER:ip:port\n"
+                if (n >= 6 && memcmp(buf, "PEER:", 5) == 0) {
+                    std::string msg((const char*)buf, n);
+                    while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r'))
+                        msg.pop_back();
+                    auto colon = msg.rfind(':');
+                    if (colon != std::string::npos && colon > 5) {
+                        std::string ip = msg.substr(5, colon - 5);
+                        uint16_t pport = (uint16_t)atoi(msg.substr(colon + 1).c_str());
+                        sockaddr_in peer{};
+                        peer.sin_family = AF_INET;
+                        peer.sin_port = htons(pport);
+                        inet_pton(AF_INET, ip.c_str(), &peer.sin_addr);
+                        add_peer(peer);
+                        fprintf(stderr, "[wan-p2p] Peer discovered: %s:%u\n", ip.c_str(), pport);
+                        // Send a punch packet to open NAT
+                        const char* punch = "PUNCH\n";
+                        sendto(udp_sock_, punch, 6, 0,
+                               reinterpret_cast<const sockaddr*>(&peer), sizeof(peer));
+                    }
+                }
+                // RTP/OSTP audio packet from relay or peer
+                else if (n >= 12 && (buf[0] & 0xC0) == 0x80) {
+                    std::lock_guard<std::mutex> lock(cb_mutex_);
+                    if (rx_callback_) {
+                        rx_callback_(buf, static_cast<size_t>(n));
+                    }
+                }
+            }
+
+            // Send HELLO heartbeat every 5 seconds
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_hello).count();
+            if (elapsed >= 5) {
+                const char* hello = "HELLO\n";
+                sendto(udp_sock_, hello, strlen(hello), 0,
+                       reinterpret_cast<const sockaddr*>(&relay_addr_), sizeof(relay_addr_));
+                last_hello = now;
+            }
+        }
+    }
+
+    void add_peer(const sockaddr_in& peer) {
+        std::lock_guard<std::mutex> lk(peers_mutex_);
+        for (const auto& p : peers_) {
+            if (p.sin_addr.s_addr == peer.sin_addr.s_addr && p.sin_port == peer.sin_port)
+                return;
+        }
+        peers_.push_back(peer);
+    }
+
+    std::atomic<State> state_{State::Disconnected};
+    std::atomic<bool> running_{false};
+    int udp_sock_ = -1;
+    sockaddr_in relay_addr_{};
+    std::string group_;
+    std::string error_;
+    std::thread recv_thread_;
+    std::mutex cb_mutex_;
+    RxCallback rx_callback_;
+    std::mutex peers_mutex_;
+    std::vector<sockaddr_in> peers_;
+};
+
 /// Internal microphone transmitter implementation
 class TransmitterImpl {
 public:
@@ -1088,6 +1333,9 @@ public:
     uint64_t packets_sent() const { return packets_sent_.load(); }
     float peak_level() const { return peak_level_.load(std::memory_order_relaxed); }
 
+    /// Callback invoked with each built OSTP packet (for WAN relay forwarding)
+    std::function<void(const uint8_t*, size_t)> tx_relay_callback;
+
 private:
     void mic_callback(float* buffer, uint32_t frame_count) {
         // Track peak level for UI meter
@@ -1142,13 +1390,20 @@ private:
             uint16_t seq_lo = static_cast<uint16_t>(sequence & 0xFFFF);
             uint16_t seq_hi = static_cast<uint16_t>((sequence >> 16) & 0xFFFF);
 
+            // Wall-clock nanoseconds (lower 32 bits) for cross-device sync
+            struct timespec wall_ts;
+            clock_gettime(CLOCK_REALTIME, &wall_ts);
+            uint32_t media_ts = static_cast<uint32_t>(
+                (static_cast<uint64_t>(wall_ts.tv_sec) * 1'000'000'000ULL + wall_ts.tv_nsec)
+                & 0xFFFFFFFF);
+
             size_t pkt_size = transport::ostp_build_packet(
                 packet_buf.data(), packet_buf.size(),
                 ssrc_, seq_lo, rtp_timestamp,
                 96,  // kPayloadTypePCM24
                 1,   // stream_id
                 seq_hi,
-                0,   // media_timestamp
+                media_ts,
                 audio_buf.data(),
                 kFramesPerPacket * frame_size
             );
@@ -1156,6 +1411,10 @@ private:
             if (pkt_size > 0) {
                 socket_->send_to(packet_buf.data(), pkt_size, dest);
                 packets_sent_.fetch_add(1);
+                // Forward to WAN relay if connected
+                if (tx_relay_callback) {
+                    tx_relay_callback(packet_buf.data(), pkt_size);
+                }
             }
 
             sequence++;
@@ -1176,6 +1435,165 @@ private:
     std::unique_ptr<pal::AudioDevice> audio_device_;
     std::unique_ptr<pal::UdpSocket> socket_;
     std::vector<int32_t> conv_buf_;
+    std::thread tx_thread_;
+};
+
+/// System audio transmitter — reads from Soluna.driver shared memory and sends OSTP
+class ShmTransmitter {
+public:
+    ShmTransmitter(const std::string& dest_ip, uint16_t dest_port, uint32_t channels)
+        : dest_ip_(dest_ip)
+        , dest_port_(dest_port)
+        , channels_(channels)
+        , running_(false)
+        , packets_sent_(0)
+        , ssrc_(arc4random())
+    {
+        shm_map_.hdr = nullptr;
+        shm_map_.ring = nullptr;
+    }
+
+    ~ShmTransmitter() { stop(); }
+
+    bool start() {
+        if (running_.load()) return false;
+
+        // Open existing SHM (created by solunad or install.sh)
+        if (soluna_shm_open(&shm_map_, O_RDWR) != 0) {
+            fprintf(stderr, "[ShmTx] Cannot open SHM %s: %s\n",
+                    soluna_shm_path(), strerror(errno));
+            // Try creating it
+            if (soluna_shm_open(&shm_map_, O_RDWR | O_CREAT) != 0) {
+                fprintf(stderr, "[ShmTx] Cannot create SHM either\n");
+                return false;
+            }
+            soluna_shm_init_header(&shm_map_);
+        }
+        if (soluna_shm_validate(&shm_map_) != 0) {
+            fprintf(stderr, "[ShmTx] SHM validation failed\n");
+            soluna_shm_close(&shm_map_);
+            return false;
+        }
+
+        socket_ = pal::UdpSocket::create();
+        if (!socket_) {
+            soluna_shm_close(&shm_map_);
+            return false;
+        }
+
+        running_.store(true);
+        packets_sent_.store(0);
+        tx_thread_ = std::thread([this]() { tx_loop(); });
+
+        fprintf(stderr, "[ShmTx] Started (SHM → OSTP multicast %s:%u)\n",
+                dest_ip_.c_str(), dest_port_);
+        return true;
+    }
+
+    void stop() {
+        if (!running_.load()) return;
+        running_.store(false);
+        if (tx_thread_.joinable()) tx_thread_.join();
+        socket_.reset();
+        if (shm_map_.hdr) soluna_shm_close(&shm_map_);
+        fprintf(stderr, "[ShmTx] Stopped\n");
+    }
+
+    bool is_running() const { return running_.load(); }
+    uint64_t packets_sent() const { return packets_sent_.load(); }
+    float peak_level() const { return peak_level_.load(std::memory_order_relaxed); }
+
+    /// Callback for WAN relay forwarding
+    std::function<void(const uint8_t*, size_t)> tx_relay_callback;
+
+private:
+    void tx_loop() {
+        constexpr uint32_t kFramesPerPacket = 240;
+        const size_t frame_size = channels_ * sizeof(int32_t);
+
+        transport::PacketScheduler scheduler(PacketTier::LAN, kDefaultSampleRate);
+        scheduler.reset();
+
+        std::vector<float>   flt_buf(kFramesPerPacket * channels_);
+        std::vector<int32_t> s24_buf(kFramesPerPacket * channels_);
+        std::vector<uint8_t> packet_buf(transport::kMaxPacketSize);
+
+        pal::SocketAddress dest;
+        dest.ip = dest_ip_;
+        dest.port = dest_port_;
+
+        uint32_t sequence = 0;
+        uint32_t rtp_timestamp = 0;
+
+        while (running_.load()) {
+            scheduler.wait_next();
+
+            // Read from SHM
+            uint32_t avail = (uint32_t)soluna_shm_available_read(&shm_map_);
+            if (avail < kFramesPerPacket) {
+                // Not enough data — send silence
+                std::memset(s24_buf.data(), 0, kFramesPerPacket * frame_size);
+            } else {
+                soluna_shm_read(&shm_map_, flt_buf.data(), kFramesPerPacket);
+
+                // Track peak level
+                float peak = 0.0f;
+                for (uint32_t i = 0; i < kFramesPerPacket * channels_; i++) {
+                    float a = std::fabs(flt_buf[i]);
+                    if (a > peak) peak = a;
+                }
+                float prev = peak_level_.load(std::memory_order_relaxed);
+                peak_level_.store(peak > prev ? peak : prev * 0.85f, std::memory_order_relaxed);
+
+                // float32 → S24
+                for (uint32_t i = 0; i < kFramesPerPacket * channels_; i++) {
+                    float v = flt_buf[i];
+                    if (v > 1.0f) v = 1.0f;
+                    if (v < -1.0f) v = -1.0f;
+                    s24_buf[i] = static_cast<int32_t>(v * 8388607.0f);
+                }
+            }
+
+            // Build OSTP packet
+            uint16_t seq_lo = static_cast<uint16_t>(sequence & 0xFFFF);
+            uint16_t seq_hi = static_cast<uint16_t>((sequence >> 16) & 0xFFFF);
+
+            struct timespec wall_ts;
+            clock_gettime(CLOCK_REALTIME, &wall_ts);
+            uint32_t media_ts = static_cast<uint32_t>(
+                (static_cast<uint64_t>(wall_ts.tv_sec) * 1'000'000'000ULL + wall_ts.tv_nsec)
+                & 0xFFFFFFFF);
+
+            size_t pkt_size = transport::ostp_build_packet(
+                packet_buf.data(), packet_buf.size(),
+                ssrc_, seq_lo, rtp_timestamp,
+                96, 1, seq_hi, media_ts,
+                s24_buf.data(), kFramesPerPacket * frame_size
+            );
+
+            if (pkt_size > 0) {
+                socket_->send_to(packet_buf.data(), pkt_size, dest);
+                packets_sent_.fetch_add(1);
+                if (tx_relay_callback) {
+                    tx_relay_callback(packet_buf.data(), pkt_size);
+                }
+            }
+
+            sequence++;
+            rtp_timestamp += kFramesPerPacket;
+        }
+    }
+
+    std::string dest_ip_;
+    uint16_t dest_port_;
+    uint32_t channels_;
+    std::atomic<bool> running_;
+    std::atomic<uint64_t> packets_sent_;
+    std::atomic<float> peak_level_{0.0f};
+    uint32_t ssrc_;
+
+    SolunaShmMap shm_map_;
+    std::unique_ptr<pal::UdpSocket> socket_;
     std::thread tx_thread_;
 };
 
@@ -1304,6 +1722,9 @@ public:
 
         running_.store(false);
 
+        // Disconnect WAN relay
+        wan_relay_disconnect();
+
         // Stop WebSocket server first (while message callback is still valid)
         ws_server_.stop();
 
@@ -1346,6 +1767,25 @@ public:
         target_fill_frames_.store(ms * 48u);
     }
     uint32_t buffer_ms() const { return target_fill_frames_.load() / 48u; }
+
+    // ── Sync mode ─────────────────────────────────────────────────────────
+    void set_sync_mode(bool enabled) {
+        sync_mode_.store(enabled);
+        if (enabled) {
+            // Set a generous buffer for sync (200ms)
+            target_fill_frames_.store(sync_delay_ms_.load() * 48u);
+        }
+    }
+    bool is_sync_mode() const { return sync_mode_.load(); }
+
+    void set_sync_delay_ms(uint32_t ms) {
+        ms = std::max(50u, std::min(1000u, ms));
+        sync_delay_ms_.store(ms);
+        if (sync_mode_.load()) {
+            target_fill_frames_.store(ms * 48u);
+        }
+    }
+    uint32_t sync_delay_ms() const { return sync_delay_ms_.load(); }
 
     SimpleRtpReceiver::Stats stats() const {
         if (rtp_receiver_) return rtp_receiver_->stats_snapshot();
@@ -1496,6 +1936,44 @@ public:
             extra_sinks_[idx]->set_spatial(en, width, crossfeed);
     }
 
+    // ── WAN Relay ────────────────────────────────────────────────────────
+
+    bool wan_relay_connect(const std::string& host, uint16_t port,
+                           const std::string& group, const std::string& password,
+                           const std::string& device_name) {
+        if (!wan_relay_) wan_relay_ = std::make_unique<WanRelayClient>();
+        // Set RX callback: inject received audio into ring buffer
+        wan_relay_->set_rx_callback([this](const uint8_t* data, size_t len) {
+            if (rtp_receiver_) {
+                rtp_receiver_->inject_raw_packet(data, len, ring_buffer_);
+            }
+        });
+        return wan_relay_->connect(host, port, group, password, device_name);
+    }
+
+    void wan_relay_disconnect() {
+        if (wan_relay_) wan_relay_->disconnect();
+    }
+
+    WanRelayClient::State wan_relay_state() const {
+        return wan_relay_ ? wan_relay_->state() : WanRelayClient::State::Disconnected;
+    }
+
+    std::string wan_relay_group() const {
+        return wan_relay_ ? wan_relay_->group() : "";
+    }
+
+    std::string wan_relay_error() const {
+        return wan_relay_ ? wan_relay_->error() : "";
+    }
+
+    /// Send raw audio packet to WAN relay (called from TX path)
+    void wan_relay_send_audio(const uint8_t* data, size_t len) {
+        if (wan_relay_ && wan_relay_->state() == WanRelayClient::State::Connected) {
+            wan_relay_->send_audio(data, len);
+        }
+    }
+
     /// Set exclusive (hog) mode on an extra output
     bool set_output_exclusive(int idx, bool exclusive) {
         std::lock_guard<std::mutex> lock(sinks_mutex_);
@@ -1628,14 +2106,50 @@ private:
                     if (!rtp_receiver_->receive_packet(ring_buffer_)) break;
                 }
             }
+
+            // ── Sync mode: adjust buffer target from OSTP wall-clock timestamps ──
+            if (sync_mode_.load(std::memory_order_relaxed) && rtp_receiver_) {
+                uint32_t media_ts = rtp_receiver_->last_media_timestamp.load(std::memory_order_relaxed);
+                if (media_ts != 0) {
+                    struct timespec now_ts;
+                    clock_gettime(CLOCK_REALTIME, &now_ts);
+                    uint32_t now_ns32 = static_cast<uint32_t>(
+                        (static_cast<uint64_t>(now_ts.tv_sec) * 1'000'000'000ULL + now_ts.tv_nsec)
+                        & 0xFFFFFFFF);
+
+                    // Network delay = how long ago this packet was created (TX wall-clock)
+                    int32_t net_delay_ns = static_cast<int32_t>(now_ns32 - media_ts);
+
+                    // Sanity: if net_delay is negative or > 2s, ignore (clock skew / wrap)
+                    if (net_delay_ns >= 0 && net_delay_ns < 2'000'000'000) {
+                        uint32_t sync_delay_ns = sync_delay_ms_.load() * 1'000'000u;
+
+                        // Buffer should hold: sync_delay - network_delay worth of audio
+                        int32_t buffer_ns = static_cast<int32_t>(sync_delay_ns) - net_delay_ns;
+                        if (buffer_ns < 5'000'000) buffer_ns = 5'000'000; // min 5ms
+
+                        uint32_t target = static_cast<uint32_t>(
+                            (static_cast<int64_t>(buffer_ns) * 48000) / 1'000'000'000LL);
+
+                        // Smooth the target to avoid jitter (EMA, α = 0.02)
+                        uint32_t prev = target_fill_frames_.load();
+                        uint32_t smoothed = static_cast<uint32_t>(
+                            prev * 0.98 + target * 0.02);
+                        target_fill_frames_.store(smoothed);
+                    }
+                }
+            }
+
             // Debug: log every ~5 seconds
             if (++loop_count % 50000 == 0) {
                 auto st = stats();
                 size_t fill = ring_buffer_.available_read();
-                fprintf(stderr, "[SolunaRx] pkts=%llu fill=%zu vol=%.2f prefilled=%d cb=%llu\n",
+                fprintf(stderr, "[SolunaRx] pkts=%llu fill=%zu target=%u vol=%.2f prefilled=%d cb=%llu%s\n",
                         (unsigned long long)st.packets_received, fill,
+                        target_fill_frames_.load(),
                         (double)volume_.load(), (int)prefilled_,
-                        (unsigned long long)audio_cb_count_.load(std::memory_order_relaxed));
+                        (unsigned long long)audio_cb_count_.load(std::memory_order_relaxed),
+                        sync_mode_.load() ? " [SYNC]" : "");
                 last_log_pkts = st.packets_received;
             }
             std::this_thread::sleep_for(std::chrono::microseconds(100));
@@ -1905,6 +2419,8 @@ private:
     std::atomic<bool>     muted_;
     std::atomic<bool>     running_;
     std::atomic<uint32_t> target_fill_frames_;
+    std::atomic<bool>     sync_mode_{false};
+    std::atomic<uint32_t> sync_delay_ms_{200};     // target end-to-end delay (ms)
     std::atomic<bool>     network_disabled_{false};
     std::atomic<uint64_t> audio_cb_count_{0};   ///< audio callback invocation counter (debug)
     // Health tracking atomics (written audio-cb, read ObjC):
@@ -1947,6 +2463,9 @@ private:
     // Multi-output sinks (BT, AirPlay, USB, etc.)
     std::mutex sinks_mutex_;
     std::vector<std::unique_ptr<OutputSink>> extra_sinks_;
+
+    // WAN relay client
+    std::unique_ptr<WanRelayClient> wan_relay_;
 };
 
 } // anonymous namespace
@@ -2075,6 +2594,7 @@ private:
 @interface SolunaAudioReceiver () {
     std::unique_ptr<ReceiverImpl> _impl;
     std::unique_ptr<TransmitterImpl> _txImpl;
+    std::unique_ptr<ShmTransmitter> _shmTxImpl;
     NSTimer *_statsTimer;
     uint32_t _bufferTargetMs;
     ExtAudioFileRef _recordFile;
@@ -2178,8 +2698,9 @@ private:
 }
 
 - (void)stop {
-    // Stop mic transmit if active
+    // Stop transmitters if active
     [self stopMicTransmit];
+    [self stopShmTransmit];
 
     [_statsTimer invalidate];
     _statsTimer = nil;
@@ -2569,6 +3090,24 @@ private:
     return _isRecording;
 }
 
+// ── Sync Mode ───────────────────────────────────────────────────────────────
+
+- (BOOL)syncMode {
+    return _impl ? _impl->is_sync_mode() : NO;
+}
+
+- (void)setSyncMode:(BOOL)syncMode {
+    if (_impl) _impl->set_sync_mode(syncMode);
+}
+
+- (uint32_t)syncDelayMs {
+    return _impl ? _impl->sync_delay_ms() : 200;
+}
+
+- (void)setSyncDelayMs:(uint32_t)syncDelayMs {
+    if (_impl) _impl->set_sync_delay_ms(syncDelayMs);
+}
+
 // ── Mic Transmit (TX) ───────────────────────────────────────────────────────
 
 - (BOOL)isMicTransmitting {
@@ -2592,6 +3131,14 @@ private:
         _channels
     );
 
+    // Wire WAN relay forwarding if relay is connected
+    if (_impl && _impl->wan_relay_state() == WanRelayClient::State::Connected) {
+        auto* impl = _impl.get();
+        _txImpl->tx_relay_callback = [impl](const uint8_t* data, size_t len) {
+            impl->wan_relay_send_audio(data, len);
+        };
+    }
+
     if (!_txImpl->start()) {
         fprintf(stderr, "[SolunaTx] Failed to start transmitter\n");
         _txImpl.reset();
@@ -2608,6 +3155,123 @@ private:
         _txImpl.reset();
     }
     fprintf(stderr, "[SolunaTx] Mic transmit stopped\n");
+}
+
+// ── WAN Relay (Group Code) ───────────────────────────────────────────────
+
+- (BOOL)connectToRelay:(NSString *)host
+                  port:(uint16_t)port
+                 group:(NSString *)group
+              password:(NSString *)password {
+    if (!_impl) return NO;
+
+    // Get device name (Mac hostname)
+    NSString *deviceName = [[NSHost currentHost] localizedName] ?: @"Mac";
+
+    bool ok = _impl->wan_relay_connect(
+        std::string([host UTF8String]),
+        port,
+        std::string([group UTF8String]),
+        std::string([password UTF8String]),
+        std::string([deviceName UTF8String])
+    );
+
+    // Wire TX relay callbacks if transmitters are active
+    if (ok) {
+        auto* impl = _impl.get();
+        if (_txImpl) {
+            _txImpl->tx_relay_callback = [impl](const uint8_t* data, size_t len) {
+                impl->wan_relay_send_audio(data, len);
+            };
+        }
+        if (_shmTxImpl) {
+            _shmTxImpl->tx_relay_callback = [impl](const uint8_t* data, size_t len) {
+                impl->wan_relay_send_audio(data, len);
+            };
+        }
+    }
+
+    return ok ? YES : NO;
+}
+
+- (void)disconnectRelay {
+    // Remove TX relay callbacks
+    if (_txImpl) {
+        _txImpl->tx_relay_callback = nullptr;
+    }
+    if (_shmTxImpl) {
+        _shmTxImpl->tx_relay_callback = nullptr;
+    }
+    if (_impl) _impl->wan_relay_disconnect();
+}
+
+- (SolunaRelayState)relayState {
+    if (!_impl) return SolunaRelayStateDisconnected;
+    switch (_impl->wan_relay_state()) {
+        case WanRelayClient::State::Disconnected: return SolunaRelayStateDisconnected;
+        case WanRelayClient::State::Connecting:    return SolunaRelayStateConnecting;
+        case WanRelayClient::State::Connected:     return SolunaRelayStateConnected;
+        case WanRelayClient::State::Error:         return SolunaRelayStateError;
+    }
+    return SolunaRelayStateDisconnected;
+}
+
+- (NSString *)relayGroup {
+    if (!_impl) return nil;
+    auto g = _impl->wan_relay_group();
+    return g.empty() ? nil : [NSString stringWithUTF8String:g.c_str()];
+}
+
+- (NSString *)relayError {
+    if (!_impl) return nil;
+    auto e = _impl->wan_relay_error();
+    return e.empty() ? nil : [NSString stringWithUTF8String:e.c_str()];
+}
+
+// ── System Audio Transmit (SHM) ─────────────────────────────────────────────
+
+- (BOOL)isShmTransmitting {
+    return _shmTxImpl && _shmTxImpl->is_running();
+}
+
+- (uint64_t)shmTxPacketsSent {
+    return _shmTxImpl ? _shmTxImpl->packets_sent() : 0;
+}
+
+- (float)shmTxLevel {
+    return _shmTxImpl ? _shmTxImpl->peak_level() : 0.0f;
+}
+
+- (BOOL)startShmTransmit {
+    if (_shmTxImpl && _shmTxImpl->is_running()) return YES;
+
+    _shmTxImpl = std::make_unique<ShmTransmitter>(
+        std::string([_multicastGroup UTF8String]),
+        _port,
+        _channels
+    );
+
+    // Wire WAN relay forwarding if connected
+    if (_impl && _impl->wan_relay_state() == WanRelayClient::State::Connected) {
+        auto* impl = _impl.get();
+        _shmTxImpl->tx_relay_callback = [impl](const uint8_t* data, size_t len) {
+            impl->wan_relay_send_audio(data, len);
+        };
+    }
+
+    if (!_shmTxImpl->start()) {
+        fprintf(stderr, "[ShmTx] Failed to start\n");
+        _shmTxImpl.reset();
+        return NO;
+    }
+    return YES;
+}
+
+- (void)stopShmTransmit {
+    if (_shmTxImpl) {
+        _shmTxImpl->stop();
+        _shmTxImpl.reset();
+    }
 }
 
 @end

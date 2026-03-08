@@ -1,16 +1,15 @@
-# Soluna Receiver for iOS
+# Soluna for iOS
 
-iPhone / iPad でネットワークオーディオを受信するための iOS アプリ。Mac の solunad が配信する RTP/OSTP マルチキャストストリームを受信し、低遅延で再生します。
+iPhone / iPad でネットワークオーディオを送受信するための iOS アプリ。LAN マルチキャスト受信に加え、マイク送信と WAN P2P グループ接続に対応。
 
 ## 機能
 
 - **マルチキャスト受信** — RTP/OSTP（239.69.0.1:5004）ストリームを受信して再生
-- **Bonjour 自動検出** — 同一ネットワーク上の solunad を自動検出・接続（手動追加も可能）
-- **グローバル遅延コントロール** — iPhone と全リモートスピーカーを単一スライダーで同一遅延に同期
-- **一括音量・ミュート** — 全スピーカーを一度に制御
+- **マイク送信** — iPhone のマイク音声を OSTP マルチキャスト + WAN P2P で送信
+- **WAN P2P グループ接続** — グループコードでインターネット越しに接続。UDP ホールパンチングで直接通信
+- **Bonjour 自動検出** — 同一ネットワーク上の solunad を自動検出・接続
 - **PLC（パケットロス補間）** — 最大 2 パケット（≤20ms）の欠落を前フレームで自動補完
 - **リアルタイム統計** — 受信パケット数・ドロップ率・バッファ量・PLC 補完数を表示
-- **自動同期** — WebSocket RTT 計測でリモートスピーカーの遅延を自動最適化
 - **バックグラウンド再生** — アプリがバックグラウンドでも音声を継続受信
 - **設定保存** — マルチキャストグループ・ポート・チャンネル数・自動接続設定を永続化
 
@@ -120,19 +119,19 @@ bundle exec fastlane build_local
 ## アーキテクチャ
 
 ```
-[solunad TX]
-    └── UDP multicast 239.69.0.1:5004
+[LAN multicast / WAN P2P / Relay]
            ↓
 [SolunaAudioReceiver (C++)]  ← AudioReceiverBridge.mm
     ├── SimpleRtpReceiver    — RTP/OSTP パケット受信・デコード
+    ├── TransmitterImpl      — マイク TX (OSTP マルチキャスト + WAN P2P)
+    ├── WanRelayClient       — WAN P2P (UDP ホールパンチング + リレーフォールバック)
     ├── RingBuffer           — PCM リングバッファ
     └── PLC                  — ギャップ検出・前フレーム補完
            ↓ (コールバック)
 [AudioReceiver.swift]         — @Published stats → SwiftUI
     └── AVAudioEngine        — システム音声出力
            ↓
-[ContentView.swift]           — SwiftUI UI
-    └── SpeakersController   — DaemonClient (WebSocket) × N台
+[ContentView.swift]           — SwiftUI UI (グループコード入力 + マイクボタン)
 ```
 
 ## ライセンス

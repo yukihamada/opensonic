@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Soluna</title>
+    <welcome file="welcome.html"/>
+    <background file="icon-256.png" alignment="bottomleft" scaling="proportional"/>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="13.0"/>
+        </allowed-os-versions>
+    </volume-check>
+    <choices-outline>
+        <line choice="default"/>
+    </choices-outline>
+    <choice id="default">
+        <pkg-ref id="io.soluna.pkg"/>
+    </choice>
+    <pkg-ref id="io.soluna.pkg">component.pkg</pkg-ref>
+</installer-gui-script>

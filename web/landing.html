@@ -692,10 +692,10 @@
         </h1>
         <p class="hero-sub">
             Soluna.app 1 つで TX + RX + WAN P2P。システム音声・マイク配信からインターネット越しグループ共有まで。<br>
-            <code style="background:rgba(59,130,246,0.15);padding:4px 10px;border-radius:6px;font-size:14px;color:#60a5fa">bash scripts/install-mac.sh</code> のワンコマンドで完了。
+            .pkg インストーラで簡単セットアップ。ターミナル不要。
         </p>
         <div class="hero-actions">
-            <a href="#install" class="btn-primary">セットアップを始める</a>
+            <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" class="btn-primary">Mac 版をダウンロード</a>
             <a href="/dashboard" class="btn-secondary">Dashboard を開く →</a>
         </div>
         <p class="hero-note">macOS 12+ &middot; iOS 14+ &middot; Linux &middot; 無料 &middot; オープンソース</p>
@@ -730,27 +730,26 @@
 <section class="section" id="how">
     <div class="section-label reveal">使い方</div>
     <h2 class="reveal">3 つの方法、あなたはどれ？</h2>
-    <p class="sub reveal">どの方法でも 5 分で音声配信を始められます。</p>
+    <p class="sub reveal">3 ステップで音声配信を始められます。</p>
 
-    <p class="sub reveal" style="margin-top:-12px;margin-bottom:24px;font-size:13px">あなたに合った方法を選んで、すぐに始められます。</p>
     <div class="steps">
         <div class="step reveal reveal-delay-1" style="border-color:rgba(16,185,129,0.3)">
             <div class="step-num">01</div>
-            <div class="step-icon">🖥</div>
-            <h3>アプリで使う <span style="font-size:11px;color:#34d399;font-weight:700">おすすめ</span></h3>
-            <p><code style="background:rgba(59,130,246,0.15);padding:2px 8px;border-radius:4px;font-size:13px;color:#60a5fa">bash scripts/install-mac.sh</code> を実行 → Soluna.app を開くだけ。画面の操作だけで音声配信。</p>
+            <div class="step-icon">📥</div>
+            <h3>ダウンロード</h3>
+            <p>.pkg インストーラをダウンロード。ターミナル不要、ダブルクリックするだけ。</p>
         </div>
         <div class="step reveal reveal-delay-2">
             <div class="step-num">02</div>
-            <div class="step-icon">🔧</div>
-            <h3>solunad で自動起動</h3>
-            <p><code style="background:rgba(59,130,246,0.15);padding:2px 8px;border-radius:4px;font-size:13px;color:#60a5fa">--headless</code> を付けて実行。ログインするだけで自動配信。アプリを開く必要なし。</p>
+            <div class="step-icon">⚙️</div>
+            <h3>インストール</h3>
+            <p>Soluna.app + 仮想オーディオデバイス + バックグラウンドサービスがまとめてセットアップされます。</p>
         </div>
         <div class="step reveal reveal-delay-3">
             <div class="step-num">03</div>
-            <div class="step-icon">⌨️</div>
-            <h3>コマンドラインで制御</h3>
-            <p>cmake でビルド → solctl で全操作。パラメータを細かく調整したい開発者向け。</p>
+            <div class="step-icon">🎵</div>
+            <h3>配信開始</h3>
+            <p>サウンド設定で Soluna を選択 → Soluna.app を開いて Audio TX ON → 完了！</p>
         </div>
     </div>
 </section>
@@ -884,8 +883,8 @@
         </div>
         <div class="feat reveal reveal-delay-2">
             <div class="feat-icon-wrap green">&#128640;</div>
-            <h4>ワンコマンドインストール</h4>
-            <p><code style="font-size:11px">bash scripts/install-mac.sh</code> で完了。cmake + xcodebuild を自動実行。</p>
+            <h4>簡単インストール</h4>
+            <p>.pkg インストーラをダウンロード → ダブルクリックで完了。ターミナル不要。</p>
         </div>
     </div>
 </section>
@@ -903,36 +902,31 @@
                 <div class="ic-icon">💻</div>
                 <div>
                     <h3>Mac<span class="ic-tag tx">TX + RX + WAN</span></h3>
-                    <p>3つの方法から選べます。はじめての方は「アプリ」がおすすめ。</p>
+                    <p>インストーラひとつで Soluna.app + 仮想オーディオデバイス + バックグラウンドサービスをまとめてセットアップ。</p>
                 </div>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:4px">
-                <div style="background:var(--s2);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px">
-                    <div style="font-size:10px;font-weight:700;color:#34d399;letter-spacing:0.06em;margin-bottom:8px">🖥 おすすめ</div>
-                    <div style="font-size:14px;font-weight:700;margin-bottom:4px">Soluna アプリ</div>
-                    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">画面操作だけでOK</div>
-                    <div class="code-block" style="font-size:11px;padding:8px 10px">
-                        <span class="prompt">$ </span>bash scripts/install-mac.sh
-                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-                    </div>
+            <div style="display:flex;align-items:center;gap:16px;margin-top:8px;flex-wrap:wrap">
+                <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff;font-size:15px;font-weight:700;padding:14px 28px;border-radius:12px;text-decoration:none;transition:opacity 0.2s">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                    Soluna-mac.pkg をダウンロード
+                </a>
+                <span style="font-size:12px;color:var(--text3)">macOS 13+ &bull; Apple Silicon + Intel</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px">
+                <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+                    <div style="font-size:20px;margin-bottom:6px">1</div>
+                    <div style="font-size:13px;font-weight:600">ダウンロード</div>
+                    <div style="font-size:11px;color:var(--text3)">.pkg をダウンロード</div>
                 </div>
-                <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:16px">
-                    <div style="font-size:10px;font-weight:700;color:#60a5fa;letter-spacing:0.06em;margin-bottom:8px">🔧 自動起動</div>
-                    <div style="font-size:14px;font-weight:700;margin-bottom:4px">solunad 付き</div>
-                    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">ログイン時に自動配信</div>
-                    <div class="code-block" style="font-size:11px;padding:8px 10px">
-                        <span class="prompt">$ </span>bash scripts/install-mac.sh --headless
-                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-                    </div>
+                <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+                    <div style="font-size:20px;margin-bottom:6px">2</div>
+                    <div style="font-size:13px;font-weight:600">インストール</div>
+                    <div style="font-size:11px;color:var(--text3)">ダブルクリックで実行</div>
                 </div>
-                <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:16px">
-                    <div style="font-size:10px;font-weight:700;color:#fb923c;letter-spacing:0.06em;margin-bottom:8px">⌨️ 上級者向け</div>
-                    <div style="font-size:14px;font-weight:700;margin-bottom:4px">コマンドライン</div>
-                    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">手動で全制御</div>
-                    <div class="code-block" style="font-size:11px;padding:8px 10px">
-                        <span class="prompt">$ </span>cmake -B build && cmake --build build
-                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-                    </div>
+                <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+                    <div style="font-size:20px;margin-bottom:6px">3</div>
+                    <div style="font-size:13px;font-weight:600">Soluna を選択</div>
+                    <div style="font-size:11px;color:var(--text3)">サウンド設定 → 出力</div>
                 </div>
             </div>
             <a href="/guide" class="ic-link">詳細なセットアップ手順 →</a>
@@ -1068,9 +1062,9 @@
 <!-- CTA -->
 <section class="cta-section">
     <h2 class="reveal"><span class="h1-accent">今すぐ始めよう。</span></h2>
-    <p class="sub reveal"><code style="background:rgba(59,130,246,0.15);padding:4px 10px;border-radius:6px;font-size:14px;color:#60a5fa">bash scripts/install-mac.sh</code> で 5 分で完了。</p>
+    <p class="sub reveal">インストーラひとつで簡単セットアップ。ターミナル不要。</p>
     <div class="reveal">
-        <a href="#install" class="btn-primary" style="font-size:17px;padding:16px 32px">セットアップを始める</a>
+        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" class="btn-primary" style="font-size:17px;padding:16px 32px">Mac 版をダウンロード</a>
     </div>
 </section>
 

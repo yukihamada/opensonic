@@ -55,6 +55,7 @@
 
 // Network interface detection (WiFi vs wired)
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <net/if.h>
 #include <ifaddrs.h>
 #include <sys/ioctl.h>
@@ -354,6 +355,9 @@ static void start_soluna_volume_listener() {
 static std::atomic<bool>     g_running{true};
 static std::atomic<float>    g_rx_volume{0.00375f}; // slider 50% with quadratic curve (max 0.015)
 static std::atomic<bool>     g_rx_muted{false};
+
+// ── Stream mode (Sync vs Jam) ────────────────────────────────────────────────
+static std::atomic<soluna::StreamMode> g_stream_mode{soluna::StreamMode::Sync};
 static std::atomic<uint64_t> g_packets{0};
 static std::atomic<uint64_t> g_seq_errors{0};
 static std::atomic<size_t>   g_buf_fill{0};
@@ -504,6 +508,17 @@ static int g_wan_relay_sock = -1;
 static sockaddr_in g_wan_relay_addr{};
 static std::atomic<bool> g_wan_relay_running{false};
 static std::chrono::steady_clock::time_point g_wan_relay_last_hello;
+static std::mutex g_wan_peers_mutex;
+static std::vector<sockaddr_in> g_wan_peers;
+
+static void wan_relay_add_peer(const sockaddr_in& peer) {
+    std::lock_guard<std::mutex> lk(g_wan_peers_mutex);
+    for (const auto& p : g_wan_peers) {
+        if (p.sin_addr.s_addr == peer.sin_addr.s_addr && p.sin_port == peer.sin_port)
+            return;
+    }
+    g_wan_peers.push_back(peer);
+}
 
 static void wan_relay_init(const std::string& host, uint16_t port,
                            const std::string& group, const std::string& password) {
@@ -515,11 +530,19 @@ static void wan_relay_init(const std::string& host, uint16_t port,
 
     g_wan_relay_addr.sin_family = AF_INET;
     g_wan_relay_addr.sin_port = htons(port);
+    // Try IP first, fall back to DNS resolution
     if (inet_pton(AF_INET, host.c_str(), &g_wan_relay_addr.sin_addr) <= 0) {
-        fprintf(stderr, "[wan-relay] Invalid host: %s\n", host.c_str());
-        close(g_wan_relay_sock);
-        g_wan_relay_sock = -1;
-        return;
+        struct addrinfo hints{}, *res = nullptr;
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+        if (getaddrinfo(host.c_str(), nullptr, &hints, &res) != 0 || !res) {
+            fprintf(stderr, "[wan-relay] Cannot resolve host: %s\n", host.c_str());
+            close(g_wan_relay_sock);
+            g_wan_relay_sock = -1;
+            return;
+        }
+        g_wan_relay_addr.sin_addr = reinterpret_cast<sockaddr_in*>(res->ai_addr)->sin_addr;
+        freeaddrinfo(res);
     }
 
     // Send JOIN message
@@ -539,6 +562,15 @@ static void wan_relay_init(const std::string& host, uint16_t port,
 static void wan_relay_forward(const uint8_t* data, size_t len) {
     if (g_wan_relay_sock < 0 || !g_wan_relay_running.load()) return;
 
+    // Send to all direct peers (P2P)
+    {
+        std::lock_guard<std::mutex> lk(g_wan_peers_mutex);
+        for (const auto& peer : g_wan_peers) {
+            sendto(g_wan_relay_sock, data, len, 0,
+                   (const sockaddr*)&peer, sizeof(peer));
+        }
+    }
+    // Also send via relay as fallback
     sendto(g_wan_relay_sock, data, len, 0,
            (const sockaddr*)&g_wan_relay_addr, sizeof(g_wan_relay_addr));
 
@@ -556,11 +588,96 @@ static void wan_relay_forward(const uint8_t* data, size_t len) {
 
 static void wan_relay_shutdown() {
     g_wan_relay_running.store(false);
+    {
+        std::lock_guard<std::mutex> lk(g_wan_peers_mutex);
+        g_wan_peers.clear();
+    }
     if (g_wan_relay_sock >= 0) {
         close(g_wan_relay_sock);
         g_wan_relay_sock = -1;
         fprintf(stderr, "[wan-relay] Disconnected\n");
     }
+}
+
+/// WAN relay RX thread: receives OSTP/RTP packets from relay and writes to ring buffer
+static void wan_relay_rx_thread(soluna::pipeline::RingBuffer& ring, uint32_t channels) {
+    if (g_wan_relay_sock < 0) return;
+
+    // Set recv timeout 1s so we can check g_wan_relay_running
+    struct timeval tv{1, 0};
+    setsockopt(g_wan_relay_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    uint8_t buf[65536];
+    std::vector<int32_t> audio_buf(16384);
+    const size_t frame_size = channels * sizeof(int32_t);
+
+    fprintf(stderr, "[wan-relay] RX thread started\n");
+
+    while (g_wan_relay_running.load()) {
+        sockaddr_in from{};
+        socklen_t from_len = sizeof(from);
+        ssize_t n = recvfrom(g_wan_relay_sock, buf, sizeof(buf), 0,
+                             reinterpret_cast<sockaddr*>(&from), &from_len);
+        if (n <= 0) continue;
+
+        // Handle PEER messages for P2P hole punching
+        if (n >= 6 && memcmp(buf, "PEER:", 5) == 0) {
+            std::string msg(reinterpret_cast<char*>(buf), n);
+            // Strip trailing newline
+            while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r'))
+                msg.pop_back();
+            // Parse "PEER:ip:port"
+            std::string addr_part = msg.substr(5);
+            auto colon = addr_part.rfind(':');
+            if (colon != std::string::npos) {
+                std::string ip = addr_part.substr(0, colon);
+                uint16_t port = static_cast<uint16_t>(std::stoi(addr_part.substr(colon + 1)));
+                sockaddr_in peer{};
+                peer.sin_family = AF_INET;
+                peer.sin_port = htons(port);
+                inet_pton(AF_INET, ip.c_str(), &peer.sin_addr);
+                wan_relay_add_peer(peer);
+                // Send PUNCH packet to open NAT
+                const char punch[] = "PUNCH";
+                sendto(g_wan_relay_sock, punch, 5, 0,
+                       (const sockaddr*)&peer, sizeof(peer));
+                fprintf(stderr, "[wan-relay] P2P peer discovered: %s:%u\n", ip.c_str(), port);
+            }
+            continue;
+        }
+
+        // Skip non-OSTP/RTP packets
+        if (n < 12 || (buf[0] & 0xC0) != 0x80) continue;
+
+        // Parse OSTP packet
+        const soluna::transport::RtpHeader* rtp = reinterpret_cast<const soluna::transport::RtpHeader*>(buf);
+        bool is_ostp = (rtp->pt == 96); // OSTP payload type
+
+        if (is_ostp) {
+            // OSTP: 12-byte RTP header + 8-byte OSTP extension
+            const size_t hdr_size = sizeof(soluna::transport::RtpHeader) + 8;
+            if (static_cast<size_t>(n) <= hdr_size) continue;
+            const int32_t* samples = reinterpret_cast<const int32_t*>(buf + hdr_size);
+            size_t payload_bytes = static_cast<size_t>(n) - hdr_size;
+            size_t frames = payload_bytes / frame_size;
+            if (frames > 0 && frames <= audio_buf.size() / channels) {
+                std::memcpy(audio_buf.data(), samples, frames * frame_size);
+                ring.write(audio_buf.data(), frames);
+            }
+        }
+
+        // Send HELLO heartbeat every 5 seconds (shared with TX path)
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+            now - g_wan_relay_last_hello).count();
+        if (elapsed >= 5) {
+            const char hello[] = "HELLO\n";
+            sendto(g_wan_relay_sock, hello, strlen(hello), 0,
+                   (const sockaddr*)&g_wan_relay_addr, sizeof(g_wan_relay_addr));
+            g_wan_relay_last_hello = now;
+        }
+    }
+    fprintf(stderr, "[wan-relay] RX thread stopped\n");
 }
 
 // ── Audio repair (declicker + crossfade) ─────────────────────────────────────
@@ -695,7 +812,8 @@ static void persist_config_save() {
         "\"wifi_nack\":%s,"
         "\"wifi_wsola_plc\":%s,"
         "\"wifi_adaptive_jitter\":%s,"
-        "\"wifi_dedup\":%s}\n",
+        "\"wifi_dedup\":%s,"
+        "\"stream_mode\":\"%s\"}\n",
         g_speaker_delay_ms.load(),
         (double)g_mon_volume.load(),
         g_mon_muted.load() ? "true" : "false",
@@ -707,7 +825,8 @@ static void persist_config_save() {
         g_wifi_nack.load() ? "true" : "false",
         g_wifi_wsola_plc.load() ? "true" : "false",
         g_wifi_adaptive_jitter.load() ? "true" : "false",
-        g_wifi_dedup.load() ? "true" : "false");
+        g_wifi_dedup.load() ? "true" : "false",
+        (g_stream_mode.load() == soluna::StreamMode::Jam) ? "jam" : "sync");
 
     std::ofstream f(path);
     if (f.is_open()) f << buf;
@@ -758,6 +877,23 @@ static void persist_config_load() {
     // buf_target_ms: only load if saved (otherwise use profile default)
     uint32_t saved_buf = get_uint("buf_target_ms", 0);
     if (saved_buf > 0) g_buf_target_ms.store(std::min(2000u, saved_buf));
+
+    // Stream mode
+    auto get_str = [&](const char* key, const std::string& def) -> std::string {
+        std::string k = std::string("\"") + key + "\":\"";
+        auto pos = json.find(k);
+        if (pos == std::string::npos) return def;
+        pos += k.size();
+        auto end = json.find('"', pos);
+        if (end == std::string::npos) return def;
+        return json.substr(pos, end - pos);
+    };
+    std::string saved_mode = get_str("stream_mode", "sync");
+    if (saved_mode == "jam") {
+        g_stream_mode.store(soluna::StreamMode::Jam);
+    } else {
+        g_stream_mode.store(soluna::StreamMode::Sync);
+    }
 
     fprintf(stderr, "[config] Loaded from %s\n", persist_config_path().c_str());
 }
@@ -1329,6 +1465,36 @@ static std::string ws_handle(const std::string& msg) {
         }
         snprintf(buf, sizeof(buf),
             "{\"id\":%d,\"success\":%s,\"data\":\"\"}", id, ok ? "true" : "false");
+    // ── Stream mode commands ──────────────────────────────────────────────
+    } else if (cmd == "mode.get") {
+        const char* mode = (g_stream_mode.load() == soluna::StreamMode::Jam) ? "jam" : "sync";
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":true,\"data\":\"{\\\"mode\\\":\\\"%s\\\"}\"}", id, mode);
+    } else if (cmd == "mode.set") {
+        std::string mode;
+        p = msg.find("\"mode\":\"");
+        if (p != std::string::npos) {
+            auto s = p + 8, e = msg.find('"', s);
+            if (e != std::string::npos) mode = msg.substr(s, e - s);
+        }
+        if (mode == "sync" || mode == "jam") {
+            soluna::StreamMode new_mode = (mode == "jam")
+                ? soluna::StreamMode::Jam : soluna::StreamMode::Sync;
+            g_stream_mode.store(new_mode);
+            persist_config_save();
+            snprintf(buf, sizeof(buf),
+                "{\"id\":%d,\"success\":true,\"data\":\"{\\\"mode\\\":\\\"%s\\\"}\"}", id, mode.c_str());
+            // Broadcast mode change to all connected clients
+            if (g_ws_server_ptr) {
+                char bcast[128];
+                snprintf(bcast, sizeof(bcast),
+                    "{\"event\":\"mode.changed\",\"data\":{\"mode\":\"%s\"}}", mode.c_str());
+                g_ws_server_ptr->broadcast(std::string(bcast));
+            }
+        } else {
+            snprintf(buf, sizeof(buf),
+                "{\"id\":%d,\"success\":false,\"data\":\"invalid mode (expected sync or jam)\"}", id);
+        }
     } else if (cmd == "latency") {
         // Calculate each stage latency in ms from frame counts
         float sr = (float)g_cfg_sample_rate;
@@ -1549,6 +1715,9 @@ struct DaemonConfig {
     // Codec: "pcm" (default) or "opus"
     std::string codec = "pcm";
 
+    // Stream mode: "sync" (default) or "jam"
+    std::string mode_str = "sync";
+
     // WAN relay (forward TX to remote soluna-relay server)
     std::string wan_relay_host;       // empty = disabled
     uint16_t    wan_relay_port = 5100;
@@ -1581,6 +1750,10 @@ struct DaemonConfig {
         }
         // Apply security settings
         security = cfg.security;
+        // Apply stream mode
+        if (cfg.mode == soluna::StreamMode::Jam) {
+            mode_str = "jam";
+        }
     }
 };
 
@@ -1598,6 +1771,7 @@ static void print_usage(const char* prog) {
         "  --rate RATE       Sample rate (default: 48000)\n"
         "  --channels N      Channel count (default: 1)\n"
         "  --codec pcm|opus  Audio codec (default: pcm)\n"
+        "  --mode sync|jam   Stream mode: sync (multi-room) or jam (low-latency)\n"
         "  --ultra-low       Ultra-low latency (~1ms, GbE only)\n"
         "  --low-latency     AES67-grade low latency (~2ms, wired LAN only)\n"
         "  --wifi-latency    WiFi optimized latency (~10ms, stable on WiFi)\n"
@@ -1702,6 +1876,12 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
                 fprintf(stderr, "Unknown codec: %s (expected pcm or opus)\n", cfg.codec.c_str());
                 return false;
             }
+        } else if (arg == "--mode" && i + 1 < argc) {
+            cfg.mode_str = argv[++i];
+            if (cfg.mode_str != "sync" && cfg.mode_str != "jam") {
+                fprintf(stderr, "Unknown mode: %s (expected sync or jam)\n", cfg.mode_str.c_str());
+                return false;
+            }
         } else if (arg == "--list-devices") {
             auto devices = soluna::pal::AudioDevice::enumerate();
             printf("Available audio devices:\n");
@@ -1739,6 +1919,11 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
             cfg.apply_yaml_config(result.value());
         }
     }
+
+    // Convert mode string to StreamMode and set global
+    soluna::StreamMode stream_mode = (cfg.mode_str == "jam")
+        ? soluna::StreamMode::Jam : soluna::StreamMode::Sync;
+    g_stream_mode.store(stream_mode);
 
     if (!cfg.tx_mode && !cfg.rx_mode) {
         fprintf(stderr, "Error: specify --tx or --rx\n");
@@ -3077,8 +3262,13 @@ static int run_tx(DaemonConfig cfg) {
         // Only manually increment timestamps when PTP is not driving them
         if (!(ptp && ptp->sync_info().synchronized)) {
             rtp_timestamp += kFramesPerPacket;
-            media_ts += static_cast<uint32_t>(
-                (static_cast<uint64_t>(kFramesPerPacket) * 1'000'000'000ULL) / cfg.sample_rate);
+            // Use wall-clock nanoseconds for media_timestamp
+            // This enables NTP-based synchronized playback across all receivers
+            struct timespec wall_ts;
+            clock_gettime(CLOCK_REALTIME, &wall_ts);
+            media_ts = static_cast<uint32_t>(
+                (static_cast<uint64_t>(wall_ts.tv_sec) * 1'000'000'000ULL + wall_ts.tv_nsec)
+                & 0xFFFFFFFF);
         }
 
         if (sequence % 1000 == 0) {
@@ -3213,6 +3403,7 @@ static int run_rx(DaemonConfig cfg) {
             pb_cfg.frame_size = sizeof(int32_t);
             pb_cfg.target_depth_packets = 2;
             pb_cfg.playout_delay_ns = 1'000'000; // 1ms
+            pb_cfg.mode = g_stream_mode.load();
             playout = std::make_unique<PlayoutBuffer>(pb_cfg);
             fprintf(stderr, "[low-latency] PlayoutBuffer active (1ms playout delay)\n");
         } else {
@@ -3582,6 +3773,12 @@ static int run_rx(DaemonConfig cfg) {
     socket->join_multicast(cfg.dest_ip);
     socket->set_recv_timeout_ms(lp.recv_timeout_ms);
 
+    // ── Start WAN relay for RX (join group to receive remote audio) ──
+    if (!cfg.wan_relay_host.empty()) {
+        wan_relay_init(cfg.wan_relay_host, cfg.wan_relay_port,
+                       cfg.wan_relay_group, cfg.wan_relay_password);
+    }
+
     const char* mode_str = cfg.aes67_mode ? "AES67" : "Auto";
     const char* ll_str = cfg.low_latency ? " [LOW-LATENCY]" : "";
     const char* security_str = cfg.security.dtls_enabled ? " [DTLS]" : "";
@@ -3638,6 +3835,12 @@ static int run_rx(DaemonConfig cfg) {
     // Set RT priority on RX receive thread in low-latency mode
     if (cfg.low_latency) {
         pal::Thread::set_realtime_priority();
+    }
+
+    // Start WAN relay RX thread (receives audio from relay server)
+    std::thread wan_rx_thread;
+    if (!cfg.wan_relay_host.empty() && g_wan_relay_running.load()) {
+        wan_rx_thread = std::thread(wan_relay_rx_thread, std::ref(ring), cfg.channels);
     }
 
     while (g_running.load()) {
@@ -4071,6 +4274,10 @@ static int run_rx(DaemonConfig cfg) {
             fflush(stdout);
         }
     }
+
+    // Stop WAN relay RX thread
+    wan_relay_shutdown();
+    if (wan_rx_thread.joinable()) wan_rx_thread.join();
 
     audio->stop();
     if (ptp) ptp->stop();

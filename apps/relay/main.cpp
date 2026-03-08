@@ -218,6 +218,18 @@ static void handle_join(const char* msg, size_t len, const sockaddr_in& from) {
         return;
     }
 
+    // Notify existing members about the new peer, and new peer about existing members
+    std::string new_peer_msg = "PEER:" + addr_str(from) + "\n";
+    for (const auto& m : group.members) {
+        // Tell existing member about the new joiner
+        sendto(g_udp_sock, new_peer_msg.c_str(), new_peer_msg.size(), 0,
+               (const sockaddr*)&m.addr, sizeof(m.addr));
+        // Tell new joiner about existing member
+        std::string existing_msg = "PEER:" + addr_str(m.addr) + "\n";
+        sendto(g_udp_sock, existing_msg.c_str(), existing_msg.size(), 0,
+               (const sockaddr*)&from, sizeof(from));
+    }
+
     Member member;
     member.addr = from;
     member.last_seen = now;

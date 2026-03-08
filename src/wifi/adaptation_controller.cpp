@@ -130,6 +130,11 @@ uint8_t AdaptationController::select_fec_parity(WiFiQualityLevel level) const {
 }
 
 double AdaptationController::select_jitter_depth(WiFiQualityLevel level) const {
+    // Jam mode: always recommend minimum depth
+    if (config_.mode == StreamMode::Jam) {
+        return 1.0;
+    }
+
     switch (level) {
         case WiFiQualityLevel::Excellent: return 2.0;
         case WiFiQualityLevel::Good:      return 4.0;
@@ -185,6 +190,21 @@ double AdaptationController::recommended_jitter_depth_ms() const {
 uint32_t AdaptationController::recommended_opus_bitrate() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return state_.opus_bitrate;
+}
+
+void AdaptationController::set_mode(StreamMode mode) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    config_.mode = mode;
+    if (mode == StreamMode::Jam) {
+        // Jam mode: always recommend minimum depth for lowest latency
+        state_.jitter_buffer_depth_ms = 1.0;
+    } else {
+        // Sync mode: revert to normal adaptive behavior
+        state_.jitter_buffer_depth_ms = select_jitter_depth(state_.quality);
+    }
+    if (callback_) {
+        callback_(state_);
+    }
 }
 
 void AdaptationController::set_callback(AdaptationCallback cb) {

@@ -63,6 +63,8 @@ struct AdaptationConfig {
     bool auto_opus_bitrate = true;
     uint32_t opus_bitrate_min = 32000;
     uint32_t opus_bitrate_max = 128000;
+
+    StreamMode mode = StreamMode::Sync;
 };
 
 struct AdaptationState {
@@ -127,6 +129,9 @@ public:
      * Set callback for state changes.
      */
     void set_callback(AdaptationCallback cb);
+
+    /** Switch stream mode. Jam mode uses aggressive low-latency adaptation. */
+    void set_mode(StreamMode mode);
 
     void reset();
 

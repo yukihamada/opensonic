@@ -26,11 +26,15 @@
 #include <cstdio>
 #include <vector>
 #include <string>
+#include <random>
 
 #ifdef _WIN32
 #include <winsock2.h>
 #else
 #include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <unistd.h>
 #endif
 
 using namespace soluna;
@@ -278,6 +282,199 @@ private:
     Stats stats_;
 };
 
+/// WAN relay client — connects to soluna-relay server via UDP
+class WanRelayClient {
+public:
+    enum class State { Disconnected, Connecting, Connected, Error };
+    using RxCallback = std::function<void(const uint8_t*, size_t)>;
+
+    bool connect(const std::string& host, uint16_t port,
+                 const std::string& group, const std::string& password,
+                 const std::string& device_name) {
+        if (state_.load() == State::Connected) disconnect();
+        state_.store(State::Connecting);
+        group_ = group;
+        error_.clear();
+
+        // DNS resolve
+        struct addrinfo hints{}, *res = nullptr;
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+        char port_str[16];
+        snprintf(port_str, sizeof(port_str), "%u", port);
+        if (getaddrinfo(host.c_str(), port_str, &hints, &res) != 0 || !res) {
+            error_ = "DNS resolution failed: " + host;
+            state_.store(State::Error);
+            return false;
+        }
+        std::memcpy(&relay_addr_, res->ai_addr, sizeof(relay_addr_));
+        freeaddrinfo(res);
+
+        udp_sock_ = ::socket(AF_INET, SOCK_DGRAM, 0);
+        if (udp_sock_ < 0) {
+            error_ = "socket() failed";
+            state_.store(State::Error);
+            return false;
+        }
+
+        // Send JOIN
+        std::string join_msg = "JOIN:" + group + ":" + password + ":" + device_name + "\n";
+        ::sendto(udp_sock_, join_msg.c_str(), join_msg.size(), 0,
+                 (struct sockaddr*)&relay_addr_, sizeof(relay_addr_));
+
+        // Wait for OK:joined (3s timeout), also collect PEER messages
+        struct timeval tv{3, 0};
+        setsockopt(udp_sock_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        bool joined = false;
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        while (std::chrono::steady_clock::now() < deadline) {
+            char buf[256];
+            ssize_t n = ::recvfrom(udp_sock_, buf, sizeof(buf)-1, 0, nullptr, nullptr);
+            if (n <= 0) break;
+            std::string msg(buf, n);
+            if (msg.find("OK:joined") != std::string::npos) { joined = true; break; }
+            // Collect PEER messages that arrive before OK
+            if (n >= 6 && memcmp(buf, "PEER:", 5) == 0) {
+                while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r'))
+                    msg.pop_back();
+                auto colon = msg.rfind(':');
+                if (colon != std::string::npos && colon > 5) {
+                    std::string ip = msg.substr(5, colon - 5);
+                    uint16_t pport = (uint16_t)atoi(msg.substr(colon + 1).c_str());
+                    sockaddr_in peer{};
+                    peer.sin_family = AF_INET;
+                    peer.sin_port = htons(pport);
+                    inet_pton(AF_INET, ip.c_str(), &peer.sin_addr);
+                    add_peer(peer);
+                    fprintf(stderr, "[wan-p2p] Peer discovered (during join): %s:%u\n", ip.c_str(), pport);
+                }
+            }
+        }
+        if (!joined) {
+            error_ = "Failed to join relay group";
+            ::close(udp_sock_); udp_sock_ = -1;
+            state_.store(State::Error);
+            return false;
+        }
+
+        running_.store(true);
+        state_.store(State::Connected);
+        recv_thread_ = std::thread([this]() { recv_loop(); });
+        fprintf(stderr, "[wan-relay] Connected to relay, group='%s'\n", group_.c_str());
+        return true;
+    }
+
+    void disconnect() {
+        running_.store(false);
+        if (recv_thread_.joinable()) recv_thread_.join();
+        if (udp_sock_ >= 0) { ::close(udp_sock_); udp_sock_ = -1; }
+        {
+            std::lock_guard<std::mutex> lk(peers_mutex_);
+            peers_.clear();
+        }
+        state_.store(State::Disconnected);
+        group_.clear();
+        error_.clear();
+    }
+
+    void send_audio(const uint8_t* data, size_t len) {
+        if (udp_sock_ < 0 || state_.load() != State::Connected) return;
+        // Send to all direct peers (P2P)
+        {
+            std::lock_guard<std::mutex> lk(peers_mutex_);
+            for (const auto& peer : peers_) {
+                ::sendto(udp_sock_, data, len, 0,
+                         (const struct sockaddr*)&peer, sizeof(peer));
+            }
+        }
+        // Also send via relay as fallback
+        ::sendto(udp_sock_, data, len, 0,
+                 (struct sockaddr*)&relay_addr_, sizeof(relay_addr_));
+    }
+
+    void set_rx_callback(RxCallback cb) {
+        std::lock_guard<std::mutex> lk(cb_mutex_);
+        rx_callback_ = std::move(cb);
+    }
+
+    State state() const { return state_.load(); }
+    const std::string& group() const { return group_; }
+    const std::string& error() const { return error_; }
+
+private:
+    void recv_loop() {
+        struct timeval tv{1, 0};
+        setsockopt(udp_sock_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+        uint8_t buf[2048];
+        auto last_hello = std::chrono::steady_clock::now();
+
+        while (running_.load()) {
+            sockaddr_in sender{};
+            socklen_t sender_len = sizeof(sender);
+            ssize_t n = ::recvfrom(udp_sock_, buf, sizeof(buf), 0,
+                                   (struct sockaddr*)&sender, &sender_len);
+            if (n > 0) {
+                // PEER message: "PEER:ip:port\n"
+                if (n >= 6 && memcmp(buf, "PEER:", 5) == 0) {
+                    std::string msg((const char*)buf, n);
+                    while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r'))
+                        msg.pop_back();
+                    auto colon = msg.rfind(':');
+                    if (colon != std::string::npos && colon > 5) {
+                        std::string ip = msg.substr(5, colon - 5);
+                        uint16_t pport = (uint16_t)atoi(msg.substr(colon + 1).c_str());
+                        sockaddr_in peer{};
+                        peer.sin_family = AF_INET;
+                        peer.sin_port = htons(pport);
+                        inet_pton(AF_INET, ip.c_str(), &peer.sin_addr);
+                        add_peer(peer);
+                        fprintf(stderr, "[wan-p2p] Peer discovered: %s:%u\n", ip.c_str(), pport);
+                        // Send a punch packet to open NAT
+                        const char* punch = "PUNCH\n";
+                        ::sendto(udp_sock_, punch, 6, 0,
+                                 (const struct sockaddr*)&peer, sizeof(peer));
+                    }
+                }
+                // RTP packet: from relay or peer
+                else if (n >= 12 && (buf[0] & 0xC0) == 0x80) {
+                    std::lock_guard<std::mutex> lk(cb_mutex_);
+                    if (rx_callback_) rx_callback_(buf, static_cast<size_t>(n));
+                }
+                // OK:joined or other control — ignore
+            }
+            // HELLO heartbeat every 5s
+            auto now = std::chrono::steady_clock::now();
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - last_hello).count() >= 5) {
+                const char* hello = "HELLO\n";
+                ::sendto(udp_sock_, hello, 6, 0,
+                         (struct sockaddr*)&relay_addr_, sizeof(relay_addr_));
+                last_hello = now;
+            }
+        }
+    }
+
+    void add_peer(const sockaddr_in& peer) {
+        std::lock_guard<std::mutex> lk(peers_mutex_);
+        for (const auto& p : peers_) {
+            if (p.sin_addr.s_addr == peer.sin_addr.s_addr && p.sin_port == peer.sin_port)
+                return; // already known
+        }
+        peers_.push_back(peer);
+    }
+
+    std::atomic<State> state_{State::Disconnected};
+    std::atomic<bool> running_{false};
+    int udp_sock_ = -1;
+    sockaddr_in relay_addr_{};
+    std::string group_, error_;
+    std::thread recv_thread_;
+    std::mutex cb_mutex_;
+    RxCallback rx_callback_;
+    std::mutex peers_mutex_;
+    std::vector<sockaddr_in> peers_;
+};
+
 /// Internal microphone transmitter implementation
 class TransmitterImpl {
 public:
@@ -362,6 +559,9 @@ public:
     uint64_t packets_sent() const { return packets_sent_.load(); }
     float peak_level() const { return peak_level_.load(std::memory_order_relaxed); }
 
+    /// Callback to forward TX packets to WAN relay
+    std::function<void(const uint8_t*, size_t)> tx_relay_callback;
+
 private:
     void mic_callback(float* buffer, uint32_t frame_count) {
         // Track peak level for UI meter
@@ -433,6 +633,9 @@ private:
 
             if (pkt_size > 0) {
                 socket_->send_to(packet_buf.data(), pkt_size, dest);
+                if (tx_relay_callback) {
+                    tx_relay_callback(packet_buf.data(), pkt_size);
+                }
                 packets_sent_.fetch_add(1);
             }
 
@@ -473,6 +676,7 @@ public:
         , drain_buf_(4096 * channels)
         , held_sample_(channels, 0)
         , ramp_(0.0f)
+        , dither_rng_(std::random_device{}())
     {}
 
     ~ReceiverImpl() {
@@ -563,6 +767,7 @@ public:
     void stop() {
         if (!running_.load()) return;
 
+        wan_relay_disconnect();
         running_.store(false);
 
         if (audio_device_) {
@@ -620,6 +825,39 @@ public:
     void inject_raw_packet(const uint8_t* data, size_t len) {
         if (rtp_receiver_) rtp_receiver_->inject_raw_packet(data, len, ring_buffer_);
     }
+
+    // ── WAN Relay ─────────────────────────────────────────────────────────
+
+    bool wan_relay_connect(const std::string& host, uint16_t port,
+                           const std::string& group, const std::string& password) {
+        if (!wan_relay_) wan_relay_ = std::make_unique<WanRelayClient>();
+        wan_relay_->set_rx_callback([this](const uint8_t* data, size_t len) {
+            inject_raw_packet(data, len);
+        });
+        return wan_relay_->connect(host, port, group, password, "iPhone");
+    }
+
+    void wan_relay_disconnect() {
+        if (wan_relay_) wan_relay_->disconnect();
+    }
+
+    WanRelayClient::State wan_relay_state() const {
+        return wan_relay_ ? wan_relay_->state() : WanRelayClient::State::Disconnected;
+    }
+
+    std::string wan_relay_group() const {
+        return wan_relay_ ? wan_relay_->group() : "";
+    }
+
+    std::string wan_relay_error() const {
+        return wan_relay_ ? wan_relay_->error() : "";
+    }
+
+    void wan_relay_send_audio(const uint8_t* data, size_t len) {
+        if (wan_relay_) wan_relay_->send_audio(data, len);
+    }
+
+    std::unique_ptr<WanRelayClient> wan_relay_;
 
 private:
     // ── Health tracking helpers (audio-callback thread only) ──────────────
@@ -863,7 +1101,10 @@ private:
             ramp_ += kFadeIn * (vol - ramp_);
             for (uint32_t ch = 0; ch < channels_; ch++) {
                 const uint32_t idx = i * channels_ + ch;
-                float s = static_cast<float>(src[idx]) / 8388607.0f;
+                // TPDF dithering: two uniform random values → triangular distribution
+                // Reduces quantization noise at low signal levels
+                const float d = (dither_dist_(dither_rng_) + dither_dist_(dither_rng_)) * 0.5f;
+                float s = (static_cast<float>(src[idx]) + d) / 8388608.0f;
                 // Soft limiter: tanh-style knee at ±0.9 to prevent hard clipping
                 if (s > 0.9f)       s = 0.9f + 0.1f * std::tanh((s - 0.9f) * 5.0f);
                 else if (s < -0.9f) s = -0.9f + 0.1f * std::tanh((s + 0.9f) * 5.0f);
@@ -891,6 +1132,9 @@ private:
     bool                  prefilled_ = false;
     float                 ramp_      = 0.0f;
     std::vector<float>    held_sample_;
+    // TPDF dithering for int32→float conversion (reduces quantization noise)
+    std::minstd_rand      dither_rng_;
+    std::uniform_real_distribution<float> dither_dist_{-1.0f, 1.0f};
     // Health tracking — audio-callback-only (no atomic needed):
     uint64_t health_window_start_ms_    = 0;
     uint32_t health_underruns_in_window_ = 0;
@@ -1137,6 +1381,51 @@ private:
     if (_impl && data.length > 0) {
         _impl->inject_raw_packet(static_cast<const uint8_t*>(data.bytes), data.length);
     }
+}
+
+// ── WAN Relay ───────────────────────────────────────────────────────────────
+
+- (BOOL)connectToRelay:(NSString *)host port:(uint16_t)port
+                 group:(NSString *)group password:(NSString *)password {
+    if (!_impl) return NO;
+    auto* impl = _impl.get();
+    bool ok = impl->wan_relay_connect(
+        std::string([host UTF8String]), port,
+        std::string([group UTF8String]),
+        std::string([password UTF8String]));
+    if (ok && _txImpl) {
+        _txImpl->tx_relay_callback = [impl](const uint8_t* data, size_t len) {
+            impl->wan_relay_send_audio(data, len);
+        };
+    }
+    return ok ? YES : NO;
+}
+
+- (void)disconnectRelay {
+    if (_impl) _impl->wan_relay_disconnect();
+    if (_txImpl) _txImpl->tx_relay_callback = nullptr;
+}
+
+- (SolunaRelayState)relayState {
+    if (!_impl) return SolunaRelayStateDisconnected;
+    switch (_impl->wan_relay_state()) {
+        case WanRelayClient::State::Connecting:   return SolunaRelayStateConnecting;
+        case WanRelayClient::State::Connected:     return SolunaRelayStateConnected;
+        case WanRelayClient::State::Error:         return SolunaRelayStateError;
+        default:                                   return SolunaRelayStateDisconnected;
+    }
+}
+
+- (NSString *)relayGroup {
+    if (!_impl) return nil;
+    auto g = _impl->wan_relay_group();
+    return g.empty() ? nil : [NSString stringWithUTF8String:g.c_str()];
+}
+
+- (NSString *)relayError {
+    if (!_impl) return nil;
+    auto e = _impl->wan_relay_error();
+    return e.empty() ? nil : [NSString stringWithUTF8String:e.c_str()];
 }
 
 // ── Mic Transmit (TX) ───────────────────────────────────────────────────────

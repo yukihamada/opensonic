@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────
-# Soluna Mac Installer — ワンコマンドで Soluna.app + Soluna.driver をセットアップ
+# Soluna Mac Installer (Developer Build) — ソースからビルドしてフルセットアップ
 #
-# Usage:
-#   curl -fsSL https://raw.githubusercontent.com/yukihamada/opensonic/master/scripts/install-mac.sh | bash
-#   # or
+# NOTE: 一般ユーザーは .pkg インストーラをお使いください:
+#   https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg
+#
+# Usage (開発者向け):
 #   bash scripts/install-mac.sh
-#   bash scripts/install-mac.sh --headless   # solunad + LaunchAgent もインストール
 #
 # Components:
 #   1. Soluna.driver   — CoreAudio 仮想デバイス (HAL プラグイン)
 #   2. Soluna.app      — GUI アプリ (Audio TX / Mic TX / WAN P2P)
-#   3. (--headless のみ) solunad + LaunchAgent
+#   3. solunad + solctl + LaunchAgent — バックグラウンドサービス
 #
 # SPDX-License-Identifier: MIT
 # ──────────────────────────────────────────────────────────────
@@ -29,14 +29,6 @@ info()  { echo -e "${BLUE}==>${NC} ${BOLD}$*${NC}"; }
 ok()    { echo -e "${GREEN}  ✓${NC} $*"; }
 warn()  { echo -e "${YELLOW}  !${NC} $*"; }
 fail()  { echo -e "${RED}  ✗ $*${NC}"; exit 1; }
-
-# ── Parse flags ─────────────────────────────────────────────
-HEADLESS=false
-for arg in "$@"; do
-    case "$arg" in
-        --headless) HEADLESS=true ;;
-    esac
-done
 
 # ── Banner ───────────────────────────────────────────────────
 echo ""
@@ -169,44 +161,28 @@ sudo killall coreaudiod 2>/dev/null || true
 sleep 2
 ok "coreaudiod restarted"
 
-# ── Step 7 (--headless only): solunad + LaunchAgent ──────────
-if [[ "$HEADLESS" == true ]]; then
-    INSTALL_DIR="$HOME/.local/bin"
-    LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
-    SERVICE_ID="io.soluna.daemon"
+# ── Step 7: solunad + solctl + LaunchAgent ────────────────────
+INSTALL_DIR="/usr/local/bin"
+LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
+SERVICE_ID="io.soluna.daemon"
 
-    info "Installing solunad (headless mode)..."
-    if [[ -f "$BUILD_DIR/solunad" ]]; then
-        mkdir -p "$INSTALL_DIR"
-        cp "$BUILD_DIR/solunad" "$INSTALL_DIR/solunad"
-        chmod +x "$INSTALL_DIR/solunad"
-        ok "solunad → $INSTALL_DIR/solunad"
+info "Installing solunad + solctl..."
+if [[ -f "$BUILD_DIR/solunad" ]]; then
+    sudo cp "$BUILD_DIR/solunad" "$INSTALL_DIR/solunad"
+    sudo chmod +x "$INSTALL_DIR/solunad"
+    ok "solunad → $INSTALL_DIR/solunad"
 
-        if [[ -f "$BUILD_DIR/solctl" ]]; then
-            cp "$BUILD_DIR/solctl" "$INSTALL_DIR/solctl"
-            chmod +x "$INSTALL_DIR/solctl"
-            ok "solctl → $INSTALL_DIR/solctl"
-        fi
+    if [[ -f "$BUILD_DIR/solctl" ]]; then
+        sudo cp "$BUILD_DIR/solctl" "$INSTALL_DIR/solctl"
+        sudo chmod +x "$INSTALL_DIR/solctl"
+        ok "solctl → $INSTALL_DIR/solctl"
+    fi
 
-        # Add to PATH
-        if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
-            SHELL_RC=""
-            if [[ -f "$HOME/.zshrc" ]]; then
-                SHELL_RC="$HOME/.zshrc"
-            elif [[ -f "$HOME/.bashrc" ]]; then
-                SHELL_RC="$HOME/.bashrc"
-            fi
-            if [[ -n "$SHELL_RC" ]] && ! grep -q "$INSTALL_DIR" "$SHELL_RC" 2>/dev/null; then
-                echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$SHELL_RC"
-                ok "Added $INSTALL_DIR to PATH ($SHELL_RC)"
-            fi
-        fi
-
-        # LaunchAgent
-        info "Installing LaunchAgent..."
-        launchctl bootout "gui/$UID/$SERVICE_ID" 2>/dev/null || true
-        mkdir -p "$LAUNCH_AGENTS"
-        cat > "$LAUNCH_AGENTS/$SERVICE_ID.plist" <<PLIST
+    # LaunchAgent
+    info "Installing LaunchAgent..."
+    launchctl bootout "gui/$UID/$SERVICE_ID" 2>/dev/null || true
+    mkdir -p "$LAUNCH_AGENTS"
+    cat > "$LAUNCH_AGENTS/$SERVICE_ID.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
     "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -237,11 +213,10 @@ if [[ "$HEADLESS" == true ]]; then
 </dict>
 </plist>
 PLIST
-        launchctl bootstrap "gui/$UID" "$LAUNCH_AGENTS/$SERVICE_ID.plist"
-        ok "LaunchAgent registered (auto-start on login)"
-    else
-        warn "solunad not found in build — skipping headless setup"
-    fi
+    launchctl bootstrap "gui/$UID" "$LAUNCH_AGENTS/$SERVICE_ID.plist"
+    ok "LaunchAgent registered (auto-start on login)"
+else
+    warn "solunad not found in build — skipping daemon setup"
 fi
 
 # ── Verify ──────────────────────────────────────────────────
@@ -271,12 +246,10 @@ echo "       - Audio TX: システム音声をネットワーク配信"
 echo "       - Mic TX:   マイク音声を配信"
 echo "       - WAN P2P:  インターネット越しにグループ共有"
 echo ""
-if [[ "$HEADLESS" == true ]]; then
-    echo "  Headless commands:"
-    echo "    solctl status               # daemon status"
-    echo "    tail -f /tmp/solunad.log    # logs"
-    echo ""
-fi
+echo "  Daemon commands:"
+echo "    solctl status               # daemon status"
+echo "    tail -f /tmp/solunad.log    # logs"
+echo ""
 echo "  Uninstall:"
 echo "    bash $SRC_DIR/scripts/uninstall-mac.sh"
 echo ""

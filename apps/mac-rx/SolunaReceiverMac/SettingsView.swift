@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage("port") private var port = 5004
     @AppStorage("channels") private var channels = 2
     @AppStorage("autoConnect") private var autoConnect = false
+    @AppStorage("streamMode") private var streamMode = "sync"
     @AppStorage("channel") private var channel = "soluna"
     @State private var tempMulticastGroup: String = ""
     @State private var tempPort: String = ""
@@ -87,6 +88,30 @@ struct SettingsView: View {
                     }
                 }
 
+                Section(header: Text("Stream Mode")) {
+                    Picker(selection: $streamMode, label:
+                        HStack {
+                            Image(systemName: "waveform.path")
+                                .foregroundColor(.indigo)
+                                .frame(width: 28)
+                            Text("Mode")
+                        }
+                    ) {
+                        Text("Sync — Multi-room aligned").tag("sync")
+                        Text("Jam — Low latency (~20ms)").tag("jam")
+                    }
+
+                    if streamMode == "sync" {
+                        Text("All speakers play in perfect sync. Best for whole-home audio.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Ultra-low latency for real-time jam sessions and collaboration.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
                 Section(header: Text("Behavior")) {
                     Toggle(isOn: $autoConnect) {
                         HStack {
@@ -152,7 +177,7 @@ struct SettingsView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
         }
-        .frame(width: 420, height: 520)
+        .frame(width: 420, height: 620)
         .alert("Reset Settings", isPresented: $showingResetAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Reset", role: .destructive) {
@@ -191,6 +216,7 @@ struct SettingsView: View {
         tempChannels = 2
         tempChannel = "soluna"
         autoConnect = false
+        streamMode = "sync"
     }
 
     private func channelLayoutDescription(_ ch: Int) -> String {

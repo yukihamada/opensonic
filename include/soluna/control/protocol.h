@@ -56,6 +56,10 @@ enum class CommandType {
     SecurityStatus,
     SecuritySetDtls,
 
+    // Mode
+    ModeGet,
+    ModeSet,
+
     Unknown,
 };
 

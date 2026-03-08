@@ -281,6 +281,178 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
             display: none;
         }
+        /* Modes section */
+        .modes {
+            padding: 80px 0;
+        }
+        .modes h2 {
+            text-align: center;
+            font-size: 32px;
+            margin-bottom: 16px;
+        }
+        .modes > .container > p {
+            text-align: center;
+            color: var(--text-muted);
+            max-width: 640px;
+            margin: 0 auto 48px;
+        }
+        .mode-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 32px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .mode-card {
+            background: var(--bg-secondary);
+            border: 2px solid var(--border);
+            border-radius: 20px;
+            padding: 40px 32px;
+            text-align: center;
+            transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+            position: relative;
+        }
+        .mode-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--primary);
+            box-shadow: 0 8px 32px rgba(99, 102, 241, 0.15);
+        }
+        .mode-card .mode-icon {
+            font-size: 56px;
+            margin-bottom: 16px;
+        }
+        .mode-card h3 {
+            font-size: 22px;
+            margin-bottom: 8px;
+        }
+        .mode-card .mode-tag {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        .mode-card .mode-tag.jam {
+            background: #f59e0b;
+        }
+        .mode-card p {
+            color: var(--text-muted);
+            font-size: 15px;
+            line-height: 1.7;
+        }
+        .mode-card ul {
+            list-style: none;
+            margin-top: 16px;
+            text-align: left;
+        }
+        .mode-card ul li {
+            color: var(--text-muted);
+            font-size: 14px;
+            padding: 4px 0;
+        }
+        .mode-card ul li::before {
+            content: "\2713 ";
+            color: var(--primary);
+            font-weight: 700;
+            margin-right: 6px;
+        }
+        .mode-card.jam-card ul li::before {
+            color: #f59e0b;
+        }
+
+        /* Pricing section */
+        .pricing {
+            padding: 80px 0;
+        }
+        .pricing h2 {
+            text-align: center;
+            font-size: 32px;
+            margin-bottom: 16px;
+        }
+        .pricing > .container > p {
+            text-align: center;
+            color: var(--text-muted);
+            max-width: 640px;
+            margin: 0 auto 48px;
+        }
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 32px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .pricing-card {
+            background: var(--bg-secondary);
+            border: 2px solid var(--border);
+            border-radius: 20px;
+            padding: 40px 32px;
+            text-align: center;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .pricing-card.featured {
+            border-color: var(--primary);
+            position: relative;
+        }
+        .pricing-card.featured::before {
+            content: "おすすめ";
+            position: absolute;
+            top: -14px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--primary);
+            color: white;
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .pricing-card:hover {
+            transform: translateY(-4px);
+        }
+        .pricing-card h3 {
+            font-size: 22px;
+            margin-bottom: 8px;
+        }
+        .pricing-price {
+            font-size: 40px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .pricing-price span {
+            font-size: 16px;
+            font-weight: 400;
+            color: var(--text-muted);
+        }
+        .pricing-desc {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+        .pricing-card ul {
+            list-style: none;
+            text-align: left;
+            margin-bottom: 24px;
+        }
+        .pricing-card ul li {
+            color: var(--text-muted);
+            font-size: 14px;
+            padding: 6px 0;
+        }
+        .pricing-card ul li::before {
+            content: "\2713 ";
+            color: var(--primary);
+            font-weight: 700;
+            margin-right: 6px;
+        }
+        .pricing-card .btn {
+            width: 100%;
+            justify-content: center;
+        }
+
         @media (max-width: 768px) {
             .hero h1 {
                 font-size: 32px;
@@ -294,6 +466,9 @@
             .theme-toggle-mobile {
                 display: flex;
             }
+            .mode-grid, .pricing-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -304,8 +479,10 @@
                 <span>Soluna</span>
             </a>
             <ul class="nav-links">
+                <li><a href="#modes">モード</a></li>
                 <li><a href="#download">ダウンロード</a></li>
                 <li><a href="#features">機能</a></li>
+                <li><a href="#pricing">料金</a></li>
                 <li><a href="https://github.com/yukihamada/opensonic">GitHub</a></li>
                 <li><a href="https://github.com/yukihamada/opensonic/wiki">ドキュメント</a></li>
                 <li>
@@ -321,7 +498,7 @@
         <section class="hero">
             <div class="container">
                 <h1>ネットワークオーディオを<br>シンプルに</h1>
-                <p>プロ品質のオーディオストリーミングをあなたのネットワークで。サブミリ秒の遅延、サンプル精度の同期、完全無料でオープンソース。</p>
+                <p>プロ品質の双方向オーディオストリーミング。同期再生も、超低遅延ジャムセッションも。1,000ユーザーまで完全無料。</p>
                 <div class="buttons">
                     <a href="#download" class="btn btn-primary">
                         ダウンロード
@@ -329,6 +506,39 @@
                     <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
                         GitHubで見る
                     </a>
+                </div>
+            </div>
+        </section>
+
+        <section class="modes" id="modes">
+            <div class="container">
+                <h2>2つのモード、1つのプラットフォーム</h2>
+                <p>用途に合わせてモードを切り替え。同期再生とリアルタイムジャムセッション、どちらもこれひとつで。</p>
+                <div class="mode-grid">
+                    <div class="mode-card">
+                        <div class="mode-icon">🔄</div>
+                        <h3>Sync Mode</h3>
+                        <span class="mode-tag">マルチルーム同期</span>
+                        <p>PTP (IEEE 1588) ベースの高精度同期で、複数のスピーカーからサンプル精度の同時再生を実現。</p>
+                        <ul>
+                            <li>マルチルーム同期再生</li>
+                            <li>PTPv2によるサンプル精度の同期</li>
+                            <li>FEC付きで安定した配信</li>
+                            <li>ホームオーディオ / 商業施設BGMに最適</li>
+                        </ul>
+                    </div>
+                    <div class="mode-card jam-card">
+                        <div class="mode-icon">🎸</div>
+                        <h3>Jam Mode</h3>
+                        <span class="mode-tag jam">超低遅延 ~20ms</span>
+                        <p>双方向フルデュプレックス通信で、離れた場所にいるミュージシャンともリアルタイムにジャムセッション。</p>
+                        <ul>
+                            <li>超低遅延 約20ms (LAN内)</li>
+                            <li>双方向フルデュプレックスオーディオ</li>
+                            <li>リアルタイムコラボレーション</li>
+                            <li>バンド練習 / リモートセッションに最適</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </section>
@@ -395,13 +605,18 @@
                 <div class="feature-grid">
                     <div class="feature">
                         <div class="feature-icon">⚡</div>
-                        <h3>超低遅延</h3>
-                        <p>有線ネットワークでサブミリ秒の遅延。ライブパフォーマンスやモニタリングに最適。</p>
+                        <h3>超低遅延 ~20ms</h3>
+                        <p>Jam Modeで約20msの超低遅延を実現。リアルタイムの演奏やモニタリングに最適。</p>
                     </div>
                     <div class="feature">
                         <div class="feature-icon">🔄</div>
                         <h3>PTP同期</h3>
-                        <p>IEEE 1588-2008 (PTPv2)により、全デバイス間でサンプル精度の同期を実現。</p>
+                        <p>IEEE 1588-2008 (PTPv2)により、Sync Modeで全デバイス間のサンプル精度同期を実現。</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">🔀</div>
+                        <h3>双方向オーディオ</h3>
+                        <p>フルデュプレックス対応。一方向ストリーミングだけでなく、双方向リアルタイム通信でジャムセッションやコラボレーションが可能。</p>
                     </div>
                     <div class="feature">
                         <div class="feature-icon">📶</div>
@@ -427,10 +642,48 @@
             </div>
         </section>
 
+        <section class="pricing" id="pricing">
+            <div class="container">
+                <h2>1,000ユーザーまで無料</h2>
+                <p>Sync Mode、Jam Mode、双方向オーディオ、全ての機能が含まれます。エンタープライズ向けの料金は1,000ユーザー超の場合のみ。</p>
+                <div class="pricing-grid">
+                    <div class="pricing-card featured">
+                        <h3>Free</h3>
+                        <div class="pricing-price">$0 <span>/ 月</span></div>
+                        <div class="pricing-desc">1,000ユーザーまで</div>
+                        <ul>
+                            <li>Sync Mode (マルチルーム同期)</li>
+                            <li>Jam Mode (超低遅延 ~20ms)</li>
+                            <li>双方向フルデュプレックスオーディオ</li>
+                            <li>全プラットフォーム対応</li>
+                            <li>PTPv2 / AES67互換</li>
+                            <li>Web UI / REST API / WebSocket</li>
+                            <li>コミュニティサポート</li>
+                        </ul>
+                        <a href="#download" class="btn btn-primary">今すぐ始める</a>
+                    </div>
+                    <div class="pricing-card">
+                        <h3>Enterprise</h3>
+                        <div class="pricing-price">お問合せ</div>
+                        <div class="pricing-desc">1,000ユーザー超</div>
+                        <ul>
+                            <li>Freeプランの全機能</li>
+                            <li>専用テクニカルサポート</li>
+                            <li>SLA保証</li>
+                            <li>オンプレミス導入支援</li>
+                            <li>カスタムインテグレーション</li>
+                            <li>トレーニング / コンサルティング</li>
+                        </ul>
+                        <a href="mailto:contact@soluna-audio.com" class="btn btn-secondary">お問い合わせ</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section class="cta">
             <div class="container">
                 <h2>始める準備はできましたか？</h2>
-                <p>Solunaでオーディオストリーミングを体験しましょう。</p>
+                <p>Solunaでオーディオストリーミングを体験しましょう。1,000ユーザーまで全機能無料。</p>
                 <div class="buttons">
                     <a href="#download" class="btn btn-primary">ダウンロード</a>
                     <a href="https://github.com/yukihamada/opensonic/wiki" class="btn btn-secondary">ドキュメントを読む</a>

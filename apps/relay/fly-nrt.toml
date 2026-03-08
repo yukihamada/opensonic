@@ -1,0 +1,12 @@
+app = "soluna-relay-nrt"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[[services]]
+  internal_port = 5100
+  protocol = "udp"
+
+  [[services.ports]]
+    port = 5100

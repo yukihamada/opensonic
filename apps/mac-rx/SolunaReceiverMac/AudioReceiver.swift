@@ -152,6 +152,16 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
+    /// Synchronized playback mode — all receivers output at same wall-clock time
+    @Published var isSyncMode: Bool = false {
+        didSet { receiver.syncMode = isSyncMode }
+    }
+
+    /// Target end-to-end delay in ms (50-1000) for sync mode
+    @Published var syncDelayMs: UInt32 = 200 {
+        didSet { receiver.syncDelayMs = syncDelayMs }
+    }
+
     /// Whether mic transmit is active
     @Published private(set) var isMicTransmitting: Bool = false
 
@@ -161,8 +171,43 @@ final class AudioReceiver: ObservableObject {
     /// Mic input level (0.0 - 1.0) for UI meter
     @Published private(set) var micInputLevel: Float = 0.0
 
+    // ── System Audio Transmit (Soluna Virtual Device) ──────────────────
+
+    /// Whether system audio transmit is active
+    @Published private(set) var isShmTransmitting: Bool = false
+
+    /// System audio TX packets sent
+    @Published private(set) var shmTxPacketsSent: UInt64 = 0
+
+    /// System audio TX level (0.0 - 1.0) for UI meter
+    @Published private(set) var shmTxLevel: Float = 0.0
+
     /// Error message if any
     @Published private(set) var errorMessage: String?
+
+    // ── WAN Relay (Group Code) ──────────────────────────────────────────
+
+    /// WAN relay connection state
+    enum RelayState: String {
+        case disconnected = "Disconnected"
+        case connecting   = "Connecting..."
+        case connected    = "Connected"
+        case error        = "Error"
+
+        init(from objc: SolunaRelayState) {
+            switch objc {
+            case .disconnected: self = .disconnected
+            case .connecting:   self = .connecting
+            case .connected:    self = .connected
+            case .error:        self = .error
+            @unknown default:   self = .disconnected
+            }
+        }
+    }
+
+    @Published private(set) var relayState: RelayState = .disconnected
+    @Published private(set) var relayGroup: String?
+    @Published private(set) var relayError: String?
 
     /// Available local output devices (BT, AirPlay, USB, etc.)
     @Published var availableDevices: [LocalOutputDevice] = []
@@ -314,11 +359,18 @@ final class AudioReceiver: ObservableObject {
 
     /// Stop receiving audio
     func stop() {
-        // Stop mic TX if active
+        // Stop transmitters if active
         if isMicTransmitting {
             receiver.stopMicTransmit()
             isMicTransmitting = false
         }
+        if isShmTransmitting {
+            receiver.stopShmTransmit()
+            isShmTransmitting = false
+        }
+
+        // Disconnect WAN relay
+        disconnectRelay()
 
         state = .stopped
         receiver.stop()
@@ -351,6 +403,18 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
+    /// Toggle system audio transmit (Soluna virtual device) on/off
+    func toggleShmTransmit() {
+        if isShmTransmitting {
+            receiver.stopShmTransmit()
+            isShmTransmitting = false
+        } else {
+            if receiver.startShmTransmit() {
+                isShmTransmitting = true
+            }
+        }
+    }
+
     /// Toggle play/stop (user-initiated)
     func toggle() {
         if isPlaying {
@@ -359,6 +423,41 @@ final class AudioReceiver: ObservableObject {
         } else {
             start()
         }
+    }
+
+    // MARK: - WAN Relay
+
+    /// Connect to WAN relay server with group code
+    func connectRelay(group: String, password: String = "",
+                      host: String = "46.225.77.119", port: UInt16 = 5100) {
+        guard isPlaying else { return }
+        relayState = .connecting
+        relayError = nil
+
+        // Run connection on background to avoid blocking UI during DNS/JOIN
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let ok = self.receiver.connect(toRelay: host, port: port, group: group, password: password)
+            Task { @MainActor in
+                self.updateRelayState()
+                if !ok {
+                    // Error state already set by updateRelayState
+                }
+            }
+        }
+    }
+
+    /// Disconnect from WAN relay
+    func disconnectRelay() {
+        receiver.disconnectRelay()
+        updateRelayState()
+    }
+
+    /// Update relay state from bridge (called from stats timer)
+    func updateRelayState() {
+        relayState = RelayState(from: receiver.relayState)
+        relayGroup = receiver.relayGroup
+        relayError = receiver.relayError
     }
 
     // MARK: - Local Output Devices
@@ -817,6 +916,11 @@ final class AudioReceiver: ObservableObject {
         self.txPacketsSent    = receiver.txPacketsSent
         self.micInputLevel    = receiver.micInputLevel
         self.isMicTransmitting = receiver.isMicTransmitting
+        self.isShmTransmitting = receiver.isShmTransmitting
+        self.shmTxPacketsSent  = receiver.shmTxPacketsSent
+        self.shmTxLevel        = receiver.shmTxLevel
+        // Poll WAN relay state
+        updateRelayState()
     }
 
     fileprivate func handleError(_ error: Error) {

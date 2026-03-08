@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+    color: #1d1d1f;
+    padding: 20px;
+    line-height: 1.6;
+}
+h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #7c6cf0, #00d4a0);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.tagline {
+    font-size: 16px;
+    color: #6e6e73;
+    margin-bottom: 24px;
+}
+.components {
+    margin-top: 16px;
+}
+.component {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+.icon {
+    font-size: 18px;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+.name {
+    font-weight: 600;
+}
+.desc {
+    color: #6e6e73;
+}
+.footer {
+    margin-top: 24px;
+    font-size: 12px;
+    color: #86868b;
+}
+</style>
+</head>
+<body>
+<h1>Soluna</h1>
+<p class="tagline">Mac のシステム音声を、どこでも鳴らす。</p>
+
+<p style="font-size:14px">このインストーラは以下をまとめてセットアップします:</p>
+
+<div class="components">
+    <div class="component">
+        <span class="icon">🖥</span>
+        <div>
+            <span class="name">Soluna.app</span>
+            <span class="desc"> &mdash; GUI で音声配信を操作</span>
+        </div>
+    </div>
+    <div class="component">
+        <span class="icon">🔊</span>
+        <div>
+            <span class="name">Soluna.driver</span>
+            <span class="desc"> &mdash; 仮想オーディオデバイス</span>
+        </div>
+    </div>
+    <div class="component">
+        <span class="icon">⚙️</span>
+        <div>
+            <span class="name">solunad + solctl</span>
+            <span class="desc"> &mdash; バックグラウンドサービス &amp; CLI</span>
+        </div>
+    </div>
+    <div class="component">
+        <span class="icon">🔁</span>
+        <div>
+            <span class="name">LaunchAgent</span>
+            <span class="desc"> &mdash; ログイン時の自動起動</span>
+        </div>
+    </div>
+</div>
+
+<p class="footer">macOS 13 Ventura 以降 | Apple Silicon + Intel 対応 | MIT License</p>
+</body>
+</html>

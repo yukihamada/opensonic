@@ -13,6 +13,7 @@ namespace soluna::pipeline {
 PlayoutBuffer::PlayoutBuffer(const PlayoutBufferConfig& config)
     : config_(config)
     , ring_(config.capacity_packets)
+    , mode_(config.mode)
 {
 }
 
@@ -62,20 +63,31 @@ bool PlayoutBuffer::read_at(int64_t ptp_now_ns, PlayoutPacket& out) {
 
     if (!base_set_) return false;
 
-    // Find the oldest valid packet whose playout time has arrived
     int best_idx = -1;
     uint32_t best_seq = UINT32_MAX;
 
-    for (size_t i = 0; i < ring_.size(); i++) {
-        if (!ring_[i].valid) continue;
-
-        int64_t playout_ns = media_ts_to_playout_ns(ring_[i].media_timestamp);
-
-        if (playout_ns <= ptp_now_ns) {
-            // This packet should be playing now
+    if (mode_ == StreamMode::Jam) {
+        // Jam mode: bypass PTP alignment, return oldest valid packet (FIFO)
+        for (size_t i = 0; i < ring_.size(); i++) {
+            if (!ring_[i].valid) continue;
             if (ring_[i].sequence < best_seq) {
                 best_seq = ring_[i].sequence;
                 best_idx = static_cast<int>(i);
+            }
+        }
+    } else {
+        // Sync mode: find the oldest valid packet whose playout time has arrived
+        for (size_t i = 0; i < ring_.size(); i++) {
+            if (!ring_[i].valid) continue;
+
+            int64_t playout_ns = media_ts_to_playout_ns(ring_[i].media_timestamp);
+
+            if (playout_ns <= ptp_now_ns) {
+                // This packet should be playing now
+                if (ring_[i].sequence < best_seq) {
+                    best_seq = ring_[i].sequence;
+                    best_idx = static_cast<int>(i);
+                }
             }
         }
     }
@@ -132,6 +144,11 @@ size_t PlayoutBuffer::read_frames(int64_t ptp_now_ns, float* output,
     }
 
     return frames_to_copy;
+}
+
+void PlayoutBuffer::set_mode(StreamMode mode) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    mode_ = mode;
 }
 
 void PlayoutBuffer::set_playout_delay(int64_t delay_ns) {

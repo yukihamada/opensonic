@@ -42,6 +42,14 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 - (void)receiverDidEncounter:(NSError *)error;
 @end
 
+/// WAN relay connection state
+typedef NS_ENUM(NSInteger, SolunaRelayState) {
+    SolunaRelayStateDisconnected = 0,
+    SolunaRelayStateConnecting,
+    SolunaRelayStateConnected,
+    SolunaRelayStateError
+};
+
 /// Main audio receiver bridge class
 @interface SolunaAudioReceiver : NSObject
 
@@ -104,6 +112,24 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 /// The packet is parsed and fed directly into the audio ring buffer,
 /// bypassing the UDP socket. Thread-safe.
 - (void)injectRawPacket:(NSData * _Nonnull)data;
+
+// ── WAN Relay ────────────────────────────────────────────────────────────
+
+/// Connect to WAN relay server. Returns NO on immediate failure.
+- (BOOL)connectToRelay:(NSString *)host port:(uint16_t)port
+                 group:(NSString *)group password:(NSString *)password;
+
+/// Disconnect from WAN relay.
+- (void)disconnectRelay;
+
+/// Current relay connection state.
+@property (nonatomic, readonly) SolunaRelayState relayState;
+
+/// Currently joined relay group name (nil if disconnected).
+@property (nonatomic, readonly, copy, nullable) NSString *relayGroup;
+
+/// Relay error message (nil if no error).
+@property (nonatomic, readonly, copy, nullable) NSString *relayError;
 
 // ── Mic Transmit (TX) ────────────────────────────────────────────────────
 

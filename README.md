@@ -4,6 +4,8 @@
 
 Soluna は Mac のシステム音声を iPhone・Raspberry Pi・ブラウザへ低遅延で配信し、マイク音声の双方向送信にも対応するオープンソースのネットワークオーディオシステムです。BlackHole や複雑な設定は不要。**Soluna 仮想デバイスをシステム出力に選ぶだけ**で動きます。
 
+> **無料**: 1,000 ユーザーまで全機能無料。1,000 ユーザー超の大規模利用のみエンタープライズプランをご用意しています。
+
 ```
 ┌─ Soluna アプリ (Mac) ──────────────────────────────────────┐
 │                                                            │
@@ -20,18 +22,16 @@ Soluna は Mac のシステム音声を iPhone・Raspberry Pi・ブラウザへ�
 
 ---
 
-## Mac セットアップ — 3つの方法
+## Mac セットアップ
 
-> **必要なもの**: cmake (`brew install cmake`) + Xcode Command Line Tools (`xcode-select --install`)
+### ダウンロード（推奨）
+
+**.pkg インストーラ**で Soluna.app + 仮想オーディオデバイス + バックグラウンドサービスをまとめてセットアップ:
+
+**[Soluna-mac.pkg をダウンロード](https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg)**
+
+> **要件**: macOS 13 Ventura 以降 / Apple Silicon + Intel
 > **初回のみ**: システム設定 → プライバシーとセキュリティ でドライバを「許可」
-
-### ★ 方法1: Soluna アプリ（おすすめ）
-
-**はじめての方はこれ！** 画面の操作だけで音声配信できます。
-
-```bash
-bash scripts/install-mac.sh
-```
 
 インストール後:
 1. **システム設定 → サウンド → 出力** で「**Soluna**」を選択
@@ -39,32 +39,24 @@ bash scripts/install-mac.sh
 3. **Audio TX** ON → 配信開始！
 
 Soluna.app 1つで **Audio TX / Mic TX / WAN P2P** が全部できます。
+solunad バックグラウンドサービスはインストーラが自動設定します。
 
-### 方法2: インストーラー + solunad（自動起動）
-
-**ログインしたら自動で配信開始。** アプリを開かなくてOK。
-
-```bash
-bash scripts/install-mac.sh --headless
-```
-
-方法1のすべて ＋ **solunad デーモン** + **LaunchAgent**（ログイン時自動起動）を追加インストール。
 - ステータス確認: `solctl status`
 - ログ: `tail -f /tmp/solunad.log`
-- ダッシュボード: http://localhost:8400
 
-### 方法3: コマンドライン（上級者向け）
-
-**開発者向け。** cmake でビルドして solctl で全操作。
+### ソースからビルド（開発者向け）
 
 ```bash
-cmake -B build && cmake --build build
-```
+# 必要なもの: cmake + Xcode Command Line Tools
+brew install cmake
+xcode-select --install
 
-ビルド後:
-1. `Soluna.driver` を `/Library/Audio/Plug-Ins/HAL/` にコピー（sudo）
-2. `sudo killall coreaudiod` で反映
-3. `solctl` で配信の開始/停止・設定変更
+# フルインストール（ドライバ + アプリ + solunad + LaunchAgent）
+bash scripts/install-mac.sh
+
+# または .pkg を自分でビルド
+bash scripts/build-pkg.sh
+```
 
 ### アンインストール
 
@@ -110,6 +102,8 @@ soluna-rx --output pipe | aplay -f S16_LE -r 48000 -c 2
 
 | 機能 | 説明 |
 |------|------|
+| **Sync / Jam モード切替** | **Sync モード**: PTP 同期によるマルチルーム再生（ホールホームオーディオに最適）。**Jam モード**: 超低遅延 ~20ms のリアルタイムセッション（ジャム・コラボに最適）。CLI: `solunad --mode sync\|jam`、WebSocket: `mode.get` / `mode.set`、Mac/iOS: 設定・メイン画面のセグメントピッカーで切替 |
+| **双方向オーディオ** | フルデュプレックス音声通信。単方向マルチキャストだけでなく、リアルタイム双方向でジャムセッションが可能 |
 | **システム音声送信** | Soluna.driver 仮想デバイス → 共有メモリ → Soluna アプリが直接送信（solunad 不要） |
 | **マイク双方向送信** | iPhone/Mac のマイク音声を OSTP マルチキャストで送信。全レシーバーで再生 |
 | **WAN P2P 接続** | グループコードでインターネット越し接続。UDP ホールパンチングで直接通信、リレーはフォールバック |
@@ -167,6 +161,8 @@ solunad (TX)
 solunad --tx --device soluna          # リレーは自動でポート 5099 で起動
 solunad --tx --relay-port 6000        # ポート変更
 solunad --tx --no-relay               # リレー無効
+solunad --mode sync                   # Sync モード（PTP 同期マルチルーム再生）
+solunad --mode jam                    # Jam モード（超低遅延 ~20ms リアルタイムセッション）
 ```
 
 ### WebSocket API
@@ -174,6 +170,12 @@ solunad --tx --no-relay               # リレー無効
 ```json
 {"command":"relay.stats"}
 → {"enabled":true, "port":5099, "peer_count":2, "peers":[...]}
+
+{"command":"mode.get"}
+→ {"mode":"sync"}
+
+{"command":"mode.set","mode":"jam"}
+→ {"ok":true, "mode":"jam"}
 ```
 
 ---
@@ -322,6 +324,9 @@ solunad --tx --device soluna --codec opus
 
 # PCM で送信（従来どおり）
 solunad --tx --device soluna --codec pcm
+
+# Jam モード + Opus で低遅延セッション
+solunad --tx --device soluna --codec opus --mode jam
 ```
 
 | 項目 | PCM | Opus |
@@ -505,6 +510,71 @@ tail -f /tmp/solunad.log                    # ログ
 
 ---
 
-## ライセンス
+## YAML 設定ファイル（StreamMode）
+
+`config.yaml`（`/etc/soluna/config.yaml` または `deploy/rpi/config-template.yaml`）のトップレベルに `mode:` を追加:
+
+```yaml
+# sync = PTP 同期マルチルーム再生（デフォルト）
+# jam  = 超低遅延 ~20ms リアルタイムセッション
+mode: sync
+```
+
+CLI の `--mode` フラグ、WebSocket の `mode.set` コマンド、Mac/iOS UI のセグメントピッカーでも動的に切替可能です。
+
+---
+
+## 料金
+
+- **無料**: 1,000 ユーザーまで全機能利用可能
+- **エンタープライズ**: 1,000 ユーザー超の大規模利用向け（お問い合わせください）
+
+---
+
+## English
+
+### What is Soluna?
+
+Soluna is an open-source network audio system that streams your Mac's system audio to iPhones, Raspberry Pis, and browsers with low latency. It also supports **full-duplex bidirectional audio** for real-time communication and jam sessions. No BlackHole or complex routing needed -- just select the Soluna virtual device as your system output.
+
+> **Free** for up to 1,000 users with all features included. Enterprise pricing is available for deployments exceeding 1,000 users.
+
+### Sync / Jam Mode
+
+Soluna offers two streaming modes that you can switch between at any time:
+
+| Mode | Latency | Best For |
+|------|---------|----------|
+| **Sync** | PTP-aligned | Multi-room whole-home audio playback with perfect synchronization |
+| **Jam** | ~20ms ultra-low | Real-time jam sessions, live collaboration, bidirectional communication |
+
+**How to switch:**
+
+- **CLI**: `solunad --mode sync` or `solunad --mode jam`
+- **WebSocket**: `{"command":"mode.set","mode":"jam"}`
+- **Mac / iOS UI**: Segmented Sync/Jam picker in Settings and main screen
+- **YAML config**: Set `mode: sync` or `mode: jam` at the top level of `config.yaml`
+
+### Bidirectional Audio
+
+Soluna is not limited to one-way multicast streaming. In Jam Mode, all participants send and receive audio simultaneously with full-duplex communication, enabling real-time musical collaboration and voice chat across devices.
+
+### Key Features
+
+- PTP-synchronized multi-room playback (Sync Mode)
+- Ultra-low latency ~20ms bidirectional audio (Jam Mode)
+- Virtual audio device for macOS (no BlackHole needed)
+- WAN P2P via UDP hole punching with relay fallback
+- Opus codec support (128kbps vs 3Mbps PCM)
+- Built-in DSP: compressor, 3-band EQ, reverb
+- Lock-free jitter buffer with Adriaensen DLL clock sync
+- 4-stage PLC: Opus FEC, Opus PLC, WSOLA, silence
+- iPhone/iPad, Raspberry Pi, Linux, Windows, Browser, VST3 support
+- Bonjour auto-discovery on LAN
+- Free for up to 1,000 users
+
+---
+
+## ライセンス / License
 
 MIT License

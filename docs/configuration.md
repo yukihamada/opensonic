@@ -4,7 +4,7 @@ Soluna uses YAML configuration files. The default location is `/etc/soluna/confi
 
 ## Quick Start
 
-Minimal configuration for receiver:
+Minimal configuration for receiver (sync mode, default):
 ```yaml
 device:
   name: "living-room"
@@ -25,7 +25,34 @@ network:
   rtp_base: 5004
 ```
 
+Low-latency jam session:
+```yaml
+mode: jam
+
+device:
+  name: "jam-room"
+  audio: "hw:0"
+```
+
 ## Complete Reference
+
+### mode
+
+Stream mode determines the latency vs synchronization tradeoff.
+
+```yaml
+mode: sync           # "sync" or "jam" (default: "sync")
+```
+
+| Value | Description |
+|-------|-------------|
+| `sync` | **Sync mode** (default). PTP-aligned multi-room playback. All devices play audio in perfect synchronization. Best for whole-home audio. |
+| `jam` | **Jam mode**. Ultra-low-latency (~20ms end-to-end). Skips PTP alignment and minimizes buffering. Best for real-time jam sessions and live collaboration. |
+
+This value can also be set via:
+- **CLI flag**: `solunad --mode sync` or `solunad --mode jam` (overrides YAML)
+- **WebSocket**: `{"command":"mode.set","mode":"jam"}` (runtime switch, no restart needed)
+- **Web UI**: Stream Mode picker in the control panel at `http://<device-ip>:8400/`
 
 ### device
 
@@ -288,6 +315,8 @@ solunad --config /etc/soluna/config.yaml --dump-config
 ### Home Studio TX
 
 ```yaml
+mode: sync               # Multi-room synchronized playback
+
 device:
   name: "studio-main"
   audio: "hw:0"
@@ -310,6 +339,8 @@ metrics:
 ### Living Room RX (WiFi)
 
 ```yaml
+mode: sync               # Sync with other rooms
+
 device:
   name: "living-room"
   audio: "default"
@@ -322,6 +353,23 @@ audio:
 
 logging:
   level: "warn"
+```
+
+### Jam Session (Low-Latency)
+
+```yaml
+mode: jam                # Ultra-low-latency (~20ms) for live collaboration
+
+device:
+  name: "jam-room"
+  audio: "hw:0"
+
+audio:
+  sample_rate: 48000
+  channels: 2
+  bit_depth: 24
+  frames_per_packet: 48
+  buffer_packets: 4      # Minimal buffering for jam mode
 ```
 
 ### Secure Installation

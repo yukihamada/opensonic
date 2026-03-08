@@ -33,6 +33,9 @@ final class DaemonClient: ObservableObject {
     /// Measured one-way latency (ms). Drives auto-sync. 0 = not yet measured.
     @Published private(set) var measuredLatencyMs: Int = 0
 
+    // stream mode: "sync" (multi-room PTP aligned) or "jam" (low-latency ~20ms)
+    @Published var streamMode: String = "sync"
+
     // available output devices
     @Published private(set) var devices: [String] = []
     @Published              var selectedDevice = ""
@@ -106,6 +109,17 @@ final class DaemonClient: ObservableObject {
         send(#"{"id":\#(nextId()),"command":"rx.set_global_delay","ms":\#(ms)}"#)
     }
 
+    // MARK: - Stream mode
+
+    func setMode(_ mode: String) {
+        streamMode = mode
+        send(#"{"id":\#(nextId()),"command":"mode.set","mode":"\#(mode)"}"#)
+    }
+
+    func getMode() {
+        send(#"{"id":\#(nextId()),"command":"mode.get"}"#)
+    }
+
     // MARK: - Auto-sync
 
     /// Send a WS ping to measure round-trip time.
@@ -159,6 +173,7 @@ final class DaemonClient: ObservableObject {
         send(#"{"id":\#(nextId()),"command":"monitor.stats"}"#)
         send(#"{"id":\#(nextId()),"command":"monitor.list_devices"}"#)
         send(#"{"id":\#(nextId()),"command":"system.info"}"#)
+        getMode()
     }
 
     private func nextId() -> Int { msgId += 1; return msgId }
@@ -243,6 +258,10 @@ final class DaemonClient: ObservableObject {
         } else if d["tunnel_url"] != nil {
             // system.info
             tunnelURL = d["tunnel_url"] as? String ?? ""
+
+        } else if let mode = d["mode"] as? String {
+            // mode.get / mode.set response
+            streamMode = mode
         }
     }
 }

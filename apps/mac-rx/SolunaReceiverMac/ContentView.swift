@@ -11,6 +11,7 @@ struct ContentView: View {
     @ObservedObject var receiver: AudioReceiver
     @ObservedObject var speakers: SpeakersController
     @StateObject private var relay    = PeerRelayManager.shared
+    @State private var groupCode       = ""
     @State private var showSettings   = false
     @State private var showAddSpeaker = false
     @State private var addSpeakerTab  = 0     // 0 = local, 1 = network
@@ -25,11 +26,13 @@ struct ContentView: View {
     @State private var groupName       = ""
 
     @AppStorage("autoConnect") private var autoConnect = false
+    @AppStorage("streamMode") private var streamMode = "sync"
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 heroSection
+                wanGroupSection
                 relayBanner
                 if receiver.state == .receiving || receiver.packetsReceived > 0 {
                     statsRow
@@ -251,6 +254,36 @@ struct ContentView: View {
                         .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
+
+                    Button(action: { receiver.toggleShmTransmit() }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: receiver.isShmTransmitting ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                            Text(receiver.isShmTransmitting ? "Audio TX" : "Audio TX")
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundColor(receiver.isShmTransmitting ? .orange : .secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(receiver.isShmTransmitting ? Color.orange.opacity(0.12) : Color(nsColor: .tertiaryLabelColor).opacity(0.2))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help("System audio: Soluna仮想デバイスの音声を送信")
+
+                    Button(action: { receiver.isSyncMode.toggle() }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: receiver.isSyncMode ? "metronome.fill" : "metronome")
+                            Text(receiver.isSyncMode ? "Sync" : "Fast")
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundColor(receiver.isSyncMode ? .blue : .secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(receiver.isSyncMode ? Color.blue.opacity(0.12) : Color(nsColor: .tertiaryLabelColor).opacity(0.2))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help(receiver.isSyncMode ? "Sync mode: \(receiver.syncDelayMs)ms delay" : "Fast mode: minimum latency")
                 }
             }
 
@@ -260,11 +293,132 @@ struct ContentView: View {
                     .frame(height: 6)
                     .padding(.horizontal, 40)
             }
+            // System audio TX level meter
+            if receiver.isShmTransmitting {
+                MicLevelMeter(level: receiver.shmTxLevel)
+                    .frame(height: 6)
+                    .padding(.horizontal, 40)
+                    .tint(.orange)
+            }
+
+            // Stream mode toggle (Sync / Jam)
+            Picker("Stream Mode", selection: $streamMode) {
+                Text("Sync").tag("sync")
+                Text("Jam").tag("jam")
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 180)
+            .help(streamMode == "sync"
+                  ? "Sync: Multi-room aligned playback (PTP)"
+                  : "Jam: Ultra-low latency (~20ms)")
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
         .background(Color(nsColor: .controlBackgroundColor))
         .cornerRadius(20)
+    }
+
+    // MARK: - WAN Group Code
+
+    @ViewBuilder
+    private var wanGroupSection: some View {
+        if receiver.state == .receiving || receiver.relayState != .disconnected {
+            VStack(spacing: 10) {
+                switch receiver.relayState {
+                case .disconnected:
+                    HStack(spacing: 10) {
+                        Image(systemName: "globe")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.purple)
+                            .frame(width: 28, height: 28)
+                            .background(Color.purple.opacity(0.1))
+                            .clipShape(Circle())
+
+                        TextField("Group code", text: $groupCode)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 13, design: .monospaced))
+
+                        Button("Join") {
+                            let code = groupCode.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !code.isEmpty else { return }
+                            receiver.connectRelay(group: code)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.purple)
+                        .disabled(groupCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+
+                case .connecting:
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Joining \"\(groupCode)\"...")
+                            .font(.footnote.weight(.medium))
+                            .foregroundColor(.purple)
+                        Spacer()
+                    }
+
+                case .connected:
+                    HStack(spacing: 8) {
+                        Image(systemName: "globe")
+                            .foregroundColor(.green)
+                        Text(receiver.relayGroup ?? groupCode)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.green.opacity(0.12))
+                            .clipShape(Capsule())
+                        Spacer()
+                        Button("Leave") {
+                            receiver.disconnectRelay()
+                            groupCode = ""
+                        }
+                        .font(.footnote.weight(.medium))
+                        .foregroundColor(.red)
+                    }
+
+                case .error:
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.red)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Connection failed")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundColor(.red)
+                            if let err = receiver.relayError {
+                                Text(err)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Button("Retry") {
+                            let code = groupCode.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !code.isEmpty else { return }
+                            receiver.connectRelay(group: code)
+                        }
+                        .font(.footnote.weight(.medium))
+                        .foregroundColor(.purple)
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        } else if receiver.state == .stopped {
+            // Hint when not receiving
+            HStack(spacing: 8) {
+                Image(systemName: "globe")
+                    .foregroundColor(.secondary.opacity(0.5))
+                Text("Start receiving to join a group")
+                    .font(.footnote)
+                    .foregroundColor(.secondary.opacity(0.5))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+        }
     }
 
     // MARK: - Stats
@@ -284,6 +438,9 @@ struct ContentView: View {
             }
             if receiver.isMicTransmitting {
                 StatPill(value: formatNum(receiver.txPacketsSent), label: "tx", color: .red)
+            }
+            if receiver.isSyncMode {
+                StatPill(value: "\(receiver.syncDelayMs)ms", label: "sync", color: .blue)
             }
             Spacer()
             Button {

@@ -37,6 +37,8 @@ static const std::pair<CommandType, const char*> kCommandNames[] = {
     {CommandType::PresetDelete,     "preset.delete"},
     {CommandType::SecurityStatus,   "security.status"},
     {CommandType::SecuritySetDtls,  "security.set_dtls"},
+    {CommandType::ModeGet,          "mode.get"},
+    {CommandType::ModeSet,          "mode.set"},
 };
 
 const char* command_to_string(CommandType cmd) {

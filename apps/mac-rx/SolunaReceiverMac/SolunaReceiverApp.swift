@@ -143,7 +143,7 @@ struct MenuBarMiniPlayer: View {
 
             Divider()
 
-            Button("Quit Soluna Rx") {
+            Button("Quit Soluna") {
                 NSApplication.shared.terminate(nil)
             }
         }

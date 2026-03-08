@@ -60,6 +60,12 @@ constexpr size_t sample_size(SampleFormat fmt) {
     return 4;
 }
 
+// Stream modes — determines latency vs synchronization tradeoff
+enum class StreamMode : uint8_t {
+    Sync = 0,   // Multi-room sync: PTP-aligned playout, buffers aligned across devices
+    Jam  = 1,   // Low-latency jam: minimal buffering, skip PTP alignment, ~20ms e2e
+};
+
 // Network ports
 constexpr uint16_t kPortPTPEvent    = 319;
 constexpr uint16_t kPortPTPGeneral  = 320;

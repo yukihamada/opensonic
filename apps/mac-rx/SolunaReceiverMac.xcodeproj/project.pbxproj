@@ -364,7 +364,7 @@
 				OTHER_LDFLAGS = (
 					"-lsoluna_core",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.soluna.SolunaReceiverMac";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.soluna.Soluna";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "SolunaReceiverMac/Bridge/SolunaReceiver-Bridging-Header.h";
@@ -403,7 +403,7 @@
 				OTHER_LDFLAGS = (
 					"-lsoluna_core",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.soluna.SolunaReceiverMac";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.soluna.Soluna";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "SolunaReceiverMac/Bridge/SolunaReceiver-Bridging-Header.h";

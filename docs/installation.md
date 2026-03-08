@@ -141,6 +141,37 @@ Allow Soluna through Windows Firewall:
 **Audio Device:**
 Uses WASAPI shared mode by default. For exclusive mode, edit config.
 
+## Stream Mode
+
+Soluna supports two stream modes, controlled by the `--mode` CLI flag:
+
+| Mode | Latency | Use Case |
+|------|---------|----------|
+| `sync` (default) | PTP-aligned | Multi-room synchronized playback (whole-home audio) |
+| `jam` | ~20ms end-to-end | Real-time jam sessions and live collaboration |
+
+**CLI:**
+```bash
+solunad --tx --device default --mode sync   # Multi-room sync (default)
+solunad --tx --device default --mode jam    # Low-latency jam session
+```
+
+**YAML config** (`/etc/soluna/config.yaml` or `~/.config/soluna/config.yaml`):
+```yaml
+mode: sync   # or "jam"
+```
+
+**Web UI:**
+Open the Soluna control panel at `http://<device-ip>:8400/` and use the Stream Mode picker to switch between Sync and Jam modes at runtime.
+
+**WebSocket API:**
+```json
+{"command":"mode.get"}
+{"command":"mode.set","mode":"jam"}
+```
+
+The `--mode` flag on the CLI overrides the YAML config value. If neither is specified, the default is `sync`.
+
 ## Verifying Installation
 
 ```bash
@@ -150,8 +181,11 @@ solunad --version
 # List audio devices
 solunad --list-devices
 
-# Test transmission
+# Test transmission (sync mode, default)
 solunad --tx --device default --dest 239.69.0.1:5004
+
+# Test transmission (jam mode, low-latency)
+solunad --tx --device default --dest 239.69.0.1:5004 --mode jam
 
 # Test reception (in another terminal)
 solunad --rx --device default --port 5004

@@ -9,6 +9,7 @@
  */
 
 #include <soluna/core/error.h>
+#include <soluna/soluna.h>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -147,6 +148,7 @@ struct Config {
     AuditConfig audit;
     RoutingConfig routing;
     std::vector<PluginConfig> plugins;
+    StreamMode mode = StreamMode::Sync;
 
     /**
      * Load configuration from a YAML file.

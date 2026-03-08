@@ -19,12 +19,15 @@ struct ContentView: View {
     @State private var masterVolume: Float = 1.0
     @State private var masterMuted    = false
     @State private var masterDelayMs: Int = 40
+    @AppStorage("streamMode") private var streamMode = "sync"
+    @State private var groupCode     = ""
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
                     heroSection
+                    wanGroupSection
                     relayBanner
                     if receiver.state == .receiving || receiver.packetsReceived > 0 {
                         statsRow
@@ -60,6 +63,100 @@ struct ContentView: View {
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: receiver.state.rawValue)
         }
         .navigationViewStyle(.stack)
+    }
+
+    // MARK: - WAN Group Code
+
+    @ViewBuilder
+    private var wanGroupSection: some View {
+        if receiver.state == .receiving || receiver.relayState != .disconnected {
+            VStack(spacing: 10) {
+                switch receiver.relayState {
+                case .disconnected:
+                    HStack(spacing: 8) {
+                        Image(systemName: "globe")
+                            .foregroundColor(.blue)
+                        TextField("グループコード", text: $groupCode)
+                            .textFieldStyle(.roundedBorder)
+                            .autocorrectionDisabled()
+                            .autocapitalization(.none)
+                        Button(action: {
+                            let code = groupCode.trimmingCharacters(in: .whitespaces)
+                            guard !code.isEmpty else { return }
+                            receiver.connectRelay(group: code)
+                        }) {
+                            Text("Join")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                                .background(groupCode.trimmingCharacters(in: .whitespaces).isEmpty ? Color.gray : Color.blue)
+                                .clipShape(Capsule())
+                        }
+                        .disabled(groupCode.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+
+                case .connecting:
+                    HStack(spacing: 8) {
+                        ProgressView().scaleEffect(0.8)
+                        Text("Joining...")
+                            .font(.footnote.weight(.medium))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+
+                case .connected:
+                    HStack(spacing: 8) {
+                        Image(systemName: "globe")
+                            .foregroundColor(.green)
+                        Text(receiver.relayGroup ?? "WAN")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.green.opacity(0.12))
+                            .clipShape(Capsule())
+                        Spacer()
+                        Button("Leave") { receiver.disconnectRelay() }
+                            .font(.footnote.weight(.medium))
+                            .foregroundColor(.red)
+                    }
+
+                case .error:
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.red)
+                        Text(receiver.relayError ?? "Connection failed")
+                            .font(.footnote)
+                            .foregroundColor(.red)
+                        Spacer()
+                        Button("Retry") {
+                            let code = groupCode.trimmingCharacters(in: .whitespaces)
+                            guard !code.isEmpty else { return }
+                            receiver.connectRelay(group: code)
+                        }
+                        .font(.footnote.weight(.medium))
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        } else if receiver.state == .stopped {
+            HStack(spacing: 8) {
+                Image(systemName: "globe")
+                    .foregroundColor(.secondary)
+                Text("受信開始後にWANグループに参加できます")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.tertiarySystemFill))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
     }
 
     // MARK: - Relay Banner
@@ -217,6 +314,14 @@ struct ContentView: View {
                     .frame(height: 8)
                     .padding(.horizontal, 32)
             }
+
+            // Stream mode toggle (Sync / Jam)
+            Picker("Stream Mode", selection: $streamMode) {
+                Text("Sync").tag("sync")
+                Text("Jam").tag("jam")
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 180)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)

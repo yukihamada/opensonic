@@ -289,6 +289,12 @@ Result<Config> Config::parse(const std::string& yaml_content) {
     if (yaml.has("routing")) load_routing_config(cfg.routing, yaml["routing"]);
     if (yaml.has("plugins")) load_plugins(cfg.plugins, yaml["plugins"]);
 
+    // Stream mode
+    if (yaml.has("mode")) {
+        std::string mode_str = yaml["mode"].as_string("sync");
+        cfg.mode = (mode_str == "jam") ? StreamMode::Jam : StreamMode::Sync;
+    }
+
     auto validate_result = cfg.validate();
     if (!validate_result.ok()) {
         return validate_result.error();
@@ -337,6 +343,9 @@ std::string Config::to_yaml() const {
     out << "  multicast_ptp: \"" << network.multicast_ptp << "\"\n";
     out << "  dscp: " << network.dscp << "\n";
     out << "\n";
+
+    // Stream mode
+    out << "mode: \"" << (mode == StreamMode::Jam ? "jam" : "sync") << "\"\n\n";
 
     // Audio
     out << "audio:\n";
@@ -480,6 +489,11 @@ void Config::merge(const Config& other) {
     // Metrics
     if (other.metrics.enabled) {
         metrics = other.metrics;
+    }
+
+    // Stream mode (merge if non-default)
+    if (other.mode != StreamMode::Sync) {
+        mode = other.mode;
     }
 
     // Plugins (append)

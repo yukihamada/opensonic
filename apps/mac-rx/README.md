@@ -1,18 +1,28 @@
-# Soluna Rx for Mac
+# Soluna for Mac
 
-Mac App Store で配布される macOS 用ネットワークオーディオレシーバー。
-Soluna TX（solunad）が配信するマルチキャスト RTP/OSTP ストリームを受信し、Mac のスピーカーから再生します。
+macOS 用ネットワークオーディオアプリ。**これ 1 つで送信・受信・WAN 接続すべてに対応。solunad は不要。**
 
 ```
-[solunad TX] ──UDP multicast──▶ [soluna_core C++] ──▶ [AudioReceiver] ──▶ [CoreAudio] ──▶ 🔊
-                239.69.0.1:5004          ▲                    ▲
-                                   Bridging Header      SwiftUI UI
+┌─ Soluna アプリ ─────────────────────────────────────────────┐
+│                                                             │
+│  Soluna.driver（仮想デバイス）─→ 共有メモリ ─→ Audio TX     │
+│  マイク入力 ─────────────────────────────→ Mic TX           │
+│  ネットワーク受信 ───────────────────────→ スピーカー出力    │
+│  WAN グループ接続（P2P ホールパンチング）                    │
+│                                                             │
+│  BT / AirPlay / USB スピーカー同期再生                      │
+│  3バンドEQ / コンプレッサー / 空間オーディオ                │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## Features
 
 | Feature | Description |
 |---------|------------|
+| **システム音声送信 (Audio TX)** | Soluna.driver の共有メモリから読み取り → OSTP で送信（solunad 不要） |
+| **マイク送信 (Mic TX)** | Mac のマイクを OSTP マルチキャスト + WAN P2P で送信 |
+| **WAN P2P グループ接続** | グループコードでインターネット越し P2P 接続（UDP ホールパンチング） |
 | Multicast RTP/OSTP | 239.69.0.1:5004 で自動受信 |
 | Bonjour Auto-Discovery | LAN 上の solunad を自動検出 |
 | Multi-Speaker Control | 複数スピーカーの一括ボリューム・ミュート・ディレイ制御 |
@@ -54,7 +64,7 @@ Soluna TX（solunad）が配信するマルチキャスト RTP/OSTP ストリー
 
 - macOS 13.0 (Ventura) 以降
 - Apple Silicon (arm64)
-- Soluna TX（solunad）が同一ネットワーク上で稼働していること
+- Soluna.driver（仮想オーディオデバイス）のインストール（システム音声送信に必要）
 
 ## Build
 
@@ -275,7 +285,7 @@ iOS 版 Soluna Rx と同一のコアコードを使用。macOS 固有の差分�
 
 ## App Store
 
-- **Bundle ID**: `com.soluna.SolunaReceiverMac`
+- **Bundle ID**: `com.soluna.Soluna`
 - **Category**: Music / Utilities
 - **Price**: Free
 - **macOS**: 13.0+

@@ -1,6 +1,12 @@
 # Soluna Configuration for Raspberry Pi
 # Copy to /etc/soluna/config.yaml and customize
 
+# Stream mode
+# Options:
+#   sync - PTP-aligned multi-room playback (best for whole-home audio)
+#   jam  - Ultra-low latency ~20ms (best for real-time jam sessions)
+mode: sync
+
 device:
   # Device name (shown in discovery)
   name: "rpi-soluna"

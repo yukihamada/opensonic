@@ -10,6 +10,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <soluna/soluna.h>
 #include <cstdint>
 #include <cstddef>
 #include <atomic>
@@ -32,6 +33,8 @@ struct JitterBufferConfig {
     double depth_increase_factor = 1.5;    // multiply depth on underrun
     double depth_decrease_rate = 0.001;    // ms per successful read
     double jitter_smoothing = 0.05;        // EMA alpha for jitter estimate
+
+    StreamMode mode = StreamMode::Sync;
 };
 
 struct JitterBufferStats {
@@ -91,6 +94,9 @@ public:
 
     /** Get current target depth in milliseconds. */
     double target_depth_ms() const;
+
+    /** Switch stream mode at runtime. Adjusts depth parameters. */
+    void set_mode(StreamMode mode);
 
 private:
     static constexpr size_t kSlotCount = 512; // power of 2, ~1 second at 2ms packets

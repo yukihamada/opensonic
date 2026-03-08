@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage("port") private var port = 5004
     @AppStorage("channels") private var channels = 2
     @AppStorage("channel") private var channel = "soluna"
+    @AppStorage("streamMode") private var streamMode = "sync"
     @State private var tempMulticastGroup: String = ""
     @State private var tempPort: String = ""
     @State private var tempChannels: Int = 1
@@ -67,6 +68,30 @@ struct SettingsView: View {
                     ) {
                         Text("Mono (1)").tag(1)
                         Text("Stereo (2)").tag(2)
+                    }
+                }
+
+                Section(header: Text("Stream Mode")) {
+                    Picker(selection: $streamMode, label:
+                        HStack {
+                            Image(systemName: "waveform.path")
+                                .foregroundColor(.indigo)
+                                .frame(width: 28)
+                            Text("Mode")
+                        }
+                    ) {
+                        Text("Sync — Multi-room aligned").tag("sync")
+                        Text("Jam — Low latency (~20ms)").tag("jam")
+                    }
+
+                    if streamMode == "sync" {
+                        Text("All speakers play in perfect sync. Best for whole-home audio.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Ultra-low latency for real-time jam sessions and collaboration.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                 }
 
@@ -164,6 +189,7 @@ struct SettingsView: View {
         tempPort = "5004"
         tempChannels = 2
         tempChannel = "soluna"
+        streamMode = "sync"
         // Haptic feedback
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()

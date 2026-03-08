@@ -218,6 +218,35 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 /// bypassing the UDP socket. Thread-safe.
 - (void)injectRawPacket:(NSData * _Nonnull)data;
 
+// ── WAN Relay (Group Code) ────────────────────────────────────────────────
+
+/// WAN relay connection state
+typedef NS_ENUM(NSInteger, SolunaRelayState) {
+    SolunaRelayStateDisconnected = 0,
+    SolunaRelayStateConnecting,
+    SolunaRelayStateConnected,
+    SolunaRelayStateError
+};
+
+/// Connect to a WAN relay server with a group code.
+/// Returns YES if connection attempt started successfully.
+- (BOOL)connectToRelay:(NSString *)host
+                  port:(uint16_t)port
+                 group:(NSString *)group
+              password:(NSString *)password;
+
+/// Disconnect from WAN relay
+- (void)disconnectRelay;
+
+/// Current WAN relay connection state
+@property (nonatomic, readonly) SolunaRelayState relayState;
+
+/// Currently connected group name (empty if not connected)
+@property (nonatomic, readonly, copy, nullable) NSString *relayGroup;
+
+/// Error message from last relay operation (nil if no error)
+@property (nonatomic, readonly, copy, nullable) NSString *relayError;
+
 // ── Mic Transmit (TX) ────────────────────────────────────────────────────
 
 /// Whether mic transmit is currently active
@@ -229,12 +258,42 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 /// Mic input peak level (0.0 - 1.0)
 @property (nonatomic, readonly) float micInputLevel;
 
+// ── Sync Mode ─────────────────────────────────────────────────────────────
+
+/// Synchronized playback mode: all receivers play at the same wall-clock time.
+/// When enabled, the receiver uses OSTP media_timestamp to compute the ideal
+/// buffer depth so that audio on all devices exits the speaker at the same moment.
+@property (nonatomic, assign) BOOL syncMode;
+
+/// Target end-to-end delay in ms (50-1000, default 200). Only used when syncMode=YES.
+@property (nonatomic, assign) uint32_t syncDelayMs;
+
+// ── Mic Transmit (TX) ────────────────────────────────────────────────────
+
 /// Start capturing from the microphone and transmitting via OSTP multicast.
 /// Returns NO on failure.
 - (BOOL)startMicTransmit;
 
 /// Stop mic capture and transmission.
 - (void)stopMicTransmit;
+
+// ── System Audio Transmit (Soluna Virtual Device → Network) ─────────────
+
+/// Whether system audio transmit is active (reads from Soluna.driver SHM)
+@property (nonatomic, readonly) BOOL isShmTransmitting;
+
+/// Number of system audio TX packets sent
+@property (nonatomic, readonly) uint64_t shmTxPacketsSent;
+
+/// System audio TX peak level (0.0 - 1.0)
+@property (nonatomic, readonly) float shmTxLevel;
+
+/// Start sending system audio from Soluna virtual device via OSTP.
+/// Requires Soluna.driver to be installed. Returns NO on failure.
+- (BOOL)startShmTransmit;
+
+/// Stop system audio transmission.
+- (void)stopShmTransmit;
 
 @end
 

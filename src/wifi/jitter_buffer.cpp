@@ -20,6 +20,11 @@ JitterBuffer::JitterBuffer(const JitterBufferConfig& config)
     , target_depth_ms_(config.initial_depth_ms)
 {
     // All slots start unoccupied (default-initialized atomics)
+
+    // Apply Jam mode defaults if configured
+    if (config.mode == StreamMode::Jam) {
+        set_mode(StreamMode::Jam);
+    }
 }
 
 JitterBuffer::~JitterBuffer() = default;
@@ -193,6 +198,22 @@ JitterBufferStats JitterBuffer::stats() const {
 
 double JitterBuffer::target_depth_ms() const {
     return target_depth_ms_.load(std::memory_order_relaxed);
+}
+
+void JitterBuffer::set_mode(StreamMode mode) {
+    if (mode == StreamMode::Jam) {
+        config_.min_depth_ms = 0.5;
+        config_.max_depth_ms = 4.0;
+        config_.initial_depth_ms = 1.0;
+        config_.depth_decrease_rate = 0.01;  // faster convergence to minimum
+        target_depth_ms_.store(1.0, std::memory_order_relaxed);
+    } else {
+        config_.min_depth_ms = 2.0;
+        config_.max_depth_ms = 20.0;
+        config_.initial_depth_ms = 4.0;
+        config_.depth_decrease_rate = 0.001;
+        target_depth_ms_.store(4.0, std::memory_order_relaxed);
+    }
 }
 
 void JitterBuffer::adapt_depth() {

@@ -69,8 +69,8 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
-    /// Jitter buffer target in ms (5–200 ms, default 100 ms)
-    @Published var bufferMs: UInt32 = 40 {
+    /// Jitter buffer target in ms (5–200 ms, default 80 ms — WiFi needs headroom)
+    @Published var bufferMs: UInt32 = 80 {
         didSet {
             receiver.bufferTargetMs = bufferMs
         }
@@ -87,6 +87,28 @@ final class AudioReceiver: ObservableObject {
 
     /// Error message if any
     @Published private(set) var errorMessage: String?
+
+    // ── WAN Relay ────────────────────────────────────────────────────────
+    enum RelayState: String {
+        case disconnected = "Disconnected"
+        case connecting = "Connecting..."
+        case connected = "Connected"
+        case error = "Error"
+
+        init(from objc: SolunaRelayState) {
+            switch objc {
+            case .disconnected: self = .disconnected
+            case .connecting:   self = .connecting
+            case .connected:    self = .connected
+            case .error:        self = .error
+            @unknown default:   self = .disconnected
+            }
+        }
+    }
+
+    @Published private(set) var relayState: RelayState = .disconnected
+    @Published private(set) var relayGroup: String?
+    @Published private(set) var relayError: String?
 
     /// Multicast group address
     var multicastGroup: String {
@@ -185,6 +207,7 @@ final class AudioReceiver: ObservableObject {
             isMicTransmitting = false
         }
 
+        disconnectRelay()
         stopWatchdog()
         state = .stopped
         receiver.stop()
@@ -235,6 +258,35 @@ final class AudioReceiver: ObservableObject {
                 }
             }
         }
+    }
+
+    // MARK: - WAN Relay
+
+    func connectRelay(group: String, password: String = "",
+                      host: String = "46.225.77.119", port: UInt16 = 5100) {
+        guard state == .receiving else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let ok = self.receiver.connect(toRelay: host, port: port,
+                                            group: group, password: password)
+            Task { @MainActor in
+                self.updateRelayState()
+                if !ok {
+                    self.relayError = self.receiver.relayError ?? "Connection failed"
+                }
+            }
+        }
+    }
+
+    func disconnectRelay() {
+        receiver.disconnectRelay()
+        updateRelayState()
+    }
+
+    private func updateRelayState() {
+        relayState = RelayState(from: receiver.relayState)
+        relayGroup = receiver.relayGroup
+        relayError = receiver.relayError
     }
 
     /// Toggle play/stop
@@ -377,6 +429,7 @@ final class AudioReceiver: ObservableObject {
         // isMicTransmitting is managed by toggleMic()/stop() only.
         // Don't overwrite from bridge — it can cause false negatives
         // during session transitions.
+        updateRelayState()
     }
 
     fileprivate func handleError(_ error: Error) {

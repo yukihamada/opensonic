@@ -34,6 +34,7 @@ struct PlayoutBufferConfig {
     size_t frame_size = 4;            // bytes per frame per channel
     uint32_t target_depth_packets = 4; // target buffer depth
     int64_t playout_delay_ns = 1'000'000; // 1ms default playout delay
+    StreamMode mode = StreamMode::Sync;
 };
 
 struct PlayoutBufferStats {
@@ -74,6 +75,9 @@ public:
     /** Set the playout delay in nanoseconds. */
     void set_playout_delay(int64_t delay_ns);
 
+    /** Switch stream mode. In Jam mode, bypasses PTP alignment for minimum latency. */
+    void set_mode(StreamMode mode);
+
     /** Get current stats. */
     PlayoutBufferStats stats() const;
 
@@ -91,6 +95,8 @@ private:
     int64_t base_media_ns_ = 0;
     int64_t base_ptp_ns_ = 0;
     bool base_set_ = false;
+
+    StreamMode mode_ = StreamMode::Sync;
 
     int64_t media_ts_to_playout_ns(uint32_t media_ts) const;
 };

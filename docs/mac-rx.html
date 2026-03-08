@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Soluna for Mac — Network Audio System</title>
-    <meta name="description" content="Mac のシステム音声をどこでも鳴らす。TX + RX + WAN P2P をアプリ1つで。ワンコマンドインストール。">
-    <meta property="og:title" content="Soluna for Mac">
-    <meta property="og:description" content="Mac のシステム音声をどこでも鳴らす。TX + RX + WAN P2P をアプリ1つで。ワンコマンドインストール。">
+    <title>Soluna — Free Wireless Multi-Room Audio</title>
+    <meta name="description" content="Turn Mac, iPhone, and Raspberry Pi into synchronized wireless speakers. Free, open source, no account needed.">
+    <meta property="og:title" content="Soluna — Free Wireless Multi-Room Audio">
+    <meta property="og:description" content="Turn Mac, iPhone, and Raspberry Pi into synchronized wireless speakers. Free, open source, no account needed.">
     <meta property="og:type" content="website">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔊</text></svg>">
     <style>
@@ -33,8 +33,8 @@
             --pink-dim: rgba(255,96,144,0.15);
             --cyan: #40d0e0;
             --cyan-dim: rgba(64,208,224,0.15);
-            --yellow: #e0d060;
-            --yellow-dim: rgba(224,208,96,0.15);
+            --purple: #a78bfa;
+            --purple-dim: rgba(167,139,250,0.15);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html { scroll-behavior: smooth; }
@@ -75,75 +75,49 @@
             font-size: 16px; color: white; font-weight: 800;
         }
         .nav-right { display: flex; align-items: center; gap: 8px; }
-        .lang-switcher {
-            position: relative;
-            display: flex; align-items: center;
-        }
+        .lang-switcher { position: relative; display: flex; align-items: center; }
         .lang-btn {
             display: flex; align-items: center; gap: 6px;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 7px 14px;
-            border-radius: 10px;
-            font-size: 0.82rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
+            background: var(--surface2); border: 1px solid var(--border);
+            color: var(--text); padding: 7px 14px; border-radius: 10px;
+            font-size: 0.82rem; font-weight: 500; cursor: pointer; transition: all 0.2s;
         }
         .lang-btn:hover { background: var(--surface3); border-color: var(--border-light); }
         .lang-btn svg { width: 14px; height: 14px; opacity: 0.5; transition: transform 0.2s; }
         .lang-btn.open svg { transform: rotate(180deg); }
         .lang-dropdown {
             position: absolute; top: 100%; right: 0; margin-top: 6px;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 6px;
-            min-width: 200px;
+            background: var(--surface2); border: 1px solid var(--border);
+            border-radius: 12px; padding: 6px; min-width: 200px;
             box-shadow: 0 16px 48px rgba(0,0,0,0.5);
-            opacity: 0; visibility: hidden;
-            transform: translateY(-8px);
+            opacity: 0; visibility: hidden; transform: translateY(-8px);
             transition: all 0.2s;
             display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
         }
         .lang-dropdown.open { opacity: 1; visibility: visible; transform: translateY(0); }
         .lang-opt {
             display: flex; align-items: center; gap: 8px;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            color: var(--text-dim);
-            cursor: pointer;
-            transition: all 0.15s;
+            padding: 8px 12px; border-radius: 8px; font-size: 0.85rem;
+            color: var(--text-dim); cursor: pointer; transition: all 0.15s;
             border: none; background: none; width: 100%; text-align: left;
         }
         .lang-opt:hover { background: var(--surface3); color: var(--text); }
         .lang-opt.active { color: var(--accent-light); background: rgba(124,108,240,0.1); }
         .lang-opt .flag { font-size: 1.1rem; }
         .nav-download {
-            display: none;
-            padding: 7px 18px;
-            border-radius: 10px;
-            font-size: 0.82rem;
-            font-weight: 600;
-            color: white;
-            background: var(--accent);
-            text-decoration: none;
-            transition: all 0.2s;
+            display: none; padding: 7px 18px; border-radius: 10px;
+            font-size: 0.82rem; font-weight: 600; color: white;
+            background: var(--accent); text-decoration: none; transition: all 0.2s;
         }
         .nav-download:hover { background: #6a5ae0; }
         @media (min-width: 640px) { .nav-download { display: inline-flex; } }
 
         /* ── Hero ── */
         .hero {
-            text-align: center;
-            padding: 140px 28px 60px;
-            position: relative;
+            text-align: center; padding: 140px 28px 60px; position: relative;
         }
         .hero::before {
-            content: '';
-            position: absolute;
+            content: ''; position: absolute;
             top: -100px; left: 50%; transform: translateX(-50%);
             width: 1000px; height: 1000px;
             background:
@@ -155,57 +129,40 @@
             display: inline-flex; align-items: center; gap: 8px;
             font-size: 0.78rem; font-weight: 600;
             letter-spacing: 0.06em; text-transform: uppercase;
-            color: var(--green);
-            background: var(--green-dim);
+            color: var(--green); background: var(--green-dim);
             border: 1px solid rgba(0,212,160,0.2);
-            padding: 8px 18px;
-            border-radius: 100px;
-            margin-bottom: 28px;
+            padding: 8px 18px; border-radius: 100px; margin-bottom: 28px;
         }
         .hero-badge .dot {
             width: 6px; height: 6px; border-radius: 50%;
-            background: var(--green);
-            animation: pulse 2s infinite;
+            background: var(--green); animation: pulse 2s infinite;
         }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .hero h1 {
-            font-size: clamp(2.8rem, 7vw, 4.5rem);
-            font-weight: 800;
-            letter-spacing: -0.04em;
-            line-height: 1.08;
-            margin-bottom: 24px;
+            font-size: clamp(2.4rem, 6vw, 3.8rem);
+            font-weight: 800; letter-spacing: -0.04em;
+            line-height: 1.12; margin-bottom: 24px;
         }
         .hero h1 .gradient {
             background: linear-gradient(135deg, #b0a4ff 0%, #7c6cf0 40%, #00d4a0 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
         }
         .hero-desc {
-            font-size: 1.2rem;
-            color: var(--text-dim);
-            max-width: 520px;
-            margin: 0 auto 44px;
-            line-height: 1.7;
+            font-size: 1.15rem; color: var(--text-dim);
+            max-width: 560px; margin: 0 auto 16px; line-height: 1.7;
+        }
+        .hero-note {
+            font-size: 0.88rem; color: var(--text-muted);
+            margin-bottom: 36px;
         }
         .hero-buttons {
-            display: flex;
-            gap: 14px;
-            justify-content: center;
-            flex-wrap: wrap;
+            display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
         }
         .btn {
             display: inline-flex; align-items: center; gap: 10px;
-            padding: 15px 30px;
-            border-radius: 14px;
-            font-size: 0.95rem;
-            font-weight: 600;
-            text-decoration: none;
-            transition: all 0.25s;
-            position: relative;
+            padding: 15px 30px; border-radius: 14px;
+            font-size: 0.95rem; font-weight: 600;
+            text-decoration: none; transition: all 0.25s; position: relative;
         }
         .btn-primary {
             background: linear-gradient(135deg, var(--accent), #5a4bd1);
@@ -215,42 +172,32 @@
         .btn-primary:hover {
             transform: translateY(-3px);
             box-shadow: 0 10px 32px var(--accent-glow);
-            text-decoration: none;
         }
         .btn-secondary {
-            background: var(--surface2);
-            color: var(--text);
+            background: var(--surface2); color: var(--text);
             border: 1px solid var(--border);
         }
-        .btn-secondary:hover { background: var(--surface3); border-color: var(--border-light); text-decoration: none; }
+        .btn-secondary:hover { background: var(--surface3); border-color: var(--border-light); }
         .btn-outline {
-            background: transparent;
-            color: var(--text-dim);
+            background: transparent; color: var(--text-dim);
             border: 1px solid var(--border);
         }
-        .btn-outline:hover { background: var(--surface2); color: var(--text); text-decoration: none; }
+        .btn-outline:hover { background: var(--surface2); color: var(--text); }
         .btn svg { width: 18px; height: 18px; flex-shrink: 0; }
 
         /* ── App Preview (Mock) ── */
         .preview-section {
-            padding: 40px 28px 100px;
-            display: flex; justify-content: center;
+            padding: 40px 28px 100px; display: flex; justify-content: center;
         }
         .mac-window {
             width: 100%; max-width: 680px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            overflow: hidden;
-            box-shadow:
-                0 40px 100px rgba(0,0,0,0.5),
-                0 0 0 1px rgba(255,255,255,0.03),
-                0 0 80px rgba(124,108,240,0.06);
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 14px; overflow: hidden;
+            box-shadow: 0 40px 100px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03), 0 0 80px rgba(124,108,240,0.06);
         }
         .mac-titlebar {
             display: flex; align-items: center; gap: 7px;
-            padding: 13px 16px;
-            background: var(--surface2);
+            padding: 13px 16px; background: var(--surface2);
             border-bottom: 1px solid var(--border);
         }
         .mac-dot { width: 11px; height: 11px; border-radius: 50%; }
@@ -266,12 +213,17 @@
             padding: 32px 28px;
             display: flex; flex-direction: column; align-items: center; gap: 24px;
         }
-        .mock-hero-circle {
-            width: 80px; height: 80px; border-radius: 50%;
-            background: linear-gradient(135deg, rgba(0,212,160,0.15), rgba(0,212,160,0.05));
-            display: flex; align-items: center; justify-content: center;
-            font-size: 28px; color: var(--green);
-            box-shadow: 0 0 30px rgba(0,212,160,0.15);
+        .mock-now-playing {
+            text-align: center;
+        }
+        .mock-now-playing .mock-np-icon {
+            font-size: 28px; margin-bottom: 8px;
+        }
+        .mock-now-playing .mock-np-title {
+            font-size: 1rem; font-weight: 700;
+        }
+        .mock-now-playing .mock-np-artist {
+            font-size: 0.85rem; color: var(--text-dim);
         }
         .mock-pill {
             display: inline-flex; align-items: center; gap: 6px;
@@ -279,34 +231,18 @@
             font-size: 0.8rem; font-weight: 600;
         }
         .mock-pill.green { background: var(--green-dim); color: var(--green); }
-        .mock-stats {
-            display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
-        }
-        .mock-stat {
-            padding: 8px 14px; border-radius: 10px;
-            text-align: center;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-        }
-        .mock-stat-val { font-size: 0.95rem; font-weight: 700; font-family: "SF Mono", monospace; }
-        .mock-stat-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; }
         .mock-speakers {
-            width: 100%;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            overflow: hidden;
+            width: 100%; background: var(--surface2);
+            border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
         }
         .mock-speaker-header {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 14px 18px;
-            border-bottom: 1px solid var(--border);
+            padding: 14px 18px; border-bottom: 1px solid var(--border);
         }
         .mock-speaker-header span { font-size: 0.9rem; font-weight: 600; }
         .mock-speaker-row {
             display: flex; align-items: center; gap: 12px;
-            padding: 14px 18px;
-            border-bottom: 1px solid rgba(255,255,255,0.03);
+            padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,0.03);
         }
         .mock-speaker-row:last-child { border-bottom: none; }
         .mock-speaker-icon {
@@ -316,251 +252,204 @@
         .mock-speaker-icon .online {
             position: absolute; bottom: -2px; right: -2px;
             width: 8px; height: 8px; border-radius: 50%;
-            background: var(--green);
-            border: 2px solid var(--surface2);
+            background: var(--green); border: 2px solid var(--surface2);
         }
         .mock-slider {
             flex: 1; height: 4px; border-radius: 2px;
-            background: var(--border);
-            position: relative;
+            background: var(--border); position: relative;
         }
         .mock-slider-fill {
             position: absolute; top: 0; left: 0;
-            height: 100%; border-radius: 2px;
-            background: var(--accent-light);
+            height: 100%; border-radius: 2px; background: var(--accent-light);
         }
         .mock-speaker-vol { font-size: 0.75rem; color: var(--text-muted); font-family: "SF Mono", monospace; width: 36px; text-align: right; }
+        .mock-speaker-name { flex: 0 0 auto; font-size: 0.85rem; font-weight: 600; }
 
         /* ── Section styles ── */
         .section { padding: 100px 0; }
         .section-header { text-align: center; margin-bottom: 64px; }
         .section-label {
-            display: inline-block;
-            font-size: 0.72rem; font-weight: 700;
+            display: inline-block; font-size: 0.72rem; font-weight: 700;
             letter-spacing: 0.1em; text-transform: uppercase;
-            color: var(--accent-light);
-            margin-bottom: 16px;
+            color: var(--accent-light); margin-bottom: 16px;
         }
         .section-title {
             font-size: clamp(1.8rem, 4vw, 2.6rem);
-            font-weight: 800;
-            letter-spacing: -0.03em;
-            line-height: 1.15;
-            margin-bottom: 16px;
+            font-weight: 800; letter-spacing: -0.03em;
+            line-height: 1.15; margin-bottom: 16px;
         }
         .section-desc {
-            color: var(--text-dim);
-            font-size: 1.1rem;
-            max-width: 560px;
-            margin: 0 auto;
+            color: var(--text-dim); font-size: 1.1rem;
+            max-width: 560px; margin: 0 auto;
         }
+
+        /* ── Use Cases ── */
+        .usecase-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;
+        }
+        @media (max-width: 700px) { .usecase-grid { grid-template-columns: 1fr; } }
+        .usecase-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 18px; padding: 30px 26px;
+            border-left: 3px solid var(--accent);
+            transition: all 0.3s;
+        }
+        .usecase-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 16px 40px rgba(0,0,0,0.3);
+            border-color: var(--border-light);
+        }
+        .usecase-card.uc-green { border-left-color: var(--green); }
+        .usecase-card.uc-purple { border-left-color: var(--purple); }
+        .usecase-card.uc-blue { border-left-color: var(--blue); }
+        .usecase-card.uc-orange { border-left-color: var(--orange); }
+        .usecase-card .uc-icon { font-size: 1.8rem; margin-bottom: 12px; }
+        .usecase-card h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
+        .usecase-card p { color: var(--text-dim); font-size: 0.88rem; line-height: 1.65; }
 
         /* ── Features ── */
         .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 18px;
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
         }
         @media (max-width: 900px) { .feature-grid { grid-template-columns: repeat(2, 1fr); } }
         @media (max-width: 600px) { .feature-grid { grid-template-columns: 1fr; } }
         .feature-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            padding: 30px 26px;
-            transition: all 0.3s;
-            position: relative;
-            overflow: hidden;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 18px; padding: 30px 26px;
+            transition: all 0.3s; position: relative; overflow: hidden;
         }
         .feature-card::before {
-            content: '';
-            position: absolute; top: 0; left: 0; right: 0;
+            content: ''; position: absolute; top: 0; left: 0; right: 0;
             height: 2px;
             background: linear-gradient(90deg, transparent, var(--accent), transparent);
-            opacity: 0;
-            transition: opacity 0.3s;
+            opacity: 0; transition: opacity 0.3s;
         }
         .feature-card:hover {
-            border-color: var(--border-light);
-            transform: translateY(-4px);
+            border-color: var(--border-light); transform: translateY(-4px);
             box-shadow: 0 16px 40px rgba(0,0,0,0.3);
         }
         .feature-card:hover::before { opacity: 1; }
         .feature-icon {
-            width: 48px; height: 48px;
-            border-radius: 14px;
+            width: 48px; height: 48px; border-radius: 14px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 22px;
-            margin-bottom: 18px;
+            font-size: 22px; margin-bottom: 18px;
         }
-        .feature-card h3 {
-            font-size: 1.05rem;
-            font-weight: 700;
-            margin-bottom: 8px;
-            letter-spacing: -0.01em;
+        .feature-card h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
+        .feature-card p { color: var(--text-dim); font-size: 0.88rem; line-height: 1.65; }
+
+        /* ── Comparison Table ── */
+        .table-wrap {
+            overflow-x: auto; -webkit-overflow-scrolling: touch;
+            border-radius: 18px; border: 1px solid var(--border);
         }
-        .feature-card p {
-            color: var(--text-dim);
-            font-size: 0.88rem;
-            line-height: 1.65;
+        .cmp-table {
+            width: 100%; border-collapse: collapse;
+            font-size: 0.88rem; min-width: 700px;
         }
+        .cmp-table th, .cmp-table td {
+            padding: 14px 16px; text-align: center;
+            border-bottom: 1px solid var(--border);
+        }
+        .cmp-table th {
+            background: var(--surface2); font-weight: 700;
+            font-size: 0.82rem; text-transform: uppercase;
+            letter-spacing: 0.04em; color: var(--text-dim);
+        }
+        .cmp-table th:first-child, .cmp-table td:first-child {
+            text-align: left; font-weight: 600; color: var(--text);
+        }
+        .cmp-table td { color: var(--text-dim); }
+        .cmp-table tr:last-child td { border-bottom: none; }
+        .cmp-table .cmp-highlight {
+            background: rgba(124,108,240,0.06);
+        }
+        .cmp-table th.cmp-highlight {
+            color: var(--accent-light);
+            background: rgba(124,108,240,0.12);
+        }
+        .cmp-table td.cmp-highlight {
+            color: var(--text); font-weight: 600;
+        }
+        .cmp-yes { color: var(--green) !important; }
+        .cmp-no { color: var(--text-muted) !important; }
+        .cmp-warn { color: var(--orange) !important; }
 
         /* ── How it works ── */
         .steps-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 24px;
-            max-width: 900px;
-            margin: 0 auto;
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 24px; max-width: 900px; margin: 0 auto;
         }
         @media (max-width: 700px) { .steps-grid { grid-template-columns: 1fr; } }
         .step-card {
-            text-align: center;
-            padding: 36px 24px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            position: relative;
+            text-align: center; padding: 36px 24px;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 18px; position: relative;
         }
         .step-num {
             width: 44px; height: 44px; border-radius: 50%;
             background: linear-gradient(135deg, var(--accent), #5a4bd1);
             color: white;
             display: inline-flex; align-items: center; justify-content: center;
-            font-size: 1.1rem; font-weight: 800;
-            margin-bottom: 18px;
+            font-size: 1.1rem; font-weight: 800; margin-bottom: 18px;
         }
-        .step-card h3 {
-            font-size: 1.05rem; font-weight: 700;
-            margin-bottom: 8px;
-        }
-        .step-card p {
-            color: var(--text-dim);
-            font-size: 0.88rem;
-            line-height: 1.65;
-        }
+        .step-card h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
+        .step-card p { color: var(--text-dim); font-size: 0.88rem; line-height: 1.65; }
         .step-arrow {
-            display: none;
-            position: absolute; right: -18px; top: 50%;
-            transform: translateY(-50%);
-            color: var(--border-light); font-size: 1.5rem;
+            display: none; position: absolute; right: -18px; top: 50%;
+            transform: translateY(-50%); color: var(--border-light); font-size: 1.5rem;
         }
         @media (min-width: 701px) {
             .step-card:not(:last-child) .step-arrow { display: block; }
         }
 
-        /* ── Install Options (3 cards) ── */
-        .install-options {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            max-width: 960px;
-            margin: 0 auto;
+        /* ── Download Section ── */
+        .download-section { text-align: center; max-width: 600px; margin: 0 auto; }
+        .download-btn {
+            display: inline-flex; align-items: center; gap: 12px;
+            background: linear-gradient(135deg, var(--accent), var(--green));
+            color: white; font-size: 1.2rem; font-weight: 700;
+            padding: 20px 48px; border-radius: 16px;
+            text-decoration: none; transition: all 0.3s;
+            box-shadow: 0 4px 24px var(--accent-glow); margin-bottom: 20px;
         }
-        @media (max-width: 800px) { .install-options { grid-template-columns: 1fr; } }
-        .install-option {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            padding: 32px 24px;
-            transition: all 0.3s;
-            position: relative;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
+        .download-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 32px var(--accent-glow); }
+        .download-btn svg { width: 24px; height: 24px; }
+        .download-req { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 32px; }
+
+        /* ── Download includes ── */
+        .dl-includes {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 12px; margin-bottom: 32px; text-align: left;
         }
-        .install-option::before {
-            content: '';
-            position: absolute; top: 0; left: 0; right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, transparent, var(--accent), transparent);
-            opacity: 0;
-            transition: opacity 0.3s;
+        @media (max-width: 500px) { .dl-includes { grid-template-columns: 1fr; } }
+        .dl-include-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 14px 16px; background: var(--surface);
+            border: 1px solid var(--border); border-radius: 12px;
+            font-size: 0.85rem; transition: border-color 0.2s;
         }
-        .install-option:hover {
-            border-color: var(--border-light);
-            transform: translateY(-4px);
-            box-shadow: 0 16px 40px rgba(0,0,0,0.3);
-        }
-        .install-option:hover::before { opacity: 1; }
-        .install-option.recommended {
-            border-color: var(--accent);
-            box-shadow: 0 0 30px var(--accent-glow);
-        }
-        .install-option.recommended::before { opacity: 1; }
-        .io-badge {
-            display: inline-flex; align-items: center; gap: 6px;
-            font-size: 0.68rem; font-weight: 700;
-            letter-spacing: 0.08em; text-transform: uppercase;
-            padding: 5px 12px; border-radius: 100px;
-            margin-bottom: 16px; width: fit-content;
-        }
-        .io-badge.green { background: var(--green-dim); color: var(--green); }
-        .io-badge.blue { background: rgba(99,102,241,0.15); color: var(--accent-light); }
-        .io-badge.orange { background: rgba(251,146,60,0.15); color: var(--orange); }
-        .io-icon {
-            font-size: 40px;
-            margin-bottom: 14px;
-        }
-        .io-title {
-            font-size: 1.15rem; font-weight: 700;
-            margin-bottom: 6px;
-        }
-        .io-who {
-            font-size: 0.82rem; color: var(--accent-light);
-            margin-bottom: 12px; font-weight: 500;
-        }
-        .io-desc {
-            font-size: 0.88rem; color: var(--text-dim);
-            line-height: 1.65; margin-bottom: 16px;
-            flex: 1;
-        }
-        .io-cmd {
-            display: block;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 10px 14px;
-            font-size: 0.8rem;
-            color: var(--green);
-            font-family: "SF Mono", "Fira Code", monospace;
-            white-space: pre;
-            overflow-x: auto;
-            margin-top: auto;
-        }
-        .io-steps {
-            margin-top: 14px;
-            font-size: 0.82rem;
-            color: var(--text-dim);
-            line-height: 1.8;
-        }
-        .io-steps strong { color: var(--text); }
+        .dl-include-item:hover { border-color: var(--border-light); }
+        .dl-include-item strong { color: var(--text); display: block; font-size: 0.88rem; }
+        .dl-include-item span:last-child { color: var(--text-dim); font-size: 0.8rem; }
+        .dl-include-icon { font-size: 1.4rem; flex-shrink: 0; width: 36px; text-align: center; }
 
         /* ── Specs ── */
         .specs-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            max-width: 960px;
-            margin: 0 auto;
+            display: grid; grid-template-columns: repeat(4, 1fr);
+            gap: 16px; max-width: 960px; margin: 0 auto;
         }
         @media (max-width: 800px) { .specs-grid { grid-template-columns: repeat(2, 1fr); } }
         .spec-item {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 24px 18px;
-            text-align: center;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px 18px; text-align: center;
             transition: all 0.25s;
         }
         .spec-item:hover { border-color: var(--border-light); transform: translateY(-2px); }
         .spec-value {
             font-size: 1.5rem; font-weight: 800;
             background: linear-gradient(135deg, var(--accent-light), var(--green));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 6px;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 6px;
         }
         .spec-label { font-size: 0.8rem; color: var(--text-dim); }
 
@@ -571,11 +460,8 @@
         }
         .platform-card {
             flex: 1; min-width: 200px; max-width: 320px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            padding: 32px 24px;
-            text-align: center;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 18px; padding: 32px 24px; text-align: center;
             transition: all 0.25s;
         }
         .platform-card:hover { border-color: var(--border-light); transform: translateY(-3px); }
@@ -585,20 +471,16 @@
         .platform-link {
             display: inline-flex; align-items: center; gap: 6px;
             font-size: 0.85rem; font-weight: 600;
-            color: var(--accent-light);
-            text-decoration: none;
+            color: var(--accent-light); text-decoration: none;
         }
         .platform-link:hover { text-decoration: underline; }
 
         /* ── CTA ── */
         .cta {
-            text-align: center;
-            padding: 100px 28px 80px;
-            position: relative;
+            text-align: center; padding: 100px 28px 80px; position: relative;
         }
         .cta::before {
-            content: '';
-            position: absolute;
+            content: ''; position: absolute;
             top: 0; left: 50%; transform: translateX(-50%);
             width: 800px; height: 500px;
             background: radial-gradient(ellipse at center, rgba(124,108,240,0.08) 0%, transparent 70%);
@@ -606,22 +488,14 @@
         }
         .cta h2 {
             font-size: clamp(1.8rem, 4vw, 2.4rem);
-            font-weight: 800;
-            margin-bottom: 16px;
-            letter-spacing: -0.02em;
+            font-weight: 800; margin-bottom: 16px; letter-spacing: -0.02em;
         }
-        .cta p {
-            color: var(--text-dim);
-            font-size: 1.1rem;
-            margin-bottom: 36px;
-        }
+        .cta p { color: var(--text-dim); font-size: 1.1rem; margin-bottom: 36px; }
 
         /* ── Footer ── */
         footer {
-            text-align: center;
-            padding: 40px 28px;
-            color: var(--text-muted);
-            font-size: 0.82rem;
+            text-align: center; padding: 40px 28px;
+            color: var(--text-muted); font-size: 0.82rem;
             border-top: 1px solid var(--border);
         }
         footer a { color: var(--text-dim); text-decoration: none; }
@@ -634,6 +508,224 @@
             transition: opacity 0.7s, transform 0.7s;
         }
         .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+        /* ── Staggered children ── */
+        .stagger-children > * {
+            opacity: 0; transform: translateY(20px);
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+        .stagger-children.visible > *:nth-child(1) { transition-delay: 0s; }
+        .stagger-children.visible > *:nth-child(2) { transition-delay: 0.1s; }
+        .stagger-children.visible > *:nth-child(3) { transition-delay: 0.2s; }
+        .stagger-children.visible > *:nth-child(4) { transition-delay: 0.3s; }
+        .stagger-children.visible > *:nth-child(5) { transition-delay: 0.4s; }
+        .stagger-children.visible > *:nth-child(6) { transition-delay: 0.5s; }
+        .stagger-children.visible > * { opacity: 1; transform: translateY(0); }
+
+        /* ── Hero entrance ── */
+        .hero .hero-badge,
+        .hero h1,
+        .hero .hero-desc,
+        .hero .hero-note,
+        .hero .hero-buttons {
+            opacity: 0; transform: translateY(20px);
+            animation: heroEntrance 0.8s ease forwards;
+        }
+        .hero .hero-badge   { animation-delay: 0.1s; }
+        .hero h1             { animation-delay: 0.3s; }
+        .hero .hero-desc     { animation-delay: 0.5s; }
+        .hero .hero-note     { animation-delay: 0.65s; }
+        .hero .hero-buttons  { animation-delay: 0.8s; }
+        @keyframes heroEntrance {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Typewriter ── */
+        .typewriter-text {
+            display: inline;
+        }
+        .typewriter-cursor {
+            display: inline-block;
+            width: 3px;
+            height: 0.9em;
+            background: var(--accent-light);
+            margin-left: 4px;
+            vertical-align: baseline;
+            animation: cursorBlink 0.7s step-end infinite;
+            border-radius: 2px;
+        }
+        @keyframes cursorBlink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* ── Floating particles ── */
+        .particles {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 0; overflow: hidden;
+        }
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0;
+            animation: floatUp linear infinite;
+        }
+        @keyframes floatUp {
+            0%   { opacity: 0; transform: translateY(0) scale(0); }
+            10%  { opacity: 0.6; }
+            90%  { opacity: 0.1; }
+            100% { opacity: 0; transform: translateY(-100vh) scale(1); }
+        }
+
+        /* ── Mock progress bar animation ── */
+        .mock-slider-fill {
+            width: 0;
+            transition: width 1s ease-out;
+        }
+        .mock-slider-fill.animated {
+            width: var(--target-width);
+        }
+
+        /* ── Glow pulse on primary button ── */
+        .btn-primary::after {
+            content: '';
+            position: absolute; inset: -2px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, var(--accent), var(--green));
+            opacity: 0;
+            z-index: -1;
+            filter: blur(16px);
+            transition: opacity 0.4s;
+        }
+        .btn-primary:hover::after { opacity: 0.4; }
+
+        /* ── Comparison row hover ── */
+        .cmp-table tbody tr {
+            transition: background 0.2s;
+        }
+        .cmp-table tbody tr:hover {
+            background: rgba(124,108,240,0.04);
+        }
+
+        /* ── Spec counter ── */
+        .spec-value[data-count] {
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ── Music equalizer animation (mock) ── */
+        .mock-eq {
+            display: flex; align-items: flex-end; gap: 3px; height: 24px;
+            margin-top: 4px;
+        }
+        .mock-eq-bar {
+            width: 3px; border-radius: 2px;
+            background: var(--accent-light);
+            animation: eqBounce 0.8s ease-in-out infinite alternate;
+        }
+        .mock-eq-bar:nth-child(1) { height: 40%; animation-delay: 0s; }
+        .mock-eq-bar:nth-child(2) { height: 70%; animation-delay: 0.15s; }
+        .mock-eq-bar:nth-child(3) { height: 55%; animation-delay: 0.3s; }
+        .mock-eq-bar:nth-child(4) { height: 85%; animation-delay: 0.1s; }
+        .mock-eq-bar:nth-child(5) { height: 45%; animation-delay: 0.25s; }
+        @keyframes eqBounce {
+            0%   { transform: scaleY(0.3); }
+            100% { transform: scaleY(1); }
+        }
+
+        /* ── Section divider glow ── */
+        .section-divider {
+            height: 1px;
+            max-width: 400px;
+            margin: 0 auto;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0.3;
+        }
+
+        /* ── Pricing ── */
+        .pricing-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 20px; max-width: 960px; margin: 0 auto;
+        }
+        @media (max-width: 800px) { .pricing-grid { grid-template-columns: 1fr; max-width: 400px; } }
+        .pricing-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 18px; padding: 36px 28px; text-align: center;
+            display: flex; flex-direction: column; transition: all 0.3s;
+        }
+        .pricing-card:hover { border-color: var(--border-light); transform: translateY(-4px); box-shadow: 0 16px 40px rgba(0,0,0,0.3); }
+        .pricing-card.recommended {
+            border-color: var(--accent); position: relative;
+            box-shadow: 0 0 30px var(--accent-glow);
+        }
+        .pricing-popular {
+            position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(135deg, var(--accent), #5a4bd1);
+            color: white; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em;
+            padding: 5px 16px; border-radius: 100px; white-space: nowrap;
+        }
+        .pricing-plan { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
+        .pricing-price { font-size: 2.4rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px; }
+        .pricing-price .currency { font-size: 1.2rem; vertical-align: super; }
+        .pricing-period { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 24px; }
+        .pricing-features {
+            list-style: none; text-align: left; flex: 1;
+            margin-bottom: 28px; display: flex; flex-direction: column; gap: 10px;
+        }
+        .pricing-features li {
+            font-size: 0.88rem; color: var(--text-dim);
+            display: flex; align-items: flex-start; gap: 8px;
+        }
+        .pricing-features li::before { content: "✓"; color: var(--green); font-weight: 700; flex-shrink: 0; }
+        .pricing-features li.disabled { color: var(--text-muted); }
+        .pricing-features li.disabled::before { content: "—"; color: var(--text-muted); }
+        .pricing-cta {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 13px 28px; border-radius: 12px; font-size: 0.92rem; font-weight: 600;
+            text-decoration: none; transition: all 0.25s; margin-top: auto;
+        }
+        .pricing-cta.primary { background: linear-gradient(135deg, var(--accent), #5a4bd1); color: white; border: none; }
+        .pricing-cta.primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px var(--accent-glow); }
+        .pricing-cta.secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+        .pricing-cta.secondary:hover { background: var(--surface3); border-color: var(--border-light); }
+        .pricing-toggle {
+            display: flex; align-items: center; justify-content: center; gap: 12px;
+            margin-bottom: 40px;
+        }
+        .pricing-toggle span { font-size: 0.88rem; color: var(--text-dim); font-weight: 500; }
+        .pricing-toggle span.active { color: var(--text); font-weight: 600; }
+        .toggle-switch {
+            width: 48px; height: 26px; border-radius: 13px;
+            background: var(--surface3); border: 1px solid var(--border);
+            position: relative; cursor: pointer; transition: background 0.2s;
+        }
+        .toggle-switch::after {
+            content: ''; position: absolute; top: 3px; left: 3px;
+            width: 18px; height: 18px; border-radius: 50%;
+            background: var(--accent-light); transition: transform 0.2s;
+        }
+        .toggle-switch.yearly::after { transform: translateX(22px); }
+        .toggle-switch.yearly { background: var(--accent-glow); }
+        .pricing-save {
+            font-size: 0.72rem; font-weight: 600; color: var(--green);
+            background: var(--green-dim); padding: 3px 10px; border-radius: 100px;
+        }
+        .pricing-note { font-size: 0.8rem; color: var(--text-muted); margin-top: 12px; }
+
+        /* ── PRO badge (feature cards) ── */
+        .pro-badge {
+            display: inline-flex; align-items: center;
+            font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em;
+            color: var(--accent-light); background: rgba(124,108,240,0.15);
+            border: 1px solid rgba(124,108,240,0.3);
+            padding: 2px 8px; border-radius: 100px; margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        /* ── Download free note ── */
+        .dl-free-note {
+            font-size: 0.85rem; color: var(--text-dim);
+            margin-top: -8px; margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
@@ -654,37 +746,37 @@
                 </button>
                 <div class="lang-dropdown" id="langDrop"></div>
             </div>
-            <a href="#install" class="nav-download" data-i18n="nav_download">Install</a>
+            <a href="#download" class="nav-download" data-i18n="nav_download">Download</a>
         </div>
     </div>
 </nav>
 
-<!-- Hero -->
+<!-- Floating particles -->
+<div class="particles" id="particles"></div>
+
+<!-- 1. Hero -->
 <section class="hero">
     <div class="hero-badge">
         <span class="dot"></span>
-        <span data-i18n="badge">3 WAYS TO INSTALL</span>
+        <span data-i18n="badge">FREE — UP TO 1,000 USERS</span>
     </div>
     <h1>
-        <span class="gradient">Soluna</span><br>
-        <span data-i18n="hero_sub">for Mac</span>
+        <span class="gradient typewriter-text" id="heroTypewriter"></span><span class="typewriter-cursor" id="heroCursor"></span>
     </h1>
-    <p class="hero-desc" data-i18n="hero_desc">
-        TX + RX + WAN P2P all in one app. System audio streaming, mic TX, multi-speaker sync. No separate daemon needed.
-    </p>
+    <p class="hero-desc" data-i18n="hero_desc">Turn your Mac, iPhone, and Raspberry Pi into wireless speakers. Perfectly synchronized playback across every device.</p>
+    <p class="hero-note" data-i18n="hero_note">Free for up to 1,000 users. All features included.</p>
     <div class="hero-buttons">
-        <a href="#install" class="btn btn-primary">
+        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" class="btn btn-primary">
             <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-            <span data-i18n="btn_download">Install with 1 Command</span>
+            <span data-i18n="btn_download">Download for Mac</span>
         </a>
-        <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-            <span data-i18n="btn_source">View Source</span>
+        <a href="#howto" class="btn btn-secondary">
+            <span data-i18n="btn_howto">How It Works</span>
         </a>
     </div>
 </section>
 
-<!-- App Preview -->
+<!-- 2. App Preview -->
 <section class="preview-section fade-in">
     <div class="mac-window">
         <div class="mac-titlebar">
@@ -694,343 +786,429 @@
             <div class="mac-titlebar-text">Soluna</div>
         </div>
         <div class="mac-content">
-            <div class="mock-hero-circle">&#9654;</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">
-                <div class="mock-pill green" data-i18n="mock_receiving">Audio TX ON</div>
-                <div class="mock-pill" style="background:var(--blue-dim);color:var(--blue)">RX</div>
-                <div class="mock-pill" style="background:rgba(139,92,246,0.15);color:#a78bfa">WAN P2P</div>
-            </div>
-            <div class="mock-stats">
-                <div class="mock-stat">
-                    <div class="mock-stat-val" style="color:var(--green)">12.4K</div>
-                    <div class="mock-stat-label">PKTS</div>
-                </div>
-                <div class="mock-stat">
-                    <div class="mock-stat-val" style="color:var(--orange)">0.1%</div>
-                    <div class="mock-stat-label">DROP</div>
-                </div>
-                <div class="mock-stat">
-                    <div class="mock-stat-val">20ms</div>
-                    <div class="mock-stat-label">BUF</div>
+            <div class="mock-now-playing">
+                <div class="mock-np-icon">🎵</div>
+                <div class="mock-np-title">Clair de Lune</div>
+                <div class="mock-np-artist">Claude Debussy</div>
+                <div class="mock-eq">
+                    <div class="mock-eq-bar"></div>
+                    <div class="mock-eq-bar"></div>
+                    <div class="mock-eq-bar"></div>
+                    <div class="mock-eq-bar"></div>
+                    <div class="mock-eq-bar"></div>
                 </div>
             </div>
+            <div class="mock-pill green" data-i18n="mock_sync">4 speakers synced</div>
             <div class="mock-speakers">
                 <div class="mock-speaker-header">
-                    <span data-i18n="mock_speakers">Speakers</span>
+                    <span data-i18n="mock_speakers_label">Speakers</span>
                     <span style="color:var(--accent-light);font-size:1.1rem">+</span>
                 </div>
                 <div class="mock-speaker-row">
                     <div class="mock-speaker-icon">🖥<div class="online"></div></div>
-                    <div style="flex:0 0 auto;font-size:0.85rem;font-weight:600" data-i18n="mock_this_mac">This Mac</div>
-                    <div class="mock-slider"><div class="mock-slider-fill" style="width:72%"></div></div>
+                    <div class="mock-speaker-name" data-i18n="mock_living">Living Room</div>
+                    <div class="mock-slider"><div class="mock-slider-fill" style="--target-width:72%"></div></div>
                     <div class="mock-speaker-vol">72%</div>
                 </div>
                 <div class="mock-speaker-row">
                     <div class="mock-speaker-icon">🔈<div class="online"></div></div>
-                    <div style="flex:0 0 auto;font-size:0.85rem;font-weight:600">Living Room</div>
-                    <div class="mock-slider"><div class="mock-slider-fill" style="width:85%;background:var(--blue)"></div></div>
+                    <div class="mock-speaker-name" data-i18n="mock_kitchen">Kitchen</div>
+                    <div class="mock-slider"><div class="mock-slider-fill" style="--target-width:85%;background:var(--blue)"></div></div>
                     <div class="mock-speaker-vol">85%</div>
                 </div>
                 <div class="mock-speaker-row">
-                    <div class="mock-speaker-icon" style="font-size:0.9rem">🎧<div class="online"></div></div>
-                    <div style="flex:0 0 auto;font-size:0.85rem;font-weight:600">AirPods Pro</div>
-                    <div class="mock-slider"><div class="mock-slider-fill" style="width:60%;background:var(--green)"></div></div>
+                    <div class="mock-speaker-icon">🛏<div class="online"></div></div>
+                    <div class="mock-speaker-name" data-i18n="mock_bedroom">Bedroom</div>
+                    <div class="mock-slider"><div class="mock-slider-fill" style="--target-width:60%;background:var(--green)"></div></div>
                     <div class="mock-speaker-vol">60%</div>
+                </div>
+                <div class="mock-speaker-row">
+                    <div class="mock-speaker-icon">🌿<div class="online"></div></div>
+                    <div class="mock-speaker-name" data-i18n="mock_terrace">Terrace</div>
+                    <div class="mock-slider"><div class="mock-slider-fill" style="--target-width:45%;background:var(--orange)"></div></div>
+                    <div class="mock-speaker-vol">45%</div>
                 </div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Features -->
-<section class="section features fade-in">
+<div class="section-divider"></div>
+
+<!-- 3. Use Cases -->
+<section class="section fade-in">
+    <div class="container">
+        <div class="section-header">
+            <div class="section-label" data-i18n="uc_label">USE CASES</div>
+            <h2 class="section-title" data-i18n="uc_title">How will you use it?</h2>
+            <p class="section-desc" data-i18n="uc_desc">From everyday listening to professional collaboration</p>
+        </div>
+        <div class="usecase-grid stagger-children">
+            <div class="usecase-card uc-green">
+                <div class="uc-icon">🏠</div>
+                <h3 data-i18n="uc1_title">Music in every room</h3>
+                <p data-i18n="uc1_desc">Play Spotify, YouTube, or any audio through speakers in every room simultaneously. No expensive equipment needed.</p>
+            </div>
+            <div class="usecase-card uc-purple">
+                <div class="uc-icon">🎉</div>
+                <h3 data-i18n="uc2_title">Instant party sound</h3>
+                <p data-i18n="uc2_desc">Bring spare PCs and speakers, connect via WiFi. Build a massive synchronized sound system in minutes.</p>
+            </div>
+            <div class="usecase-card uc-blue">
+                <div class="uc-icon">🎸</div>
+                <h3 data-i18n="uc3_title">Real-time jam sessions worldwide</h3>
+                <p data-i18n="uc3_desc">Bi-directional ultra-low latency (~20ms) over the internet. Perfect for musician collaboration.</p>
+            </div>
+            <div class="usecase-card uc-orange">
+                <div class="uc-icon">🔧</div>
+                <h3 data-i18n="uc4_title">Expand for $35 per room</h3>
+                <p data-i18n="uc4_desc">Add a Raspberry Pi + speaker to extend your home audio one room at a time. Affordable whole-home sound.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 4. Features (6 cards) -->
+<section class="section fade-in">
     <div class="container">
         <div class="section-header">
             <div class="section-label" data-i18n="features_label">FEATURES</div>
             <h2 class="section-title" data-i18n="features_title">Everything you need</h2>
-            <p class="section-desc" data-i18n="features_desc">Seamless network audio with zero configuration</p>
+            <p class="section-desc" data-i18n="features_desc">Professional audio quality with zero configuration</p>
         </div>
-        <div class="feature-grid">
+        <div class="feature-grid stagger-children">
             <div class="feature-card">
                 <div class="feature-icon" style="background:var(--accent-glow);color:var(--accent-light)">📡</div>
-                <h3 data-i18n="f1_title">Multicast RTP/OSTP</h3>
-                <p data-i18n="f1_desc">Automatically receives audio streams on 239.69.0.1:5004. Zero configuration &mdash; just start and listen.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--green-dim);color:var(--green)">🔍</div>
-                <h3 data-i18n="f2_title">Bonjour Auto-Discovery</h3>
-                <p data-i18n="f2_desc">Finds Soluna transmitters on your local network automatically. No manual IP setup needed.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--orange-dim);color:var(--orange)">🔊</div>
-                <h3 data-i18n="f3_title">Multi-Speaker Control</h3>
-                <p data-i18n="f3_desc">Control multiple speakers from one place. Adjust volume, mute, and delay independently or all at once.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--blue-dim);color:var(--blue)">⚡</div>
-                <h3 data-i18n="f4_title">Auto-Sync</h3>
-                <p data-i18n="f4_desc">Measures round-trip time to automatically synchronize audio latency across all speakers.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--pink-dim);color:var(--pink)">🛡</div>
-                <h3 data-i18n="f5_title">Packet Loss Compensation</h3>
-                <p data-i18n="f5_desc">Built-in PLC algorithm fills in lost packets to keep playback smooth on congested networks.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--cyan-dim);color:var(--cyan)">📊</div>
-                <h3 data-i18n="f6_title">Real-time Statistics</h3>
-                <p data-i18n="f6_desc">Monitor packets, drop rate, buffer, and PLC count in real-time. Know exactly what's happening.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--yellow-dim);color:var(--yellow)">🎧</div>
-                <h3 data-i18n="f7_title">Bluetooth &amp; AirPlay Sync</h3>
-                <p data-i18n="f7_desc">Add Bluetooth, AirPlay, or USB speakers and play them all in perfect sync. Each device gets its own AudioUnit with independent volume and delay.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--pink-dim);color:var(--pink)">🎯</div>
-                <h3 data-i18n="f8_title">Measured Latency Sync</h3>
-                <p data-i18n="f8_desc">Real-time latency measurement with EMA smoothing. Automatically compensates for BT (~40-200ms) and AirPlay (~2000ms) transport delays.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--green-dim);color:var(--green)">📊</div>
-                <h3 data-i18n="f9_title">VU Meter</h3>
-                <p data-i18n="f9_desc">Real-time RMS/Peak level meter for every output at 20fps. Green, orange, red color coding shows signal health at a glance.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--orange-dim);color:var(--orange)">⏱</div>
-                <h3 data-i18n="f10_title">Manual Delay Offset</h3>
-                <p data-i18n="f10_desc">Fine-tune sync with a &plusmn;50ms per-device delay slider. Saved automatically, perfect for room-specific adjustments.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--accent-glow);color:var(--accent-light)">💾</div>
-                <h3 data-i18n="f11_title">Routing Presets</h3>
-                <p data-i18n="f11_desc">Save your speaker configurations as named presets. Switch between &ldquo;Living Room&rdquo;, &ldquo;Bedroom&rdquo;, or &ldquo;Party&rdquo; setups with one tap.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--cyan-dim);color:var(--cyan)">🔗</div>
-                <h3 data-i18n="f12_title">Mac-to-Mac P2P Relay</h3>
-                <p data-i18n="f12_desc">Bonjour + UDP relay between Macs. When multicast can't reach across subnets, one Mac relays packets to others automatically.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--green-dim);color:var(--green)">🔄</div>
-                <h3 data-i18n="f13_title">Auto-Reconnect</h3>
-                <p data-i18n="f13_desc">Automatically reconnects when network returns. Uses NWPathMonitor to detect connectivity changes.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--purple-dim);color:var(--purple)">⌨️</div>
-                <h3 data-i18n="f14_title">Keyboard Shortcuts</h3>
-                <p data-i18n="f14_desc">Space to play/stop, ⌘↑↓ for volume, ⇧⌘M to mute, ⇧⌘S to sync. Full control without touching the mouse.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--orange-dim);color:var(--orange)">🎛️</div>
-                <h3 data-i18n="f15_title">3-Band Parametric EQ</h3>
-                <p data-i18n="f15_desc">Per-device 3-band EQ (200Hz/1kHz/5kHz, ±12dB). Tune each speaker independently for the perfect sound.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--blue-dim);color:var(--blue)">⏺️</div>
-                <h3 data-i18n="f16_title">Audio Recording</h3>
-                <p data-i18n="f16_desc">Record incoming audio to WAV files (48kHz/16-bit). Non-blocking ExtAudioFile writes from the audio thread.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--cyan-dim);color:var(--cyan)">📊</div>
-                <h3 data-i18n="f17_title">Spectrum Analyzer</h3>
-                <p data-i18n="f17_desc">32-band FFT spectrum display powered by Accelerate vDSP. Real-time frequency visualization with logarithmic band mapping (20Hz-20kHz).</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--orange-dim);color:var(--orange)">🎚️</div>
-                <h3 data-i18n="f18_title">Compressor / Limiter</h3>
-                <p data-i18n="f18_desc">Per-output dynamics compressor with threshold, ratio, attack, and release controls. Prevent clipping and tame transients on any speaker.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--green-dim);color:var(--green)">📂</div>
-                <h3 data-i18n="f19_title">Preset Import / Export</h3>
-                <p data-i18n="f19_desc">Export routing presets to JSON files and import them on other Macs. Share your perfect speaker setups easily.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--yellow-dim);color:var(--yellow)">⭐</div>
-                <h3 data-i18n="f20_title">Favorite Devices</h3>
-                <p data-i18n="f20_desc">Star your favorite speakers. They auto-connect when plugged in or powered on &mdash; no manual setup each time.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--accent-glow);color:var(--accent-light)">🎵</div>
-                <h3 data-i18n="f21_title">Now Playing &amp; Siri</h3>
-                <p data-i18n="f21_desc">Media key support via MPRemoteCommandCenter plus Siri Shortcuts. Control playback from your keyboard, Touch Bar, or voice.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--pink-dim);color:var(--pink)">👥</div>
-                <h3 data-i18n="f22_title">Speaker Groups</h3>
-                <p data-i18n="f22_desc">Group speakers into named zones like &ldquo;Kitchen&rdquo; or &ldquo;Upstairs&rdquo;. Control volume and mute for the whole group at once.</p>
+                <h3 data-i18n="f1_title">Sync Mode &amp; Jam Mode</h3>
+                <p data-i18n="f1_desc">Two modes: Sync Mode aligns all speakers for perfect multi-room playback. Jam Mode prioritizes ultra-low latency for real-time sessions. Switch with one click.</p>
             </div>
             <div class="feature-card">
                 <div class="feature-icon" style="background:var(--blue-dim);color:var(--blue)">🌐</div>
-                <h3 data-i18n="f23_title">HTTP Remote API</h3>
-                <p data-i18n="f23_desc">Built-in REST API on port 9400. Control from Stream Deck, Home Assistant, curl, or any HTTP client. JSON responses with CORS.</p>
+                <h3 data-i18n="f2_title">Stream Over the Internet</h3>
+                <p data-i18n="f2_desc">Not just WiFi — connect speakers worldwide via peer-to-peer. Play music across any distance.</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon" style="background:var(--cyan-dim);color:var(--cyan)">🎼</div>
-                <h3 data-i18n="f24_title">Crossover &amp; Spatial Audio</h3>
-                <p data-i18n="f24_desc">LPF/HPF crossover filter for sub/satellite splitting, plus stereo spatializer with width control and HRTF-inspired cross-feed for headphones.</p>
+                <div class="feature-icon" style="background:var(--pink-dim);color:var(--pink)">🎤</div>
+                <h3 data-i18n="f3_title">Bi-Directional Audio</h3>
+                <p data-i18n="f3_desc">Full duplex audio — everyone sends and receives. In Jam Mode, latency drops to ~20ms for real-time jam sessions, lessons, and live collaboration worldwide.</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon" style="background:var(--yellow-dim);color:var(--yellow)">🎚️</div>
-                <h3 data-i18n="f25_title">Sample Rate Display</h3>
-                <p data-i18n="f25_desc">Shows each device's native sample rate as a badge (44.1kHz, 96kHz, etc.). Instantly see format compatibility at a glance.</p>
+                <div class="feature-icon" style="background:var(--green-dim);color:var(--green)">🎵</div>
+                <h3 data-i18n="f4_title">Studio Quality</h3>
+                <p data-i18n="f4_desc">48kHz / 24-bit default. Supports 16/24/32-bit PCM lossless, Opus low-latency, and FLAC compression.</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon" style="background:var(--accent-glow);color:var(--accent-light)">🔈</div>
-                <h3 data-i18n="f26_title">Multi-Channel Surround</h3>
-                <p data-i18n="f26_desc">5.1 and 7.1 surround sound support with channel layout display (FL, FR, C, LFE, SL, SR). Full immersion beyond stereo.</p>
+                <div class="feature-icon" style="background:var(--orange-dim);color:var(--orange)">⚡</div>
+                <h3 data-i18n="f5_title">Zero Configuration</h3>
+                <p data-i18n="f5_desc">Bonjour auto-discovery finds devices instantly. Just connect and they appear. Auto-reconnect built in.</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon" style="background:var(--green-dim);color:var(--green)">🔀</div>
-                <h3 data-i18n="f27_title">L/R Balance &amp; Exclusive Mode</h3>
-                <p data-i18n="f27_desc">Per-device constant-power L/R panning. Plus USB DAC hog mode to block other apps from the output device.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--orange-dim);color:var(--orange)">📈</div>
-                <h3 data-i18n="f28_title">Latency Graph</h3>
-                <p data-i18n="f28_desc">Real-time line chart showing per-device latency trends. Spot network issues before they affect your listening.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--pink-dim);color:var(--pink)">🔌</div>
-                <h3 data-i18n="f29_title">Hot-Plug &amp; Persistence</h3>
-                <p data-i18n="f29_desc">Instantly detects BT/AirPlay connect and disconnect. Enabled devices and offsets are saved to UserDefaults and restored on launch.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon" style="background:var(--blue-dim);color:var(--blue)">🖥️</div>
-                <h3 data-i18n="f30_title">Menu Bar Player</h3>
-                <p data-i18n="f30_desc">MenuBarExtra keeps Soluna in your menu bar. Quick access to status, volume, sync, and playback without opening the main window.</p>
+                <div class="feature-icon" style="background:var(--green-dim);color:var(--green)">💚</div>
+                <h3 data-i18n="f6_title">Free for 1,000 Users</h3>
+                <p data-i18n="f6_desc">All features free for up to 1,000 simultaneous users. Open source. No account needed. Enterprise license for larger events.</p>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Install Options -->
-<section class="section fade-in" id="install">
+<!-- 5. Pricing -->
+<section class="section fade-in" id="pricing">
+    <div class="container">
+        <div class="section-header">
+            <div class="section-label" data-i18n="pricing_label">PRICING</div>
+            <h2 class="section-title" data-i18n="pricing_title">Free for everyone. Seriously.</h2>
+            <p class="section-desc" data-i18n="pricing_desc">All features included — up to 1,000 users. No tricks.</p>
+        </div>
+        <div class="pricing-grid stagger-children">
+            <!-- Free -->
+            <div class="pricing-card recommended">
+                <div class="pricing-popular" data-i18n="pricing_popular">FOR EVERYONE</div>
+                <div class="pricing-plan" data-i18n="plan_free">Free</div>
+                <div class="pricing-price" data-i18n="price_free">$0</div>
+                <div class="pricing-period" data-i18n="pricing_forever">Free forever</div>
+                <ul class="pricing-features">
+                    <li data-i18n="pricing_users_free">Up to 1,000 simultaneous users</li>
+                    <li data-i18n="pricing_modes">Sync Mode + Jam Mode</li>
+                    <li data-i18n="pricing_bidir">Full bidirectional audio</li>
+                    <li data-i18n="pricing_codec_all">All codecs (PCM, Opus, FLAC)</li>
+                    <li data-i18n="pricing_network_all">LAN + WAN P2P streaming</li>
+                    <li data-i18n="pricing_dsp_all">Full DSP (EQ, compressor, crossover, spatial)</li>
+                    <li data-i18n="pricing_auto">Auto-discovery &amp; sync</li>
+                </ul>
+                <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" class="pricing-cta primary" data-i18n="pricing_cta_free">Download Free</a>
+            </div>
+            <!-- Enterprise -->
+            <div class="pricing-card">
+                <div class="pricing-plan" data-i18n="plan_enterprise">Enterprise</div>
+                <div class="pricing-price" data-i18n="price_enterprise">Custom</div>
+                <div class="pricing-period" data-i18n="pricing_contact_desc">1,000+ users</div>
+                <ul class="pricing-features">
+                    <li data-i18n="pricing_ent_all">Everything in Free</li>
+                    <li data-i18n="pricing_ent_unlimited">Unlimited simultaneous users</li>
+                    <li data-i18n="pricing_ent_sla">Dedicated SLA &amp; support</li>
+                    <li data-i18n="pricing_ent_deploy">Custom deployment options</li>
+                    <li data-i18n="pricing_ent_priority">Priority bug fixes</li>
+                </ul>
+                <a href="mailto:info@solun.art" class="pricing-cta secondary" data-i18n="pricing_cta_enterprise">Contact Us</a>
+            </div>
+            <!-- RPi Kit -->
+            <div class="pricing-card">
+                <div class="pricing-plan" data-i18n="plan_kit">RPi Kit</div>
+                <div class="pricing-price"><span class="currency">$</span>9<span class="price-decimal">.99</span></div>
+                <div class="pricing-period" data-i18n="pricing_onetime">one-time purchase</div>
+                <ul class="pricing-features">
+                    <li data-i18n="pricing_kit_sd">Pre-configured SD card image</li>
+                    <li data-i18n="pricing_kit_guide">Step-by-step setup guide</li>
+                    <li data-i18n="pricing_kit_headless">Headless operation ready</li>
+                    <li data-i18n="pricing_kit_relay">Cloud relay: $2.99/mo (optional)</li>
+                </ul>
+                <p class="pricing-note" data-i18n="pricing_kit_note">Hardware sold separately.</p>
+                <a href="https://www.amazon.com/s?k=raspberry+pi+5" class="pricing-cta secondary" data-i18n="pricing_cta_kit" target="_blank" rel="noopener">Get the Kit</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- 6. Comparison Table -->
+<section class="section fade-in">
+    <div class="container">
+        <div class="section-header">
+            <div class="section-label" data-i18n="cmp_label">COMPARISON</div>
+            <h2 class="section-title" data-i18n="cmp_title">How Soluna compares</h2>
+            <p class="section-desc" data-i18n="cmp_desc">See how Soluna stacks up against popular alternatives</p>
+        </div>
+        <div class="table-wrap">
+            <table class="cmp-table">
+                <thead>
+                    <tr>
+                        <th data-i18n="cmp_feature">Feature</th>
+                        <th>Sonos</th>
+                        <th>AirPlay 2</th>
+                        <th>Dante</th>
+                        <th>Snapcast</th>
+                        <th class="cmp-highlight">Soluna</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td data-i18n="cmp_multiroom">Multi-Room</td>
+                        <td class="cmp-yes">✅</td>
+                        <td class="cmp-yes">✅</td>
+                        <td class="cmp-yes">✅</td>
+                        <td class="cmp-yes">✅</td>
+                        <td class="cmp-highlight cmp-yes">✅</td>
+                    </tr>
+                    <tr>
+                        <td data-i18n="cmp_existing">Existing Speakers</td>
+                        <td class="cmp-no">❌</td>
+                        <td class="cmp-warn">⚠️</td>
+                        <td class="cmp-yes">✅</td>
+                        <td class="cmp-yes">✅</td>
+                        <td class="cmp-highlight cmp-yes">✅</td>
+                    </tr>
+                    <tr>
+                        <td data-i18n="cmp_crossplat">Cross-Platform</td>
+                        <td data-i18n="cmp_limited">Limited</td>
+                        <td data-i18n="cmp_apple">Apple only</td>
+                        <td data-i18n="cmp_pro">Pro only</td>
+                        <td>Linux</td>
+                        <td class="cmp-highlight" data-i18n="cmp_allos"><strong>All OS</strong></td>
+                    </tr>
+                    <tr>
+                        <td data-i18n="cmp_cost">Cost</td>
+                        <td>$200–900</td>
+                        <td data-i18n="cmp_free_apple">Free (Apple)</td>
+                        <td>$$$</td>
+                        <td data-i18n="cmp_free">Free</td>
+                        <td class="cmp-highlight"><strong data-i18n="cmp_free_1k">Free (≤1000)</strong></td>
+                    </tr>
+                    <tr>
+                        <td data-i18n="cmp_setup">Setup</td>
+                        <td data-i18n="cmp_easy">Easy</td>
+                        <td data-i18n="cmp_easy">Easy</td>
+                        <td data-i18n="cmp_hard">Hard</td>
+                        <td data-i18n="cmp_hard">Hard</td>
+                        <td class="cmp-highlight"><strong data-i18n="cmp_easy">Easy</strong></td>
+                    </tr>
+                    <tr>
+                        <td data-i18n="cmp_opensource">Open Source</td>
+                        <td class="cmp-no">❌</td>
+                        <td class="cmp-no">❌</td>
+                        <td class="cmp-no">❌</td>
+                        <td class="cmp-yes">✅</td>
+                        <td class="cmp-highlight cmp-yes">✅</td>
+                    </tr>
+                    <tr>
+                        <td data-i18n="cmp_internet">Over Internet</td>
+                        <td class="cmp-no">❌</td>
+                        <td class="cmp-no">❌</td>
+                        <td class="cmp-no">❌</td>
+                        <td class="cmp-no">❌</td>
+                        <td class="cmp-highlight cmp-yes">✅</td>
+                    </tr>
+                    <tr>
+                        <td data-i18n="cmp_latency">Latency</td>
+                        <td>~30ms</td>
+                        <td>~2000ms</td>
+                        <td>&lt;1ms</td>
+                        <td>~100ms</td>
+                        <td class="cmp-highlight"><strong>~20ms</strong></td>
+                    </tr>
+                    <tr>
+                        <td data-i18n="cmp_bidir">Bi-Directional</td>
+                        <td class="cmp-no">❌</td>
+                        <td class="cmp-no">❌</td>
+                        <td class="cmp-yes">✅</td>
+                        <td class="cmp-no">❌</td>
+                        <td class="cmp-highlight cmp-yes">✅</td>
+                    </tr>
+                    <tr>
+                        <td data-i18n="cmp_lossless">Lossless</td>
+                        <td class="cmp-no">❌</td>
+                        <td class="cmp-yes">✅</td>
+                        <td class="cmp-yes">✅</td>
+                        <td class="cmp-yes">✅</td>
+                        <td class="cmp-highlight cmp-yes">✅</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- 6. How It Works -->
+<section class="section fade-in" id="howto">
     <div class="container">
         <div class="section-header">
             <div class="section-label" data-i18n="how_label">HOW IT WORKS</div>
-            <h2 class="section-title" data-i18n="how_title">Choose your setup</h2>
-            <p class="section-desc" data-i18n="how_desc">Pick the option that fits you best</p>
+            <h2 class="section-title" data-i18n="how_title">Up and running in 3 steps</h2>
+            <p class="section-desc" data-i18n="how_desc">From download to music in under a minute</p>
         </div>
-        <div class="install-options">
-            <!-- Option 1: App (Recommended) -->
-            <div class="install-option recommended">
-                <div class="io-badge green" data-i18n="io1_badge">RECOMMENDED</div>
-                <div class="io-icon">🖥</div>
-                <div class="io-title" data-i18n="io1_title">Soluna App</div>
-                <div class="io-who" data-i18n="io1_who">For everyone — easiest way to get started</div>
-                <div class="io-desc" data-i18n="io1_desc">Install Soluna.app and control everything from a simple GUI. Audio TX, Mic TX, WAN P2P — all built in. No terminal knowledge needed after install.</div>
-                <code class="io-cmd">bash scripts/install-mac.sh</code>
-                <div class="io-steps" data-i18n="io1_steps"><strong>1.</strong> Run the command above<br><strong>2.</strong> Sound Settings → Output → "Soluna"<br><strong>3.</strong> Open Soluna.app → Done!</div>
+        <div class="steps-grid">
+            <div class="step-card">
+                <div class="step-num">1</div>
+                <h3 data-i18n="step1_title">Download</h3>
+                <p data-i18n="step1_desc">Download the free installer — one file, everything included.</p>
+                <span class="step-arrow">→</span>
             </div>
-            <!-- Option 2: solunad (Headless) -->
-            <div class="install-option">
-                <div class="io-badge blue" data-i18n="io2_badge">SET &amp; FORGET</div>
-                <div class="io-icon">🔧</div>
-                <div class="io-title" data-i18n="io2_title">Installer + solunad</div>
-                <div class="io-who" data-i18n="io2_who">Auto-start on login — runs in the background</div>
-                <div class="io-desc" data-i18n="io2_desc">Includes everything in App mode plus solunad daemon and LaunchAgent. Audio streams automatically when you log in — no need to open any app.</div>
-                <code class="io-cmd">bash scripts/install-mac.sh --headless</code>
-                <div class="io-steps" data-i18n="io2_steps"><strong>1.</strong> Run the command above<br><strong>2.</strong> Sound Settings → Output → "Soluna"<br><strong>3.</strong> That's it — streams on login</div>
+            <div class="step-card">
+                <div class="step-num">2</div>
+                <h3 data-i18n="step2_title">Install</h3>
+                <p data-i18n="step2_desc">Double-click and follow the wizard. Done in 30 seconds.</p>
+                <span class="step-arrow">→</span>
             </div>
-            <!-- Option 3: CLI -->
-            <div class="install-option">
-                <div class="io-badge orange" data-i18n="io3_badge">ADVANCED</div>
-                <div class="io-icon">⌨️</div>
-                <div class="io-title" data-i18n="io3_title">Command Line</div>
-                <div class="io-who" data-i18n="io3_who">For developers — full manual control</div>
-                <div class="io-desc" data-i18n="io3_desc">Build from source with cmake. Use solctl CLI to start/stop streams, check status, and configure options. Full control over every parameter.</div>
-                <code class="io-cmd">cmake -B build &amp;&amp; cmake --build build
-solctl status</code>
-                <div class="io-steps" data-i18n="io3_steps"><strong>1.</strong> Build with cmake<br><strong>2.</strong> Install driver manually<br><strong>3.</strong> Use solctl to control</div>
+            <div class="step-card">
+                <div class="step-num">3</div>
+                <h3 data-i18n="step3_title">Play</h3>
+                <p data-i18n="step3_desc">Open Soluna, pick your speakers, and hit play. Music fills every room.</p>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Specs -->
-<section class="section fade-in">
+<div class="section-divider"></div>
+
+<!-- 7. Download + Specs + Platforms -->
+<section class="section fade-in" id="download">
     <div class="container">
         <div class="section-header">
-            <div class="section-label" data-i18n="specs_label">SPECIFICATIONS</div>
-            <h2 class="section-title" data-i18n="specs_title">Built for performance</h2>
-            <p class="section-desc" data-i18n="specs_desc">Lightweight, efficient, and purpose-built for audio</p>
+            <div class="section-label" data-i18n="dl_label">DOWNLOAD</div>
+            <h2 class="section-title" data-i18n="dl_title">Get Soluna</h2>
+            <p class="section-desc" data-i18n="dl_desc">One installer. Everything included. No terminal needed.</p>
         </div>
-        <div class="specs-grid">
-            <div class="spec-item">
-                <div class="spec-value">macOS 13+</div>
-                <div class="spec-label" data-i18n="sp1">Minimum OS</div>
+        <div class="download-section">
+            <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" class="download-btn">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                <span data-i18n="dl_button">Download Soluna-mac.pkg</span>
+            </a>
+            <p class="download-req" data-i18n="dl_req">macOS 13 Ventura or later &bull; Apple Silicon + Intel &bull; Free for personal use</p>
+            <p class="dl-free-note" data-i18n="dl_free_note">All features included free for up to 1,000 users. <a href="#pricing" style="color:var(--accent-light)">Enterprise</a> for larger events.</p>
+            <div class="dl-includes">
+                <div class="dl-include-item">
+                    <span class="dl-include-icon">🖥</span>
+                    <div>
+                        <strong data-i18n="dl_inc1_title">Soluna.app</strong>
+                        <span data-i18n="dl_inc1_desc">GUI for audio streaming control</span>
+                    </div>
+                </div>
+                <div class="dl-include-item">
+                    <span class="dl-include-icon">🔊</span>
+                    <div>
+                        <strong data-i18n="dl_inc2_title">Soluna.driver</strong>
+                        <span data-i18n="dl_inc2_desc">Virtual audio device (HAL plugin)</span>
+                    </div>
+                </div>
+                <div class="dl-include-item">
+                    <span class="dl-include-icon">⚙️</span>
+                    <div>
+                        <strong data-i18n="dl_inc3_title">solunad + solctl</strong>
+                        <span data-i18n="dl_inc3_desc">Background service &amp; CLI tool</span>
+                    </div>
+                </div>
+                <div class="dl-include-item">
+                    <span class="dl-include-icon">🔁</span>
+                    <div>
+                        <strong data-i18n="dl_inc4_title">LaunchAgent</strong>
+                        <span data-i18n="dl_inc4_desc">Auto-start on login</span>
+                    </div>
+                </div>
             </div>
-            <div class="spec-item">
-                <div class="spec-value">Apple Silicon</div>
-                <div class="spec-label" data-i18n="sp2">Native arm64</div>
-            </div>
+        </div>
+
+        <!-- Compact Specs -->
+        <div class="specs-grid" style="margin-bottom:48px">
             <div class="spec-item">
                 <div class="spec-value">~20ms</div>
-                <div class="spec-label" data-i18n="sp3">Buffer Latency</div>
+                <div class="spec-label" data-i18n="sp_latency">Latency</div>
             </div>
             <div class="spec-item">
-                <div class="spec-value" data-i18n="sp4_val">Free</div>
-                <div class="spec-label" data-i18n="sp4">Price</div>
-            </div>
-            <div class="spec-item">
-                <div class="spec-value">SwiftUI</div>
-                <div class="spec-label" data-i18n="sp5">Native macOS UI</div>
+                <div class="spec-value">48kHz/24bit</div>
+                <div class="spec-label" data-i18n="sp_format">PCM / Opus / FLAC</div>
             </div>
             <div class="spec-item">
                 <div class="spec-value">C++17</div>
-                <div class="spec-label" data-i18n="sp6">Audio Engine</div>
+                <div class="spec-label" data-i18n="sp_engine">Audio Engine</div>
             </div>
             <div class="spec-item">
-                <div class="spec-value">48 kHz / 16-bit</div>
-                <div class="spec-label" data-i18n="sp7">Audio Format</div>
-            </div>
-            <div class="spec-item">
-                <div class="spec-value" data-i18n="sp8_val">Open Source</div>
-                <div class="spec-label" data-i18n="sp8">License</div>
+                <div class="spec-value" data-i18n="sp_license_val">Free</div>
+                <div class="spec-label" data-i18n="sp_license">Personal Use</div>
             </div>
         </div>
-    </div>
-</section>
 
-<!-- Platforms -->
-<section class="section fade-in">
-    <div class="container">
-        <div class="section-header">
-            <div class="section-label" data-i18n="plat_label">CROSS PLATFORM</div>
-            <h2 class="section-title" data-i18n="plat_title">Available everywhere</h2>
-            <p class="section-desc" data-i18n="plat_desc">Soluna runs on macOS, iOS, Raspberry Pi, and browsers. TX + RX + WAN in one app on Mac.</p>
-        </div>
+        <!-- Platforms -->
         <div class="platforms-row">
             <div class="platform-card">
                 <div class="platform-icon">🖥</div>
                 <h3>macOS</h3>
-                <p data-i18n="plat_mac_desc">Native macOS app with one-command install</p>
-                <a href="#install" class="platform-link">
-                    Install →
-                </a>
+                <p data-i18n="plat_mac_desc">Native macOS app with one-click install</p>
+                <a href="#download" class="platform-link" data-i18n="plat_mac_link">Download →</a>
             </div>
             <div class="platform-card">
                 <div class="platform-icon">📱</div>
                 <h3>iOS</h3>
                 <p data-i18n="plat_ios_desc">iPhone and iPad receiver with background playback</p>
-                <a href="https://apps.apple.com/app/soluna-rx/id6741468938" class="platform-link">
-                    App Store →
-                </a>
+                <a href="https://apps.apple.com/app/soluna-rx/id6741468938" class="platform-link">App Store →</a>
+            </div>
+            <div class="platform-card">
+                <div class="platform-icon">🍓</div>
+                <h3>Linux / RPi</h3>
+                <p data-i18n="plat_linux_desc">Raspberry Pi and Linux daemon with ALSA output</p>
+                <a href="https://github.com/yukihamada/opensonic" class="platform-link" data-i18n="plat_linux_link">Build Guide →</a>
             </div>
         </div>
     </div>
 </section>
 
-<!-- CTA -->
+<!-- 8. CTA + Footer -->
 <section class="cta fade-in">
-    <h2 data-i18n="cta_title">Ready to stream?</h2>
-    <p data-i18n="cta_desc">Install Soluna with one command. TX + RX + WAN P2P all in a single app.</p>
+    <h2 data-i18n="cta_title">Ready to fill your home with music?</h2>
+    <p data-i18n="cta_desc">Download the free installer and start streaming to every room.</p>
     <div class="hero-buttons">
-        <a href="#install" class="btn btn-primary">
+        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" class="btn btn-primary">
             <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-            <span data-i18n="cta_btn">Install Now</span>
+            <span data-i18n="cta_btn">Download Now</span>
         </a>
         <a href="https://github.com/yukihamada/opensonic" class="btn btn-outline">
             <span data-i18n="btn_source">View Source</span>
@@ -1038,7 +1216,6 @@ solctl status</code>
     </div>
 </section>
 
-<!-- Footer -->
 <footer>
     <div class="footer-links">
         <a href="index.html" data-i18n="footer_docs">Documentation</a>
@@ -1063,388 +1240,824 @@ const LANGS = {
 
 const T = {
 en: {
-    nav_download:"Install",
-    badge:"3 WAYS TO INSTALL",
-    hero_sub:"for Mac",
-    hero_desc:"TX + RX + WAN P2P all in one app. System audio streaming, mic TX, multi-speaker sync. No separate daemon needed.",
-    btn_download:"Install with 1 Command",
+    nav_download:"Download",
+    badge:"FREE — UP TO 1,000 USERS",
+    hero_title:"Your music. Every room. One click.",
+    hero_desc:"Turn your Mac, iPhone, and Raspberry Pi into wireless speakers. Perfectly synchronized playback across every device.",
+    hero_note:"Free for up to 1,000 users. All features included.",
+    btn_download:"Download for Mac",
+    btn_howto:"How It Works",
     btn_source:"View Source",
-    mock_receiving:"Audio TX ON",
-    mock_speakers:"Speakers",
-    mock_this_mac:"This Mac",
+    mock_sync:"4 speakers synced",
+    mock_speakers_label:"Speakers",
+    mock_living:"Living Room",
+    mock_kitchen:"Kitchen",
+    mock_bedroom:"Bedroom",
+    mock_terrace:"Terrace",
+    uc_label:"USE CASES",
+    uc_title:"How will you use it?",
+    uc_desc:"From everyday listening to professional collaboration",
+    uc1_title:"Music in every room",
+    uc1_desc:"Play Spotify, YouTube, or any audio through speakers in every room simultaneously. No expensive equipment needed.",
+    uc2_title:"Instant party sound",
+    uc2_desc:"Bring spare PCs and speakers, connect via WiFi. Build a massive synchronized sound system in minutes.",
+    uc3_title:"Real-time jam sessions worldwide",
+    uc3_desc:"Bi-directional ultra-low latency (~20ms) over the internet. Perfect for musician collaboration.",
+    uc4_title:"Expand for $35 per room",
+    uc4_desc:"Add a Raspberry Pi + speaker to extend your home audio one room at a time. Affordable whole-home sound.",
     features_label:"FEATURES",
     features_title:"Everything you need",
-    features_desc:"Seamless network audio with zero configuration",
-    f1_title:"Multicast RTP/OSTP",f1_desc:"Automatically receives audio on 239.69.0.1:5004. Zero configuration \u2014 just start and listen.",
-    f2_title:"Bonjour Auto-Discovery",f2_desc:"Finds Soluna transmitters on your local network automatically. No manual IP setup needed.",
-    f3_title:"Multi-Speaker Control",f3_desc:"Control multiple speakers from one place. Adjust volume, mute, and delay independently or all at once.",
-    f4_title:"Auto-Sync",f4_desc:"Measures round-trip time to automatically synchronize audio latency across all speakers.",
-    f5_title:"Packet Loss Compensation",f5_desc:"Built-in PLC algorithm fills in lost packets to keep playback smooth on congested networks.",
-    f6_title:"Real-time Statistics",f6_desc:"Monitor packets, drop rate, buffer, and PLC count in real-time. Know exactly what\u2019s happening.",
-    f7_title:"Bluetooth & AirPlay Sync",f7_desc:"Add Bluetooth, AirPlay, or USB speakers and play them all in perfect sync. Each device gets its own AudioUnit with independent volume and delay.",
-    f8_title:"Measured Latency Sync",f8_desc:"Real-time latency measurement with EMA smoothing. Automatically compensates for BT (~40\u2013200ms) and AirPlay (~2000ms) transport delays.",
-    f9_title:"VU Meter",f9_desc:"Real-time RMS/Peak level meter for every output at 20fps. Green, orange, red color coding shows signal health at a glance.",
-    f10_title:"Manual Delay Offset",f10_desc:"Fine-tune sync with a \u00b150ms per-device delay slider. Saved automatically, perfect for room-specific adjustments.",
-    f11_title:"Routing Presets",f11_desc:"Save your speaker configurations as named presets. Switch between \u201cLiving Room\u201d, \u201cBedroom\u201d, or \u201cParty\u201d setups with one tap.",
-    f12_title:"Mac-to-Mac P2P Relay",f12_desc:"Bonjour + UDP relay between Macs. When multicast can\u2019t reach across subnets, one Mac relays packets to others automatically.",
-    f13_title:"Auto-Reconnect",f13_desc:"Automatically reconnects when network returns. Uses NWPathMonitor to detect connectivity changes instantly.",
-    f14_title:"Keyboard Shortcuts",f14_desc:"Space to play/stop, \u2318\u2191\u2193 for volume, \u21e7\u2318M to mute, \u21e7\u2318S to sync. Full control without touching the mouse.",
-    f15_title:"3-Band Parametric EQ",f15_desc:"Per-device 3-band EQ (200Hz/1kHz/5kHz, \u00b112dB). Tune each speaker independently with biquad filters.",
-    f16_title:"Audio Recording",f16_desc:"Record incoming audio to WAV files (48kHz/16-bit). Non-blocking ExtAudioFile writes from the real-time audio thread.",
-    f17_title:"Spectrum Analyzer",f17_desc:"32-band FFT spectrum display powered by Accelerate vDSP. Real-time frequency visualization with logarithmic band mapping (20Hz-20kHz).",
-    f18_title:"Compressor / Limiter",f18_desc:"Per-output dynamics compressor with threshold, ratio, attack, and release controls. Prevent clipping and tame transients on any speaker.",
-    f19_title:"Preset Import / Export",f19_desc:"Export routing presets to JSON files and import them on other Macs. Share your perfect speaker setups easily.",
-    f20_title:"Favorite Devices",f20_desc:"Star your favorite speakers. They auto-connect when plugged in or powered on — no manual setup each time.",
-    f21_title:"Now Playing & Siri",f21_desc:"Media key support via MPRemoteCommandCenter plus Siri Shortcuts. Control playback from your keyboard, Touch Bar, or voice.",
-    f22_title:"Speaker Groups",f22_desc:"Group speakers into named zones like 'Kitchen' or 'Upstairs'. Control volume and mute for the whole group at once.",
-    f23_title:"HTTP Remote API",f23_desc:"Built-in REST API on port 9400. Control from Stream Deck, Home Assistant, curl, or any HTTP client. JSON responses with CORS.",
-    f24_title:"Crossover & Spatial Audio",f24_desc:"LPF/HPF crossover filter for sub/satellite splitting, plus stereo spatializer with width control and HRTF-inspired cross-feed for headphones.",
-    f25_title:"Sample Rate Display",f25_desc:"Shows each device\u2019s native sample rate as a badge (44.1kHz, 96kHz, etc.). Instantly see format compatibility at a glance.",
-    f26_title:"Multi-Channel Surround",f26_desc:"5.1 and 7.1 surround sound support with channel layout display (FL, FR, C, LFE, SL, SR). Full immersion beyond stereo.",
-    f27_title:"L/R Balance & Exclusive Mode",f27_desc:"Per-device constant-power L/R panning. Plus USB DAC hog mode to block other apps from the output device.",
-    f28_title:"Latency Graph",f28_desc:"Real-time line chart showing per-device latency trends. Spot network issues before they affect your listening.",
-    f29_title:"Hot-Plug & Persistence",f29_desc:"Instantly detects BT/AirPlay connect and disconnect. Enabled devices and offsets are saved to UserDefaults and restored on launch.",
-    f30_title:"Menu Bar Player",f30_desc:"MenuBarExtra keeps Soluna in your menu bar. Quick access to status, volume, sync, and playback without opening the main window.",
-    how_label:"INSTALL",how_title:"Choose your setup",how_desc:"Pick the option that fits you best",
-    io1_badge:"RECOMMENDED",io1_title:"Soluna App",io1_who:"For everyone \u2014 easiest way to get started",
-    io1_desc:"Install Soluna.app and control everything from a simple GUI. Audio TX, Mic TX, WAN P2P \u2014 all built in. No terminal knowledge needed after install.",
-    io1_steps:"<strong>1.</strong> Run the command above<br><strong>2.</strong> Sound Settings \u2192 Output \u2192 \u201cSoluna\u201d<br><strong>3.</strong> Open Soluna.app \u2192 Done!",
-    io2_badge:"SET & FORGET",io2_title:"Installer + solunad",io2_who:"Auto-start on login \u2014 runs in the background",
-    io2_desc:"Includes everything in App mode plus solunad daemon and LaunchAgent. Audio streams automatically when you log in \u2014 no need to open any app.",
-    io2_steps:"<strong>1.</strong> Run the command above<br><strong>2.</strong> Sound Settings \u2192 Output \u2192 \u201cSoluna\u201d<br><strong>3.</strong> That\u2019s it \u2014 streams on login",
-    io3_badge:"ADVANCED",io3_title:"Command Line",io3_who:"For developers \u2014 full manual control",
-    io3_desc:"Build from source with cmake. Use solctl CLI to start/stop streams, check status, and configure options. Full control over every parameter.",
-    io3_steps:"<strong>1.</strong> Build with cmake<br><strong>2.</strong> Install driver manually<br><strong>3.</strong> Use solctl to control",
-    specs_label:"SPECIFICATIONS",specs_title:"Built for performance",specs_desc:"Lightweight, efficient, and purpose-built for audio",
-    sp1:"Minimum OS",sp2:"Native arm64",sp3:"Buffer Latency",sp4_val:"Free",sp4:"Price",sp5:"Native macOS UI",sp6:"Audio Engine",sp7:"Audio Format",sp8_val:"Open Source",sp8:"License",
-    plat_label:"CROSS PLATFORM",plat_title:"Available everywhere",plat_desc:"Soluna runs on macOS, iOS, Raspberry Pi, and browsers. TX + RX + WAN in one app on Mac.",
-    plat_mac_desc:"Native macOS app with one-command install",plat_ios_desc:"iPhone and iPad receiver with background playback",
-    cta_title:"Ready to stream?",cta_desc:"Install Soluna with one command. TX + RX + WAN P2P all in a single app.",cta_btn:"Install Now",
-    footer_docs:"Documentation",footer_issues:"Issues",
+    features_desc:"Professional audio quality with zero configuration",
+    f1_title:"Sync Mode & Jam Mode",f1_desc:"Two modes: Sync Mode aligns all speakers for perfect multi-room playback. Jam Mode prioritizes ultra-low latency for real-time sessions. Switch with one click.",
+    f2_title:"Stream Over the Internet",f2_desc:"Not just WiFi \u2014 connect speakers worldwide via peer-to-peer. Play music across any distance.",
+    f3_title:"Bi-Directional Audio",f3_desc:"Full duplex audio \u2014 everyone sends and receives. In Jam Mode, latency drops to ~20ms for real-time jam sessions, lessons, and live collaboration worldwide.",
+    f4_title:"Studio Quality",f4_desc:"48kHz / 24-bit default. Supports 16/24/32-bit PCM lossless, Opus low-latency, and FLAC compression.",
+    f5_title:"Zero Configuration",f5_desc:"Bonjour auto-discovery finds devices instantly. Just connect and they appear. Auto-reconnect built in.",
+    f6_title:"Free for 1,000 Users",f6_desc:"All features free for up to 1,000 simultaneous users. Open source. No account needed. Enterprise license for larger events.",
+    cmp_label:"COMPARISON",
+    cmp_title:"How Soluna compares",
+    cmp_desc:"See how Soluna stacks up against popular alternatives",
+    cmp_feature:"Feature",
+    cmp_multiroom:"Multi-Room",
+    cmp_existing:"Existing Speakers",
+    cmp_crossplat:"Cross-Platform",
+    cmp_limited:"Limited",
+    cmp_apple:"Apple only",
+    cmp_pro:"Pro only",
+    cmp_allos:"All OS",
+    cmp_cost:"Cost",
+    cmp_free_apple:"Free (Apple)",
+    cmp_free:"Free",
+    cmp_free_1k:"Free (\u22641000)",
+    cmp_setup:"Setup",
+    cmp_easy:"Easy",
+    cmp_hard:"Hard",
+    cmp_opensource:"Open Source",
+    cmp_internet:"Over Internet",
+    cmp_latency:"Latency",
+    cmp_bidir:"Bi-Directional",
+    cmp_lossless:"Lossless",
+    how_label:"HOW IT WORKS",
+    how_title:"Up and running in 3 steps",
+    how_desc:"From download to music in under a minute",
+    step1_title:"Download",step1_desc:"Download the free installer \u2014 one file, everything included.",
+    step2_title:"Install",step2_desc:"Double-click and follow the wizard. Done in 30 seconds.",
+    step3_title:"Play",step3_desc:"Open Soluna, pick your speakers, and hit play. Music fills every room.",
+    dl_label:"DOWNLOAD",
+    dl_title:"Get Soluna",
+    dl_desc:"One installer. Everything included. No terminal needed.",
+    dl_button:"Download Soluna-mac.pkg",
+    dl_req:"macOS 13 Ventura or later &bull; Apple Silicon + Intel &bull; Free for personal use",
+    dl_inc1_title:"Soluna.app",dl_inc1_desc:"GUI for audio streaming control",
+    dl_inc2_title:"Soluna.driver",dl_inc2_desc:"Virtual audio device (HAL plugin)",
+    dl_inc3_title:"solunad + solctl",dl_inc3_desc:"Background service & CLI tool",
+    dl_inc4_title:"LaunchAgent",dl_inc4_desc:"Auto-start on login",
+    sp_latency:"Latency",sp_format:"PCM / Opus / FLAC",sp_engine:"Audio Engine",sp_license:"Personal Use",sp_license_val:"Free",
+    plat_mac_desc:"Native macOS app with one-click install",
+    plat_mac_link:"Download \u2192",
+    plat_ios_desc:"iPhone and iPad receiver with background playback",
+    plat_linux_desc:"Raspberry Pi and Linux daemon with ALSA output",
+    plat_linux_link:"Build Guide \u2192",
+    cta_title:"Ready to fill your home with music?",
+    cta_desc:"Download the free installer and start streaming to every room.",
+    cta_btn:"Download Now",
+    footer_docs:"Documentation",
+    footer_issues:"Issues",
+    pricing_label:"PRICING",
+    pricing_title:"Free for everyone. Seriously.",
+    pricing_desc:"All features included \u2014 up to 1,000 users. No tricks.",
+    plan_free:"Free",
+    plan_enterprise:"Enterprise",
+    plan_kit:"RPi Kit",
+    price_free:"$0",
+    price_enterprise:"Custom",
+    pricing_forever:"Free forever",
+    pricing_onetime:"one-time purchase",
+    pricing_contact_desc:"1,000+ users",
+    pricing_users_free:"Up to 1,000 simultaneous users",
+    pricing_modes:"Sync Mode + Jam Mode",
+    pricing_bidir:"Full bidirectional audio",
+    pricing_codec_all:"All codecs (PCM, Opus, FLAC)",
+    pricing_network_all:"LAN + WAN P2P streaming",
+    pricing_dsp_all:"Full DSP (EQ, compressor, crossover, spatial)",
+    pricing_auto:"Auto-discovery & sync",
+    pricing_ent_all:"Everything in Free",
+    pricing_ent_unlimited:"Unlimited simultaneous users",
+    pricing_ent_sla:"Dedicated SLA & support",
+    pricing_ent_deploy:"Custom deployment options",
+    pricing_ent_priority:"Priority bug fixes",
+    pricing_kit_sd:"Pre-configured SD card image",
+    pricing_kit_guide:"Step-by-step setup guide",
+    pricing_kit_headless:"Headless operation ready",
+    pricing_kit_relay:"Cloud relay: $2.99/mo (optional)",
+    pricing_kit_note:"Hardware sold separately.",
+    pricing_cta_free:"Download Free",
+    pricing_cta_enterprise:"Contact Us",
+    pricing_cta_kit:"Get the Kit",
+    pricing_popular:"FOR EVERYONE",
+    dl_free_note:'All features included free for up to 1,000 users. <a href="#pricing" style="color:var(--accent-light)">Enterprise</a> for larger events.',
 },
 ja: {
-    nav_download:"インストール",
-    badge:"3つのインストール方法",
-    hero_sub:"for Mac",
-    hero_desc:"TX + RX + WAN P2P をアプリ1つで。システム音声配信、マイクTX、マルチスピーカー同期。デーモン不要。",
-    btn_download:"1コマンドでインストール",
+    nav_download:"ダウンロード",
+    badge:"無料 — 1,000人まで",
+    hero_title:"あなたの音楽を、すべての部屋へ。ワンクリックで。",
+    hero_desc:"Mac・iPhone・Raspberry Pi をワイヤレススピーカーに。すべてのデバイスで完璧に同期再生。",
+    hero_note:"1,000人まで全機能無料。アカウント不要。",
+    btn_download:"Mac版をダウンロード",
+    btn_howto:"使い方を見る",
     btn_source:"ソースコード",
-    mock_receiving:"Audio TX ON",
-    mock_speakers:"スピーカー",
-    mock_this_mac:"このMac",
+    mock_sync:"4台のスピーカーが同期中",
+    mock_speakers_label:"スピーカー",
+    mock_living:"リビング",
+    mock_kitchen:"キッチン",
+    mock_bedroom:"寝室",
+    mock_terrace:"テラス",
+    uc_label:"活用シーン",
+    uc_title:"どう使いますか？",
+    uc_desc:"日常のリスニングからプロのコラボレーションまで",
+    uc1_title:"すべての部屋で音楽を",
+    uc1_desc:"Spotify・YouTubeを家中のスピーカーで同時再生。高額な機器は不要です。",
+    uc2_title:"即席パーティーサウンド",
+    uc2_desc:"余ったPC・スピーカーを持ち寄りWiFi接続。数分で巨大同期サウンドシステムに。",
+    uc3_title:"世界中でリアルタイムセッション",
+    uc3_desc:"インターネット経由の双方向・超低遅延（約20ms）。ミュージシャンのコラボに最適。",
+    uc4_title:"1部屋あたり$35で拡張",
+    uc4_desc:"Raspberry Pi＋スピーカーで1部屋ずつホームオーディオを拡張。手頃な全館サウンド。",
     features_label:"機能",
     features_title:"必要なものすべて",
-    features_desc:"設定不要のシームレスなネットワークオーディオ",
-    f1_title:"マルチキャスト RTP/OSTP",f1_desc:"239.69.0.1:5004でオーディオを自動受信。設定不要で、起動するだけで再生開始。",
-    f2_title:"Bonjour 自動検出",f2_desc:"ローカルネットワーク上のSolunaトランスミッターを自動検出。IP設定は不要です。",
-    f3_title:"マルチスピーカー制御",f3_desc:"複数スピーカーを一元管理。音量・ミュート・ディレイを個別または一括で調整。",
-    f4_title:"自動同期",f4_desc:"往復時間を計測し、全スピーカーのオーディオ遅延を自動的に同期します。",
-    f5_title:"パケットロス補償",f5_desc:"内蔵PLCアルゴリズムにより、ネットワーク混雑時でもスムーズな再生を維持。",
-    f6_title:"リアルタイム統計",f6_desc:"パケット数、ドロップ率、バッファ、PLC回数をリアルタイムで監視。",
-    f7_title:"Bluetooth / AirPlay 同期出力",f7_desc:"Bluetooth・AirPlay・USBスピーカーを追加して全デバイス同期再生。各デバイスに独立したAudioUnitとボリューム・ディレイ制御。",
-    f8_title:"実測遅延補正",f8_desc:"EMA平滑化によるリアルタイム遅延計測。BT（約40〜200ms）やAirPlay（約2000ms）の転送遅延を自動補正。",
-    f9_title:"VU メーター",f9_desc:"各出力デバイスのRMS/Peakレベルを20fpsでリアルタイム表示。緑→橙→赤の色分けで信号状態を一目で確認。",
-    f10_title:"手動遅延オフセット",f10_desc:"デバイスごと±50msの微調整スライダー。自動保存で部屋ごとの調整に最適。",
-    f11_title:"ルーティングプリセット",f11_desc:"スピーカー構成を名前付きプリセットとして保存。「リビング」「寝室」「パーティー」をワンタップで切替。",
-    f12_title:"Mac間P2Pリレー",f12_desc:"Bonjour+UDPでMac間パケット転送。マルチキャストが届かないサブネット間でも自動リレーで再生可能。",
-    f13_title:"自動再接続",f13_desc:"ネットワーク復帰時に自動再接続。NWPathMonitorで接続状態変化を即座に検出。",
-    f14_title:"キーボードショートカット",f14_desc:"Space=再生/停止、⌘↑↓=音量、⇧⌘M=ミュート、⇧⌘S=同期。マウス不要でフル操作。",
-    f15_title:"3バンドパラメトリックEQ",f15_desc:"デバイスごと独立の3バンドEQ（200Hz/1kHz/5kHz、±12dB）。バイクワッドフィルタで高精度。",
-    f16_title:"オーディオ録音",f16_desc:"受信音声をWAVファイルに録音（48kHz/16bit）。リアルタイムスレッドからノンブロッキング書き込み。",
-    f17_title:"スペクトラムアナライザー",f17_desc:"Accelerate vDSP による32バンドFFTスペクトル表示。対数バンドマッピング(20Hz-20kHz)でリアルタイム周波数可視化。",
-    f18_title:"コンプレッサー/リミッター",f18_desc:"出力ごとのダイナミクスコンプレッサー。スレッショルド・レシオ・アタック・リリースを個別制御。クリッピング防止に。",
-    f19_title:"プリセット入出力",f19_desc:"ルーティングプリセットをJSONファイルにエクスポート。他のMacにインポートしてスピーカー設定を共有。",
-    f20_title:"お気に入りデバイス",f20_desc:"スピーカーをお気に入り登録。電源ON・接続時に自動で有効化。毎回の手動設定が不要に。",
-    f21_title:"Now Playing & Siri",f21_desc:"MPRemoteCommandCenterでメディアキー対応。Siriショートカットで音声操作も可能。",
-    f22_title:"スピーカーグループ",f22_desc:"スピーカーを「キッチン」「2階」などの名前付きゾーンにグループ化。グループ単位で音量・ミュート制御。",
-    f23_title:"HTTPリモートAPI",f23_desc:"ポート9400のREST API内蔵。Stream Deck・Home Assistant・curlなどから制御可能。CORS対応JSON応答。",
-    f24_title:"クロスオーバー＆空間オーディオ",f24_desc:"サブ/サテライト分割用LPF/HPFクロスオーバーフィルタ。ヘッドホン向けHRTFクロスフィード付きステレオスペーシャライザー。",
-    f25_title:"サンプルレート表示",f25_desc:"各デバイスのネイティブサンプルレートをバッジ表示（44.1kHz、96kHz等）。フォーマット互換性を一目で確認。",
-    f26_title:"マルチチャンネルサラウンド",f26_desc:"5.1 / 7.1 サラウンド対応。チャンネルレイアウト表示（FL, FR, C, LFE, SL, SR）付き。ステレオを超える没入感。",
-    f27_title:"L/Rバランス＆排他モード",f27_desc:"デバイスごとの定電力L/Rパンニング。USB DAC向けホグモードで他アプリの出力をブロック。",
-    f28_title:"レイテンシグラフ",f28_desc:"デバイスごとの遅延推移をリアルタイム折れ線グラフ表示。ネットワーク問題を音質に影響する前に発見。",
-    f29_title:"ホットプラグ＆永続化",f29_desc:"BT/AirPlayの接続・切断を即座に検出。有効デバイス・オフセットをUserDefaultsに保存し起動時に復元。",
-    f30_title:"メニューバープレーヤー",f30_desc:"MenuBarExtraでメニューバーに常駐。メインウィンドウを開かずにステータス・音量・同期・再生をクイック操作。",
-    how_label:"インストール",how_title:"あなたに合った方法を選ぼう",how_desc:"3つの方法からお好みで",
-    io1_badge:"おすすめ",io1_title:"Soluna アプリ",io1_who:"はじめての方に — いちばんカンタン",
-    io1_desc:"Soluna.appをインストールして、画面の操作だけで音声配信。Audio TX・マイク TX・WAN P2P ぜんぶ入り。インストール後はターミナル不要。",
-    io1_steps:"<strong>1.</strong> 上のコマンドを実行<br><strong>2.</strong> サウンド設定 → 出力 → 「Soluna」<br><strong>3.</strong> Soluna.appを開く → 完了！",
-    io2_badge:"おまかせ自動",io2_title:"インストーラー + solunad",io2_who:"ログイン時に自動起動 — アプリを開かなくてOK",
-    io2_desc:"アプリ版のすべて＋solunadデーモンとLaunchAgentを追加。ログインするだけで自動的に音声配信が始まります。",
-    io2_steps:"<strong>1.</strong> 上のコマンドを実行<br><strong>2.</strong> サウンド設定 → 出力 → 「Soluna」<br><strong>3.</strong> これだけ — ログイン時に自動配信",
-    io3_badge:"上級者向け",io3_title:"コマンドライン",io3_who:"開発者向け — 全パラメータを手動制御",
-    io3_desc:"cmakeでソースからビルド。solctl CLIで配信の開始/停止、ステータス確認、設定変更。すべてを細かくコントロール。",
-    io3_steps:"<strong>1.</strong> cmakeでビルド<br><strong>2.</strong> ドライバを手動インストール<br><strong>3.</strong> solctlで操作",
-    specs_label:"仕様",specs_title:"パフォーマンス重視",specs_desc:"軽量・高効率・オーディオ専用設計",
-    sp1:"最小OS",sp2:"ネイティブarm64",sp3:"バッファ遅延",sp4_val:"無料",sp4:"価格",sp5:"ネイティブmacOS UI",sp6:"オーディオエンジン",sp7:"オーディオ形式",sp8_val:"オープンソース",sp8:"ライセンス",
-    plat_label:"クロスプラットフォーム",plat_title:"どこでも利用可能",plat_desc:"SolunaはmacOS・iOS・Raspberry Pi・ブラウザに対応。MacではTX+RX+WANをアプリ1つで。",
-    plat_mac_desc:"ワンコマンドインストールのネイティブMacアプリ",plat_ios_desc:"バックグラウンド再生対応のiPhone/iPadレシーバー",
-    cta_title:"ストリーミングを始めよう",cta_desc:"1コマンドでSolunaをインストール。TX+RX+WAN P2Pをアプリ1つで。",cta_btn:"今すぐインストール",
-    footer_docs:"ドキュメント",footer_issues:"問題を報告",
+    features_desc:"設定不要でプロ品質のオーディオ",
+    f1_title:"同期モード & セッションモード",f1_desc:"2つのモード：同期モードは全スピーカーを完璧に揃えてマルチルーム再生。セッションモードは超低遅延優先でリアルタイムセッション。ワンクリックで切替。",
+    f2_title:"インターネット越しに再生",f2_desc:"WiFiだけでなく、P2Pで世界中のスピーカーを接続。距離を超えて音楽を届けます。",
+    f3_title:"双方向オーディオ",f3_desc:"全二重通信 — 全員が送受信可能。セッションモードでは遅延~20msのリアルタイムジャムセッション・レッスン・ライブコラボに最適。",
+    f4_title:"スタジオ品質",f4_desc:"48kHz/24bitがデフォルト。16/24/32bit PCMロスレス、Opus低遅延、FLAC圧縮に対応。",
+    f5_title:"設定不要",f5_desc:"Bonjour自動検出で接続するだけで表示。自動再接続も搭載。",
+    f6_title:"1,000人まで無料",f6_desc:"1,000人同時接続まで全機能無料。オープンソース。アカウント不要。大規模イベント向けエンタープライズライセンスあり。",
+    cmp_label:"比較",
+    cmp_title:"Solunaの優位性",
+    cmp_desc:"人気のある代替製品との比較",
+    cmp_feature:"機能",
+    cmp_multiroom:"マルチルーム",
+    cmp_existing:"既存スピーカー対応",
+    cmp_crossplat:"クロスプラットフォーム",
+    cmp_limited:"限定的",
+    cmp_apple:"Apple限定",
+    cmp_pro:"業務用",
+    cmp_allos:"全OS",
+    cmp_cost:"コスト",
+    cmp_free_apple:"無料(Apple内)",
+    cmp_free:"無料",
+    cmp_free_1k:"無料 (\u22641000人)",
+    cmp_setup:"セットアップ",
+    cmp_easy:"簡単",
+    cmp_hard:"難しい",
+    cmp_opensource:"オープンソース",
+    cmp_internet:"インターネット越し",
+    cmp_latency:"レイテンシ",
+    cmp_bidir:"双方向オーディオ",
+    cmp_lossless:"ロスレス",
+    how_label:"使い方",
+    how_title:"3ステップで完了",
+    how_desc:"ダウンロードから再生まで1分以内",
+    step1_title:"ダウンロード",step1_desc:"無料インストーラを1つダウンロード。全部入り。",
+    step2_title:"インストール",step2_desc:"ダブルクリック→ウィザードに従う。30秒で完了。",
+    step3_title:"再生",step3_desc:"Solunaを開いてスピーカーを選んで再生。全部屋に音楽が広がります。",
+    dl_label:"ダウンロード",
+    dl_title:"Solunaを入手",
+    dl_desc:"インストーラひとつで全部入り。ターミナル不要。",
+    dl_button:"Soluna-mac.pkg をダウンロード",
+    dl_req:"macOS 13 Ventura 以降 &bull; Apple Silicon + Intel 対応 &bull; 個人利用無料",
+    dl_inc1_title:"Soluna.app",dl_inc1_desc:"オーディオ配信を操作するGUIアプリ",
+    dl_inc2_title:"Soluna.driver",dl_inc2_desc:"仮想オーディオデバイス（HALプラグイン）",
+    dl_inc3_title:"solunad + solctl",dl_inc3_desc:"バックグラウンドサービス＆CLIツール",
+    dl_inc4_title:"LaunchAgent",dl_inc4_desc:"ログイン時に自動起動",
+    sp_latency:"レイテンシ",sp_format:"PCM / Opus / FLAC",sp_engine:"オーディオエンジン",sp_license:"個人利用",sp_license_val:"無料",
+    plat_mac_desc:"ワンクリックインストールのネイティブMacアプリ",
+    plat_mac_link:"ダウンロード \u2192",
+    plat_ios_desc:"バックグラウンド再生対応のiPhone/iPadレシーバー",
+    plat_linux_desc:"Raspberry PiおよびLinux用デーモン（ALSA出力）",
+    plat_linux_link:"ビルドガイド \u2192",
+    cta_title:"家中を音楽で満たす準備はできましたか？",
+    cta_desc:"無料インストーラをダウンロードして、すべての部屋へストリーミング。",
+    cta_btn:"今すぐダウンロード",
+    footer_docs:"ドキュメント",
+    footer_issues:"問題を報告",
+    pricing_label:"料金プラン",
+    pricing_title:"全員無料。本当です。",
+    pricing_desc:"1,000人まで全機能無料。制限なし。",
+    plan_free:"Free",plan_enterprise:"エンタープライズ",plan_kit:"RPi キット",
+    price_free:"¥0",price_enterprise:"要相談",pricing_forever:"ずっと無料",pricing_onetime:"買い切り",
+    pricing_contact_desc:"1,000人以上",
+    pricing_users_free:"1,000人同時接続まで",pricing_modes:"同期モード + セッションモード",pricing_bidir:"全二重双方向オーディオ",
+    pricing_codec_all:"全コーデック（PCM, Opus, FLAC）",pricing_network_all:"LAN + WAN P2Pストリーミング",
+    pricing_dsp_all:"フルDSP（EQ, コンプ, クロスオーバー, 空間オーディオ）",pricing_auto:"自動検出・同期",
+    pricing_ent_all:"Freeの全機能を含む",pricing_ent_unlimited:"同時接続数無制限",pricing_ent_sla:"専用SLA＆サポート",
+    pricing_ent_deploy:"カスタムデプロイ対応",pricing_ent_priority:"優先バグ修正",
+    pricing_kit_sd:"設定済みSDカードイメージ",pricing_kit_guide:"ステップバイステップセットアップガイド",
+    pricing_kit_headless:"ヘッドレス運用対応",pricing_kit_relay:"クラウドリレー: $2.99/月（オプション）",
+    pricing_kit_note:"ハードウェアは別途必要です。",
+    pricing_cta_free:"無料ダウンロード",pricing_cta_enterprise:"お問い合わせ",pricing_cta_kit:"キットを入手",
+    pricing_popular:"全員向け",
+    dl_free_note:'1,000人まで全機能無料。大規模は<a href="#pricing" style="color:var(--accent-light)">エンタープライズ</a>をご覧ください。',
 },
 zh: {
-    nav_download:"安装",
-    badge:"3种安装方式",
-    hero_sub:"Mac 版",
-    hero_desc:"TX + RX + WAN P2P 一个应用搞定。系统音频流、麦克风TX、多扬声器同步。无需守护进程。",
-    btn_download:"一键安装",
+    nav_download:"下载",
+    badge:"免费 — 最多1,000人",
+    hero_title:"你的音乐，每个房间，一键播放。",
+    hero_desc:"将Mac、iPhone和Raspberry Pi变成无线音箱。所有设备完美同步播放。",
+    hero_note:"1,000人以内全功能免费。无需账号。",
+    btn_download:"下载 Mac 版",
+    btn_howto:"了解使用方法",
     btn_source:"查看源码",
-    mock_receiving:"Audio TX ON",
-    mock_speakers:"扬声器",
-    mock_this_mac:"本机Mac",
+    mock_sync:"4个音箱已同步",
+    mock_speakers_label:"音箱",
+    mock_living:"客厅",
+    mock_kitchen:"厨房",
+    mock_bedroom:"卧室",
+    mock_terrace:"露台",
+    uc_label:"使用场景",
+    uc_title:"你会怎么用？",
+    uc_desc:"从日常聆听到专业协作",
+    uc1_title:"每个房间都有音乐",
+    uc1_desc:"在家中每个房间的音箱同时播放Spotify、YouTube或任何音频。无需昂贵设备。",
+    uc2_title:"即兴派对音响",
+    uc2_desc:"带上闲置的电脑和音箱，通过WiFi连接。几分钟内搭建大型同步音响系统。",
+    uc3_title:"全球实时即兴演奏",
+    uc3_desc:"通过互联网双向超低延迟（约20ms）。音乐人协作的完美选择。",
+    uc4_title:"每个房间仅需$35扩展",
+    uc4_desc:"添加Raspberry Pi+音箱，逐个房间扩展家庭音频。经济实惠的全屋音响。",
     features_label:"功能",
     features_title:"一应俱全",
-    features_desc:"零配置的无缝网络音频",
-    f1_title:"组播 RTP/OSTP",f1_desc:"在239.69.0.1:5004自动接收音频流。无需配置，启动即可收听。",
-    f2_title:"Bonjour 自动发现",f2_desc:"自动发现局域网上的Soluna发射器。无需手动设置IP。",
-    f3_title:"多扬声器控制",f3_desc:"在一个界面控制多个扬声器。独立或统一调节音量、静音和延迟。",
-    f4_title:"自动同步",f4_desc:"测量往返时间，自动同步所有扬声器的音频延迟。",
-    f5_title:"丢包补偿",f5_desc:"内置PLC算法填补丢失的数据包，在网络拥塞时保持流畅播放。",
-    f6_title:"实时统计",f6_desc:"实时监控数据包数、丢包率、缓冲区和PLC计数。",
-    f7_title:"蓝牙 / AirPlay 同步输出",f7_desc:"添加蓝牙、AirPlay或USB扬声器，所有设备完美同步播放。每个设备独立AudioUnit，独立音量和延迟控制。",
-    f8_title:"实测延迟补偿",f8_desc:"EMA平滑实时延迟测量。自动补偿蓝牙（约40-200ms）和AirPlay（约2000ms）传输延迟。",
-    f9_title:"VU 电平表",f9_desc:"每个输出设备的RMS/Peak电平以20fps实时显示。绿色、橙色、红色颜色编码一目了然地显示信号状态。",
-    f10_title:"手动延迟偏移",f10_desc:"每设备±50ms微调滑块。自动保存，适合按房间调整。",
-    f11_title:"路由预设",f11_desc:"将扬声器配置保存为命名预设。一键切换"客厅"、"卧室"或"派对"设置。",
-    f12_title:"Mac间P2P中继",f12_desc:"Bonjour+UDP实现Mac间数据包转发。当多播无法跨子网到达时，一台Mac自动中继给其他Mac。",
-    f13_title:"自动重连",f13_desc:"网络恢复时自动重连。使用NWPathMonitor即时检测网络变化。",
-    f14_title:"键盘快捷键",f14_desc:"空格=播放/停止，⌘↑↓=音量，⇧⌘M=静音，⇧⌘S=同步。无需鼠标即可完全控制。",
-    f15_title:"三段参量均衡器",f15_desc:"每设备独立的3段EQ（200Hz/1kHz/5kHz，±12dB）。双二阶滤波器实现精准调音。",
-    f16_title:"音频录制",f16_desc:"将接收的音频录制为WAV文件（48kHz/16位）。实时线程非阻塞写入。",
-    f17_title:"频谱分析仪",f17_desc:"基于Accelerate vDSP的32频段FFT频谱显示。对数频段映射(20Hz-20kHz)实时频率可视化。",
-    f18_title:"压缩器/限制器",f18_desc:"每个输出独立的动态压缩器。阈值、比率、起音、释放独立控制，防止削波。",
-    f19_title:"预设导入/导出",f19_desc:"将路由预设导出为JSON文件，在其他Mac上导入。轻松共享扬声器配置。",
-    f20_title:"收藏设备",f20_desc:"将常用扬声器加入收藏。插入或开机时自动连接，无需每次手动设置。",
-    f21_title:"Now Playing & Siri",f21_desc:"通过MPRemoteCommandCenter支持媒体键，加上Siri快捷指令。从键盘、Touch Bar或语音控制播放。",
-    f22_title:"扬声器分组",f22_desc:"将扬声器分组为"厨房"、"楼上"等命名区域。统一控制分组音量和静音。",
-    f23_title:"HTTP远程API",f23_desc:"内置端口9400 REST API。支持Stream Deck、Home Assistant、curl等控制。CORS跨域JSON响应。",
-    f24_title:"分频器与空间音频",f24_desc:"用于低音/卫星分频的LPF/HPF分频滤波器，加上带宽度控制和HRTF交叉馈送的立体声空间化器。",
-    f25_title:"采样率显示",f25_desc:"以徽章形式显示每个设备的原生采样率（44.1kHz、96kHz等）。一目了然地查看格式兼容性。",
-    f26_title:"多声道环绕声",f26_desc:"支持5.1和7.1环绕声，带声道布局显示（FL, FR, C, LFE, SL, SR）。超越立体声的沉浸体验。",
-    f27_title:"左右平衡与独占模式",f27_desc:"每设备恒定功率左右声像控制。USB DAC独占模式阻止其他应用的音频输出。",
-    f28_title:"延迟图表",f28_desc:"实时折线图显示每个设备的延迟趋势。在影响听感之前发现网络问题。",
-    f29_title:"热插拔与持久化",f29_desc:"即时检测蓝牙/AirPlay的连接与断开。已启用设备和偏移保存到UserDefaults，启动时自动恢复。",
-    f30_title:"菜单栏播放器",f30_desc:"MenuBarExtra常驻菜单栏。无需打开主窗口即可快速访问状态、音量、同步和播放控制。",
-    how_label:"安装",how_title:"选择你的安装方式",how_desc:"三种方式，按需选择",
-    io1_badge:"推荐",io1_title:"Soluna 应用",io1_who:"适合所有人 — 最简单的方式",
-    io1_desc:"安装Soluna.app，通过图形界面控制一切。Audio TX、Mic TX、WAN P2P 全部内置。安装后无需终端操作。",
-    io1_steps:"<strong>1.</strong> 运行上方命令<br><strong>2.</strong> 声音设置 → 输出 → 「Soluna」<br><strong>3.</strong> 打开 Soluna.app → 完成！",
-    io2_badge:"自动运行",io2_title:"安装器 + solunad",io2_who:"登录时自动启动 — 后台运行",
-    io2_desc:"包含应用版的所有功能，加上 solunad 守护进程和 LaunchAgent。登录后自动开始音频串流，无需打开任何应用。",
-    io2_steps:"<strong>1.</strong> 运行上方命令<br><strong>2.</strong> 声音设置 → 输出 → 「Soluna」<br><strong>3.</strong> 搞定 — 登录即串流",
-    io3_badge:"进阶",io3_title:"命令行",io3_who:"开发者专用 — 完全手动控制",
-    io3_desc:"用 cmake 从源码构建。使用 solctl CLI 启动/停止串流、查看状态、配置选项。完全控制每个参数。",
-    io3_steps:"<strong>1.</strong> 用 cmake 构建<br><strong>2.</strong> 手动安装驱动<br><strong>3.</strong> 用 solctl 控制",
-    specs_label:"规格",specs_title:"为性能而生",specs_desc:"轻量、高效、专为音频打造",
-    sp1:"最低系统",sp2:"原生arm64",sp3:"缓冲延迟",sp4_val:"免费",sp4:"价格",sp5:"原生macOS界面",sp6:"音频引擎",sp7:"音频格式",sp8_val:"开源",sp8:"许可证",
-    plat_label:"跨平台",plat_title:"随处可用",plat_desc:"Soluna支持macOS、iOS、Raspberry Pi和浏览器。Mac上TX+RX+WAN一个应用搞定。",
-    plat_mac_desc:"一键安装的原生Mac应用",plat_ios_desc:"支持后台播放的iPhone/iPad接收器",
-    cta_title:"准备开始串流？",cta_desc:"一条命令安装Soluna。TX+RX+WAN P2P一个应用搞定。",cta_btn:"立即安装",
-    footer_docs:"文档",footer_issues:"反馈问题",
+    features_desc:"零配置的专业音频品质",
+    f1_title:"同步模式 & 即兴模式",f1_desc:"两种模式：同步模式让所有音箱完美对齐多房间播放。即兴模式优先超低延迟实时协作。一键切换。",
+    f2_title:"跨互联网串流",f2_desc:"不仅限于WiFi——通过点对点连接全球音箱。跨越任何距离播放音乐。",
+    f3_title:"双向音频",f3_desc:"全双工音频 \u2014 所有人都能发送和接收。即兴模式下延迟仅~20ms，适合实时演奏、教学和全球协作。",
+    f4_title:"录音室品质",f4_desc:"48kHz/24bit为默认。支持16/24/32bit PCM无损、Opus低延迟、FLAC压缩。",
+    f5_title:"零配置",f5_desc:"Bonjour自动发现设备。连接即显示。内置自动重连。",
+    f6_title:"1,000人免费",f6_desc:"1,000人同时连接全功能免费。开源。无需账号。大型活动可选企业许可证。",
+    cmp_label:"对比",
+    cmp_title:"Soluna的优势",
+    cmp_desc:"看看Soluna与热门替代品的对比",
+    cmp_feature:"功能",
+    cmp_multiroom:"多房间",
+    cmp_existing:"支持现有音箱",
+    cmp_crossplat:"跨平台",
+    cmp_limited:"有限",
+    cmp_apple:"仅限Apple",
+    cmp_pro:"仅限专业",
+    cmp_allos:"全平台",
+    cmp_cost:"费用",
+    cmp_free_apple:"免费(Apple内)",
+    cmp_free:"免费",
+    cmp_free_1k:"免费 (\u22641000人)",
+    cmp_setup:"设置",
+    cmp_easy:"简单",
+    cmp_hard:"困难",
+    cmp_opensource:"开源",
+    cmp_internet:"跨互联网",
+    cmp_latency:"延迟",
+    cmp_bidir:"双向音频",
+    cmp_lossless:"无损",
+    how_label:"使用方法",
+    how_title:"3步即可运行",
+    how_desc:"从下载到播放不到一分钟",
+    step1_title:"下载",step1_desc:"下载免费安装包——一个文件，全部包含。",
+    step2_title:"安装",step2_desc:"双击并按向导操作。30秒完成。",
+    step3_title:"播放",step3_desc:"打开Soluna，选择音箱，点击播放。音乐充满每个房间。",
+    dl_label:"下载",
+    dl_title:"获取Soluna",
+    dl_desc:"一个安装包，全部包含。无需终端。",
+    dl_button:"下载 Soluna-mac.pkg",
+    dl_req:"macOS 13 Ventura 或更高版本 &bull; Apple Silicon + Intel &bull; 个人使用免费",
+    dl_inc1_title:"Soluna.app",dl_inc1_desc:"音频流控制图形界面",
+    dl_inc2_title:"Soluna.driver",dl_inc2_desc:"虚拟音频设备（HAL插件）",
+    dl_inc3_title:"solunad + solctl",dl_inc3_desc:"后台服务和命令行工具",
+    dl_inc4_title:"LaunchAgent",dl_inc4_desc:"登录时自动启动",
+    sp_latency:"延迟",sp_format:"PCM / Opus / FLAC",sp_engine:"音频引擎",sp_license:"个人使用",sp_license_val:"免费",
+    plat_mac_desc:"一键安装的原生Mac应用",
+    plat_mac_link:"下载 \u2192",
+    plat_ios_desc:"支持后台播放的iPhone/iPad接收器",
+    plat_linux_desc:"Raspberry Pi和Linux守护进程（ALSA输出）",plat_linux_link:"构建指南 →",
+    cta_title:"准备好用音乐填满整个家了吗？",
+    cta_desc:"下载免费安装包，开始向每个房间串流。",
+    cta_btn:"立即下载",
+    footer_docs:"文档",
+    footer_issues:"反馈问题",
+    pricing_label:"定价",
+    pricing_title:"全部免费。真的。",
+    pricing_desc:"1,000人以内全功能免费。没有套路。",
+    plan_free:"Free",plan_enterprise:"企业版",plan_kit:"RPi 套件",
+    price_free:"$0",price_enterprise:"定制",pricing_forever:"永久免费",pricing_onetime:"一次性购买",
+    pricing_contact_desc:"1,000人以上",
+    pricing_users_free:"最多1,000人同时在线",pricing_modes:"同步模式 + 即兴模式",pricing_bidir:"全双工双向音频",
+    pricing_codec_all:"全编解码器（PCM, Opus, FLAC）",pricing_network_all:"LAN + WAN P2P串流",
+    pricing_dsp_all:"全DSP（EQ、压缩器、分频器、空间音频）",pricing_auto:"自动发现和同步",
+    pricing_ent_all:"包含Free全部功能",pricing_ent_unlimited:"无限同时在线用户",pricing_ent_sla:"专属SLA和支持",
+    pricing_ent_deploy:"自定义部署方案",pricing_ent_priority:"优先修复Bug",
+    pricing_kit_sd:"预配置SD卡镜像",pricing_kit_guide:"分步设置指南",pricing_kit_headless:"无头操作就绪",
+    pricing_kit_relay:"云中继: $2.99/月（可选）",pricing_kit_note:"硬件需单独购买。",
+    pricing_cta_free:"免费下载",pricing_cta_enterprise:"联系我们",pricing_cta_kit:"获取套件",
+    pricing_popular:"面向所有人",
+    dl_free_note:'1,000人以内全功能免费。大型活动请看<a href="#pricing" style="color:var(--accent-light)">企业版</a>。',
 },
 ko: {
-    nav_download:"설치",
-    badge:"3가지 설치 방법",
-    hero_sub:"Mac용",
-    hero_desc:"TX + RX + WAN P2P를 하나의 앱으로. 시스템 오디오 스트리밍, 마이크 TX, 멀티 스피커 동기화. 데몬 불필요.",
-    btn_download:"1명령으로 설치",
+    nav_download:"다운로드",
+    badge:"무료 — 1,000명까지",
+    hero_title:"당신의 음악을, 모든 방에. 원클릭으로.",
+    hero_desc:"Mac, iPhone, Raspberry Pi를 무선 스피커로. 모든 기기에서 완벽하게 동기화된 재생.",
+    hero_note:"1,000명까지 전 기능 무료. 계정 불필요.",
+    btn_download:"Mac용 다운로드",
+    btn_howto:"사용 방법 보기",
     btn_source:"소스 코드",
-    mock_receiving:"Audio TX ON",
-    mock_speakers:"스피커",
-    mock_this_mac:"이 Mac",
+    mock_sync:"4대의 스피커 동기화 중",
+    mock_speakers_label:"스피커",
+    mock_living:"거실",
+    mock_kitchen:"주방",
+    mock_bedroom:"침실",
+    mock_terrace:"테라스",
+    uc_label:"활용 사례",
+    uc_title:"어떻게 사용하시겠습니까?",
+    uc_desc:"일상적인 청취부터 전문적인 협업까지",
+    uc1_title:"모든 방에서 음악을",
+    uc1_desc:"집 안 모든 방의 스피커에서 Spotify, YouTube 또는 어떤 오디오든 동시 재생. 고가의 장비 불필요.",
+    uc2_title:"즉석 파티 사운드",
+    uc2_desc:"여분의 PC와 스피커를 가져와 WiFi로 연결. 몇 분 만에 대규모 동기화 사운드 시스템 구축.",
+    uc3_title:"전 세계 실시간 잼 세션",
+    uc3_desc:"인터넷을 통한 양방향 초저지연(약 20ms). 뮤지션 협업에 완벽.",
+    uc4_title:"방당 $35로 확장",
+    uc4_desc:"Raspberry Pi + 스피커를 추가하여 한 방씩 홈 오디오 확장. 합리적인 전체 가정 사운드.",
     features_label:"기능",
     features_title:"필요한 모든 것",
-    features_desc:"설정 없이 원활한 네트워크 오디오",
-    f1_title:"멀티캐스트 RTP/OSTP",f1_desc:"239.69.0.1:5004에서 오디오를 자동 수신. 설정 없이 시작하면 바로 재생.",
-    f2_title:"Bonjour 자동 검색",f2_desc:"로컬 네트워크에서 Soluna 송신기를 자동으로 검색합니다. 수동 IP 설정 불필요.",
-    f3_title:"멀티 스피커 제어",f3_desc:"한 곳에서 여러 스피커를 제어. 볼륨, 음소거, 딜레이를 개별 또는 일괄 조정.",
-    f4_title:"자동 동기화",f4_desc:"왕복 시간을 측정하여 모든 스피커의 오디오 지연을 자동 동기화.",
-    f5_title:"패킷 손실 보상",f5_desc:"내장 PLC 알고리즘으로 손실된 패킷을 보완하여 원활한 재생 유지.",
-    f6_title:"실시간 통계",f6_desc:"패킷 수, 손실률, 버퍼, PLC 횟수를 실시간으로 모니터링.",
-    f7_title:"블루투스 / AirPlay 동기 출력",f7_desc:"블루투스, AirPlay, USB 스피커를 추가하여 모든 장치에서 완벽하게 동기화된 재생. 각 장치에 독립적인 AudioUnit과 볼륨/딜레이 제어.",
-    f8_title:"실측 지연 보정",f8_desc:"EMA 평활화를 통한 실시간 지연 측정. BT(약 40~200ms) 및 AirPlay(약 2000ms) 전송 지연을 자동 보정.",
-    f9_title:"VU 미터",f9_desc:"모든 출력 장치의 RMS/Peak 레벨을 20fps로 실시간 표시. 녹색, 주황색, 빨간색으로 신호 상태를 한눈에 확인.",
-    f10_title:"수동 지연 오프셋",f10_desc:"장치별 ±50ms 미세 조정 슬라이더. 자동 저장으로 방별 조정에 최적.",
-    f11_title:"라우팅 프리셋",f11_desc:"스피커 구성을 이름 있는 프리셋으로 저장. '거실', '침실', '파티' 설정을 원탭으로 전환.",
-    f12_title:"Mac 간 P2P 릴레이",f12_desc:"Bonjour+UDP로 Mac 간 패킷 전달. 멀티캐스트가 서브넷을 넘지 못할 때 자동 릴레이로 재생 가능.",
-    f13_title:"자동 재연결",f13_desc:"네트워크 복구 시 자동 재연결. NWPathMonitor로 연결 상태 변화를 즉시 감지.",
-    f14_title:"키보드 단축키",f14_desc:"Space=재생/정지, ⌘↑↓=볼륨, ⇧⌘M=음소거, ⇧⌘S=동기화. 마우스 없이 완전 제어.",
-    f15_title:"3밴드 파라메트릭 EQ",f15_desc:"디바이스별 독립 3밴드 EQ (200Hz/1kHz/5kHz, ±12dB). 바이쿼드 필터로 정밀 튜닝.",
-    f16_title:"오디오 녹음",f16_desc:"수신 오디오를 WAV 파일로 녹음 (48kHz/16비트). 실시간 스레드에서 논블로킹 기록.",
-    f17_title:"스펙트럼 분석기",f17_desc:"Accelerate vDSP 기반 32밴드 FFT 스펙트럼 표시. 대수 밴드 매핑(20Hz-20kHz)으로 실시간 주파수 시각화.",
-    f18_title:"컴프레서/리미터",f18_desc:"출력별 독립 다이내믹스 컴프레서. 스레숄드, 비율, 어택, 릴리즈를 개별 제어. 클리핑 방지에 효과적.",
-    f19_title:"프리셋 가져오기/내보내기",f19_desc:"라우팅 프리셋을 JSON 파일로 내보내고 다른 Mac에서 가져오기. 스피커 설정을 쉽게 공유.",
-    f20_title:"즐겨찾기 장치",f20_desc:"자주 쓰는 스피커를 즐겨찾기에 등록. 전원 켜거나 연결하면 자동으로 활성화.",
-    f21_title:"Now Playing & Siri",f21_desc:"MPRemoteCommandCenter로 미디어 키 지원. Siri 단축어로 음성 제어도 가능.",
-    f22_title:"스피커 그룹",f22_desc:"스피커를 '주방', '2층' 등 이름 있는 존으로 그룹화. 그룹 단위로 볼륨과 음소거 제어.",
-    f23_title:"HTTP 리모트 API",f23_desc:"포트 9400 내장 REST API. Stream Deck, Home Assistant, curl 등에서 제어 가능. CORS 지원 JSON 응답.",
-    f24_title:"크로스오버 & 공간 오디오",f24_desc:"서브/새틀라이트 분리용 LPF/HPF 크로스오버 필터. 헤드폰용 HRTF 크로스피드 스테레오 스페이셜라이저.",
-    f25_title:"샘플레이트 표시",f25_desc:"각 장치의 네이티브 샘플레이트를 배지로 표시 (44.1kHz, 96kHz 등). 포맷 호환성을 한눈에 확인.",
-    f26_title:"멀티채널 서라운드",f26_desc:"5.1 및 7.1 서라운드 사운드 지원. 채널 레이아웃 표시 (FL, FR, C, LFE, SL, SR) 포함. 스테레오를 넘는 몰입감.",
-    f27_title:"L/R 밸런스 & 독점 모드",f27_desc:"디바이스별 정전력 L/R 패닝. USB DAC 호그 모드로 다른 앱의 출력을 차단.",
-    f28_title:"레이턴시 그래프",f28_desc:"디바이스별 지연 추이를 실시간 꺾은선 그래프로 표시. 음질에 영향을 미치기 전에 네트워크 문제를 감지.",
-    f29_title:"핫플러그 & 영속화",f29_desc:"BT/AirPlay 연결 및 해제를 즉시 감지. 활성화된 장치와 오프셋을 UserDefaults에 저장하고 실행 시 복원.",
-    f30_title:"메뉴 바 플레이어",f30_desc:"MenuBarExtra로 메뉴 바에 상주. 메인 창을 열지 않고도 상태, 볼륨, 동기화, 재생을 빠르게 조작.",
-    how_label:"설치",how_title:"나에게 맞는 방법 선택",how_desc:"3가지 방법 중 선택하세요",
-    io1_badge:"추천",io1_title:"Soluna 앱",io1_who:"모든 분께 — 가장 쉬운 방법",
-    io1_desc:"Soluna.app을 설치하고 간단한 GUI로 모든 것을 제어. Audio TX, Mic TX, WAN P2P 모두 내장. 설치 후 터미널 지식 불필요.",
-    io1_steps:"<strong>1.</strong> 위 명령 실행<br><strong>2.</strong> 사운드 설정 → 출력 → 'Soluna'<br><strong>3.</strong> Soluna.app 열기 → 완료!",
-    io2_badge:"자동 실행",io2_title:"설치 프로그램 + solunad",io2_who:"로그인 시 자동 시작 — 백그라운드 실행",
-    io2_desc:"앱 모드의 모든 기능 + solunad 데몬과 LaunchAgent. 로그인하면 자동으로 오디오 스트리밍 시작 — 앱을 열 필요 없음.",
-    io2_steps:"<strong>1.</strong> 위 명령 실행<br><strong>2.</strong> 사운드 설정 → 출력 → 'Soluna'<br><strong>3.</strong> 끝 — 로그인 시 자동 스트리밍",
-    io3_badge:"고급",io3_title:"커맨드 라인",io3_who:"개발자용 — 완전한 수동 제어",
-    io3_desc:"cmake로 소스에서 빌드. solctl CLI로 스트림 시작/중지, 상태 확인, 옵션 구성. 모든 파라미터 완전 제어.",
-    io3_steps:"<strong>1.</strong> cmake로 빌드<br><strong>2.</strong> 드라이버 수동 설치<br><strong>3.</strong> solctl로 제어",
-    specs_label:"사양",specs_title:"성능을 위한 설계",specs_desc:"가볍고 효율적인 오디오 전용 설계",
-    sp1:"최소 OS",sp2:"네이티브 arm64",sp3:"버퍼 지연",sp4_val:"무료",sp4:"가격",sp5:"네이티브 macOS UI",sp6:"오디오 엔진",sp7:"오디오 형식",sp8_val:"오픈 소스",sp8:"라이선스",
-    plat_label:"크로스 플랫폼",plat_title:"어디서나 사용 가능",plat_desc:"Soluna는 macOS, iOS, Raspberry Pi, 브라우저를 지원. Mac에서 TX+RX+WAN을 하나의 앱으로.",
-    plat_mac_desc:"원커맨드 설치 네이티브 Mac 앱",plat_ios_desc:"백그라운드 재생 지원 iPhone/iPad 리시버",
-    cta_title:"스트리밍을 시작할까요?",cta_desc:"한 명령으로 Soluna를 설치. TX+RX+WAN P2P를 하나의 앱으로.",cta_btn:"지금 설치",
-    footer_docs:"문서",footer_issues:"문제 보고",
+    features_desc:"설정 없이 프로페셔널 오디오 품질",
+    f1_title:"싱크 모드 & 잼 모드",f1_desc:"두 가지 모드: 싱크 모드는 모든 스피커를 완벽하게 맞춰 멀티룸 재생. 잼 모드는 초저지연 우선으로 실시간 세션. 원클릭 전환.",
+    f2_title:"인터넷을 통한 스트리밍",f2_desc:"WiFi만이 아닌 P2P로 전 세계 스피커 연결. 어떤 거리든 음악 전달.",
+    f3_title:"양방향 오디오",f3_desc:"전이중 오디오 \u2014 모두가 송수신 가능. 잼 모드에서 지연 ~20ms로 실시간 잼 세션, 레슨, 글로벌 라이브 협업에 최적.",
+    f4_title:"스튜디오 품질",f4_desc:"48kHz/24bit 기본. 16/24/32bit PCM 무손실, Opus 저지연, FLAC 압축 지원.",
+    f5_title:"설정 불필요",f5_desc:"Bonjour 자동 검색으로 즉시 기기 발견. 연결하면 바로 표시. 자동 재연결 내장.",
+    f6_title:"1,000명까지 무료",f6_desc:"1,000명 동시 접속까지 전 기능 무료. 오픈소스. 계정 불필요. 대규모 이벤트 엔터프라이즈 라이선스 제공.",
+    cmp_label:"비교",
+    cmp_title:"Soluna의 장점",
+    cmp_desc:"인기 대안 제품과의 비교",
+    cmp_feature:"기능",
+    cmp_multiroom:"멀티룸",
+    cmp_existing:"기존 스피커 지원",
+    cmp_crossplat:"크로스 플랫폼",
+    cmp_limited:"제한적",
+    cmp_apple:"Apple 전용",
+    cmp_pro:"전문가용",
+    cmp_allos:"전체 OS",
+    cmp_cost:"비용",
+    cmp_free_apple:"무료(Apple 내)",
+    cmp_free:"무료",
+    cmp_free_1k:"무료 (\u22641000명)",
+    cmp_setup:"설정",
+    cmp_easy:"쉬움",
+    cmp_hard:"어려움",
+    cmp_opensource:"오픈소스",
+    cmp_internet:"인터넷 지원",
+    cmp_latency:"레이턴시",
+    cmp_bidir:"양방향 오디오",
+    cmp_lossless:"무손실",
+    how_label:"사용 방법",
+    how_title:"3단계로 완료",
+    how_desc:"다운로드에서 음악까지 1분 이내",
+    step1_title:"다운로드",step1_desc:"무료 설치 프로그램 다운로드 — 파일 하나에 모두 포함.",
+    step2_title:"설치",step2_desc:"더블클릭하고 마법사를 따라가세요. 30초면 완료.",
+    step3_title:"재생",step3_desc:"Soluna를 열고, 스피커를 선택하고, 재생을 누르세요. 모든 방에 음악이 가득.",
+    dl_label:"다운로드",
+    dl_title:"Soluna 다운로드",
+    dl_desc:"설치 프로그램 하나로 모두 포함. 터미널 불필요.",
+    dl_button:"Soluna-mac.pkg 다운로드",
+    dl_req:"macOS 13 Ventura 이상 &bull; Apple Silicon + Intel &bull; 개인 사용 무료",
+    dl_inc1_title:"Soluna.app",dl_inc1_desc:"오디오 스트리밍 제어 GUI",
+    dl_inc2_title:"Soluna.driver",dl_inc2_desc:"가상 오디오 장치 (HAL 플러그인)",
+    dl_inc3_title:"solunad + solctl",dl_inc3_desc:"백그라운드 서비스 & CLI 도구",
+    dl_inc4_title:"LaunchAgent",dl_inc4_desc:"로그인 시 자동 시작",
+    sp_latency:"레이턴시",sp_format:"PCM / Opus / FLAC",sp_engine:"오디오 엔진",sp_license:"개인 사용",sp_license_val:"무료",
+    plat_mac_desc:"원클릭 설치 네이티브 Mac 앱",
+    plat_mac_link:"다운로드 \u2192",
+    plat_ios_desc:"백그라운드 재생 지원 iPhone/iPad 리시버",
+    plat_linux_desc:"Raspberry Pi 및 Linux 데몬 (ALSA 출력)",plat_linux_link:"빌드 가이드 →",
+    cta_title:"집 안을 음악으로 채울 준비가 되셨나요?",
+    cta_desc:"무료 설치 프로그램을 다운로드하고 모든 방으로 스트리밍을 시작하세요.",
+    cta_btn:"지금 다운로드",
+    footer_docs:"문서",
+    footer_issues:"문제 보고",
+    pricing_label:"요금제",
+    pricing_title:"모두에게 무료. 진짜입니다.",
+    pricing_desc:"1,000명까지 전 기능 무료. 속임 없음.",
+    plan_free:"Free",plan_enterprise:"엔터프라이즈",plan_kit:"RPi 키트",
+    price_free:"$0",price_enterprise:"맞춤",pricing_forever:"영원히 무료",pricing_onetime:"1회 구매",
+    pricing_contact_desc:"1,000명 이상",
+    pricing_users_free:"최대 1,000명 동시 접속",pricing_modes:"싱크 모드 + 잼 모드",pricing_bidir:"전이중 양방향 오디오",
+    pricing_codec_all:"전체 코덱 (PCM, Opus, FLAC)",pricing_network_all:"LAN + WAN P2P 스트리밍",
+    pricing_dsp_all:"풀 DSP (EQ, 컴프레서, 크로스오버, 공간 오디오)",pricing_auto:"자동 검색 & 동기화",
+    pricing_ent_all:"Free의 모든 기능 포함",pricing_ent_unlimited:"무제한 동시 접속",pricing_ent_sla:"전용 SLA & 지원",
+    pricing_ent_deploy:"맞춤 배포 옵션",pricing_ent_priority:"우선 버그 수정",
+    pricing_kit_sd:"사전 구성된 SD 카드 이미지",pricing_kit_guide:"단계별 설정 가이드",pricing_kit_headless:"헤드리스 운영 지원",
+    pricing_kit_relay:"클라우드 릴레이: $2.99/월 (선택)",pricing_kit_note:"하드웨어는 별도 구매 필요.",
+    pricing_cta_free:"무료 다운로드",pricing_cta_enterprise:"문의하기",pricing_cta_kit:"키트 받기",
+    pricing_popular:"모두를 위해",
+    dl_free_note:'1,000명까지 전 기능 무료. 대규모는 <a href="#pricing" style="color:var(--accent-light)">엔터프라이즈</a> 참고.',
 },
 es: {
-    nav_download:"Instalar",
-    badge:"3 FORMAS DE INSTALAR",
-    hero_sub:"para Mac",
-    hero_desc:"TX + RX + WAN P2P en una sola app. Streaming de audio del sistema, TX de micrófono, sincronización multi-altavoz. Sin daemon.",
-    btn_download:"Instalar con 1 Comando",
+    nav_download:"Descargar",
+    badge:"GRATIS — HASTA 1.000 USUARIOS",
+    hero_title:"Tu música. Cada habitación. Un clic.",
+    hero_desc:"Convierte tu Mac, iPhone y Raspberry Pi en altavoces inalámbricos. Reproducción perfectamente sincronizada en todos los dispositivos.",
+    hero_note:"Gratis hasta 1.000 usuarios. Todas las funciones incluidas.",
+    btn_download:"Descargar para Mac",
+    btn_howto:"Cómo funciona",
     btn_source:"Ver código",
-    mock_receiving:"Audio TX ON",
-    mock_speakers:"Altavoces",
-    mock_this_mac:"Este Mac",
+    mock_sync:"4 altavoces sincronizados",
+    mock_speakers_label:"Altavoces",
+    mock_living:"Sala",
+    mock_kitchen:"Cocina",
+    mock_bedroom:"Dormitorio",
+    mock_terrace:"Terraza",
+    uc_label:"CASOS DE USO",
+    uc_title:"¿Cómo lo usarás?",
+    uc_desc:"Desde escuchar a diario hasta colaboración profesional",
+    uc1_title:"Música en cada habitación",
+    uc1_desc:"Reproduce Spotify, YouTube o cualquier audio en altavoces de cada habitación simultáneamente. Sin equipos costosos.",
+    uc2_title:"Sonido de fiesta instantáneo",
+    uc2_desc:"Trae PCs y altavoces de sobra, conéctalos por WiFi. Monta un sistema de sonido sincronizado masivo en minutos.",
+    uc3_title:"Sesiones en vivo en todo el mundo",
+    uc3_desc:"Audio bidireccional de ultra baja latencia (~20ms) por internet. Perfecto para colaboración musical.",
+    uc4_title:"Expande por $35 por habitación",
+    uc4_desc:"Añade un Raspberry Pi + altavoz para extender tu audio doméstico habitación por habitación.",
     features_label:"FUNCIONES",
     features_title:"Todo lo que necesitas",
-    features_desc:"Audio en red sin configuración",
-    f1_title:"Multicast RTP/OSTP",f1_desc:"Recibe audio automáticamente en 239.69.0.1:5004. Sin configuración: solo inicia y escucha.",
-    f2_title:"Descubrimiento Bonjour",f2_desc:"Encuentra transmisores Soluna en tu red local automáticamente. Sin configuración de IP manual.",
-    f3_title:"Control Multi-Altavoz",f3_desc:"Controla múltiples altavoces desde un solo lugar. Ajusta volumen, silencio y retardo individual o globalmente.",
-    f4_title:"Sincronización Auto",f4_desc:"Mide el tiempo de ida y vuelta para sincronizar automáticamente la latencia de audio.",
-    f5_title:"Compensación de Pérdida",f5_desc:"Algoritmo PLC integrado que rellena paquetes perdidos para mantener la reproducción fluida.",
-    f6_title:"Estadísticas en Tiempo Real",f6_desc:"Monitorea paquetes, tasa de pérdida, búfer y conteo PLC en tiempo real.",
-    how_label:"INSTALACIÓN",how_title:"Elige tu método",how_desc:"Tres opciones según tu nivel",
-    io1_badge:"RECOMENDADO",io1_title:"Soluna App",io1_who:"Para todos — la forma más fácil",
-    io1_desc:"Instala Soluna.app y controla todo desde una interfaz gráfica. Audio TX, Mic TX, WAN P2P integrados. Sin terminal después de instalar.",
-    io1_steps:"<strong>1.</strong> Ejecuta el comando<br><strong>2.</strong> Ajustes de Sonido → Salida → 'Soluna'<br><strong>3.</strong> Abre Soluna.app → ¡Listo!",
-    io2_badge:"AUTOMÁTICO",io2_title:"Instalador + solunad",io2_who:"Inicio automático — se ejecuta en segundo plano",
-    io2_desc:"Incluye todo del modo App más solunad daemon y LaunchAgent. El audio se transmite automáticamente al iniciar sesión.",
-    io2_steps:"<strong>1.</strong> Ejecuta el comando<br><strong>2.</strong> Ajustes de Sonido → Salida → 'Soluna'<br><strong>3.</strong> Listo — transmite al iniciar sesión",
-    io3_badge:"AVANZADO",io3_title:"Línea de Comandos",io3_who:"Para desarrolladores — control manual total",
-    io3_desc:"Compila desde el código fuente con cmake. Usa solctl CLI para iniciar/detener streams y configurar opciones.",
-    io3_steps:"<strong>1.</strong> Compila con cmake<br><strong>2.</strong> Instala el driver manualmente<br><strong>3.</strong> Usa solctl para controlar",
-    specs_label:"ESPECIFICACIONES",specs_title:"Diseñado para rendimiento",specs_desc:"Ligero, eficiente y construido para audio",
-    sp1:"OS Mínimo",sp2:"arm64 Nativo",sp3:"Latencia Buffer",sp4_val:"Gratis",sp4:"Precio",sp5:"UI macOS Nativa",sp6:"Motor de Audio",sp7:"Formato de Audio",sp8_val:"Código Abierto",sp8:"Licencia",
-    plat_label:"MULTIPLATAFORMA",plat_title:"Disponible en todas partes",plat_desc:"Soluna funciona en macOS, iOS, Raspberry Pi y navegadores. TX+RX+WAN en una app en Mac.",
-    plat_mac_desc:"App nativa Mac con instalación en un comando",plat_ios_desc:"Receptor para iPhone/iPad con reproducción en segundo plano",
-    cta_title:"¿Listo para transmitir?",cta_desc:"Instala Soluna con un comando. TX+RX+WAN P2P en una sola app.",cta_btn:"Instalar Ahora",
-    footer_docs:"Documentación",footer_issues:"Reportar problema",
+    features_desc:"Audio profesional sin configuración",
+    f1_title:"Modo Sync y Modo Jam",f1_desc:"Dos modos: Sync alinea todos los altavoces para reproducción multihabitación. Jam prioriza ultra baja latencia para sesiones en tiempo real. Cambia con un clic.",
+    f2_title:"Streaming por internet",f2_desc:"No solo WiFi — conecta altavoces en todo el mundo vía P2P. Música sin límite de distancia.",
+    f3_title:"Audio bidireccional",f3_desc:"Audio full dúplex \u2014 todos envían y reciben. En modo Jam, latencia de ~20ms para sesiones en vivo, clases y colaboración mundial.",
+    f4_title:"Calidad de estudio",f4_desc:"48kHz / 24-bit por defecto. Soporta PCM sin pérdida 16/24/32-bit, Opus baja latencia y FLAC.",
+    f5_title:"Sin configuración",f5_desc:"Descubrimiento automático Bonjour. Solo conecta y aparecen. Reconexión automática incluida.",
+    f6_title:"Gratis para 1.000 usuarios",f6_desc:"Todas las funciones gratis para hasta 1.000 usuarios simultáneos. Open source. Sin cuenta. Licencia empresarial para eventos mayores.",
+    cmp_label:"COMPARACIÓN",
+    cmp_title:"Cómo se compara Soluna",
+    cmp_desc:"Mira cómo Soluna se compara con las alternativas populares",
+    cmp_feature:"Función",
+    cmp_multiroom:"Multihabitación",
+    cmp_existing:"Altavoces existentes",
+    cmp_crossplat:"Multiplataforma",
+    cmp_limited:"Limitado",
+    cmp_apple:"Solo Apple",
+    cmp_pro:"Solo profesional",
+    cmp_allos:"Todos los SO",
+    cmp_cost:"Coste",
+    cmp_free_apple:"Gratis (Apple)",
+    cmp_free:"Gratis",
+    cmp_free_1k:"Gratis (\u22641000)",
+    cmp_setup:"Configuración",
+    cmp_easy:"Fácil",
+    cmp_hard:"Difícil",
+    cmp_opensource:"Open Source",
+    cmp_internet:"Por internet",
+    cmp_latency:"Latencia",
+    cmp_bidir:"Bidireccional",
+    cmp_lossless:"Sin pérdida",
+    how_label:"CÓMO FUNCIONA",
+    how_title:"Listo en 3 pasos",
+    how_desc:"De la descarga a la música en menos de un minuto",
+    step1_title:"Descargar",step1_desc:"Descarga el instalador gratuito — un archivo, todo incluido.",
+    step2_title:"Instalar",step2_desc:"Doble clic y sigue el asistente. Listo en 30 segundos.",
+    step3_title:"Reproducir",step3_desc:"Abre Soluna, elige tus altavoces y dale a reproducir. La música llena cada habitación.",
+    dl_label:"DESCARGA",
+    dl_title:"Obtén Soluna",
+    dl_desc:"Un instalador. Todo incluido. Sin terminal.",
+    dl_button:"Descargar Soluna-mac.pkg",
+    dl_req:"macOS 13 Ventura o posterior &bull; Apple Silicon + Intel &bull; Gratis para uso personal",
+    dl_inc1_title:"Soluna.app",dl_inc1_desc:"GUI para control de streaming de audio",
+    dl_inc2_title:"Soluna.driver",dl_inc2_desc:"Dispositivo de audio virtual (plugin HAL)",
+    dl_inc3_title:"solunad + solctl",dl_inc3_desc:"Servicio en segundo plano y herramienta CLI",
+    dl_inc4_title:"LaunchAgent",dl_inc4_desc:"Inicio automático al iniciar sesión",
+    sp_latency:"Latencia",sp_format:"PCM / Opus / FLAC",sp_engine:"Motor de audio",sp_license:"Uso personal",sp_license_val:"Gratis",
+    plat_mac_desc:"App nativa Mac con instalación en un clic",
+    plat_mac_link:"Descargar \u2192",
+    plat_ios_desc:"Receptor para iPhone/iPad con reproducción en segundo plano",
+    plat_linux_desc:"Daemon para Raspberry Pi y Linux con salida ALSA",plat_linux_link:"Guía de compilación →",
+    cta_title:"¿Listo para llenar tu hogar de música?",
+    cta_desc:"Descarga el instalador gratuito y empieza a transmitir a cada habitación.",
+    cta_btn:"Descargar ahora",
+    footer_docs:"Documentación",
+    footer_issues:"Reportar problema",
+    pricing_label:"PRECIOS",
+    pricing_title:"Gratis para todos. En serio.",
+    pricing_desc:"Todas las funciones incluidas \u2014 hasta 1.000 usuarios. Sin trampas.",
+    plan_free:"Free",plan_enterprise:"Empresa",plan_kit:"Kit RPi",
+    price_free:"$0",price_enterprise:"Personalizado",pricing_forever:"Gratis para siempre",pricing_onetime:"compra única",
+    pricing_contact_desc:"1.000+ usuarios",
+    pricing_users_free:"Hasta 1.000 usuarios simultáneos",pricing_modes:"Modo Sync + Modo Jam",pricing_bidir:"Audio bidireccional full dúplex",
+    pricing_codec_all:"Todos los códecs (PCM, Opus, FLAC)",pricing_network_all:"Streaming LAN + WAN P2P",
+    pricing_dsp_all:"DSP completo (EQ, compresor, crossover, espacial)",pricing_auto:"Descubrimiento y sincronización auto",
+    pricing_ent_all:"Todo lo del plan Free",pricing_ent_unlimited:"Usuarios simultáneos ilimitados",pricing_ent_sla:"SLA dedicado y soporte",
+    pricing_ent_deploy:"Opciones de despliegue personalizado",pricing_ent_priority:"Corrección de bugs prioritaria",
+    pricing_kit_sd:"Imagen SD preconfigurada",pricing_kit_guide:"Guía paso a paso",pricing_kit_headless:"Operación headless lista",
+    pricing_kit_relay:"Relay en la nube: $2.99/mes (opcional)",pricing_kit_note:"Hardware se vende por separado.",
+    pricing_cta_free:"Descargar gratis",pricing_cta_enterprise:"Contáctanos",pricing_cta_kit:"Obtener el kit",
+    pricing_popular:"PARA TODOS",
+    dl_free_note:'Todas las funciones gratis hasta 1.000 usuarios. <a href="#pricing" style="color:var(--accent-light)">Empresa</a> para eventos mayores.',
 },
 fr: {
-    nav_download:"Installer",
-    badge:"3 MÉTHODES D'INSTALLATION",
-    hero_sub:"pour Mac",
-    hero_desc:"TX + RX + WAN P2P dans une seule app. Streaming audio système, TX micro, synchronisation multi-enceintes. Sans daemon.",
-    btn_download:"Installer en 1 Commande",
+    nav_download:"Télécharger",
+    badge:"GRATUIT — JUSQU'À 1 000 UTILISATEURS",
+    hero_title:"Votre musique. Chaque pièce. Un clic.",
+    hero_desc:"Transformez votre Mac, iPhone et Raspberry Pi en enceintes sans fil. Lecture parfaitement synchronisée sur tous les appareils.",
+    hero_note:"Gratuit jusqu'à 1 000 utilisateurs. Toutes les fonctionnalités incluses.",
+    btn_download:"Télécharger pour Mac",
+    btn_howto:"Comment ça marche",
     btn_source:"Code source",
-    mock_receiving:"Audio TX ON",
-    mock_speakers:"Enceintes",
-    mock_this_mac:"Ce Mac",
+    mock_sync:"4 enceintes synchronisées",
+    mock_speakers_label:"Enceintes",
+    mock_living:"Salon",
+    mock_kitchen:"Cuisine",
+    mock_bedroom:"Chambre",
+    mock_terrace:"Terrasse",
+    uc_label:"CAS D'USAGE",
+    uc_title:"Comment l'utiliserez-vous ?",
+    uc_desc:"De l'écoute quotidienne à la collaboration professionnelle",
+    uc1_title:"Musique dans chaque pièce",
+    uc1_desc:"Jouez Spotify, YouTube ou tout audio sur les enceintes de chaque pièce simultanément. Pas d'équipement coûteux.",
+    uc2_title:"Son de fête instantané",
+    uc2_desc:"Apportez des PCs et enceintes de rechange, connectez-les en WiFi. Un système son synchronisé massif en minutes.",
+    uc3_title:"Sessions live dans le monde entier",
+    uc3_desc:"Audio bidirectionnel ultra faible latence (~20ms) via internet. Parfait pour la collaboration musicale.",
+    uc4_title:"Étendez pour 35$ par pièce",
+    uc4_desc:"Ajoutez un Raspberry Pi + enceinte pour étendre votre audio domestique pièce par pièce.",
     features_label:"FONCTIONNALITÉS",
     features_title:"Tout ce qu'il faut",
-    features_desc:"Audio réseau fluide sans configuration",
-    f1_title:"Multicast RTP/OSTP",f1_desc:"Reçoit automatiquement l'audio sur 239.69.0.1:5004. Aucune configuration \u2014 lancez et écoutez.",
-    f2_title:"Découverte Bonjour",f2_desc:"Détecte automatiquement les émetteurs Soluna sur votre réseau local. Aucune configuration IP manuelle.",
-    f3_title:"Contrôle Multi-Enceintes",f3_desc:"Contrôlez plusieurs enceintes depuis un seul endroit. Ajustez le volume, le silence et le délai individuellement ou globalement.",
-    f4_title:"Synchronisation Auto",f4_desc:"Mesure le temps aller-retour pour synchroniser automatiquement la latence audio sur toutes les enceintes.",
-    f5_title:"Compensation de Perte",f5_desc:"L'algorithme PLC intégré comble les paquets perdus pour une lecture fluide même en réseau congestionné.",
-    f6_title:"Statistiques en Temps Réel",f6_desc:"Surveillez les paquets, le taux de perte, le tampon et le compteur PLC en temps réel.",
-    how_label:"INSTALLATION",how_title:"Choisissez votre méthode",how_desc:"Trois options selon votre niveau",
-    io1_badge:"RECOMMANDÉ",io1_title:"Soluna App",io1_who:"Pour tous — le plus simple",
-    io1_desc:"Installez Soluna.app et contrôlez tout via une interface graphique. Audio TX, Mic TX, WAN P2P intégrés. Pas de terminal après l'installation.",
-    io1_steps:"<strong>1.</strong> Exécutez la commande<br><strong>2.</strong> Réglages Son → Sortie → « Soluna »<br><strong>3.</strong> Ouvrez Soluna.app → Terminé !",
-    io2_badge:"AUTOMATIQUE",io2_title:"Installeur + solunad",io2_who:"Démarrage auto à la connexion — tourne en arrière-plan",
-    io2_desc:"Inclut tout du mode App plus le daemon solunad et LaunchAgent. L'audio est diffusé automatiquement à la connexion.",
-    io2_steps:"<strong>1.</strong> Exécutez la commande<br><strong>2.</strong> Réglages Son → Sortie → « Soluna »<br><strong>3.</strong> C'est tout — diffuse à la connexion",
-    io3_badge:"AVANCÉ",io3_title:"Ligne de Commande",io3_who:"Pour développeurs — contrôle manuel complet",
-    io3_desc:"Compilez depuis les sources avec cmake. Utilisez solctl CLI pour démarrer/arrêter les flux et configurer les options.",
-    io3_steps:"<strong>1.</strong> Compilez avec cmake<br><strong>2.</strong> Installez le driver manuellement<br><strong>3.</strong> Utilisez solctl pour contrôler",
-    specs_label:"SPÉCIFICATIONS",specs_title:"Conçu pour la performance",specs_desc:"Léger, efficace et dédié à l'audio",
-    sp1:"OS Minimum",sp2:"arm64 Natif",sp3:"Latence Tampon",sp4_val:"Gratuit",sp4:"Prix",sp5:"Interface macOS Native",sp6:"Moteur Audio",sp7:"Format Audio",sp8_val:"Open Source",sp8:"Licence",
-    plat_label:"MULTIPLATEFORME",plat_title:"Disponible partout",plat_desc:"Soluna fonctionne sur macOS, iOS, Raspberry Pi et navigateurs. TX+RX+WAN dans une seule app sur Mac.",
-    plat_mac_desc:"Application Mac native avec installation en une commande",plat_ios_desc:"Récepteur iPhone/iPad avec lecture en arrière-plan",
-    cta_title:"Prêt à diffuser ?",cta_desc:"Installez Soluna avec une commande. TX+RX+WAN P2P dans une seule app.",cta_btn:"Installer Maintenant",
-    footer_docs:"Documentation",footer_issues:"Signaler un problème",
+    features_desc:"Audio professionnel sans configuration",
+    f1_title:"Mode Sync & Mode Jam",f1_desc:"Deux modes : Sync aligne toutes les enceintes pour la lecture multi-pièces. Jam priorise l'ultra-faible latence pour les sessions en temps réel. Un clic pour changer.",
+    f2_title:"Streaming via internet",f2_desc:"Pas seulement le WiFi — connectez des enceintes dans le monde entier via P2P.",
+    f3_title:"Audio bidirectionnel",f3_desc:"Audio full duplex \u2014 tout le monde envoie et reçoit. En mode Jam, latence de ~20ms pour sessions live, cours et collaboration mondiale.",
+    f4_title:"Qualité studio",f4_desc:"48kHz / 24-bit par défaut. Supporte PCM sans perte 16/24/32-bit, Opus faible latence et FLAC.",
+    f5_title:"Zéro configuration",f5_desc:"Découverte automatique Bonjour. Connectez et c'est prêt. Reconnexion automatique intégrée.",
+    f6_title:"Gratuit pour 1 000 utilisateurs",f6_desc:"Toutes les fonctionnalités gratuites pour 1 000 utilisateurs simultanés. Open source. Sans compte. Licence entreprise pour événements plus importants.",
+    cmp_label:"COMPARAISON",
+    cmp_title:"Comment Soluna se compare",
+    cmp_desc:"Voyez comment Soluna se compare aux alternatives populaires",
+    cmp_feature:"Fonctionnalité",
+    cmp_multiroom:"Multi-pièces",
+    cmp_existing:"Enceintes existantes",
+    cmp_crossplat:"Multiplateforme",
+    cmp_limited:"Limité",
+    cmp_apple:"Apple uniquement",
+    cmp_pro:"Pro uniquement",
+    cmp_allos:"Tous les OS",
+    cmp_cost:"Coût",
+    cmp_free_apple:"Gratuit (Apple)",
+    cmp_free:"Gratuit",
+    cmp_free_1k:"Gratuit (\u22641000)",
+    cmp_setup:"Installation",
+    cmp_easy:"Facile",
+    cmp_hard:"Difficile",
+    cmp_opensource:"Open Source",
+    cmp_internet:"Via internet",
+    cmp_latency:"Latence",
+    cmp_bidir:"Bidirectionnel",
+    cmp_lossless:"Sans perte",
+    how_label:"COMMENT ÇA MARCHE",
+    how_title:"Prêt en 3 étapes",
+    how_desc:"Du téléchargement à la musique en moins d'une minute",
+    step1_title:"Télécharger",step1_desc:"Téléchargez l'installeur gratuit — un fichier, tout inclus.",
+    step2_title:"Installer",step2_desc:"Double-cliquez et suivez l'assistant. Terminé en 30 secondes.",
+    step3_title:"Écouter",step3_desc:"Ouvrez Soluna, choisissez vos enceintes et lancez la lecture. La musique remplit chaque pièce.",
+    dl_label:"TÉLÉCHARGEMENT",
+    dl_title:"Obtenir Soluna",
+    dl_desc:"Un seul installeur. Tout inclus. Sans terminal.",
+    dl_button:"Télécharger Soluna-mac.pkg",
+    dl_req:"macOS 13 Ventura ou ultérieur &bull; Apple Silicon + Intel &bull; Gratuit pour usage personnel",
+    dl_inc1_title:"Soluna.app",dl_inc1_desc:"Interface graphique de streaming audio",
+    dl_inc2_title:"Soluna.driver",dl_inc2_desc:"Périphérique audio virtuel (plugin HAL)",
+    dl_inc3_title:"solunad + solctl",dl_inc3_desc:"Service d'arrière-plan & outil CLI",
+    dl_inc4_title:"LaunchAgent",dl_inc4_desc:"Démarrage auto à la connexion",
+    sp_latency:"Latence",sp_format:"PCM / Opus / FLAC",sp_engine:"Moteur audio",sp_license:"Usage personnel",sp_license_val:"Gratuit",
+    plat_mac_desc:"Application Mac native avec installation en un clic",
+    plat_mac_link:"Télécharger \u2192",
+    plat_ios_desc:"Récepteur iPhone/iPad avec lecture en arrière-plan",
+    plat_linux_desc:"Daemon Raspberry Pi et Linux avec sortie ALSA",plat_linux_link:"Guide de compilation →",
+    cta_title:"Prêt à remplir votre maison de musique ?",
+    cta_desc:"Téléchargez l'installeur gratuit et commencez à diffuser dans chaque pièce.",
+    cta_btn:"Télécharger maintenant",
+    footer_docs:"Documentation",
+    footer_issues:"Signaler un problème",
+    pricing_label:"TARIFS",
+    pricing_title:"Gratuit pour tous. Vraiment.",
+    pricing_desc:"Toutes les fonctionnalités incluses \u2014 jusqu'à 1 000 utilisateurs.",
+    plan_free:"Free",plan_enterprise:"Entreprise",plan_kit:"Kit RPi",
+    price_free:"0$",price_enterprise:"Sur mesure",pricing_forever:"Gratuit pour toujours",pricing_onetime:"achat unique",
+    pricing_contact_desc:"1 000+ utilisateurs",
+    pricing_users_free:"Jusqu'à 1 000 utilisateurs simultanés",pricing_modes:"Mode Sync + Mode Jam",pricing_bidir:"Audio bidirectionnel full duplex",
+    pricing_codec_all:"Tous les codecs (PCM, Opus, FLAC)",pricing_network_all:"Streaming LAN + WAN P2P",
+    pricing_dsp_all:"DSP complet (EQ, compresseur, crossover, spatial)",pricing_auto:"Découverte auto et synchronisation",
+    pricing_ent_all:"Tout ce qui est dans Free",pricing_ent_unlimited:"Utilisateurs simultanés illimités",pricing_ent_sla:"SLA dédié et support",
+    pricing_ent_deploy:"Options de déploiement personnalisé",pricing_ent_priority:"Corrections de bugs prioritaires",
+    pricing_kit_sd:"Image SD préconfigurée",pricing_kit_guide:"Guide d'installation étape par étape",pricing_kit_headless:"Fonctionnement headless prêt",
+    pricing_kit_relay:"Relais cloud: 2,99$/mois (optionnel)",pricing_kit_note:"Matériel vendu séparément.",
+    pricing_cta_free:"Télécharger gratuitement",pricing_cta_enterprise:"Nous contacter",pricing_cta_kit:"Obtenir le kit",
+    pricing_popular:"POUR TOUS",
+    dl_free_note:'Toutes les fonctionnalités gratuites jusqu\'à 1 000 utilisateurs. <a href="#pricing" style="color:var(--accent-light)">Entreprise</a> pour plus.',
 },
 de: {
-    nav_download:"Installieren",
-    badge:"3 INSTALLATIONSMETHODEN",
-    hero_sub:"für Mac",
-    hero_desc:"TX + RX + WAN P2P in einer App. System-Audio-Streaming, Mikrofon TX, Multi-Lautsprecher-Sync. Kein Daemon nötig.",
-    btn_download:"Mit 1 Befehl installieren",
+    nav_download:"Herunterladen",
+    badge:"KOSTENLOS — BIS ZU 1.000 NUTZER",
+    hero_title:"Deine Musik. Jeder Raum. Ein Klick.",
+    hero_desc:"Verwandle deinen Mac, iPhone und Raspberry Pi in kabellose Lautsprecher. Perfekt synchronisierte Wiedergabe auf allen Geräten.",
+    hero_note:"Kostenlos bis 1.000 Nutzer. Alle Funktionen inklusive.",
+    btn_download:"Für Mac herunterladen",
+    btn_howto:"So funktioniert's",
     btn_source:"Quellcode",
-    mock_receiving:"Audio TX ON",
-    mock_speakers:"Lautsprecher",
-    mock_this_mac:"Dieser Mac",
+    mock_sync:"4 Lautsprecher synchronisiert",
+    mock_speakers_label:"Lautsprecher",
+    mock_living:"Wohnzimmer",
+    mock_kitchen:"Küche",
+    mock_bedroom:"Schlafzimmer",
+    mock_terrace:"Terrasse",
+    uc_label:"ANWENDUNGSFÄLLE",
+    uc_title:"Wie wirst du es nutzen?",
+    uc_desc:"Vom täglichen Hören bis zur professionellen Zusammenarbeit",
+    uc1_title:"Musik in jedem Raum",
+    uc1_desc:"Spiele Spotify, YouTube oder jedes Audio gleichzeitig über Lautsprecher in jedem Raum. Keine teure Ausrüstung nötig.",
+    uc2_title:"Sofortiger Party-Sound",
+    uc2_desc:"Bring übrige PCs und Lautsprecher mit, verbinde sie per WiFi. In Minuten ein riesiges synchronisiertes Soundsystem.",
+    uc3_title:"Echtzeit-Jam-Sessions weltweit",
+    uc3_desc:"Bidirektionaler Ultra-Low-Latency (~20ms) über das Internet. Perfekt für musikalische Zusammenarbeit.",
+    uc4_title:"Erweitern für $35 pro Raum",
+    uc4_desc:"Füge einen Raspberry Pi + Lautsprecher hinzu, um dein Home-Audio Raum für Raum zu erweitern.",
     features_label:"FUNKTIONEN",
     features_title:"Alles was du brauchst",
-    features_desc:"Nahtloses Netzwerk-Audio ohne Konfiguration",
-    f1_title:"Multicast RTP/OSTP",f1_desc:"Empfängt Audio automatisch auf 239.69.0.1:5004. Keine Konfiguration \u2014 einfach starten und zuhören.",
-    f2_title:"Bonjour Auto-Erkennung",f2_desc:"Findet Soluna-Sender automatisch im lokalen Netzwerk. Keine manuelle IP-Einrichtung nötig.",
-    f3_title:"Multi-Lautsprecher-Steuerung",f3_desc:"Steuere mehrere Lautsprecher von einem Ort. Lautstärke, Stummschaltung und Verzögerung einzeln oder gemeinsam anpassen.",
-    f4_title:"Auto-Synchronisierung",f4_desc:"Misst die Rundlaufzeit und synchronisiert automatisch die Audio-Latenz aller Lautsprecher.",
-    f5_title:"Paketverlust-Kompensation",f5_desc:"Eingebauter PLC-Algorithmus füllt verlorene Pakete auf für flüssige Wiedergabe auch bei Netzwerkstau.",
-    f6_title:"Echtzeit-Statistiken",f6_desc:"Überwache Pakete, Verlustrate, Puffer und PLC-Zähler in Echtzeit.",
-    how_label:"INSTALLATION",how_title:"Wähle deine Methode",how_desc:"Drei Optionen je nach Level",
-    io1_badge:"EMPFOHLEN",io1_title:"Soluna App",io1_who:"Für alle — der einfachste Weg",
-    io1_desc:"Installiere Soluna.app und steuere alles über die Benutzeroberfläche. Audio TX, Mic TX, WAN P2P integriert. Kein Terminal nach der Installation.",
-    io1_steps:"<strong>1.</strong> Befehl ausführen<br><strong>2.</strong> Toneinstellungen → Ausgabe → 'Soluna'<br><strong>3.</strong> Soluna.app öffnen → Fertig!",
-    io2_badge:"AUTOMATISCH",io2_title:"Installer + solunad",io2_who:"Autostart beim Login — läuft im Hintergrund",
-    io2_desc:"Enthält alles aus dem App-Modus plus solunad-Daemon und LaunchAgent. Audio streamt automatisch beim Login.",
-    io2_steps:"<strong>1.</strong> Befehl ausführen<br><strong>2.</strong> Toneinstellungen → Ausgabe → 'Soluna'<br><strong>3.</strong> Das war's — streamt beim Login",
-    io3_badge:"FORTGESCHRITTEN",io3_title:"Kommandozeile",io3_who:"Für Entwickler — volle manuelle Kontrolle",
-    io3_desc:"Aus dem Quellcode mit cmake bauen. Nutze solctl CLI zum Starten/Stoppen von Streams und zur Konfiguration.",
-    io3_steps:"<strong>1.</strong> Mit cmake bauen<br><strong>2.</strong> Treiber manuell installieren<br><strong>3.</strong> Mit solctl steuern",
-    specs_label:"SPEZIFIKATIONEN",specs_title:"Für Leistung gebaut",specs_desc:"Leichtgewichtig, effizient und für Audio entwickelt",
-    sp1:"Minimum OS",sp2:"Natives arm64",sp3:"Puffer-Latenz",sp4_val:"Kostenlos",sp4:"Preis",sp5:"Native macOS UI",sp6:"Audio-Engine",sp7:"Audio-Format",sp8_val:"Open Source",sp8:"Lizenz",
-    plat_label:"PLATTFORMÜBERGREIFEND",plat_title:"Überall verfügbar",plat_desc:"Soluna läuft auf macOS, iOS, Raspberry Pi und Browsern. TX+RX+WAN in einer App auf dem Mac.",
-    plat_mac_desc:"Native Mac-App mit Ein-Befehl-Installation",plat_ios_desc:"iPhone/iPad-Empfänger mit Hintergrundwiedergabe",
-    cta_title:"Bereit zum Streamen?",cta_desc:"Installiere Soluna mit einem Befehl. TX+RX+WAN P2P in einer einzigen App.",cta_btn:"Jetzt Installieren",
-    footer_docs:"Dokumentation",footer_issues:"Problem melden",
+    features_desc:"Professionelle Audioqualität ohne Konfiguration",
+    f1_title:"Sync-Modus & Jam-Modus",f1_desc:"Zwei Modi: Sync richtet alle Lautsprecher für perfekte Multi-Raum-Wiedergabe aus. Jam priorisiert ultra-niedrige Latenz für Echtzeit-Sessions. Ein Klick zum Wechseln.",
+    f2_title:"Streaming übers Internet",f2_desc:"Nicht nur WiFi — verbinde Lautsprecher weltweit per Peer-to-Peer.",
+    f3_title:"Bidirektionales Audio",f3_desc:"Vollduplex-Audio \u2014 alle senden und empfangen. Im Jam-Modus nur ~20ms Latenz für Echtzeit-Jam-Sessions, Unterricht und weltweite Zusammenarbeit.",
+    f4_title:"Studioqualität",f4_desc:"48kHz / 24-bit Standard. Unterstützt 16/24/32-bit PCM verlustfrei, Opus Low-Latency und FLAC.",
+    f5_title:"Null Konfiguration",f5_desc:"Bonjour Auto-Erkennung findet Geräte sofort. Einfach verbinden. Auto-Reconnect inklusive.",
+    f6_title:"Kostenlos für 1.000 Nutzer",f6_desc:"Alle Funktionen kostenlos für bis zu 1.000 gleichzeitige Nutzer. Open Source. Kein Konto nötig. Enterprise-Lizenz für größere Events.",
+    cmp_label:"VERGLEICH",
+    cmp_title:"Wie Soluna abschneidet",
+    cmp_desc:"Sieh, wie sich Soluna im Vergleich zu populären Alternativen schlägt",
+    cmp_feature:"Funktion",
+    cmp_multiroom:"Multi-Raum",
+    cmp_existing:"Bestehende Lautsprecher",
+    cmp_crossplat:"Plattformübergreifend",
+    cmp_limited:"Eingeschränkt",
+    cmp_apple:"Nur Apple",
+    cmp_pro:"Nur Profi",
+    cmp_allos:"Alle OS",
+    cmp_cost:"Kosten",
+    cmp_free_apple:"Kostenlos (Apple)",
+    cmp_free:"Kostenlos",
+    cmp_free_1k:"Kostenlos (\u22641000)",
+    cmp_setup:"Einrichtung",
+    cmp_easy:"Einfach",
+    cmp_hard:"Schwierig",
+    cmp_opensource:"Open Source",
+    cmp_internet:"Übers Internet",
+    cmp_latency:"Latenz",
+    cmp_bidir:"Bidirektional",
+    cmp_lossless:"Verlustfrei",
+    how_label:"SO FUNKTIONIERT'S",
+    how_title:"In 3 Schritten startklar",
+    how_desc:"Vom Download zur Musik in unter einer Minute",
+    step1_title:"Herunterladen",step1_desc:"Lade den kostenlosen Installer herunter — eine Datei, alles enthalten.",
+    step2_title:"Installieren",step2_desc:"Doppelklick und dem Assistenten folgen. In 30 Sekunden fertig.",
+    step3_title:"Abspielen",step3_desc:"Öffne Soluna, wähle deine Lautsprecher und drücke Play. Musik füllt jeden Raum.",
+    dl_label:"DOWNLOAD",
+    dl_title:"Soluna herunterladen",
+    dl_desc:"Ein Installer. Alles enthalten. Kein Terminal nötig.",
+    dl_button:"Soluna-mac.pkg herunterladen",
+    dl_req:"macOS 13 Ventura oder neuer &bull; Apple Silicon + Intel &bull; Kostenlos für persönliche Nutzung",
+    dl_inc1_title:"Soluna.app",dl_inc1_desc:"GUI für Audio-Streaming-Steuerung",
+    dl_inc2_title:"Soluna.driver",dl_inc2_desc:"Virtuelles Audiogerät (HAL-Plugin)",
+    dl_inc3_title:"solunad + solctl",dl_inc3_desc:"Hintergrunddienst & CLI-Tool",
+    dl_inc4_title:"LaunchAgent",dl_inc4_desc:"Autostart bei Anmeldung",
+    sp_latency:"Latenz",sp_format:"PCM / Opus / FLAC",sp_engine:"Audio-Engine",sp_license:"Persönliche Nutzung",sp_license_val:"Kostenlos",
+    plat_mac_desc:"Native Mac-App mit Ein-Klick-Installation",
+    plat_mac_link:"Herunterladen \u2192",
+    plat_ios_desc:"iPhone/iPad-Empfänger mit Hintergrundwiedergabe",
+    plat_linux_desc:"Raspberry Pi und Linux Daemon mit ALSA-Ausgabe",plat_linux_link:"Build-Anleitung →",
+    cta_title:"Bereit, dein Zuhause mit Musik zu füllen?",
+    cta_desc:"Lade den kostenlosen Installer herunter und streame in jeden Raum.",
+    cta_btn:"Jetzt herunterladen",
+    footer_docs:"Dokumentation",
+    footer_issues:"Problem melden",
+    pricing_label:"PREISE",
+    pricing_title:"Kostenlos für alle. Wirklich.",
+    pricing_desc:"Alle Funktionen inklusive \u2014 bis zu 1.000 Nutzer. Kein Haken.",
+    plan_free:"Free",plan_enterprise:"Enterprise",plan_kit:"RPi Kit",
+    price_free:"0$",price_enterprise:"Individuell",pricing_forever:"Für immer kostenlos",pricing_onetime:"Einmalkauf",
+    pricing_contact_desc:"1.000+ Nutzer",
+    pricing_users_free:"Bis zu 1.000 gleichzeitige Nutzer",pricing_modes:"Sync-Modus + Jam-Modus",pricing_bidir:"Vollduplex bidirektionales Audio",
+    pricing_codec_all:"Alle Codecs (PCM, Opus, FLAC)",pricing_network_all:"LAN + WAN P2P Streaming",
+    pricing_dsp_all:"Volles DSP (EQ, Kompressor, Crossover, Spatial)",pricing_auto:"Auto-Erkennung & Sync",
+    pricing_ent_all:"Alles aus Free enthalten",pricing_ent_unlimited:"Unbegrenzte gleichzeitige Nutzer",pricing_ent_sla:"Dediziertes SLA & Support",
+    pricing_ent_deploy:"Individuelle Deployment-Optionen",pricing_ent_priority:"Prioritäre Bugfixes",
+    pricing_kit_sd:"Vorkonfiguriertes SD-Karten-Image",pricing_kit_guide:"Schritt-für-Schritt Einrichtung",pricing_kit_headless:"Headless-Betrieb bereit",
+    pricing_kit_relay:"Cloud-Relay: $2,99/Mo. (optional)",pricing_kit_note:"Hardware separat erhältlich.",
+    pricing_cta_free:"Kostenlos herunterladen",pricing_cta_enterprise:"Kontakt",pricing_cta_kit:"Kit holen",
+    pricing_popular:"FÜR ALLE",
+    dl_free_note:'Alle Funktionen kostenlos bis 1.000 Nutzer. <a href="#pricing" style="color:var(--accent-light)">Enterprise</a> für größere Events.',
 },
 pt: {
-    nav_download:"Instalar",
-    badge:"3 FORMAS DE INSTALAR",
-    hero_sub:"para Mac",
-    hero_desc:"TX + RX + WAN P2P em um único app. Streaming de áudio do sistema, TX de microfone, sincronização multi-caixas. Sem daemon.",
-    btn_download:"Instalar com 1 Comando",
+    nav_download:"Baixar",
+    badge:"GRÁTIS — ATÉ 1.000 USUÁRIOS",
+    hero_title:"Sua música. Cada cômodo. Um clique.",
+    hero_desc:"Transforme seu Mac, iPhone e Raspberry Pi em caixas de som sem fio. Reprodução perfeitamente sincronizada em todos os dispositivos.",
+    hero_note:"Grátis até 1.000 usuários. Todos os recursos incluídos.",
+    btn_download:"Baixar para Mac",
+    btn_howto:"Como funciona",
     btn_source:"Código fonte",
-    mock_receiving:"Audio TX ON",
-    mock_speakers:"Caixas de Som",
-    mock_this_mac:"Este Mac",
+    mock_sync:"4 caixas sincronizadas",
+    mock_speakers_label:"Caixas de Som",
+    mock_living:"Sala",
+    mock_kitchen:"Cozinha",
+    mock_bedroom:"Quarto",
+    mock_terrace:"Terraço",
+    uc_label:"CASOS DE USO",
+    uc_title:"Como você vai usar?",
+    uc_desc:"Da audição diária à colaboração profissional",
+    uc1_title:"Música em cada cômodo",
+    uc1_desc:"Reproduza Spotify, YouTube ou qualquer áudio em caixas de cada cômodo simultaneamente. Sem equipamentos caros.",
+    uc2_title:"Som de festa instantâneo",
+    uc2_desc:"Traga PCs e caixas extras, conecte via WiFi. Monte um sistema de som sincronizado massivo em minutos.",
+    uc3_title:"Sessions ao vivo no mundo todo",
+    uc3_desc:"Áudio bidirecional de ultra baixa latência (~20ms) pela internet. Perfeito para colaboração musical.",
+    uc4_title:"Expanda por $35 por cômodo",
+    uc4_desc:"Adicione um Raspberry Pi + caixa para expandir seu áudio doméstico cômodo por cômodo.",
     features_label:"RECURSOS",
     features_title:"Tudo que você precisa",
-    features_desc:"Áudio em rede sem configuração",
-    f1_title:"Multicast RTP/OSTP",f1_desc:"Recebe áudio automaticamente em 239.69.0.1:5004. Sem configuração \u2014 basta iniciar e ouvir.",
-    f2_title:"Descoberta Bonjour",f2_desc:"Encontra transmissores Soluna na sua rede local automaticamente. Sem configuração manual de IP.",
-    f3_title:"Controle Multi-Caixas",f3_desc:"Controle múltiplas caixas de som de um só lugar. Ajuste volume, mudo e atraso individualmente ou em conjunto.",
-    f4_title:"Sincronização Auto",f4_desc:"Mede o tempo de ida e volta para sincronizar automaticamente a latência de áudio em todas as caixas.",
-    f5_title:"Compensação de Perda",f5_desc:"Algoritmo PLC integrado preenche pacotes perdidos para manter a reprodução suave em redes congestionadas.",
-    f6_title:"Estatísticas em Tempo Real",f6_desc:"Monitore pacotes, taxa de perda, buffer e contagem PLC em tempo real.",
-    how_label:"INSTALAÇÃO",how_title:"Escolha seu método",how_desc:"Três opções de acordo com seu nível",
-    io1_badge:"RECOMENDADO",io1_title:"Soluna App",io1_who:"Para todos — a forma mais fácil",
-    io1_desc:"Instale Soluna.app e controle tudo pela interface gráfica. Audio TX, Mic TX, WAN P2P integrados. Sem terminal após a instalação.",
-    io1_steps:"<strong>1.</strong> Execute o comando<br><strong>2.</strong> Ajustes de Som → Saída → 'Soluna'<br><strong>3.</strong> Abra Soluna.app → Pronto!",
-    io2_badge:"AUTOMÁTICO",io2_title:"Instalador + solunad",io2_who:"Início automático no login — roda em segundo plano",
-    io2_desc:"Inclui tudo do modo App mais o daemon solunad e LaunchAgent. O áudio é transmitido automaticamente ao fazer login.",
-    io2_steps:"<strong>1.</strong> Execute o comando<br><strong>2.</strong> Ajustes de Som → Saída → 'Soluna'<br><strong>3.</strong> Pronto — transmite no login",
-    io3_badge:"AVANÇADO",io3_title:"Linha de Comando",io3_who:"Para desenvolvedores — controle manual total",
-    io3_desc:"Compile a partir do código-fonte com cmake. Use solctl CLI para iniciar/parar streams e configurar opções.",
-    io3_steps:"<strong>1.</strong> Compile com cmake<br><strong>2.</strong> Instale o driver manualmente<br><strong>3.</strong> Use solctl para controlar",
-    specs_label:"ESPECIFICAÇÕES",specs_title:"Projetado para desempenho",specs_desc:"Leve, eficiente e feito para áudio",
-    sp1:"OS Mínimo",sp2:"arm64 Nativo",sp3:"Latência Buffer",sp4_val:"Grátis",sp4:"Preço",sp5:"UI macOS Nativa",sp6:"Motor de Áudio",sp7:"Formato de Áudio",sp8_val:"Código Aberto",sp8:"Licença",
-    plat_label:"MULTIPLATAFORMA",plat_title:"Disponível em todo lugar",plat_desc:"Soluna funciona em macOS, iOS, Raspberry Pi e navegadores. TX+RX+WAN em um app no Mac.",
-    plat_mac_desc:"App Mac nativo com instalação em um comando",plat_ios_desc:"Receptor para iPhone/iPad com reprodução em segundo plano",
-    cta_title:"Pronto para transmitir?",cta_desc:"Instale Soluna com um comando. TX+RX+WAN P2P em um único app.",cta_btn:"Instalar Agora",
-    footer_docs:"Documentação",footer_issues:"Relatar problema",
+    features_desc:"Áudio profissional sem configuração",
+    f1_title:"Modo Sync & Modo Jam",f1_desc:"Dois modos: Sync alinha todas as caixas para reprodução multi-cômodos perfeita. Jam prioriza ultra-baixa latência para sessões em tempo real. Troque com um clique.",
+    f2_title:"Streaming pela internet",f2_desc:"Não apenas WiFi — conecte caixas no mundo todo via P2P. Música sem limite de distância.",
+    f3_title:"Áudio bidirecional",f3_desc:"Áudio full duplex \u2014 todos enviam e recebem. No modo Jam, latência de ~20ms para sessões ao vivo, aulas e colaboração mundial.",
+    f4_title:"Qualidade de estúdio",f4_desc:"48kHz / 24-bit padrão. Suporta PCM sem perda 16/24/32-bit, Opus baixa latência e FLAC.",
+    f5_title:"Zero configuração",f5_desc:"Descoberta automática Bonjour. Conecte e pronto. Reconexão automática inclusa.",
+    f6_title:"Grátis para 1.000 usuários",f6_desc:"Todos os recursos grátis para até 1.000 usuários simultâneos. Open source. Sem conta. Licença empresarial para eventos maiores.",
+    cmp_label:"COMPARAÇÃO",
+    cmp_title:"Como Soluna se compara",
+    cmp_desc:"Veja como Soluna se compara às alternativas populares",
+    cmp_feature:"Recurso",
+    cmp_multiroom:"Multi-cômodos",
+    cmp_existing:"Caixas existentes",
+    cmp_crossplat:"Multiplataforma",
+    cmp_limited:"Limitado",
+    cmp_apple:"Apenas Apple",
+    cmp_pro:"Apenas profissional",
+    cmp_allos:"Todos os SO",
+    cmp_cost:"Custo",
+    cmp_free_apple:"Grátis (Apple)",
+    cmp_free:"Grátis",
+    cmp_free_1k:"Grátis (\u22641000)",
+    cmp_setup:"Configuração",
+    cmp_easy:"Fácil",
+    cmp_hard:"Difícil",
+    cmp_opensource:"Open Source",
+    cmp_internet:"Pela internet",
+    cmp_latency:"Latência",
+    cmp_bidir:"Bidirecional",
+    cmp_lossless:"Sem perda",
+    how_label:"COMO FUNCIONA",
+    how_title:"Pronto em 3 passos",
+    how_desc:"Do download à música em menos de um minuto",
+    step1_title:"Baixar",step1_desc:"Baixe o instalador grátis — um arquivo, tudo incluído.",
+    step2_title:"Instalar",step2_desc:"Clique duplo e siga o assistente. Pronto em 30 segundos.",
+    step3_title:"Reproduzir",step3_desc:"Abra Soluna, escolha suas caixas e aperte play. Música preenche cada cômodo.",
+    dl_label:"DOWNLOAD",
+    dl_title:"Obter Soluna",
+    dl_desc:"Um instalador. Tudo incluído. Sem terminal.",
+    dl_button:"Baixar Soluna-mac.pkg",
+    dl_req:"macOS 13 Ventura ou posterior &bull; Apple Silicon + Intel &bull; Grátis para uso pessoal",
+    dl_inc1_title:"Soluna.app",dl_inc1_desc:"GUI para controle de streaming de áudio",
+    dl_inc2_title:"Soluna.driver",dl_inc2_desc:"Dispositivo de áudio virtual (plugin HAL)",
+    dl_inc3_title:"solunad + solctl",dl_inc3_desc:"Serviço em segundo plano & ferramenta CLI",
+    dl_inc4_title:"LaunchAgent",dl_inc4_desc:"Início automático no login",
+    sp_latency:"Latência",sp_format:"PCM / Opus / FLAC",sp_engine:"Motor de áudio",sp_license:"Uso pessoal",sp_license_val:"Grátis",
+    plat_mac_desc:"App Mac nativo com instalação em um clique",
+    plat_mac_link:"Baixar \u2192",
+    plat_ios_desc:"Receptor para iPhone/iPad com reprodução em segundo plano",
+    plat_linux_desc:"Daemon para Raspberry Pi e Linux com saída ALSA",plat_linux_link:"Guia de compilação →",
+    cta_title:"Pronto para encher sua casa de música?",
+    cta_desc:"Baixe o instalador grátis e comece a transmitir para cada cômodo.",
+    cta_btn:"Baixar agora",
+    footer_docs:"Documentação",
+    footer_issues:"Relatar problema",
+    pricing_label:"PREÇOS",
+    pricing_title:"Grátis para todos. De verdade.",
+    pricing_desc:"Todos os recursos incluídos \u2014 até 1.000 usuários. Sem pegadinhas.",
+    plan_free:"Free",plan_enterprise:"Empresarial",plan_kit:"Kit RPi",
+    price_free:"$0",price_enterprise:"Sob consulta",pricing_forever:"Grátis para sempre",pricing_onetime:"compra única",
+    pricing_contact_desc:"1.000+ usuários",
+    pricing_users_free:"Até 1.000 usuários simultâneos",pricing_modes:"Modo Sync + Modo Jam",pricing_bidir:"Áudio bidirecional full duplex",
+    pricing_codec_all:"Todos os codecs (PCM, Opus, FLAC)",pricing_network_all:"Streaming LAN + WAN P2P",
+    pricing_dsp_all:"DSP completo (EQ, compressor, crossover, espacial)",pricing_auto:"Descoberta auto e sincronização",
+    pricing_ent_all:"Tudo do plano Free",pricing_ent_unlimited:"Usuários simultâneos ilimitados",pricing_ent_sla:"SLA dedicado e suporte",
+    pricing_ent_deploy:"Opções de implantação personalizadas",pricing_ent_priority:"Correções de bugs prioritárias",
+    pricing_kit_sd:"Imagem SD pré-configurada",pricing_kit_guide:"Guia passo a passo",pricing_kit_headless:"Operação headless pronta",
+    pricing_kit_relay:"Relay na nuvem: $2,99/mês (opcional)",pricing_kit_note:"Hardware vendido separadamente.",
+    pricing_cta_free:"Baixar grátis",pricing_cta_enterprise:"Fale conosco",pricing_cta_kit:"Obter o kit",
+    pricing_popular:"PARA TODOS",
+    dl_free_note:'Todos os recursos grátis até 1.000 usuários. <a href="#pricing" style="color:var(--accent-light)">Empresarial</a> para eventos maiores.',
 },
 };
 
@@ -1469,11 +2082,16 @@ function setLang(lang) {
     localStorage.setItem("soluna-lang", lang);
     document.documentElement.lang = lang;
     const t = T[lang] || T.en;
+    const fallback = T.en;
     document.querySelectorAll("[data-i18n]").forEach(el => {
         const key = el.getAttribute("data-i18n");
-        if (t[key]) {
-            if (key.endsWith("_steps")) { el.innerHTML = t[key]; }
-            else { el.textContent = t[key]; }
+        const val = t[key] || fallback[key];
+        if (val) {
+            if (key === "dl_req" || key === "dl_free_note" || key.endsWith("_desc") || key.endsWith("_note")) {
+                el.innerHTML = val;
+            } else {
+                el.textContent = val;
+            }
         }
     });
     document.getElementById("langFlag").textContent = LANGS[lang].flag;
@@ -1516,11 +2134,86 @@ window.addEventListener("scroll", () => {
     navEl.classList.toggle("scrolled", window.scrollY > 20);
 });
 
-// ─── Fade-in ───
+// ─── Fade-in + stagger observer ───
 const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => { if (e.isIntersecting) e.target.classList.add("visible"); });
 }, { threshold: 0.1 });
-document.querySelectorAll(".fade-in").forEach(el => observer.observe(el));
+document.querySelectorAll(".fade-in, .stagger-children").forEach(el => observer.observe(el));
+
+// ─── Mock slider animation ───
+const sliderObs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+        if (e.isIntersecting) {
+            e.target.querySelectorAll(".mock-slider-fill").forEach((bar, i) => {
+                setTimeout(() => bar.classList.add("animated"), i * 200);
+            });
+            sliderObs.unobserve(e.target);
+        }
+    });
+}, { threshold: 0.3 });
+const mockSection = document.querySelector(".preview-section");
+if (mockSection) sliderObs.observe(mockSection);
+
+// ─── Typewriter effect ───
+const heroTW = document.getElementById("heroTypewriter");
+const heroCursor = document.getElementById("heroCursor");
+let twTimeout = null;
+
+function typewrite(text, el, speed, cb) {
+    let i = 0;
+    el.textContent = "";
+    function tick() {
+        if (i < text.length) {
+            el.textContent += text.charAt(i);
+            i++;
+            twTimeout = setTimeout(tick, speed);
+        } else if (cb) {
+            cb();
+        }
+    }
+    tick();
+}
+
+function startTypewriter() {
+    if (twTimeout) clearTimeout(twTimeout);
+    const t = (T[currentLang] || T.en);
+    const text = t.hero_title || T.en.hero_title;
+    typewrite(text, heroTW, 45, () => {
+        // cursor keeps blinking after done
+    });
+}
+
+// ─── Floating particles ───
+function createParticles() {
+    const container = document.getElementById("particles");
+    if (!container) return;
+    const colors = ["var(--accent)", "var(--green)", "var(--blue)", "var(--purple)"];
+    for (let i = 0; i < 20; i++) {
+        const p = document.createElement("div");
+        p.className = "particle";
+        const size = Math.random() * 4 + 2;
+        p.style.cssText = `
+            width: ${size}px; height: ${size}px;
+            left: ${Math.random() * 100}%;
+            bottom: -10px;
+            background: ${colors[Math.floor(Math.random() * colors.length)]};
+            animation-duration: ${Math.random() * 15 + 10}s;
+            animation-delay: ${Math.random() * 10}s;
+        `;
+        container.appendChild(p);
+    }
+}
+createParticles();
+
+// ─── Observe pricing grid ───
+document.querySelectorAll(".pricing-grid").forEach(el => observer.observe(el));
+
+// ─── Patch setLang to re-trigger typewriter ───
+const _origSetLang = setLang;
+setLang = function(lang) {
+    _origSetLang(lang);
+    startTypewriter();
+};
 
 // ─── Init ───
 setLang(detectLang());
