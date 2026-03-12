@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(soluna
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "Soluna — Open Network Audio System"
     LANGUAGES C CXX
 )
@@ -41,6 +41,21 @@ if(SOLUNA_BUILD_TESTS)
     enable_testing()
 endif()
 
+# minimp3 — fetch before core library so SOURCE_DIR is available
+option(SOLUNA_HAS_MINIMP3 "Enable MP3 file playback via minimp3" ON)
+if(SOLUNA_HAS_MINIMP3)
+    include(FetchContent)
+    FetchContent_Declare(
+        minimp3
+        GIT_REPOSITORY https://github.com/lieff/minimp3.git
+        GIT_TAG        master
+    )
+    FetchContent_GetProperties(minimp3)
+    if(NOT minimp3_POPULATED)
+        FetchContent_Populate(minimp3)
+    endif()
+endif()
+
 # Core library
 add_library(soluna_core STATIC
     # PAL - Audio
@@ -76,6 +91,7 @@ add_library(soluna_core STATIC
     src/pipeline/playout_buffer.cpp
     src/pipeline/dsp_plugin.cpp
     src/pipeline/dsp_chain.cpp
+    src/pipeline/file_source.cpp
     # Built-in DSP plugins
     src/plugins/compressor_plugin.cpp
     src/plugins/eq_plugin.cpp
@@ -127,6 +143,12 @@ add_library(soluna_core STATIC
 target_include_directories(soluna_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+
+# minimp3 include path + define (after add_library so target exists)
+if(SOLUNA_HAS_MINIMP3 AND minimp3_SOURCE_DIR)
+    target_include_directories(soluna_core PUBLIC ${minimp3_SOURCE_DIR})
+    target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_MINIMP3)
+endif()
 
 if(OS_WINDOWS)
     target_compile_options(soluna_core PRIVATE
@@ -242,21 +264,18 @@ if(SOLUNA_ENABLE_FLAC)
     endif()
 endif()
 
-# Daemon and CLI (not for iOS/Android)
+# Daemon (not for iOS/Android)
 if(NOT OS_IOS AND NOT OS_ANDROID)
     add_executable(solunad apps/daemon/main.cpp)
     target_link_libraries(solunad PRIVATE soluna_core)
-
-    add_executable(solctl apps/cli/main.cpp)
-    target_link_libraries(solctl PRIVATE soluna_core)
 endif()
 
-# Linux/RPi standalone receiver (no soluna_core dependency)
+# Linux/RPi unified CLI (RX + DJ mode, no soluna_core dependency)
 if(OS_LINUX)
-    add_executable(soluna-rx apps/linux-rx/main.cpp)
-    target_link_libraries(soluna-rx PRIVATE asound pthread)
-    target_compile_options(soluna-rx PRIVATE -Wall -Wextra $<$<CONFIG:Release>:-O2>)
-    install(TARGETS soluna-rx RUNTIME DESTINATION bin)
+    add_executable(soluna apps/linux-rx/main.cpp)
+    target_link_libraries(soluna PRIVATE asound pthread)
+    target_compile_options(soluna PRIVATE -Wall -Wextra $<$<CONFIG:Release>:-O2>)
+    install(TARGETS soluna RUNTIME DESTINATION bin)
 endif()
 
 # Windows standalone receiver (WASAPI, no soluna_core dependency)
@@ -284,15 +303,6 @@ if(NOT OS_IOS AND NOT OS_ANDROID)
     install(TARGETS soluna-relay RUNTIME DESTINATION bin)
 endif()
 
-# Soluna CoreAudio virtual device plugin (macOS only)
-if(OS_MACOS)
-    add_subdirectory(apps/plugin)
-endif()
-
-# Soluna VST3 network audio receiver plugin
-if(SOLUNA_BUILD_VST)
-    add_subdirectory(apps/vst)
-endif()
 
 # Example plugins
 add_subdirectory(examples/plugins)
@@ -315,7 +325,7 @@ target_include_directories(soluna_core PUBLIC ${CMAKE_BINARY_DIR}/generated)
 
 # Install targets (not for iOS/Android)
 if(NOT OS_IOS AND NOT OS_ANDROID)
-    install(TARGETS solunad solctl RUNTIME DESTINATION bin)
+    install(TARGETS solunad RUNTIME DESTINATION bin)
 endif()
 install(DIRECTORY include/soluna DESTINATION include)
 

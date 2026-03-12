@@ -9,9 +9,11 @@ import MultipeerConnectivity
 // MARK: - Root
 
 struct ContentView: View {
-    @StateObject private var receiver = AudioReceiver()
-    @StateObject private var speakers = SpeakersController()
-    @StateObject private var relay    = PeerRelayManager.shared
+    @EnvironmentObject var deepLink: DeepLinkManager
+    @StateObject private var receiver    = AudioReceiver()
+    @StateObject private var speakers    = SpeakersController()
+    @StateObject private var relay       = PeerRelayManager.shared
+    @StateObject private var playerModel = PlayerModel()
     @State private var showSettings   = false
     @State private var showAddSpeaker = false
     @State private var newName        = ""
@@ -21,12 +23,20 @@ struct ContentView: View {
     @State private var masterDelayMs: Int = 40
     @AppStorage("streamMode") private var streamMode = "sync"
     @State private var groupCode     = ""
+    @State private var showQR        = false
+    @State private var pttPressed    = false
 
     var body: some View {
-        NavigationView {
+        TabView {
+            // ── Receiver tab ──────────────────────────────────────────────
+            NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
                     heroSection
+                    if receiver.state == .receiving {
+                        audioVisualizer
+                    }
+                    nowPlayingSection
                     wanGroupSection
                     relayBanner
                     if receiver.state == .receiving || receiver.packetsReceived > 0 {
@@ -42,50 +52,119 @@ struct ContentView: View {
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Soluna")
             .navigationBarItems(trailing:
-                Button(action: { showSettings = true }) {
-                    Image(systemName: "gearshape")
-                        .foregroundColor(.secondary)
+                HStack(spacing: 12) {
+                    Button(action: { showQR = true }) {
+                        Image(systemName: "qrcode")
+                            .foregroundColor(.secondary)
+                    }
+                    Button(action: { showSettings = true }) {
+                        Image(systemName: "gearshape")
+                            .foregroundColor(.secondary)
+                    }
                 }
             )
             .sheet(isPresented: $showSettings) { SettingsView(receiver: receiver) }
+            .sheet(isPresented: $showQR) {
+                ChannelQRView(channel: UserDefaults.standard.string(forKey: "channel") ?? "soluna")
+            }
             .sheet(isPresented: $showAddSpeaker, onDismiss: { newName = ""; newHost = "" }) {
                 addSpeakerSheet
             }
             .onAppear {
                 speakers.audioReceiver = receiver
+                playerModel.speakersController = speakers
                 loadSavedSettings()
                 receiver.autoStart()
-                // Apply global RX delay from server once connected
                 Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
-                    Task { @MainActor in speakers.applyServerRxDelay() }
+                    Task { @MainActor in
+                        speakers.applyServerRxDelay()
+                        // Rebind player if current daemon disconnected
+                        if !(playerModel.daemon?.isConnected ?? false) {
+                            playerModel.rebindIfNeeded(speakers.primaryDaemon)
+                        }
+                    }
+                }
+                // Bind player to first available daemon
+                playerModel.daemon = speakers.primaryDaemon
+            }
+            .onChange(of: speakers.speakers.count) { _ in
+                playerModel.rebindIfNeeded(speakers.primaryDaemon)
+            }
+            .onChange(of: deepLink.pendingChannel) { channel in
+                guard let channel = channel, !channel.isEmpty else { return }
+                deepLink.pendingChannel = nil
+                // Switch to deep-linked channel and restart audio immediately
+                UserDefaults.standard.set(channel, forKey: "channel")
+                receiver.stop()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    receiver.start()
                 }
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: receiver.state.rawValue)
         }
         .navigationViewStyle(.stack)
+        .tabItem { Label("Receiver", systemImage: "antenna.radiowaves.left.and.right") }
+
+        // ── Player tab ────────────────────────────────────────────────────
+        NavigationView {
+            PlayerView(model: playerModel)
+                .navigationTitle("Player")
+                .navigationBarTitleDisplayMode(.inline)
+        }
+        .navigationViewStyle(.stack)
+        .tabItem { Label("Player", systemImage: "music.note") }
+        }  // TabView
     }
 
     // MARK: - WAN Group Code
 
     @ViewBuilder
     private var wanGroupSection: some View {
-        if receiver.state == .receiving || receiver.relayState != .disconnected {
-            VStack(spacing: 10) {
-                switch receiver.relayState {
-                case .disconnected:
+        VStack(spacing: 10) {
+            switch receiver.relayState {
+            case .disconnected:
+                VStack(spacing: 8) {
+                    // Random channel button (free)
+                    Button(action: {
+                        let hex = (0..<3).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
+                        groupCode = hex
+                        UserDefaults.standard.set(hex, forKey: "channel")
+                        if receiver.state == .stopped || receiver.state == .error {
+                            receiver.start()
+                        } else {
+                            receiver.connectRelay(group: hex)
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "shuffle")
+                            Text("ランダムチャンネル（無料）")
+                                .font(.footnote.weight(.semibold))
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(LinearGradient(colors: [.green, .cyan], startPoint: .leading, endPoint: .trailing))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+
                     HStack(spacing: 8) {
                         Image(systemName: "globe")
                             .foregroundColor(.blue)
-                        TextField("グループコード", text: $groupCode)
+                        TextField("チャンネル名", text: $groupCode)
                             .textFieldStyle(.roundedBorder)
                             .autocorrectionDisabled()
                             .autocapitalization(.none)
                         Button(action: {
                             let code = groupCode.trimmingCharacters(in: .whitespaces)
                             guard !code.isEmpty else { return }
-                            receiver.connectRelay(group: code)
+                            UserDefaults.standard.set(code, forKey: "channel")
+                            if receiver.state == .stopped || receiver.state == .error {
+                                receiver.start()
+                            } else {
+                                receiver.connectRelay(group: code)
+                            }
                         }) {
-                            Text("Join")
+                            Text("Listen")
                                 .font(.footnote.weight(.semibold))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 14)
@@ -95,68 +174,63 @@ struct ContentView: View {
                         }
                         .disabled(groupCode.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
+                }
 
-                case .connecting:
-                    HStack(spacing: 8) {
-                        ProgressView().scaleEffect(0.8)
-                        Text("Joining...")
-                            .font(.footnote.weight(.medium))
-                            .foregroundColor(.secondary)
-                        Spacer()
+            case .connecting:
+                HStack(spacing: 8) {
+                    ProgressView().scaleEffect(0.8)
+                    Text("Joining...")
+                        .font(.footnote.weight(.medium))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+
+            case .connected:
+                HStack(spacing: 8) {
+                    Image(systemName: "globe")
+                        .foregroundColor(.green)
+                    Text(receiver.relayGroup ?? "WAN")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.green.opacity(0.12))
+                        .clipShape(Capsule())
+                    Spacer()
+                    Button("Leave") {
+                        receiver.disconnectRelay()
+                        receiver.stop()
                     }
+                        .font(.footnote.weight(.medium))
+                        .foregroundColor(.red)
+                }
 
-                case .connected:
-                    HStack(spacing: 8) {
-                        Image(systemName: "globe")
-                            .foregroundColor(.green)
-                        Text(receiver.relayGroup ?? "WAN")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundColor(.green)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.green.opacity(0.12))
-                            .clipShape(Capsule())
-                        Spacer()
-                        Button("Leave") { receiver.disconnectRelay() }
-                            .font(.footnote.weight(.medium))
-                            .foregroundColor(.red)
-                    }
-
-                case .error:
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.red)
-                        Text(receiver.relayError ?? "Connection failed")
-                            .font(.footnote)
-                            .foregroundColor(.red)
-                        Spacer()
-                        Button("Retry") {
-                            let code = groupCode.trimmingCharacters(in: .whitespaces)
-                            guard !code.isEmpty else { return }
+            case .error:
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                    Text(receiver.relayError ?? "Connection failed")
+                        .font(.footnote)
+                        .foregroundColor(.red)
+                    Spacer()
+                    Button("Retry") {
+                        let code = groupCode.trimmingCharacters(in: .whitespaces)
+                        guard !code.isEmpty else { return }
+                        if receiver.state == .stopped || receiver.state == .error {
+                            UserDefaults.standard.set(code, forKey: "channel")
+                            receiver.start()
+                        } else {
                             receiver.connectRelay(group: code)
                         }
-                        .font(.footnote.weight(.medium))
                     }
+                    .font(.footnote.weight(.medium))
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-        } else if receiver.state == .stopped {
-            HStack(spacing: 8) {
-                Image(systemName: "globe")
-                    .foregroundColor(.secondary)
-                Text("受信開始後にWANグループに参加できます")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.tertiarySystemFill))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
     // MARK: - Relay Banner
@@ -276,19 +350,76 @@ struct ContentView: View {
             .background(heroAccent.opacity(0.1))
             .clipShape(Capsule())
 
-            // Mic TX toggle + stop/start
+            // Mic TX toggle + PTT + stop/start
             HStack(spacing: 16) {
                 if receiver.state == .receiving {
-                    Button(action: { receiver.toggleMic() }) {
+                    if receiver.isPTTMode {
+                        // PTT hold-to-talk mic button
                         HStack(spacing: 4) {
-                            Image(systemName: receiver.isMicTransmitting ? "mic.fill" : "mic.slash.fill")
-                            Text(receiver.isMicTransmitting ? "Mic ON" : "Mic OFF")
+                            Image(systemName: pttPressed ? "mic.fill" : "mic.slash.fill")
+                            Text(pttPressed ? "Talking..." : "Hold to Talk")
                                 .font(.caption.weight(.medium))
                         }
-                        .foregroundColor(receiver.isMicTransmitting ? .red : .secondary)
+                        .foregroundColor(pttPressed ? .red : .secondary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(receiver.isMicTransmitting ? Color.red.opacity(0.12) : Color(.tertiarySystemFill))
+                        .background(pttPressed ? Color.red.opacity(0.12) : Color(.tertiarySystemFill))
+                        .clipShape(Capsule())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { _ in
+                                    if !pttPressed {
+                                        pttPressed = true
+                                        if !receiver.isMicTransmitting { receiver.toggleMic() }
+                                    }
+                                }
+                                .onEnded { _ in
+                                    pttPressed = false
+                                    if receiver.isMicTransmitting { receiver.toggleMic() }
+                                }
+                        )
+                    } else {
+                        // Normal toggle mic button
+                        Button(action: { receiver.toggleMic() }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: receiver.isMicTransmitting ? "mic.fill" : "mic.slash.fill")
+                                Text(receiver.isMicTransmitting ? "Mic ON" : "Mic OFF")
+                                    .font(.caption.weight(.medium))
+                            }
+                            .foregroundColor(receiver.isMicTransmitting ? .red : .secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(receiver.isMicTransmitting ? Color.red.opacity(0.12) : Color(.tertiarySystemFill))
+                            .clipShape(Capsule())
+                        }
+                    }
+
+                    // PTT mode toggle
+                    Button(action: { receiver.isPTTMode.toggle() }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: receiver.isPTTMode ? "hand.tap.fill" : "hand.tap")
+                            Text(receiver.isPTTMode ? "PTT" : "Hold")
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundColor(receiver.isPTTMode ? .orange : .secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(receiver.isPTTMode ? Color.orange.opacity(0.12) : Color(.tertiarySystemFill))
+                        .clipShape(Capsule())
+                    }
+                }
+
+                if receiver.state == .receiving {
+                    Button(action: { receiver.isSyncMode.toggle() }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: receiver.isSyncMode ? "metronome.fill" : "metronome")
+                            Text(receiver.isSyncMode ? "Sync" : "Fast")
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundColor(receiver.isSyncMode ? .blue : .secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(receiver.isSyncMode ? Color.blue.opacity(0.12) : Color(.tertiarySystemFill))
                         .clipShape(Capsule())
                     }
                 }
@@ -322,6 +453,16 @@ struct ContentView: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 180)
+
+            // Network quality badge
+            if receiver.state == .receiving {
+                HStack(spacing: 6) {
+                    signalBars(quality: signalQuality)
+                    Text(String(format: "%.0fms", receiver.networkLatencyMs))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundColor(.secondary)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
@@ -461,6 +602,98 @@ struct ContentView: View {
         case .connecting: return "antenna.radiowaves.left.and.right"
         case .error:      return "exclamationmark.triangle.fill"
         case .stopped:    return "moon.zzz.fill"
+        }
+    }
+
+    // MARK: - Audio Visualizer
+
+    private var audioVisualizer: some View {
+        HStack(alignment: .bottom, spacing: 3) {
+            ForEach(0..<16, id: \.self) { i in
+                let level = receiver.outputLevel
+                let phase = Double(i) * 0.4 + Date().timeIntervalSince1970 * 3.0
+                let barHeight = max(4.0, CGFloat(level) * 60.0 * CGFloat(0.5 + 0.5 * sin(phase)))
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(
+                        LinearGradient(
+                            colors: [.blue, .cyan, .green],
+                            startPoint: .bottom,
+                            endPoint: .top
+                        )
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: barHeight)
+                    .animation(.easeOut(duration: 0.05), value: level)
+            }
+        }
+        .frame(height: 60)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    // MARK: - Now Playing
+
+    @ViewBuilder
+    private var nowPlayingSection: some View {
+        if let title = receiver.nowPlayingTitle {
+            VStack(spacing: 8) {
+                if let artworkURL = receiver.nowPlayingArtwork {
+                    AsyncImage(url: artworkURL) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Color(.tertiarySystemFill)
+                    }
+                    .frame(width: 80, height: 80)
+                    .cornerRadius(12)
+                }
+
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+
+                if let artist = receiver.nowPlayingArtist {
+                    Text(artist)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(16)
+            .padding(.horizontal)
+        }
+    }
+
+    // MARK: - Signal Quality
+
+    private var signalQuality: Int {
+        if receiver.packetLossPercent > 5 || receiver.networkLatencyMs > 500 { return 1 }
+        if receiver.packetLossPercent > 2 || receiver.networkLatencyMs > 200 { return 2 }
+        if receiver.packetLossPercent > 0.5 || receiver.networkLatencyMs > 50 { return 3 }
+        return 4
+    }
+
+    @ViewBuilder
+    private func signalBars(quality: Int) -> some View {
+        HStack(spacing: 1.5) {
+            ForEach(1...4, id: \.self) { bar in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(bar <= quality ? signalColor(quality) : Color.gray.opacity(0.3))
+                    .frame(width: 3, height: CGFloat(bar) * 4 + 4)
+            }
+        }
+    }
+
+    private func signalColor(_ quality: Int) -> Color {
+        switch quality {
+        case 1: return .red
+        case 2: return .orange
+        case 3: return .yellow
+        default: return .green
         }
     }
 
@@ -728,6 +961,11 @@ private struct RemoteSpeakerRow: View {
                 .accentColor(daemon.isConnected ? .blue : .secondary)
                 .disabled(!daemon.isConnected)
 
+                // Channel control
+                if daemon.isConnected {
+                    channelRow
+                }
+
                 HStack {
                     Spacer()
                     Button(action: onRemove) {
@@ -740,6 +978,34 @@ private struct RemoteSpeakerRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+    }
+
+    @State private var editingChannel = ""
+
+    private var channelRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "antenna.radiowaves.left.and.right")
+                .font(.system(size: 11))
+                .foregroundColor(daemon.channelConnected ? .green : .secondary)
+            Text(daemon.channel.isEmpty ? "default" : daemon.channel)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(daemon.channelConnected ? .green : .secondary)
+            Spacer()
+            TextField("ch名", text: $editingChannel)
+                .font(.system(size: 12))
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .autocapitalization(.none)
+                .frame(width: 100)
+            Button("変更") {
+                let ch = editingChannel.trimmingCharacters(in: .whitespaces)
+                guard !ch.isEmpty else { return }
+                daemon.setChannel(ch)
+                editingChannel = ""
+            }
+            .font(.system(size: 11, weight: .semibold))
+            .disabled(editingChannel.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
     }
 
     private var muteButton: some View {

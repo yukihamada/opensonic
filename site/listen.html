@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soluna - Web Receiver</title>
+    <meta name="description" content="ブラウザからSolunaオーディオチャンネルを受信。インストール不要。">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔊</text></svg>">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --bg: #0f172a;
+            --bg-secondary: #1e293b;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+        }
+        [data-theme="light"] {
+            --bg: #ffffff;
+            --bg-secondary: #f1f5f9;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+        }
+        @media (prefers-color-scheme: light) {
+            :root:not([data-theme="dark"]) {
+                --bg: #ffffff;
+                --bg-secondary: #f1f5f9;
+                --text: #0f172a;
+                --text-muted: #64748b;
+                --border: #e2e8f0;
+            }
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.8;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text);
+            text-decoration: none;
+        }
+        .theme-toggle {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .theme-toggle:hover {
+            background: var(--border);
+        }
+
+        /* Main player area */
+        .player-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .player {
+            text-align: center;
+            max-width: 420px;
+            width: 100%;
+        }
+
+        /* Channel name */
+        .channel-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+        .channel-value {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 32px;
+            word-break: break-all;
+        }
+
+        /* Play button */
+        .play-btn {
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            background: var(--primary);
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            box-shadow: 0 4px 24px rgba(99, 102, 241, 0.3);
+            margin-bottom: 24px;
+        }
+        .play-btn:hover {
+            background: var(--primary-dark);
+            transform: scale(1.05);
+            box-shadow: 0 6px 32px rgba(99, 102, 241, 0.4);
+        }
+        .play-btn:active {
+            transform: scale(0.97);
+        }
+        .play-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .play-btn svg {
+            width: 40px;
+            height: 40px;
+            fill: white;
+        }
+
+        /* Status indicator */
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 24px;
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: background 0.3s;
+        }
+        .status-dot.connecting {
+            background: #f59e0b;
+            animation: pulse 1.2s infinite;
+        }
+        .status-dot.connected {
+            background: #22c55e;
+        }
+        .status-dot.error {
+            background: #ef4444;
+        }
+        .status-dot.playing {
+            background: #22c55e;
+            animation: pulse 1.2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Signal quality */
+        .signal {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 2px;
+            margin-bottom: 24px;
+            height: 20px;
+        }
+        .signal-bar {
+            width: 4px;
+            border-radius: 2px;
+            background: var(--border);
+            transition: background 0.3s;
+        }
+        .signal-bar:nth-child(1) { height: 6px; }
+        .signal-bar:nth-child(2) { height: 10px; }
+        .signal-bar:nth-child(3) { height: 14px; }
+        .signal-bar:nth-child(4) { height: 18px; }
+        .signal-bar.active {
+            background: #22c55e;
+        }
+        .signal-bar.warn {
+            background: #f59e0b;
+        }
+        .signal-bar.bad {
+            background: #ef4444;
+        }
+
+        /* Now playing */
+        .now-playing {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 24px;
+            display: none;
+        }
+        .now-playing.visible {
+            display: block;
+        }
+        .now-playing-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+        .now-playing-artwork {
+            width: 64px;
+            height: 64px;
+            border-radius: 8px;
+            object-fit: cover;
+            margin-bottom: 12px;
+            display: none;
+        }
+        .now-playing-artwork.visible {
+            display: inline-block;
+        }
+        .now-playing-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .now-playing-artist {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        /* Volume */
+        .volume-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+            padding: 0 8px;
+        }
+        .volume-icon {
+            font-size: 18px;
+            flex-shrink: 0;
+            color: var(--text-muted);
+        }
+        .volume-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--border);
+            outline: none;
+        }
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .volume-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+        .volume-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            border: none;
+        }
+
+        /* Stats row */
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .stats span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Footer */
+        footer {
+            padding: 20px 24px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+        footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+        footer a:hover {
+            color: var(--text);
+        }
+
+        /* No channel overlay */
+        .no-channel {
+            display: none;
+        }
+        .no-channel.visible {
+            display: block;
+        }
+        .no-channel p {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+        .no-channel code {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 14px;
+            display: inline-block;
+            word-break: break-all;
+        }
+
+        @media (max-width: 480px) {
+            .channel-value {
+                font-size: 22px;
+            }
+            .play-btn {
+                width: 80px;
+                height: 80px;
+            }
+            .play-btn svg {
+                width: 32px;
+                height: 32px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="index.html" class="logo">Soluna</a>
+        <button class="theme-toggle" onclick="toggleTheme()" title="Theme">
+            <span id="theme-icon">&#127769;</span>
+        </button>
+    </header>
+
+    <div class="player-wrapper">
+        <div class="player">
+            <!-- No channel state -->
+            <div class="no-channel" id="noChannel">
+                <div class="channel-name">Web Receiver</div>
+                <p>URLにチャンネル名を指定してください</p>
+                <code>listen.html#my-channel</code>
+            </div>
+
+            <!-- Player state -->
+            <div id="playerUI" style="display:none;">
+                <div class="channel-name">Channel</div>
+                <div class="channel-value" id="channelDisplay">--</div>
+
+                <!-- Signal quality -->
+                <div class="signal" id="signalBars" title="Signal quality">
+                    <div class="signal-bar"></div>
+                    <div class="signal-bar"></div>
+                    <div class="signal-bar"></div>
+                    <div class="signal-bar"></div>
+                </div>
+
+                <!-- Play button -->
+                <button class="play-btn" id="playBtn" title="Play">
+                    <!-- Play icon -->
+                    <svg id="iconPlay" viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>
+                    <!-- Stop icon (hidden) -->
+                    <svg id="iconStop" viewBox="0 0 24 24" style="display:none;"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+                </button>
+
+                <!-- Status -->
+                <div class="status">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Idle</span>
+                </div>
+
+                <!-- Now playing -->
+                <div class="now-playing" id="nowPlaying">
+                    <div class="now-playing-label">Now Playing</div>
+                    <img class="now-playing-artwork" id="artwork" alt="Artwork">
+                    <div class="now-playing-title" id="metaTitle">--</div>
+                    <div class="now-playing-artist" id="metaArtist">--</div>
+                </div>
+
+                <!-- Volume -->
+                <div class="volume-row">
+                    <span class="volume-icon" id="volIcon">&#128264;</span>
+                    <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="80">
+                </div>
+
+                <!-- Stats -->
+                <div class="stats">
+                    <span>Latency: <strong id="latencyVal">--</strong></span>
+                    <span>Packets: <strong id="packetCount">0</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <a href="index.html">Powered by Soluna</a> &middot; Open Source Network Audio
+    </footer>
+
+    <script>
+    // ========== Theme ==========
+    function getPreferredTheme() {
+        const stored = localStorage.getItem('theme');
+        if (stored) return stored;
+        return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    function setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+        const icon = document.getElementById('theme-icon');
+        icon.textContent = theme === 'dark' ? '\u{1F319}' : '\u2600\uFE0F';
+    }
+    function toggleTheme() {
+        const current = document.documentElement.getAttribute('data-theme') || getPreferredTheme();
+        setTheme(current === 'dark' ? 'light' : 'dark');
+    }
+    setTheme(getPreferredTheme());
+
+    // ========== DOM refs ==========
+    const noChannel    = document.getElementById('noChannel');
+    const playerUI     = document.getElementById('playerUI');
+    const channelDisp  = document.getElementById('channelDisplay');
+    const playBtn      = document.getElementById('playBtn');
+    const iconPlay     = document.getElementById('iconPlay');
+    const iconStop     = document.getElementById('iconStop');
+    const statusDot    = document.getElementById('statusDot');
+    const statusText   = document.getElementById('statusText');
+    const nowPlaying   = document.getElementById('nowPlaying');
+    const artwork      = document.getElementById('artwork');
+    const metaTitle    = document.getElementById('metaTitle');
+    const metaArtist   = document.getElementById('metaArtist');
+    const volumeSlider = document.getElementById('volumeSlider');
+    const volIcon      = document.getElementById('volIcon');
+    const latencyVal   = document.getElementById('latencyVal');
+    const packetCount  = document.getElementById('packetCount');
+    const signalBars   = document.getElementById('signalBars').children;
+
+    // ========== State ==========
+    let channel = '';
+    let ws = null;
+    let audioCtx = null;
+    let decoder = null;
+    let gainNode = null;
+    let playing = false;
+    let keepaliveTimer = null;
+    let connectTimeout = null;
+    let packets = 0;
+    let lastPacketTime = 0;
+
+    // RTP header size
+    const RTP_HEADER_SIZE = 12;
+
+    // ========== Channel from hash ==========
+    function readChannel() {
+        const hash = location.hash.replace(/^#/, '').trim();
+        if (hash) {
+            channel = decodeURIComponent(hash);
+            noChannel.classList.remove('visible');
+            playerUI.style.display = '';
+            channelDisp.textContent = channel;
+        } else {
+            noChannel.classList.add('visible');
+            playerUI.style.display = 'none';
+            channel = '';
+        }
+    }
+    readChannel();
+    window.addEventListener('hashchange', () => {
+        stop();
+        readChannel();
+    });
+
+    // ========== Status helpers ==========
+    function setStatus(state, text) {
+        statusDot.className = 'status-dot ' + state;
+        statusText.textContent = text;
+    }
+
+    function setSignal(level) {
+        // level: 0-4
+        for (let i = 0; i < 4; i++) {
+            const bar = signalBars[i];
+            bar.className = 'signal-bar';
+            if (i < level) {
+                if (level >= 3) bar.classList.add('active');
+                else if (level === 2) bar.classList.add('warn');
+                else bar.classList.add('bad');
+            }
+        }
+    }
+
+    // ========== Volume ==========
+    volumeSlider.addEventListener('input', () => {
+        const v = volumeSlider.value / 100;
+        if (gainNode) gainNode.gain.value = v;
+        volIcon.textContent = v === 0 ? '\u{1F507}' : v < 0.5 ? '\u{1F508}' : '\u{1F50A}';
+    });
+
+    // ========== Audio pipeline ==========
+    // AudioWorklet (preferred) with ScriptProcessorNode fallback for older browsers.
+
+    let outputNode = null; // AudioWorkletNode or ScriptProcessorNode
+    let pcmQueue = []; // queue of Float32Array stereo interleaved buffers (used by ScriptProcessor fallback)
+    let useWorklet = false;
+
+    // Inline AudioWorklet processor code (Blob URL avoids a separate file)
+    const workletCode = `
+class PassthroughProcessor extends AudioWorkletProcessor {
+    constructor() {
+        super();
+        this._buffer = [];      // queue of Float32Array (stereo interleaved)
+        this._offset = 0;       // read offset into this._buffer[0]
+        this.port.onmessage = (e) => {
+            // Receive Float32Array of stereo-interleaved PCM from main thread
+            this._buffer.push(e.data);
+        };
+    }
+    process(inputs, outputs) {
+        const outL = outputs[0][0];
+        const outR = outputs[0][1];
+        if (!outL) return true;
+        let written = 0;
+        while (written < outL.length && this._buffer.length > 0) {
+            const buf = this._buffer[0];
+            const available = (buf.length - this._offset) / 2;
+            const need = outL.length - written;
+            const take = Math.min(need, available);
+            for (let i = 0; i < take; i++) {
+                outL[written + i] = buf[this._offset + i * 2];
+                outR[written + i] = buf[this._offset + i * 2 + 1];
+            }
+            written += take;
+            this._offset += take * 2;
+            if (this._offset >= buf.length) {
+                this._buffer.shift();
+                this._offset = 0;
+            }
+        }
+        // fill remainder with silence
+        for (let i = written; i < outL.length; i++) {
+            outL[i] = 0;
+            outR[i] = 0;
+        }
+        return true;
+    }
+}
+registerProcessor('passthrough-processor', PassthroughProcessor);
+`;
+
+    async function initAudio() {
+        if (audioCtx) return;
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = volumeSlider.value / 100;
+        gainNode.connect(audioCtx.destination);
+
+        // Try AudioWorklet first, fall back to ScriptProcessorNode
+        if (audioCtx.audioWorklet) {
+            try {
+                const blob = new Blob([workletCode], { type: 'application/javascript' });
+                const url = URL.createObjectURL(blob);
+                await audioCtx.audioWorklet.addModule(url);
+                URL.revokeObjectURL(url);
+                outputNode = new AudioWorkletNode(audioCtx, 'passthrough-processor', {
+                    outputChannelCount: [2]
+                });
+                outputNode.connect(gainNode);
+                useWorklet = true;
+                console.log('Audio: using AudioWorklet');
+                return;
+            } catch (e) {
+                console.warn('AudioWorklet init failed, falling back to ScriptProcessorNode:', e);
+            }
+        }
+
+        // Fallback: ScriptProcessorNode (deprecated but widely supported)
+        useWorklet = false;
+        outputNode = audioCtx.createScriptProcessor(4096, 0, 2);
+        outputNode.onaudioprocess = (e) => {
+            const outL = e.outputBuffer.getChannelData(0);
+            const outR = e.outputBuffer.getChannelData(1);
+            let written = 0;
+            while (written < outL.length && pcmQueue.length > 0) {
+                const buf = pcmQueue[0];
+                const available = buf.length / 2; // stereo interleaved
+                const need = outL.length - written;
+                const take = Math.min(need, available);
+                for (let i = 0; i < take; i++) {
+                    outL[written + i] = buf[i * 2];
+                    outR[written + i] = buf[i * 2 + 1];
+                }
+                written += take;
+                if (take >= available) {
+                    pcmQueue.shift();
+                } else {
+                    // partial consume: replace with remaining
+                    pcmQueue[0] = buf.slice(take * 2);
+                }
+            }
+            // fill remainder with silence
+            for (let i = written; i < outL.length; i++) {
+                outL[i] = 0;
+                outR[i] = 0;
+            }
+        };
+        outputNode.connect(gainNode);
+        console.log('Audio: using ScriptProcessorNode (fallback)');
+    }
+
+    function initDecoder() {
+        if (!('AudioDecoder' in window)) {
+            console.warn('WebCodecs AudioDecoder not available, audio playback disabled');
+            return false;
+        }
+        decoder = new AudioDecoder({
+            output: (frame) => {
+                // Convert AudioData to Float32
+                const ch = frame.numberOfChannels;
+                const samples = frame.numberOfFrames;
+                const interleaved = new Float32Array(samples * 2);
+                const tmpL = new Float32Array(samples);
+                frame.copyTo(tmpL, { planeIndex: 0, format: 'f32-planar' });
+                if (ch >= 2) {
+                    const tmpR = new Float32Array(samples);
+                    frame.copyTo(tmpR, { planeIndex: 1, format: 'f32-planar' });
+                    for (let i = 0; i < samples; i++) {
+                        interleaved[i * 2] = tmpL[i];
+                        interleaved[i * 2 + 1] = tmpR[i];
+                    }
+                } else {
+                    for (let i = 0; i < samples; i++) {
+                        interleaved[i * 2] = tmpL[i];
+                        interleaved[i * 2 + 1] = tmpL[i];
+                    }
+                }
+                // Route PCM to the active output node
+                if (useWorklet && outputNode) {
+                    // Transfer to AudioWorklet via MessagePort
+                    outputNode.port.postMessage(interleaved, [interleaved.buffer]);
+                } else {
+                    pcmQueue.push(interleaved);
+                }
+                frame.close();
+            },
+            error: (e) => {
+                console.error('AudioDecoder error:', e);
+            }
+        });
+        decoder.configure({
+            codec: 'opus',
+            sampleRate: 48000,
+            numberOfChannels: 2
+        });
+        return true;
+    }
+
+    // ========== WebSocket ==========
+    // Derive WebSocket URL: use same hostname as page, fallback to relay IP
+    const WS_URL = (() => {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = location.hostname || '46.225.77.119';
+        // Use /ws path (nginx proxy) when served from port 80/443,
+        // fall back to direct :5101 for local development
+        if (location.port === '' || location.port === '80' || location.port === '443') {
+            return `${proto}//${host}/ws`;
+        }
+        return `${proto}//${host}:5101`;
+    })();
+    const CONNECT_TIMEOUT_MS = 8000;
+
+    async function connect() {
+        if (!channel) return;
+
+        await initAudio();
+        const hasDecoder = initDecoder();
+
+        setStatus('connecting', 'Connecting...');
+        setSignal(0);
+
+        try {
+            ws = new WebSocket(WS_URL);
+            ws.binaryType = 'arraybuffer';
+        } catch (e) {
+            setStatus('error', 'WebSocket not supported');
+            return;
+        }
+
+        connectTimeout = setTimeout(() => {
+            if (ws && ws.readyState !== WebSocket.OPEN) {
+                ws.close();
+                setStatus('error', 'WebSocket bridge not available');
+                setSignal(0);
+                showStopped();
+            }
+        }, CONNECT_TIMEOUT_MS);
+
+        ws.onopen = () => {
+            clearTimeout(connectTimeout);
+            setStatus('connected', 'Connected');
+            setSignal(2);
+
+            // Join channel
+            ws.send('JOIN:' + channel + '\n');
+
+            // Keepalive
+            keepaliveTimer = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send('HELLO\n');
+                }
+            }, 5000);
+        };
+
+        ws.onmessage = (event) => {
+            if (typeof event.data === 'string') {
+                // Text message
+                handleTextMessage(event.data);
+            } else {
+                // Binary: audio packet
+                handleAudioPacket(event.data);
+            }
+        };
+
+        ws.onerror = () => {
+            clearTimeout(connectTimeout);
+            setStatus('error', 'Connection error');
+            setSignal(0);
+        };
+
+        ws.onclose = () => {
+            clearTimeout(connectTimeout);
+            clearInterval(keepaliveTimer);
+            keepaliveTimer = null;
+            if (playing) {
+                setStatus('error', 'Disconnected');
+                setSignal(0);
+            }
+        };
+    }
+
+    function handleTextMessage(data) {
+        const lines = data.split('\n');
+        for (const line of lines) {
+            if (line.startsWith('META:')) {
+                try {
+                    const meta = JSON.parse(line.slice(5));
+                    showMeta(meta);
+                } catch (e) {
+                    console.warn('Invalid META JSON:', line);
+                }
+            }
+        }
+    }
+
+    function handleAudioPacket(buffer) {
+        packets++;
+        lastPacketTime = Date.now();
+        packetCount.textContent = packets;
+
+        if (playing) {
+            setStatus('playing', 'Playing');
+        }
+
+        // Update signal based on packet rate
+        updateSignal();
+
+        // Decode: strip 12-byte RTP header, feed Opus payload to decoder
+        // Use RTP timestamp (bytes 4-7, big-endian uint32, 48kHz clock) for proper A/V sync
+        if (decoder && decoder.state === 'configured' && buffer.byteLength > RTP_HEADER_SIZE) {
+            const opusPayload = new Uint8Array(buffer, RTP_HEADER_SIZE);
+            const view = new DataView(buffer);
+            const rtpTimestamp = view.getUint32(4); // 48kHz clock ticks
+            // Convert 48kHz ticks to microseconds for EncodedAudioChunk
+            const timestampUs = (rtpTimestamp / 48000) * 1_000_000;
+            try {
+                decoder.decode(new EncodedAudioChunk({
+                    type: 'key',
+                    timestamp: timestampUs,
+                    data: opusPayload
+                }));
+            } catch (e) {
+                // Ignore decode errors for malformed packets
+            }
+        }
+
+        // Estimate latency from RTP timestamp (bytes 4-7, big-endian)
+        if (buffer.byteLength >= 8) {
+            const view = new DataView(buffer);
+            const rtpTs = view.getUint32(4);
+            // Rough latency estimate: compare with local audio clock
+            if (audioCtx) {
+                const localSamples = Math.floor(audioCtx.currentTime * 48000);
+                const diff = Math.abs(localSamples - rtpTs) % (48000 * 60); // modulo 1 min
+                const latencyMs = Math.min(diff / 48, 9999);
+                latencyVal.textContent = latencyMs < 1000 ? Math.round(latencyMs) + 'ms' : '--';
+            }
+        }
+    }
+
+    let signalUpdateTimer = null;
+    function updateSignal() {
+        if (signalUpdateTimer) return;
+        signalUpdateTimer = setTimeout(() => {
+            signalUpdateTimer = null;
+            const elapsed = Date.now() - lastPacketTime;
+            if (elapsed < 100) setSignal(4);
+            else if (elapsed < 500) setSignal(3);
+            else if (elapsed < 2000) setSignal(2);
+            else if (elapsed < 5000) setSignal(1);
+            else setSignal(0);
+        }, 200);
+    }
+
+    function showMeta(meta) {
+        nowPlaying.classList.add('visible');
+        if (meta.title) metaTitle.textContent = meta.title;
+        if (meta.artist) metaArtist.textContent = meta.artist;
+        if (meta.artwork) {
+            artwork.src = meta.artwork;
+            artwork.classList.add('visible');
+        } else {
+            artwork.classList.remove('visible');
+        }
+    }
+
+    // ========== Play / Stop ==========
+    function play() {
+        if (playing || !channel) return;
+        playing = true;
+        playBtn.blur();
+        iconPlay.style.display = 'none';
+        iconStop.style.display = '';
+        packets = 0;
+        packetCount.textContent = '0';
+        latencyVal.textContent = '--';
+        pcmQueue = [];
+        connect();
+    }
+
+    function stop() {
+        playing = false;
+        showStopped();
+        if (ws) {
+            ws.close();
+            ws = null;
+        }
+        clearInterval(keepaliveTimer);
+        keepaliveTimer = null;
+        clearTimeout(connectTimeout);
+        if (decoder && decoder.state !== 'closed') {
+            try { decoder.close(); } catch (e) {}
+            decoder = null;
+        }
+        // Close AudioContext to prevent leak (browsers limit ~6 concurrent)
+        if (outputNode) { outputNode.disconnect(); outputNode = null; }
+        useWorklet = false;
+        if (gainNode) { gainNode.disconnect(); gainNode = null; }
+        if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+        pcmQueue = [];
+    }
+
+    function showStopped() {
+        iconPlay.style.display = '';
+        iconStop.style.display = 'none';
+        if (!statusDot.classList.contains('error')) {
+            setStatus('', 'Idle');
+        }
+    }
+
+    playBtn.addEventListener('click', () => {
+        if (playing) {
+            stop();
+        } else {
+            play();
+        }
+    });
+
+    // ========== Periodic signal decay ==========
+    setInterval(() => {
+        if (playing && lastPacketTime > 0) {
+            updateSignal();
+        }
+    }, 1000);
+    </script>
+</body>
+</html>

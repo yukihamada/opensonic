@@ -33,6 +33,19 @@
     <key>NSLocalNetworkUsageDescription</key>
     <string>Soluna needs access to the local network to send and receive audio streams.</string>
 
+    <!-- Allow HTTP for music file download from relay server -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>46.225.77.119</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+            </dict>
+        </dict>
+    </dict>
+
     <!-- Bonjour services used for auto-discovery -->
     <key>NSBonjourServices</key>
     <array>

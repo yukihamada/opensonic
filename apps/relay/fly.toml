@@ -1,8 +1,17 @@
 app = "soluna-relay"
 primary_region = "nrt"
 
+# Set secrets before first deploy:
+#   fly secrets set RELAY_ADMIN_KEY="$(openssl rand -hex 16)" -a soluna-relay
+#   fly secrets set RELAY_WEBHOOK_PATH="your-stripe-wh-suffix" -a soluna-relay
+#   fly secrets set RELAY_CHARGE_SECRET="$(openssl rand -hex 32)" -a soluna-relay
+
 [build]
   dockerfile = "Dockerfile"
+
+# Multi-region: Tokyo (primary), LA, Amsterdam
+# fly machine clone <machine_id> --region lax -a soluna-relay
+# fly machine clone <machine_id> --region ams -a soluna-relay
 
 [[services]]
   internal_port = 5100
@@ -10,3 +19,26 @@ primary_region = "nrt"
 
   [[services.ports]]
     port = 5100
+
+[[services]]
+  internal_port = 5102
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.http_checks]]
+    interval = 15000
+    timeout = 5000
+    grace_period = "30s"
+    method = "GET"
+    path = "/metrics"
+
+[mounts]
+  source = "relay_data"
+  destination = "/data"

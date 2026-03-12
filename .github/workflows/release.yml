@@ -43,7 +43,7 @@ jobs:
       - name: Create tarball
         run: |
           mkdir -p dist/soluna-${{ github.ref_name }}-linux-x64
-          cp build/solunad build/solctl dist/soluna-${{ github.ref_name }}-linux-x64/
+          cp build/solunad dist/soluna-${{ github.ref_name }}-linux-x64/
           cp README.md LICENSE dist/soluna-${{ github.ref_name }}-linux-x64/
           cd dist && tar -czf soluna-${{ github.ref_name }}-linux-x64.tar.gz soluna-${{ github.ref_name }}-linux-x64
 
@@ -86,7 +86,7 @@ jobs:
       - name: Create tarball
         run: |
           mkdir -p dist/soluna-${{ github.ref_name }}-linux-arm64
-          cp build/solunad build/solctl dist/soluna-${{ github.ref_name }}-linux-arm64/
+          cp build/solunad dist/soluna-${{ github.ref_name }}-linux-arm64/
           cp README.md LICENSE dist/soluna-${{ github.ref_name }}-linux-arm64/
           cd dist && tar -czf soluna-${{ github.ref_name }}-linux-arm64.tar.gz soluna-${{ github.ref_name }}-linux-arm64
 
@@ -129,8 +129,6 @@ jobs:
           mkdir -p dist/soluna-${{ github.ref_name }}-macos-universal
           lipo -create build-x64/solunad build-arm64/solunad \
             -output dist/soluna-${{ github.ref_name }}-macos-universal/solunad
-          lipo -create build-x64/solctl build-arm64/solctl \
-            -output dist/soluna-${{ github.ref_name }}-macos-universal/solctl
           cp README.md LICENSE dist/soluna-${{ github.ref_name }}-macos-universal/
           cd dist && tar -czf soluna-${{ github.ref_name }}-macos-universal.tar.gz soluna-${{ github.ref_name }}-macos-universal
 
@@ -144,35 +142,17 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_ALLOWED=YES
 
-      - name: Create Universal driver
-        run: |
-          DRIVER_BIN="Soluna.driver/Contents/MacOS/Soluna"
-          if [ -f "build-x64/apps/plugin/$DRIVER_BIN" ] && [ -f "build-arm64/apps/plugin/$DRIVER_BIN" ]; then
-            cp -r build-arm64/apps/plugin/Soluna.driver build-pkg-driver/
-            mkdir -p build-pkg-driver/
-            cp -r build-arm64/apps/plugin/Soluna.driver build-pkg-driver/Soluna.driver
-            lipo -create \
-              "build-arm64/apps/plugin/$DRIVER_BIN" \
-              "build-x64/apps/plugin/$DRIVER_BIN" \
-              -output "build-pkg-driver/$DRIVER_BIN"
-          else
-            cp -r build-arm64/apps/plugin/Soluna.driver build-pkg-driver/Soluna.driver
-          fi
-
       - name: Build .pkg installer
         run: |
           VER="${{ github.ref_name }}"
           VER="${VER#v}"  # strip leading v
           # Stage payload
-          mkdir -p staging/payload/Library/Audio/Plug-Ins/HAL
           mkdir -p staging/payload/Applications
           mkdir -p staging/payload/usr/local/bin
-          cp -r build-pkg-driver/Soluna.driver staging/payload/Library/Audio/Plug-Ins/HAL/
           if [ -d "build-app/SolunaReceiverMac.app" ]; then
             cp -r build-app/SolunaReceiverMac.app staging/payload/Applications/Soluna.app
           fi
           cp dist/soluna-${{ github.ref_name }}-macos-universal/solunad staging/payload/usr/local/bin/
-          cp dist/soluna-${{ github.ref_name }}-macos-universal/solctl staging/payload/usr/local/bin/
           chmod +x staging/payload/usr/local/bin/*
           # pkgbuild
           pkgbuild \
@@ -216,7 +196,6 @@ jobs:
           mkdir dist
           mkdir dist/soluna-${{ github.ref_name }}-windows-x64
           copy build\Release\solunad.exe dist\soluna-${{ github.ref_name }}-windows-x64\
-          copy build\Release\solctl.exe dist\soluna-${{ github.ref_name }}-windows-x64\
           copy README.md dist\soluna-${{ github.ref_name }}-windows-x64\
           copy LICENSE dist\soluna-${{ github.ref_name }}-windows-x64\
           cd dist && Compress-Archive -Path soluna-${{ github.ref_name }}-windows-x64 -DestinationPath soluna-${{ github.ref_name }}-windows-x64.zip

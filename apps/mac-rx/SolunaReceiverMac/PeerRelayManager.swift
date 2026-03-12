@@ -200,7 +200,7 @@ final class PeerRelayManager: NSObject, ObservableObject {
 
             // Disable network multicast on receiver — only get packets via relay
             let receiver = SolunaAudioReceiver.sharedInstance()
-            receiver.networkDisabled = true
+            receiver.relayNetworkDisabled = true
 
             let params = NWParameters.udp
             let conn = NWConnection(to: endpoint, using: params)
@@ -217,7 +217,7 @@ final class PeerRelayManager: NSObject, ObservableObject {
                     case .failed, .cancelled:
                         self.role = .direct
                         self.connectedPeerCount = 0
-                        receiver.networkDisabled = false
+                        receiver.relayNetworkDisabled = false
                     default:
                         break
                     }
@@ -264,7 +264,7 @@ final class PeerRelayManager: NSObject, ObservableObject {
         // Clear relay callback
         let receiver = SolunaAudioReceiver.sharedInstance()
         receiver.setRelayCallback(nil)
-        receiver.networkDisabled = false
+        receiver.relayNetworkDisabled = false
     }
 }
 

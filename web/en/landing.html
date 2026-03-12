@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna — Stream audio from your Mac to iPhone, Raspberry Pi, and browsers in real time over the network. P2P mesh relay scales to 3 billion listeners. Copyright detection + automatic royalty distribution. Open source (MIT).">
+    <meta name="keywords" content="Soluna, network audio, real-time audio streaming, P2P, mesh relay, DJ, BGM, open source, Mac, iPhone, Raspberry Pi, AES67, copyright, royalty">
+    <meta name="author" content="Soluna Project">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#05060a">
+    <link rel="canonical" href="https://solun.art/en/">
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Soluna — Your music, to every speaker in the world.">
+    <meta property="og:description" content="DJs, events, venue BGM — stream in real time anywhere while keeping copyright clear. P2P mesh scales to 3 billion listeners.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/en/">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="en_US">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Soluna — Your music, to every speaker in the world.">
+    <meta name="twitter:description" content="DJs, events, venue BGM — stream in real time anywhere while keeping copyright clear.">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+    <title>Soluna — Your music, to every speaker in the world.</title>
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Soluna",
+      "applicationCategory": "MultimediaApplication",
+      "operatingSystem": "macOS, iOS, Android, Linux",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "description": "Open-source network audio system. Stream audio in real time from Mac to iPhone, Raspberry Pi, and browsers. P2P mesh relay scales to 3 billion listeners.",
+      "url": "https://solun.art/en/",
+      "downloadUrl": "https://github.com/yukihamada/opensonic/releases/latest",
+      "softwareVersion": "0.3",
+      "license": "https://opensource.org/licenses/MIT",
+      "author": { "@type": "Organization", "name": "Soluna Project", "url": "https://github.com/yukihamada/opensonic" }
+    }
+    </script>
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --cyan:   #06b6d4;
+            --green:  #10b981;
+            --purple: #8b5cf6;
+            --amber:  #f59e0b;
+            --pink:   #ec4899;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ── Scroll reveal ────────────────────────────────── */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        /* ── Nav ──────────────────────────────────────── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 max(20px, calc(50% - 580px));
+            height: 60px;
+            background: rgba(5,6,10,0.7);
+            backdrop-filter: blur(24px) saturate(1.8);
+            border-bottom: 1px solid var(--border);
+            transition: background 0.3s;
+        }
+        .nav-logo {
+            font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 24px; }
+        .nav-links a {
+            color: var(--text2); text-decoration: none; font-size: 14px;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .nav-cta {
+            padding: 8px 18px;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            color: #fff !important;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 13px !important;
+            transition: opacity 0.2s, transform 0.2s !important;
+            box-shadow: 0 2px 12px rgba(59,130,246,0.3);
+        }
+        .nav-cta:hover { opacity: 0.9; transform: translateY(-1px) !important; }
+
+        /* ── Shared ───────────────────────────────────── */
+        .section {
+            padding: 100px max(20px, calc(50% - 580px));
+        }
+        .section-label {
+            font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; margin-bottom: 14px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        h2 {
+            font-size: clamp(28px, 5vw, 44px);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
+            margin-bottom: 16px;
+        }
+        .sub {
+            font-size: 17px; color: var(--text2); line-height: 1.7;
+            max-width: 540px; margin-bottom: 48px;
+        }
+
+        /* ── Hero ─────────────────────────────────────── */
+        .hero {
+            position: relative;
+            padding: 160px max(20px, calc(50% - 580px)) 100px;
+            overflow: hidden;
+        }
+        .hero-bg {
+            position: absolute; inset: 0; z-index: 0;
+            overflow: hidden;
+        }
+        .hero-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: 0.15;
+            animation: orb-float 20s ease-in-out infinite;
+        }
+        .hero-orb-1 {
+            width: 500px; height: 500px;
+            background: var(--blue);
+            top: -10%; right: 10%;
+            animation-delay: 0s;
+        }
+        .hero-orb-2 {
+            width: 400px; height: 400px;
+            background: var(--purple);
+            bottom: -5%; left: 5%;
+            animation-delay: -7s;
+        }
+        .hero-orb-3 {
+            width: 300px; height: 300px;
+            background: var(--cyan);
+            top: 30%; left: 40%;
+            animation-delay: -14s;
+        }
+        @keyframes orb-float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -20px) scale(1.05); }
+            66% { transform: translate(-20px, 15px) scale(0.95); }
+        }
+        .hero-content { position: relative; z-index: 1; }
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(59,130,246,0.08);
+            border: 1px solid rgba(59,130,246,0.2);
+            color: #60a5fa; font-size: 13px; font-weight: 600;
+            padding: 6px 16px; border-radius: 24px;
+            margin-bottom: 32px;
+            animation: badge-in 0.6s ease both;
+        }
+        .hero-badge .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes badge-in { from { opacity: 0; transform: translateY(10px); } }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        h1 {
+            font-size: clamp(40px, 8vw, 80px);
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            line-height: 1.05;
+            margin-bottom: 28px;
+        }
+        .h1-grad {
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .h1-accent {
+            background: linear-gradient(135deg, var(--blue), var(--cyan), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            background-size: 200% auto;
+            animation: grad-shift 4s ease-in-out infinite;
+        }
+        @keyframes grad-shift {
+            0%, 100% { background-position: 0% center; }
+            50% { background-position: 100% center; }
+        }
+
+        .hero-sub {
+            font-size: clamp(16px, 2.5vw, 20px);
+            color: var(--text2); max-width: 560px; line-height: 1.7;
+            margin-bottom: 40px;
+        }
+        .typewriter {
+            display: inline;
+            border-right: 2px solid var(--blue);
+            animation: cursor-blink 0.8s step-end infinite;
+        }
+        @keyframes cursor-blink { 0%, 100% { border-color: var(--blue); } 50% { border-color: transparent; } }
+
+        .hero-actions {
+            display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+            margin-bottom: 16px;
+        }
+        .btn-primary {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 15px 28px;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            color: #fff; text-decoration: none;
+            border-radius: 14px; font-weight: 600; font-size: 15px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 24px rgba(59,130,246,0.35);
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(59,130,246,0.45); }
+        .btn-secondary {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 15px 28px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border2);
+            color: var(--text); text-decoration: none;
+            border-radius: 14px; font-weight: 600; font-size: 15px;
+            transition: all 0.2s;
+        }
+        .btn-secondary:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); }
+        .hero-note { font-size: 13px; color: var(--text3); }
+
+        /* ── Waveform SVG ────────────────────────────────── */
+        .wave-wrap {
+            margin-top: 60px;
+            position: relative;
+            height: 80px;
+            opacity: 0.3;
+        }
+        .wave-wrap svg {
+            width: 100%;
+            height: 100%;
+        }
+        .wave-path {
+            stroke-dasharray: 2000;
+            stroke-dashoffset: 2000;
+            animation: wave-draw 3s ease forwards;
+        }
+        @keyframes wave-draw { to { stroke-dashoffset: 0; } }
+
+        /* ── Architecture (animated SVG) ──────────────────── */
+        .arch-wrap {
+            margin-top: 64px;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 40px 32px;
+            position: relative;
+            overflow: hidden;
+        }
+        .arch-wrap::before {
+            content: '';
+            position: absolute; inset: 0;
+            background: radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.06) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .arch-flow {
+            display: flex; align-items: center; justify-content: center;
+            gap: 0; flex-wrap: wrap;
+            position: relative; z-index: 1;
+        }
+        .arch-node {
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+            padding: 20px 24px;
+            background: var(--s2);
+            border: 1px solid var(--border2);
+            border-radius: 16px;
+            min-width: 120px;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+        .arch-node:hover { transform: translateY(-4px); border-color: var(--blue); }
+        .arch-node-icon { font-size: 32px; }
+        .arch-node-label { font-size: 13px; font-weight: 600; color: var(--text2); }
+        .arch-node.hub {
+            background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1));
+            border-color: rgba(59,130,246,0.3);
+        }
+        .arch-node.hub .arch-node-label { color: #60a5fa; }
+        .arch-connector {
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            padding: 0 16px;
+        }
+        .arch-line {
+            width: 48px; height: 2px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            border-radius: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+        .arch-line::after {
+            content: '';
+            position: absolute; inset: 0;
+            background: linear-gradient(90deg, transparent, #fff, transparent);
+            animation: packet-flow 2s linear infinite;
+        }
+        @keyframes packet-flow { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+        .arch-tag {
+            font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+            text-transform: uppercase; color: var(--cyan);
+            white-space: nowrap;
+        }
+        .arch-receivers {
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .arch-rx {
+            display: flex; align-items: center; gap: 10px;
+            background: var(--s2); border: 1px solid var(--border);
+            border-radius: 12px; padding: 10px 16px;
+            font-size: 13px; font-weight: 500; color: var(--text2);
+            transition: border-color 0.3s;
+        }
+        .arch-rx:hover { border-color: var(--green); }
+        .arch-rx .dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--green);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        /* ── How it works (3 steps) ──────────────────────── */
+        .steps {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+        }
+        .step {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px 24px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .step:hover { border-color: var(--border2); transform: translateY(-4px); }
+        .step::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .step:hover::before { opacity: 1; }
+        .step-num {
+            font-size: 48px; font-weight: 800; letter-spacing: -0.04em;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.03));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 16px;
+        }
+        .step-icon {
+            width: 48px; height: 48px;
+            display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1));
+            border-radius: 12px;
+            font-size: 24px;
+            margin-bottom: 16px;
+        }
+        .step h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+        .step p { font-size: 14px; color: var(--text2); line-height: 1.7; }
+
+        /* ── Features ─────────────────────────────────── */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 16px;
+        }
+        .feat {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px;
+            display: flex; flex-direction: column; gap: 12px;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .feat:hover { border-color: var(--border2); transform: translateY(-2px); }
+        .feat-icon-wrap {
+            width: 40px; height: 40px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 10px;
+            font-size: 20px;
+        }
+        .feat-icon-wrap.blue   { background: rgba(59,130,246,0.1); }
+        .feat-icon-wrap.green  { background: rgba(16,185,129,0.1); }
+        .feat-icon-wrap.purple { background: rgba(139,92,246,0.1); }
+        .feat-icon-wrap.amber  { background: rgba(245,158,11,0.1); }
+        .feat-icon-wrap.cyan   { background: rgba(6,182,212,0.1); }
+        .feat-icon-wrap.pink   { background: rgba(236,72,153,0.1); }
+        .feat h4 { font-size: 15px; font-weight: 700; }
+        .feat p { font-size: 13px; color: var(--text2); line-height: 1.6; }
+
+        /* ── P2P Mesh section ─────────────────────────────── */
+        .mesh-wrap {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center;
+        }
+        .mesh-visual {
+            position: relative;
+            aspect-ratio: 1;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        .mesh-visual svg { width: 100%; height: 100%; }
+        .mesh-node-circle {
+            fill: var(--s2); stroke: var(--border2); stroke-width: 1.5;
+            transition: stroke 0.3s;
+        }
+        .mesh-line {
+            stroke: url(#meshGrad); stroke-width: 1.5;
+            stroke-dasharray: 6 4;
+            animation: dash-flow 1s linear infinite;
+        }
+        @keyframes dash-flow { to { stroke-dashoffset: -10; } }
+        .mesh-info h3 {
+            font-size: clamp(22px, 4vw, 32px);
+            font-weight: 800; letter-spacing: -0.03em;
+            margin-bottom: 16px; line-height: 1.2;
+        }
+        .mesh-info p {
+            font-size: 16px; color: var(--text2); line-height: 1.7;
+            margin-bottom: 24px;
+        }
+        .mesh-features {
+            display: flex; flex-direction: column; gap: 12px;
+        }
+        .mesh-feat {
+            display: flex; align-items: center; gap: 12px;
+            font-size: 14px; color: var(--text2);
+        }
+        .mesh-feat .check {
+            width: 22px; height: 22px;
+            background: rgba(16,185,129,0.1);
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--green); font-size: 12px; font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        /* ── Install ──────────────────────────────────── */
+        .install-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+        }
+        .install-card {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 20px; padding: 28px; display: flex; flex-direction: column; gap: 16px;
+            transition: border-color 0.3s, transform 0.3s;
+            position: relative; overflow: hidden;
+        }
+        .install-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+        .install-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            opacity: 0; transition: opacity 0.3s;
+        }
+        .install-card:hover::before { opacity: 1; }
+        .ic-header { display: flex; align-items: center; gap: 14px; }
+        .ic-icon { font-size: 32px; flex-shrink: 0; }
+        .ic-header h3 { font-size: 17px; font-weight: 700; margin-bottom: 2px; }
+        .ic-header p { font-size: 13px; color: var(--text2); }
+        .ic-tag {
+            font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+            text-transform: uppercase; padding: 2px 8px; border-radius: 4px;
+            display: inline-block; margin-left: 8px;
+        }
+        .ic-tag.tx { color: var(--blue); background: rgba(59,130,246,0.1); }
+        .ic-tag.rx { color: var(--green); background: rgba(16,185,129,0.1); }
+        .code-block {
+            background: var(--s3); border: 1px solid var(--border);
+            border-radius: 10px; padding: 12px 16px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 13px; color: #a8d8b0; overflow-x: auto; white-space: nowrap;
+            position: relative;
+        }
+        .code-block .prompt { color: var(--text3); user-select: none; }
+        .code-block .copy-btn {
+            position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+            background: var(--s2); border: 1px solid var(--border2);
+            color: var(--text3); font-size: 11px; font-weight: 600;
+            padding: 4px 10px; border-radius: 6px; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .code-block .copy-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+        .ic-link {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 12px 18px;
+            background: rgba(255,255,255,0.03); border: 1px solid var(--border2);
+            border-radius: 10px; color: var(--text); text-decoration: none;
+            font-size: 14px; font-weight: 600; width: 100%; justify-content: center;
+            transition: all 0.2s;
+        }
+        .ic-link:hover { background: rgba(255,255,255,0.06); }
+        .ic-link.primary {
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            border-color: transparent; color: #fff;
+        }
+        .ic-link.primary:hover { opacity: 0.9; }
+
+        /* ── Numbers ──────────────────────────────────── */
+        .numbers {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px;
+        }
+        .num-card {
+            text-align: center;
+            padding: 32px 16px;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+        }
+        .num-val {
+            font-size: clamp(32px, 5vw, 48px);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .num-label {
+            font-size: 13px; color: var(--text3); margin-top: 4px;
+        }
+
+        /* ── Dashboard preview ────────────────────────── */
+        .preview-wrap {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 20px; overflow: hidden;
+        }
+        .preview-bar {
+            background: var(--s2); border-bottom: 1px solid var(--border);
+            padding: 14px 18px; display: flex; align-items: center; gap: 12px;
+        }
+        .preview-dots { display: flex; gap: 6px; }
+        .preview-dots span { width: 12px; height: 12px; border-radius: 50%; }
+        .preview-dots .d-red   { background: #ff5f57; }
+        .preview-dots .d-amber { background: #febc2e; }
+        .preview-dots .d-green { background: #28c840; }
+        .preview-url {
+            flex: 1; background: var(--s3); border-radius: 8px;
+            padding: 5px 14px; font-size: 12px; color: var(--text3);
+            font-family: monospace;
+        }
+        .preview-body { padding: 24px; }
+        .mock-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 16px; background: var(--s2); border-radius: 12px;
+            margin-bottom: 16px;
+        }
+        .mock-logo { font-size: 15px; font-weight: 700; }
+        .mock-badge {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 12px; font-weight: 600; padding: 4px 12px;
+            border-radius: 20px; background: rgba(16,185,129,0.12);
+            color: var(--green);
+        }
+        .mock-badge .live-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        .mock-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .mock-card {
+            background: var(--s2); border: 1px solid var(--border);
+            border-radius: 12px; padding: 16px;
+        }
+        .mock-card-hd {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .mock-card-name { font-size: 13px; font-weight: 600; }
+        .mock-card-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .mock-bar-wrap {
+            height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px;
+            overflow: hidden;
+        }
+        .mock-bar {
+            height: 100%; border-radius: 2px;
+            background: linear-gradient(90deg, var(--green), var(--cyan));
+        }
+        .mock-stat { font-size: 11px; color: var(--text3); margin-top: 6px; }
+
+        /* ── Comparison ───────────────────────────────── */
+        .table-wrap {
+            overflow-x: auto;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 4px;
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th {
+            padding: 14px 18px; text-align: left; font-size: 11px;
+            font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+            color: var(--text3); border-bottom: 1px solid var(--border);
+        }
+        td {
+            padding: 14px 18px; border-bottom: 1px solid var(--border);
+            color: var(--text2);
+        }
+        td:first-child { font-weight: 600; color: var(--text); }
+        tr:last-child td { border-bottom: none; }
+        .yes { color: var(--green); font-weight: 700; }
+        .no  { color: var(--text3); }
+        .hl-col td:nth-child(2) { color: var(--text); background: rgba(59,130,246,0.04); }
+        .hl-col th:nth-child(2) { color: #60a5fa; }
+
+        /* ── CTA section ──────────────────────────────── */
+        .cta-section {
+            text-align: center;
+            padding: 100px max(20px, calc(50% - 580px));
+            position: relative;
+        }
+        .cta-section h2 {
+            font-size: clamp(28px, 5vw, 48px);
+            margin-bottom: 20px;
+        }
+        .cta-section .sub { margin: 0 auto 40px; text-align: center; }
+
+        /* ── Status table ─────────────────────────────── */
+        .status-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 12px; margin-top: 32px;
+        }
+        .status-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 14px 18px; border-radius: 12px;
+            background: var(--s2); border: 1px solid var(--border);
+        }
+        .status-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 700;
+            letter-spacing: 0.04em; white-space: nowrap; flex-shrink: 0;
+        }
+        .badge-live { background: rgba(16,185,129,0.15); color: #10b981; }
+        .badge-beta { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .badge-plan { background: rgba(139,92,246,0.15); color: #8b5cf6; }
+        .status-item .label { font-size: 14px; font-weight: 500; }
+        .status-item .desc { font-size: 12px; color: var(--text3); }
+
+        /* ── Footer ───────────────────────────────────── */
+        .footer-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(59,130,246,0.3), var(--border), transparent);
+        }
+        footer {
+            padding: 40px max(20px, calc(50% - 580px));
+            display: flex; flex-wrap: wrap; align-items: center;
+            justify-content: space-between; gap: 16px;
+        }
+        footer .f-logo { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        footer .f-links { display: flex; gap: 24px; }
+        footer .f-links a { font-size: 13px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
+        footer .f-links a:hover { color: var(--text2); }
+        footer .f-copy { font-size: 12px; color: var(--text3); }
+
+        /* ── FAQ ──────────────────────────────────────── */
+        details[open] summary span:last-child { transform: rotate(45deg); }
+        details summary::-webkit-details-marker { display: none; }
+
+        /* ── Divider ──────────────────────────────────── */
+        hr { border: none; border-top: 1px solid var(--border); }
+
+        /* ── Responsive ───────────────────────────────── */
+        @media (max-width: 768px) {
+            .nav-links .hide-sm { display: none; }
+            .hero-actions { flex-direction: column; }
+            .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+            .steps { grid-template-columns: 1fr; }
+            .mesh-wrap { grid-template-columns: 1fr; }
+            .mesh-visual { max-width: 280px; }
+            .numbers { grid-template-columns: repeat(2, 1fr); }
+            .mock-grid { grid-template-columns: 1fr; }
+            .arch-connector { display: none; }
+            .arch-flow { gap: 8px; }
+            .install-card [style*="grid-template-columns:repeat(3"] { grid-template-columns: 1fr !important; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+    <div class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/>
+            <path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/>
+            <defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs>
+        </svg>
+        Soluna
+    </div>
+    <div class="nav-links">
+        <a href="#how" class="hide-sm">How it Works</a>
+        <a href="#features" class="hide-sm">Features</a>
+        <a href="#install" class="hide-sm">Install</a>
+        <a href="#usecases" class="hide-sm">Use Cases</a>
+        <a href="#faq" class="hide-sm">FAQ</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/" class="hide-sm" title="日本語">JP</a>
+        <a href="/dashboard" class="nav-cta">Dashboard</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+        <div class="hero-orb hero-orb-3"></div>
+    </div>
+    <div class="hero-content">
+        <div class="hero-badge"><span class="dot"></span> Open Source &middot; MIT License</div>
+        <h1>
+            <span class="h1-grad">Your music,</span><br>
+            <span class="h1-accent" id="hero-typing"></span><span class="typewriter" id="hero-cursor"></span>
+        </h1>
+        <p class="hero-sub">
+            Deliver to every speaker in the world, in real time. Copyright handled automatically.<br>
+            Mac, iPhone, Android, browser — listen anywhere, stream from anywhere.
+        </p>
+        <div class="hero-actions">
+            <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" class="btn-primary">Download for Mac</a>
+            <a href="/dashboard" class="btn-secondary">Open Dashboard →</a>
+        </div>
+        <p class="hero-note">macOS 12+ &middot; iOS 14+ &middot; Linux &middot; Free &middot; Open Source</p>
+
+        <!-- Architecture diagram -->
+        <div class="arch-wrap reveal">
+            <div class="arch-flow">
+                <div class="arch-node hub">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="#60a5fa" stroke-width="1.5"/>
+                        <path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="#60a5fa" stroke-width="1.5" fill="rgba(59,130,246,0.15)"/>
+                    </svg>
+                    <div class="arch-node-label">Soluna.app</div>
+                </div>
+                <div class="arch-connector">
+                    <div class="arch-line"></div>
+                    <div class="arch-tag">Audio TX / Mic TX / WAN P2P</div>
+                </div>
+                <div class="arch-receivers">
+                    <div class="arch-rx"><span class="dot"></span> iPhone</div>
+                    <div class="arch-rx"><span class="dot"></span> Raspberry Pi</div>
+                    <div class="arch-rx"><span class="dot"></span> Browser</div>
+                    <div class="arch-rx"><span class="dot" style="background:var(--blue)"></span> Mac Speaker</div>
+                    <div class="arch-rx"><span class="dot" style="background:var(--purple)"></span> WAN Group</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- How it works -->
+<section class="section" id="how">
+    <div class="section-label reveal">How it Works</div>
+    <h2 class="reveal">3 simple steps to get started.</h2>
+    <p class="sub reveal">Start streaming audio in just 3 steps.</p>
+
+    <div class="steps">
+        <div class="step reveal reveal-delay-1" style="border-color:rgba(16,185,129,0.3)">
+            <div class="step-num">01</div>
+            <div class="step-icon">📥</div>
+            <h3>Download</h3>
+            <p>Download the .pkg installer. No terminal required — just double-click.</p>
+        </div>
+        <div class="step reveal reveal-delay-2">
+            <div class="step-num">02</div>
+            <div class="step-icon">⚙️</div>
+            <h3>Install</h3>
+            <p>Soluna.app + virtual audio device + background service are all set up together automatically.</p>
+        </div>
+        <div class="step reveal reveal-delay-3">
+            <div class="step-num">03</div>
+            <div class="step-icon">🎵</div>
+            <h3>Start Streaming</h3>
+            <p>Select Soluna in Sound Settings → Open Soluna.app and turn Audio TX ON → Done!</p>
+        </div>
+    </div>
+</section>
+
+<hr>
+
+<!-- P2P Mesh -->
+<section class="section" id="p2p">
+    <div class="mesh-wrap">
+        <div class="mesh-visual reveal">
+            <svg viewBox="0 0 300 300" fill="none">
+                <defs>
+                    <linearGradient id="meshGrad" x1="0" y1="0" x2="300" y2="300">
+                        <stop offset="0%" stop-color="#3b82f6"/>
+                        <stop offset="100%" stop-color="#10b981"/>
+                    </linearGradient>
+                    <radialGradient id="nodeGlow">
+                        <stop offset="0%" stop-color="rgba(59,130,246,0.2)"/>
+                        <stop offset="100%" stop-color="transparent"/>
+                    </radialGradient>
+                </defs>
+                <!-- Connection lines -->
+                <line x1="150" y1="80" x2="80" y2="170" class="mesh-line"/>
+                <line x1="150" y1="80" x2="220" y2="170" class="mesh-line"/>
+                <line x1="80" y1="170" x2="150" y2="240" class="mesh-line"/>
+                <line x1="220" y1="170" x2="150" y2="240" class="mesh-line"/>
+                <line x1="80" y1="170" x2="220" y2="170" class="mesh-line" style="opacity:0.3"/>
+                <!-- Glow -->
+                <circle cx="150" cy="80" r="40" fill="url(#nodeGlow)"/>
+                <!-- Nodes -->
+                <circle cx="150" cy="80" r="24" class="mesh-node-circle" stroke-width="2" stroke="rgba(59,130,246,0.5)" fill="rgba(59,130,246,0.08)"/>
+                <text x="150" y="85" text-anchor="middle" fill="#60a5fa" font-size="20">📡</text>
+                <circle cx="80" cy="170" r="20" class="mesh-node-circle"/>
+                <text x="80" y="175" text-anchor="middle" fill="var(--text2)" font-size="16">📱</text>
+                <circle cx="220" cy="170" r="20" class="mesh-node-circle"/>
+                <text x="220" y="175" text-anchor="middle" fill="var(--text2)" font-size="16">📱</text>
+                <circle cx="150" cy="240" r="20" class="mesh-node-circle"/>
+                <text x="150" y="245" text-anchor="middle" fill="var(--text2)" font-size="16">📱</text>
+                <!-- Labels -->
+                <text x="150" y="45" text-anchor="middle" fill="var(--text3)" font-size="10" font-weight="600">RELAY</text>
+                <text x="40" y="175" text-anchor="middle" fill="var(--text3)" font-size="10">PEER</text>
+                <text x="260" y="175" text-anchor="middle" fill="var(--text3)" font-size="10">PEER</text>
+                <text x="150" y="275" text-anchor="middle" fill="var(--text3)" font-size="10">PEER</text>
+            </svg>
+        </div>
+        <div class="mesh-info reveal">
+            <div class="section-label">P2P Mesh Relay</div>
+            <h3>Even without direct signal,<br>get audio from nearby peers.</h3>
+            <p>
+                WiFi congested at a festival or large event? No problem.
+                Audio is automatically received from nearby devices that already have the stream.
+                Just match the channel name. No permission needed.
+            </p>
+            <div class="mesh-features">
+                <div class="mesh-feat"><span class="check">&#10003;</span> Auto-matching by channel name</div>
+                <div class="mesh-feat"><span class="check">&#10003;</span> Auto-discovery of nearby devices before receiving</div>
+                <div class="mesh-feat"><span class="check">&#10003;</span> No permission required from the sender</div>
+                <div class="mesh-feat"><span class="check">&#10003;</span> Underperforming devices are auto-muted</div>
+                <div class="mesh-feat"><span class="check">&#10003;</span> Up to 2000ms buffer adjustment</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<hr>
+
+<!-- Numbers -->
+<section class="section">
+    <div class="numbers">
+        <div class="num-card reveal reveal-delay-1">
+            <div class="num-val" data-target="20">&lt;20</div>
+            <div class="num-label">ms latency (LAN)</div>
+        </div>
+        <div class="num-card reveal reveal-delay-2">
+            <div class="num-val">48</div>
+            <div class="num-label">kHz / 24bit</div>
+        </div>
+        <div class="num-card reveal reveal-delay-3">
+            <div class="num-val">3B</div>
+            <div class="num-label">listeners supported</div>
+        </div>
+        <div class="num-card reveal reveal-delay-4">
+            <div class="num-val">MIT</div>
+            <div class="num-label">completely free</div>
+        </div>
+    </div>
+</section>
+
+<hr>
+
+<!-- Features -->
+<section class="section" id="features">
+    <div class="section-label reveal">Features</div>
+    <h2 class="reveal">Pro-grade features, open source.</h2>
+    <p class="sub reveal">Everything you need, all included.</p>
+    <div class="features-grid">
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap blue">&#9889;</div>
+            <h4>Low-Latency UDP Multicast</h4>
+            <p>Under 20ms on LAN. Sound plays in sync across all devices at the same moment as Mac speakers.</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap green">&#128260;</div>
+            <h4>Auto Delay Sync</h4>
+            <p>WebSocket RTT measurement automatically syncs Mac speakers and iPhone audio perfectly.</p>
+        </div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap purple">&#128225;</div>
+            <h4>P2P Auto Relay</h4>
+            <p>Automatically receive from nearby devices on the same channel. No dropouts even at festivals.</p>
+        </div>
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap amber">&#128737;</div>
+            <h4>PLC Packet Interpolation</h4>
+            <p>Compensates up to 2 lost packets with previous frames. No audio glitches even on WiFi.</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap cyan">&#128161;</div>
+            <h4>Auto Device Health Management</h4>
+            <p>Struggling devices get auto buffer expansion. If limits are hit, auto-mute keeps noise at zero.</p>
+        </div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap pink">&#127760;</div>
+            <h4>Web Dashboard</h4>
+            <p>Full control at localhost:8400. Sparklines, latency adjustment, real-time statistics.</p>
+        </div>
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap blue">&#128187;</div>
+            <h4>Soluna.app — All-in-One</h4>
+            <p>Audio TX, Mic TX, RX, and WAN P2P in a single app. No separate solunad daemon needed.</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap green">&#128640;</div>
+            <h4>Easy Install</h4>
+            <p>Download the .pkg installer → double-click to finish. No terminal required.</p>
+        </div>
+    </div>
+</section>
+
+<hr>
+
+<!-- Install -->
+<section class="section" id="install">
+    <div class="section-label reveal">Install</div>
+    <h2 class="reveal">Easy to get started.</h2>
+    <p class="sub reveal">Choose your platform and set up.</p>
+    <div class="install-grid">
+        <div class="install-card reveal reveal-delay-1" style="grid-column:1/-1">
+            <div class="ic-header">
+                <div class="ic-icon">💻</div>
+                <div>
+                    <h3>Mac<span class="ic-tag tx">TX + RX + WAN</span></h3>
+                    <p>One installer sets up Soluna.app + virtual audio device + background service all together.</p>
+                </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap">
+                <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff;font-size:15px;font-weight:700;padding:14px 28px;border-radius:12px;text-decoration:none;transition:opacity 0.2s">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                    .pkg Installer
+                </a>
+                <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.dmg" style="display:inline-flex;align-items:center;gap:8px;background:var(--s2);color:var(--text);font-size:14px;font-weight:600;padding:12px 24px;border-radius:12px;text-decoration:none;border:1px solid var(--border2);transition:opacity 0.2s">
+                    .dmg
+                </a>
+                <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.app.zip" style="display:inline-flex;align-items:center;gap:8px;background:var(--s2);color:var(--text);font-size:14px;font-weight:600;padding:12px 24px;border-radius:12px;text-decoration:none;border:1px solid var(--border2);transition:opacity 0.2s">
+                    .app (zip)
+                </a>
+            </div>
+            <span style="font-size:12px;color:var(--text3);margin-top:6px;display:block">macOS 13+ &bull; Apple Silicon</span>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px">
+                <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+                    <div style="font-size:20px;margin-bottom:6px">1</div>
+                    <div style="font-size:13px;font-weight:600">Download</div>
+                    <div style="font-size:11px;color:var(--text3)">Download the .pkg</div>
+                </div>
+                <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+                    <div style="font-size:20px;margin-bottom:6px">2</div>
+                    <div style="font-size:13px;font-weight:600">Install</div>
+                    <div style="font-size:11px;color:var(--text3)">Double-click to run</div>
+                </div>
+                <div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+                    <div style="font-size:20px;margin-bottom:6px">3</div>
+                    <div style="font-size:13px;font-weight:600">Select Soluna</div>
+                    <div style="font-size:11px;color:var(--text3)">Sound Settings → Output</div>
+                </div>
+            </div>
+            <a href="/guide" class="ic-link">Detailed setup guide →</a>
+        </div>
+        <div class="install-card reveal reveal-delay-2">
+            <div class="ic-header">
+                <div class="ic-icon">📱</div>
+                <div>
+                    <h3>iPhone / iPad<span class="ic-tag rx">RX + MIC TX</span></h3>
+                    <p>Just connect to the same WiFi. Auto-connects by channel name. Mic transmission supported too.</p>
+                </div>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
+                <a href="https://testflight.apple.com/join/PYbefDSE" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#007AFF,#5856D6);color:#fff;font-size:14px;font-weight:700;padding:12px 24px;border-radius:12px;text-decoration:none;transition:opacity 0.2s">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+                    Get Beta on TestFlight
+                </a>
+                <a href="https://apps.apple.com/app/soluna-receiver/idXXXXXXXXXX" style="display:inline-flex;align-items:center;gap:8px;background:var(--s3);color:var(--text2);font-size:14px;font-weight:600;padding:12px 24px;border-radius:12px;text-decoration:none;border:1px solid var(--border2);transition:opacity 0.2s">
+                    App Store (Coming Soon)
+                </a>
+            </div>
+            <p style="font-size:12px;color:var(--text3);margin-top:8px">iOS 16+ / iPhone & iPad supported</p>
+        </div>
+        <div class="install-card reveal reveal-delay-3">
+            <div class="ic-header">
+                <div class="ic-icon">🤖</div>
+                <div>
+                    <h3>Android<span class="ic-tag rx">RX</span></h3>
+                    <p>UDP reception + OSTP protocol support.</p>
+                </div>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
+                <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-android.apk" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#34A853,#0F9D58);color:#fff;font-size:14px;font-weight:700;padding:12px 24px;border-radius:12px;text-decoration:none;transition:opacity 0.2s">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M17.6 11.8l1.7-3c.1-.2 0-.4-.2-.5s-.4 0-.5.2l-1.7 3c-1.3-.6-2.7-.9-4.2-.9s-2.9.3-4.2.9L6.8 8.5c-.1-.2-.3-.3-.5-.2s-.3.3-.2.5l1.7 3C4.7 13.6 2.7 16.8 2.3 20.6h18.6c-.4-3.8-2.4-7-5.3-8.8zM8.3 17.4c-.5 0-.8-.4-.8-.8s.4-.8.8-.8.8.4.8.8-.4.8-.8.8zm6.7 0c-.5 0-.8-.4-.8-.8s.4-.8.8-.8.8.4.8.8-.3.8-.8.8z"/></svg>
+                    Download APK
+                </a>
+                <a href="#" style="display:inline-flex;align-items:center;gap:8px;background:var(--s3);color:var(--text2);font-size:14px;font-weight:600;padding:12px 24px;border-radius:12px;text-decoration:none;border:1px solid var(--border2);transition:opacity 0.2s">
+                    Google Play (Coming Soon)
+                </a>
+            </div>
+            <p style="font-size:12px;color:var(--text3);margin-top:8px">Android 8.0+ / ARM64</p>
+        </div>
+        <div class="install-card reveal reveal-delay-4">
+            <div class="ic-header">
+                <div class="ic-icon">🍓</div>
+                <div>
+                    <h3>Raspberry Pi / Linux<span class="ic-tag rx">RX</span></h3>
+                    <p>One command handles everything from build to service registration.</p>
+                </div>
+            </div>
+            <div class="code-block">
+                <span class="prompt">$ </span>curl -fsSL https://soluna-web.fly.dev/install-rx.sh | sudo bash
+                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p style="font-size:12px;color:var(--text3);margin-top:4px">See the <a href="https://github.com/yukihamada/opensonic#readme" style="color:var(--text2)">README</a> for CLI install details</p>
+        </div>
+        <div class="install-card reveal reveal-delay-4">
+            <div class="ic-header">
+                <div class="ic-icon">🌐</div>
+                <div>
+                    <h3>Browser<span class="ic-tag" style="color:var(--cyan);background:rgba(6,182,212,0.1)">ZERO INSTALL</span></h3>
+                    <p>No installation needed. Play from the Browser tab in the Dashboard.</p>
+                </div>
+            </div>
+            <a href="/dashboard" class="ic-link primary">Open Dashboard →</a>
+        </div>
+    </div>
+</section>
+
+<hr>
+
+<!-- Dashboard Preview -->
+<section class="section">
+    <div class="section-label reveal">Dashboard</div>
+    <h2 class="reveal">Everything in one dashboard.</h2>
+    <p class="sub reveal">Control all speakers from your browser.</p>
+    <div class="preview-wrap reveal">
+        <div class="preview-bar">
+            <div class="preview-dots">
+                <span class="d-red"></span><span class="d-amber"></span><span class="d-green"></span>
+            </div>
+            <div class="preview-url">localhost:8400</div>
+        </div>
+        <div class="preview-body">
+            <div class="mock-header">
+                <div class="mock-logo">&#9670; Soluna</div>
+                <div class="mock-badge"><span class="live-dot"></span> Live</div>
+            </div>
+            <div class="mock-grid">
+                <div class="mock-card">
+                    <div class="mock-card-hd">
+                        <div class="mock-card-name">📱 iPhone</div>
+                        <div class="mock-card-dot" style="background:var(--green)"></div>
+                    </div>
+                    <div class="mock-bar-wrap"><div class="mock-bar" style="width:78%"></div></div>
+                    <div class="mock-stat">78% &middot; 42ms delay &middot; P2P relay</div>
+                </div>
+                <div class="mock-card">
+                    <div class="mock-card-hd">
+                        <div class="mock-card-name">🍓 RPi Living</div>
+                        <div class="mock-card-dot" style="background:var(--green)"></div>
+                    </div>
+                    <div class="mock-bar-wrap"><div class="mock-bar" style="width:100%"></div></div>
+                    <div class="mock-stat">100% &middot; 38ms delay &middot; 0 drop</div>
+                </div>
+                <div class="mock-card">
+                    <div class="mock-card-hd">
+                        <div class="mock-card-name">🌐 Browser</div>
+                        <div class="mock-card-dot" style="background:var(--cyan)"></div>
+                    </div>
+                    <div class="mock-bar-wrap"><div class="mock-bar" style="width:60%;background:linear-gradient(90deg,var(--cyan),var(--green))"></div></div>
+                    <div class="mock-stat">60% &middot; 52ms &middot; underruns: 0</div>
+                </div>
+                <div class="mock-card">
+                    <div class="mock-card-hd">
+                        <div class="mock-card-name">🖥 Mac Monitor</div>
+                        <div class="mock-card-dot" style="background:var(--green)"></div>
+                    </div>
+                    <div class="mock-bar-wrap"><div class="mock-bar" style="width:90%"></div></div>
+                    <div class="mock-stat">Running &middot; 48kHz &middot; 20ms buf</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<hr>
+
+<!-- Planet Scale -->
+<section class="section" id="scale">
+    <div class="section-label reveal">Planet-Scale Streaming</div>
+    <h2 class="reveal">From 2 to 3 billion listeners.</h2>
+    <p class="sub reveal">Auto-scaling 3-tier cascade + P2P swarm.</p>
+    <div class="features-grid">
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap blue">&#127758;</div>
+            <h4>3-Tier Cascade Relay</h4>
+            <p>Origin (1 node) &#8594; Region (~20 nodes) &#8594; Edge (~10,000 nodes). Up to 300K listeners per node.</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap green">&#129302;</div>
+            <h4>P2P Swarm</h4>
+            <p>Listeners automatically become micro-relays. Fan-out 4, depth 16 = 4.2 billion nodes. Near-zero server bandwidth.</p>
+        </div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap purple">&#128230;</div>
+            <h4>P2P File Distribution</h4>
+            <p>BitTorrent-style track delivery. After everyone downloads, synced playback with zero bandwidth.</p>
+        </div>
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap amber">&#128279;</div>
+            <h4>FILE_URL Distribution</h4>
+            <p>Just share a CDN URL. Each listener downloads + SYNC:play for perfect sync. Zero DJ bandwidth.</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap cyan">&#9889;</div>
+            <h4>sendmmsg() Batch Sending</h4>
+            <p>1024 packets per syscall on Linux Edge. Can saturate 10GbE NIC. Worker thread pool support.</p>
+        </div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap pink">&#128203;</div>
+            <h4>Auto Tier Selection</h4>
+            <p>2-4 people: direct P2P. 5-50: single relay. 50-100K: 2-tier. 100K+: full 3-tier cascade.</p>
+        </div>
+    </div>
+    <div class="table-wrap reveal" style="margin-top:32px">
+        <table>
+            <thead><tr><th>Scale</th><th>Origin BW</th><th>Regions</th><th>Edges</th><th>Edge BW (each)</th></tr></thead>
+            <tbody>
+                <tr><td>10K</td><td>320 KB/s</td><td>1</td><td>10</td><td>16 MB/s</td></tr>
+                <tr><td>1M</td><td>320 KB/s</td><td>20</td><td>1K</td><td>16 MB/s</td></tr>
+                <tr><td>1B</td><td>32 MB/s</td><td>20</td><td>100K</td><td>160 MB/s</td></tr>
+                <tr><td>3B</td><td>32 MB/s</td><td>20</td><td>300K</td><td>160 MB/s</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<hr>
+
+<!-- Copyright & Royalty -->
+<section class="section" id="royalty">
+    <div class="section-label reveal">Copyright &amp; Royalty</div>
+    <h2 class="reveal">Use music right. Pay artists fairly.</h2>
+    <p class="sub reveal">Async copyright detection with zero audio quality sacrifice + real-time billing.</p>
+    <div class="features-grid">
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap green">&#127925;</div>
+            <h4>Zero-Latency Detection</h4>
+            <p>Spectral fingerprinting runs asynchronously on a separate thread. try_lock ensures the audio pipeline is never blocked.</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap amber">&#128176;</div>
+            <h4>DJs pay. Listeners are free.</h4>
+            <p>Only DJs playing copyrighted music on public channels are billed. No ads, no subscriptions.</p>
+        </div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap purple">&#128200;</div>
+            <h4>Tiered Pricing</h4>
+            <p>Volume-based discounts by listener count. 5-person party: $0.015/track. 1M-person live: $224/track.</p>
+        </div>
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap blue">&#128274;</div>
+            <h4>Private = No Charge</h4>
+            <p>Private mode, LAN, and direct P2P connections are exempt from copyright detection. Home BGM is completely free.</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap pink">&#127916;</div>
+            <h4>Licensed Tracks One-Click</h4>
+            <p>JASRAC/CC/original tracks ship instantly via LICENSED_PLAY. No detection, no charge.</p>
+        </div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap cyan">&#128178;</div>
+            <h4>70/10/20 Split</h4>
+            <p>Rights holders 70%, platform 10%, DJ cashback 20%. DJs get rewarded.</p>
+        </div>
+    </div>
+    <div class="table-wrap reveal" style="margin-top:32px">
+        <table>
+            <thead><tr><th>Scenario</th><th>Listeners</th><th>Duration</th><th>DJ Cost</th><th>Rights Holders (70%)</th></tr></thead>
+            <tbody>
+                <tr><td>House Party</td><td>5</td><td>3 min</td><td>$0.015</td><td>$0.011</td></tr>
+                <tr><td>Bar DJ Set</td><td>50</td><td>4 hours</td><td>$12.00</td><td>$8.40</td></tr>
+                <tr><td>Online Event</td><td>1,000</td><td>2 hours</td><td>$72.00</td><td>$50.40</td></tr>
+                <tr><td>Festival Stream</td><td>100,000</td><td>1 hour</td><td>$360.00</td><td>$252.00</td></tr>
+                <tr><td>Global Event</td><td>30,000,000</td><td>1 hour</td><td>$3,060.00</td><td>$2,142.00</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<hr>
+
+<!-- Wallet -->
+<section class="section" id="wallet">
+    <div class="section-label reveal">Wallet &amp; Economy</div>
+    <h2 class="reveal">Real-time balance. Withdraw anytime.</h2>
+    <p class="sub reveal">DJ balance is visible to all listeners. Support with a single tap.</p>
+    <div class="features-grid">
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap amber">&#128179;</div>
+            <h4>Built-in Wallet</h4>
+            <p>CHARGE to top up, WITHDRAW anytime. Stripe / PayPal supported.</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap green">&#128165;</div>
+            <h4>Real-Time Balance Display</h4>
+            <p>BALANCE_UPDATE broadcasts every 60 seconds. All listeners can see the DJ's balance and spend rate.</p>
+        </div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap purple">&#128147;</div>
+            <h4>SUPPORT &amp; TIP</h4>
+            <p>Listeners can tip (TIP) and support (SUPPORT) DJs. SUPPORT goes directly toward the DJ's royalty costs.</p>
+        </div>
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap blue">&#128274;</div>
+            <h4>Session Authentication</h4>
+            <p>Session tokens are issued on JOIN. Wallet operations are protected with token verification to prevent unauthorized access.</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap pink">&#128202;</div>
+            <h4>Transaction Ledger</h4>
+            <p>All transactions recorded in JSONL. Real-time writes, append-only, audit-ready.</p>
+        </div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap cyan">&#128683;</div>
+            <h4>Music never stops at zero balance</h4>
+            <p>When balance runs out, there's a 5-minute grace period before auto-switching to private mode. Music continues.</p>
+        </div>
+    </div>
+</section>
+
+<hr>
+
+<!-- Feature Status -->
+<section class="section" id="status">
+    <div class="section-label reveal">Feature Status</div>
+    <h2 class="reveal">What works today, and what's next.</h2>
+    <p class="sub reveal">We value transparency. Here's an honest look at our current status.</p>
+
+    <h4 class="reveal" style="margin-top:32px;color:var(--green)">Live &mdash; Running in production</h4>
+    <div class="status-grid">
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">WAN Relay Server</div><div class="desc">UDP group management, audio forwarding, status API</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">Channel Management</div><div class="desc">JOIN / CHECK / CLAIM / RELEASE / GRANT / MEMBERS</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">P2P Swarm Delivery</div><div class="desc">Fan-out 4, auto tree building, designed for 3B scale</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">3-Tier Cascade</div><div class="desc">Origin → Region → Edge, CASCADE_JOIN/LEAVE auto-connect</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">Wallet System</div><div class="desc">WALLET / CHARGE / WITHDRAW / TIP / SUPPORT / PAYOUT_SETUP</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">Copyright Detection (Async)</div><div class="desc">Spectral fingerprint matching, try_lock keeps audio path unblocked</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">Tiered Royalty</div><div class="desc">5-tier pricing ($0.001-$0.00005/person/min), 70/10/20 revenue split</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">P2P File Distribution</div><div class="desc">FILE_OFFER / FILE_URL / BitTorrent-style 64KB chunk exchange</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">Text Channels</div><div class="desc">TEXT:chat / TEXT:lyric / TEXT:info real-time delivery</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">Security</div><div class="desc">Env var secrets, session tokens, rate limiting, CHARGE auth</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">macOS Transmit (TX)</div><div class="desc">CoreAudio capture, 24bit/48kHz, Web UI dashboard</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">Linux / RPi Receive (RX)</div><div class="desc">ALSA output, DJ mode, one-command install</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">Web UI Dashboard</div><div class="desc">Routing, device management, level meters, WebSocket real-time</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">HTTP REST API</div><div class="desc">Channel queries, management, Stripe Webhook, CORS support</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">Server Recording</div><div class="desc">RECORD / RECORD_STOP, binary packet dump storage</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">Replay Buffer</div><div class="desc">Catch-up playback of last 50 seconds for late joiners (adjustable with --max-replay)</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">HMAC-SHA256 Auth</div><div class="desc">Cryptographic signature verification for CHARGE commands + replay prevention (300s validity)</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">Prometheus /metrics</div><div class="desc">GET /metrics exposes all relay stats in Prometheus format</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">RIGHTS_BALANCE</div><div class="desc">Rights holder balance query command. Individual and bulk query support.</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">LIVE</span><div><div class="label">WebSocket Audio Delivery</div><div class="desc">/ws/audio?channel=xxx streams binary audio frames to browsers in real time</div></div></div>
+    </div>
+
+    <h4 class="reveal" style="margin-top:40px;color:var(--amber)">Beta &mdash; Working but improving</h4>
+    <div class="status-grid">
+        <div class="status-item reveal"><span class="status-badge badge-beta">BETA</span><div><div class="label">Windows Receive</div><div class="desc">WASAPI output, buildable but installer not yet ready</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-beta">BETA</span><div><div class="label">Opus Codec</div><div class="desc">Encoder/decoder implemented, requires libopus linking</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-beta">BETA</span><div><div class="label">DTLS Encryption</div><div class="desc">Enabled when linked with OpenSSL, manual certificate management</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-beta">BETA</span><div><div class="label">DSP Plugin Chain</div><div class="desc">Built-in compressor / EQ / reverb, dynamic loading support</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-beta">BETA</span><div><div class="label">FEC (Forward Error Correction)</div><div class="desc">Packet loss mitigation for WiFi environments, with adaptive control</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-beta">BETA</span><div><div class="label">Stripe Payment Integration</div><div class="desc">Webhook reception + channel expiry management, HMAC-SHA256 verified</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-beta">BETA</span><div><div class="label">iOS App</div><div class="desc">SwiftUI + CoreAudio, Watch support, QR code/channel purchase UI</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-beta">BETA</span><div><div class="label">Android App</div><div class="desc">Kotlin + Jetpack Compose, AudioTrack playback, Material3 UI</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-beta">BETA</span><div><div class="label">Browser Receive (WebSocket)</div><div class="desc">WebSocket /ws/audio endpoint, real-time binary audio stream</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-beta">BETA</span><div><div class="label">AES67 Compatible</div><div class="desc">Full SDP/SAP/RTP implementation, L24/L16 support, PTP sync</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-beta">BETA</span><div><div class="label">Homebrew / APT Packages</div><div class="desc">Formula and package definitions complete, repository publication in progress</div></div></div>
+    </div>
+
+    <h4 class="reveal" style="margin-top:40px;color:var(--green)">New &mdash; Just added</h4>
+    <div class="status-grid">
+        <div class="status-item reveal"><span class="status-badge badge-live">NEW</span><div><div class="label">HMAC-SHA256 Auth</div><div class="desc">Full cryptographic signature verification for CHARGE commands. Timestamp-based replay prevention.</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">NEW</span><div><div class="label">Prometheus /metrics</div><div class="desc">Packet count, bytes, groups, wallet count exposed in Prometheus format</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">NEW</span><div><div class="label">RIGHTS_BALANCE Command</div><div class="desc">Per-rights-holder unpaid balance query. Individual and bulk query support.</div></div></div>
+        <div class="status-item reveal"><span class="status-badge badge-live">NEW</span><div><div class="label">WebSocket Audio Bridge</div><div class="desc">/ws/audio?channel=xxx for real-time audio delivery to browsers</div></div></div>
+    </div>
+</section>
+
+<hr>
+
+<!-- Live Channels -->
+<section class="section" id="channels">
+    <div class="section-label reveal">Live Channels</div>
+    <h2 class="reveal">Listen now.</h2>
+    <p class="sub reveal">Demo channels running across 3 global regions. Click to join.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:24px">
+        <a href="https://soluna-relay.fly.dev/c/ambient-tokyo" class="install-card reveal reveal-delay-1" style="text-decoration:none;color:inherit;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:12px">
+                <div style="font-size:28px">🎵</div>
+                <div>
+                    <h3 style="margin:0;font-size:16px">ambient-tokyo</h3>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Tokyo (nrt) — Ambient / Lo-fi</p>
+                </div>
+                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.15);color:#10b981">LIVE</span>
+            </div>
+        </a>
+        <a href="https://soluna-relay.fly.dev/c/electronic-la" class="install-card reveal reveal-delay-2" style="text-decoration:none;color:inherit;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:12px">
+                <div style="font-size:28px">🎧</div>
+                <div>
+                    <h3 style="margin:0;font-size:16px">electronic-la</h3>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Los Angeles (lax) — Electronic</p>
+                </div>
+                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.15);color:#10b981">LIVE</span>
+            </div>
+        </a>
+        <a href="https://soluna-relay.fly.dev/c/chill-amsterdam" class="install-card reveal reveal-delay-3" style="text-decoration:none;color:inherit;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:12px">
+                <div style="font-size:28px">🌍</div>
+                <div>
+                    <h3 style="margin:0;font-size:16px">chill-amsterdam</h3>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Amsterdam (ams) — Chill</p>
+                </div>
+                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.15);color:#10b981">LIVE</span>
+            </div>
+        </a>
+    </div>
+    <p class="sub reveal" style="margin-top:16px;font-size:13px">If the app is installed, you'll connect directly to the channel. If not, you'll see the download page.</p>
+</section>
+
+<hr>
+
+<!-- Comparison -->
+<section class="section">
+    <div class="section-label reveal">Comparison</div>
+    <h2 class="reveal">Why choose Soluna.</h2>
+    <p class="sub reveal">Pro-level features in open source — matching or exceeding paid products.</p>
+    <div class="table-wrap reveal">
+        <table>
+            <thead>
+                <tr class="hl-col">
+                    <th>Feature</th><th>&#9670; Soluna</th><th>Dante</th><th>AES67</th><th>BlackHole</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="hl-col"><td>License</td><td class="yes">MIT Free</td><td class="no">Paid</td><td class="no">Standard</td><td class="no">Manual Setup</td></tr>
+                <tr class="hl-col"><td>P2P Mesh Relay</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>iPhone Receive</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>Browser Receive</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>WiFi Support</td><td class="yes">&#10003;</td><td class="no">Limited</td><td class="no">&#10005;</td><td class="no">&#8212;</td></tr>
+                <tr class="hl-col"><td>Auto Delay Sync</td><td class="yes">&#10003;</td><td class="no">Manual</td><td class="no">Manual</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>Device Health Mgmt</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>Web UI</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>One-Command Install</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>Single App TX+RX+WAN</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>3B Listener Scale</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>P2P Swarm Delivery</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>Copyright Detection + Royalty</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>DJ Wallet &amp; Tipping</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- Use Cases -->
+<section class="section" id="usecases">
+    <div class="section-label reveal">Use Cases</div>
+    <h2 class="reveal">For every scenario.</h2>
+    <p class="sub reveal">DJs, venue BGM, festivals, home — Soluna covers every audio streaming scenario.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+        <a href="/en/for-djs" class="feat reveal reveal-delay-1" style="text-decoration:none;color:inherit">
+            <div class="feat-icon-wrap purple" style="font-size:24px">🎧</div>
+            <h4>DJs &amp; Clubs</h4>
+            <p>Automatic copyright detection and royalty distribution. DJs just focus on the music. 20% cashback rewards.</p>
+            <span style="font-size:13px;color:var(--blue);font-weight:600;margin-top:auto">Learn more →</span>
+        </a>
+        <a href="/en/for-venues" class="feat reveal reveal-delay-2" style="text-decoration:none;color:inherit">
+            <div class="feat-icon-wrap green" style="font-size:24px">🏪</div>
+            <h4>Venues &amp; Restaurants</h4>
+            <p>Synced delivery across multiple floors and patios. Low-cost deployment with Raspberry Pi. No licensing worries.</p>
+            <span style="font-size:13px;color:var(--blue);font-weight:600;margin-top:auto">Learn more →</span>
+        </a>
+        <a href="/en/for-events" class="feat reveal reveal-delay-3" style="text-decoration:none;color:inherit">
+            <div class="feat-icon-wrap amber" style="font-size:24px">🎪</div>
+            <h4>Events &amp; Festivals</h4>
+            <p>P2P mesh covers large venues. No dropouts even with WiFi congestion. Scales to 3 billion.</p>
+            <span style="font-size:13px;color:var(--blue);font-weight:600;margin-top:auto">Learn more →</span>
+        </a>
+        <a href="/en/for-developers" class="feat reveal reveal-delay-1" style="text-decoration:none;color:inherit">
+            <div class="feat-icon-wrap cyan" style="font-size:24px">💻</div>
+            <h4>Developers</h4>
+            <p>OST protocol spec is public. REST API, WebSocket, Prometheus metrics. Customize freely.</p>
+            <span style="font-size:13px;color:var(--blue);font-weight:600;margin-top:auto">Learn more →</span>
+        </a>
+    </div>
+</section>
+
+<hr>
+
+<!-- FAQ -->
+<section class="section" id="faq">
+    <div class="section-label reveal">FAQ</div>
+    <h2 class="reveal">Frequently Asked Questions</h2>
+    <div style="max-width:720px;margin-top:32px">
+        <details class="reveal" style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:0;margin-bottom:8px">
+            <summary style="padding:18px 24px;cursor:pointer;font-weight:600;font-size:15px;list-style:none;display:flex;justify-content:space-between;align-items:center">
+                Is Soluna free?
+                <span style="color:var(--text3);font-size:20px;transition:transform 0.2s">+</span>
+            </summary>
+            <div style="padding:0 24px 18px;color:var(--text2);font-size:14px;line-height:1.7">
+                Yes. Soluna is open source (MIT License) and completely free. There are no software usage or licensing fees. Royalties only apply when streaming copyrighted music on public channels (private use is free).
+            </div>
+        </details>
+        <details class="reveal" style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:0;margin-bottom:8px">
+            <summary style="padding:18px 24px;cursor:pointer;font-weight:600;font-size:15px;list-style:none;display:flex;justify-content:space-between;align-items:center">
+                How do you handle copyright?
+                <span style="color:var(--text3);font-size:20px;transition:transform 0.2s">+</span>
+            </summary>
+            <div style="padding:0 24px 18px;color:var(--text2);font-size:14px;line-height:1.7">
+                Soluna uses spectral fingerprinting technology to automatically detect tracks and distribute royalties to rights holders. Processing runs on a separate thread from the audio pipeline, so there's no impact on audio quality or latency. Revenue is split: 70% rights holders, 10% platform, 20% DJ cashback.
+            </div>
+        </details>
+        <details class="reveal" style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:0;margin-bottom:8px">
+            <summary style="padding:18px 24px;cursor:pointer;font-weight:600;font-size:15px;list-style:none;display:flex;justify-content:space-between;align-items:center">
+                Do I need a Mac to listen on iPhone?
+                <span style="color:var(--text3);font-size:20px;transition:transform 0.2s">+</span>
+            </summary>
+            <div style="padding:0 24px 18px;color:var(--text2);font-size:14px;line-height:1.7">
+                No Mac is needed for receiving (RX) only. Just enter a channel name and receive audio from anywhere via the WAN relay. A Mac + solunad is required on the transmitting (TX) side.
+            </div>
+        </details>
+        <details class="reveal" style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:0;margin-bottom:8px">
+            <summary style="padding:18px 24px;cursor:pointer;font-weight:600;font-size:15px;list-style:none;display:flex;justify-content:space-between;align-items:center">
+                What's the latency like?
+                <span style="color:var(--text3);font-size:20px;transition:transform 0.2s">+</span>
+            </summary>
+            <div style="padding:0 24px 18px;color:var(--text2);font-size:14px;line-height:1.7">
+                Under 20ms on LAN (nearly real-time). Typically 50-100ms via WAN relay. Auto delay sync ensures all speakers play sound at the same moment.
+            </div>
+        </details>
+        <details class="reveal" style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:0;margin-bottom:8px">
+            <summary style="padding:18px 24px;cursor:pointer;font-weight:600;font-size:15px;list-style:none;display:flex;justify-content:space-between;align-items:center">
+                What platforms are supported?
+                <span style="color:var(--text3);font-size:20px;transition:transform 0.2s">+</span>
+            </summary>
+            <div style="padding:0 24px 18px;color:var(--text2);font-size:14px;line-height:1.7">
+                Transmit (TX): macOS 12 and later. Receive (RX): iOS 16+, Android 8.0+, Raspberry Pi / Linux, browser (WebSocket). Windows is in Beta.
+            </div>
+        </details>
+        <details class="reveal" style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:0;margin-bottom:8px">
+            <summary style="padding:18px 24px;cursor:pointer;font-weight:600;font-size:15px;list-style:none;display:flex;justify-content:space-between;align-items:center">
+                Does it really scale to 3 billion?
+                <span style="color:var(--text3);font-size:20px;transition:transform 0.2s">+</span>
+            </summary>
+            <div style="padding:0 24px 18px;color:var(--text2);font-size:14px;line-height:1.7">
+                The architecture combines a 3-tier cascade relay (Origin → Region → Edge) with a P2P swarm (fan-out 4, depth 16 = 4.2 billion nodes). Since listeners themselves become micro-relays, server bandwidth stays near zero. Theoretically supports 3 billion+ listeners.
+            </div>
+        </details>
+    </div>
+</section>
+
+<hr>
+
+<!-- CTA -->
+<section class="cta-section">
+    <h2 class="reveal"><span class="h1-accent">Get started now.</span></h2>
+    <p class="sub reveal">Choose your platform and start right away.</p>
+    <div class="reveal" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
+        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" class="btn-primary" style="font-size:17px;padding:16px 32px">Mac .pkg Download</a>
+        <a href="https://testflight.apple.com/join/PYbefDSE" class="btn-primary" style="font-size:17px;padding:16px 32px;background:linear-gradient(135deg,#007AFF,#5856D6)">iOS TestFlight</a>
+        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-android.apk" class="btn-primary" style="font-size:17px;padding:16px 32px;background:linear-gradient(135deg,#34A853,#0F9D58)">Android APK</a>
+        <a href="/dashboard" class="btn-primary" style="font-size:17px;padding:16px 32px;background:linear-gradient(135deg,var(--cyan),var(--blue))">Listen in Browser</a>
+    </div>
+</section>
+
+<div class="footer-divider"></div>
+
+<!-- Footer -->
+<footer style="flex-direction:column;align-items:stretch;gap:32px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:32px">
+        <div>
+            <div class="f-logo" style="margin-bottom:12px">&#9670; Soluna</div>
+            <p style="font-size:13px;color:var(--text3);line-height:1.6;max-width:240px">
+                Open-source network audio. Your music, to every speaker in the world.
+            </p>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">Product</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg">Mac Download</a>
+                <a href="https://testflight.apple.com/join/PYbefDSE">iOS TestFlight</a>
+                <a href="/dashboard">Dashboard</a>
+                <a href="/guide">Setup Guide</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">Use Cases</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="/en/for-djs">For DJs</a>
+                <a href="/en/for-venues">For Venues & Restaurants</a>
+                <a href="/en/for-events">For Events & Festivals</a>
+                <a href="/en/for-developers">For Developers</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">Resources</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+                <a href="https://github.com/yukihamada/opensonic/releases" target="_blank">Release Notes</a>
+                <a href="https://github.com/yukihamada/opensonic/blob/main/docs/protocol-ja.md" target="_blank">Protocol Spec (OSTP)</a>
+                <a href="https://github.com/yukihamada/opensonic/blob/main/LICENSE" target="_blank">MIT License</a>
+            </div>
+        </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-top:1px solid var(--border);padding-top:24px">
+        <div class="f-copy">&copy; 2024-2026 Soluna Project &middot; MIT License &middot; Open Source</div>
+        <div style="display:flex;gap:16px;align-items:center">
+            <a href="https://github.com/yukihamada/opensonic" target="_blank" style="color:var(--text3);transition:color 0.2s" title="GitHub">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            </a>
+        </div>
+    </div>
+</footer>
+
+<script>
+/* ── Scroll reveal ──────────────────────────────────── */
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+        if (e.isIntersecting) {
+            e.target.classList.add('visible');
+            observer.unobserve(e.target);
+        }
+    });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+/* ── Typewriter ─────────────────────────────────────── */
+const phrases = ['to every speaker in the world.', 'to the festival stage.', 'to 3 billion listeners.', 'to the bar down the street.', 'to the house party.', 'anywhere you want.'];
+const typingEl = document.getElementById('hero-typing');
+const cursorEl = document.getElementById('hero-cursor');
+let phraseIdx = 0, charIdx = 0, deleting = false;
+
+function typeStep() {
+    const phrase = phrases[phraseIdx];
+    if (!deleting) {
+        charIdx++;
+        typingEl.textContent = phrase.slice(0, charIdx);
+        if (charIdx === phrase.length) {
+            setTimeout(() => { deleting = true; typeStep(); }, 2200);
+            return;
+        }
+        setTimeout(typeStep, 80);
+    } else {
+        charIdx--;
+        typingEl.textContent = phrase.slice(0, charIdx);
+        if (charIdx === 0) {
+            deleting = false;
+            phraseIdx = (phraseIdx + 1) % phrases.length;
+            setTimeout(typeStep, 400);
+            return;
+        }
+        setTimeout(typeStep, 40);
+    }
+}
+typeStep();
+
+/* ── Copy code ──────────────────────────────────────── */
+function copyCode(btn) {
+    const block = btn.closest('.code-block');
+    const text = block.textContent.replace('Copy', '').replace('Copied!', '').replace('$ ', '').trim();
+    navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+}
+
+/* ── Nav scroll effect ──────────────────────────────── */
+let lastScroll = 0;
+window.addEventListener('scroll', () => {
+    const nav = document.querySelector('nav');
+    if (window.scrollY > 80) {
+        nav.style.background = 'rgba(5,6,10,0.92)';
+    } else {
+        nav.style.background = 'rgba(5,6,10,0.7)';
+    }
+}, { passive: true });
+</script>
+</body>
+</html>

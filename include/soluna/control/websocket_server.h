@@ -37,6 +37,15 @@ struct WebFile {
 using WsMessageCallback = std::function<std::string(const std::string& message)>;
 
 /**
+ * HTTP POST callback: receives path + raw body bytes, returns HTTP response body.
+ * Return empty string to fall through to 404.
+ */
+using HttpPostCallback = std::function<std::string(
+    const std::string& path,
+    const std::vector<uint8_t>& body,
+    std::string& out_content_type)>;
+
+/**
  * WebSocket Server
  */
 class WebSocketServer {
@@ -56,6 +65,12 @@ public:
      * Set WebSocket message handler.
      */
     void set_message_callback(WsMessageCallback cb);
+
+    /**
+     * Set HTTP POST handler (e.g., for /api/player/upload).
+     * Called for all POST requests before falling through to 404.
+     */
+    void set_http_post_handler(HttpPostCallback cb);
 
     /**
      * Start the server on the given port.

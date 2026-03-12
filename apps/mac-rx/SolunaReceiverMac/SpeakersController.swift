@@ -127,10 +127,25 @@ final class SpeakersController: ObservableObject {
 
     func client(for id: UUID) -> DaemonClient? { clients[id] }
 
+    /// First connected daemon (used by PlayerModel).
+    var primaryDaemon: DaemonClient? {
+        clients.values.first(where: { $0.isConnected }) ?? clients.values.first
+    }
+
     /// True if at least one remote speaker is connected OR local device is active
     var anyConnected: Bool {
         clients.values.contains { $0.isConnected } ||
         (audioReceiver?.activeOutputs.isEmpty == false)
+    }
+
+    /// Upload a file to ALL connected remote daemons simultaneously.
+    func uploadToAll(_ data: Data, name: String, onProgress: ((Double) -> Void)? = nil) async {
+        let connected = clients.values.filter { $0.isConnected }
+        await withTaskGroup(of: Void.self) { group in
+            for client in connected {
+                group.addTask { await client.uploadFile(data, name: name, onProgress: onProgress) }
+            }
+        }
     }
 
     /// Set volume on all speakers (local + remote)

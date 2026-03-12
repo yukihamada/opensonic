@@ -1,7 +1,7 @@
 class Soluna < Formula
-  desc "Open Network Audio System — low-latency audio over Ethernet and WiFi"
-  homepage "https://github.com/yourname/soluna"
-  url "https://github.com/yourname/soluna/archive/refs/tags/v0.1.0.tar.gz"
+  desc "Open Network Audio System — planet-scale audio streaming with P2P, copyright detection, and wallet"
+  homepage "https://github.com/yukihamada/opensonic"
+  url "https://github.com/yukihamada/opensonic/archive/refs/tags/v0.3.0.tar.gz"
   sha256 "PLACEHOLDER_SHA256"
   license "MIT"
 

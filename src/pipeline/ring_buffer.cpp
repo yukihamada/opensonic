@@ -120,8 +120,8 @@ size_t RingBuffer::discard(size_t frame_count) {
 }
 
 void RingBuffer::reset() {
-    write_pos_.store(0, std::memory_order_relaxed);
-    read_pos_.store(0, std::memory_order_relaxed);
+    write_pos_.store(0, std::memory_order_seq_cst);
+    read_pos_.store(0, std::memory_order_seq_cst);
 }
 
 } // namespace soluna::pipeline

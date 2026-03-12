@@ -6,6 +6,7 @@
 //
 
 #import <Foundation/Foundation.h>
+#import <CoreMotion/CMHeadphoneMotionManager.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -84,6 +85,9 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 /// Audio only arrives via -injectRawPacket: (peer relay mode).
 @property (nonatomic, assign) BOOL networkDisabled;
 
+/// File-sync specific network disable flag (separate from WAN relay).
+@property (nonatomic, assign) BOOL filesyncNetworkDisabled;
+
 /// Singleton instance
 + (instancetype)sharedInstance;
 
@@ -113,6 +117,12 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 /// bypassing the UDP socket. Thread-safe.
 - (void)injectRawPacket:(NSData * _Nonnull)data;
 
+/// Inject decoded PCM samples directly into the ring buffer.
+- (void)injectPcmSamples:(NSData * _Nonnull)data frameCount:(NSUInteger)frameCount;
+
+/// Flush the ring buffer and reset prefill state for clean file-sync start.
+- (void)flushRingBuffer;
+
 // ── WAN Relay ────────────────────────────────────────────────────────────
 
 /// Connect to WAN relay server. Returns NO on immediate failure.
@@ -122,6 +132,10 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 /// Disconnect from WAN relay.
 - (void)disconnectRelay;
 
+/// Forward raw audio packet to all WAN relay peers (relay server + P2P).
+/// Call this when acting as a local relay to extend reach over the internet.
+- (void)sendAudioViaWanRelay:(NSData * _Nonnull)data;
+
 /// Current relay connection state.
 @property (nonatomic, readonly) SolunaRelayState relayState;
 
@@ -130,6 +144,15 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 
 /// Relay error message (nil if no error).
 @property (nonatomic, readonly, copy, nullable) NSString *relayError;
+
+// ── Sync Mode ─────────────────────────────────────────────────────────────
+
+/// Synchronized playback mode: all receivers play at the same wall-clock time.
+/// Uses OSTP media_timestamp to compute ideal buffer depth for alignment.
+@property (nonatomic, assign) BOOL syncMode;
+
+/// Target end-to-end delay in ms (50-1000, default 200). Only used when syncMode=YES.
+@property (nonatomic, assign) uint32_t syncDelayMs;
 
 // ── Mic Transmit (TX) ────────────────────────────────────────────────────
 
@@ -142,12 +165,109 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 /// Mic input peak level (0.0 - 1.0), updated per audio callback
 @property (nonatomic, readonly) float micInputLevel;
 
+/// Output audio peak level (0.0 - 1.0), updated per audio callback for visualization
+@property (nonatomic, readonly) float outputPeakLevel;
+
+// ── Metadata ────────────────────────────────────────────────────────────
+
+/// Set callback for metadata received from WAN relay (META: messages).
+/// JSON string with title, artist, artwork_url fields.
+- (void)setMetaCallback:(nullable void(^)(NSString * _Nonnull jsonMeta))callback;
+
+/// Set callback for FILE: messages (file-sync mode). Filename to download.
+- (void)setFileCallback:(nullable void(^)(NSString * _Nonnull filename))callback;
+
+/// Set callback for SYNC: messages (file-sync mode). e.g. "play:0:1234567890"
+- (void)setSyncCallback:(nullable void(^)(NSString * _Nonnull syncCmd))callback;
+
+/// Send READY notification to relay after file download completes
+- (void)sendReady:(NSString * _Nonnull)filename;
+
+// ── Network Quality Stats ───────────────────────────────────────────────
+
+/// Estimated network latency in milliseconds
+@property (nonatomic, readonly) float networkLatencyMs;
+
+/// Jitter (variation in latency) in milliseconds
+@property (nonatomic, readonly) float jitterMs;
+
+/// Packet loss percentage (0.0 - 100.0)
+@property (nonatomic, readonly) float packetLossPercent;
+
 /// Start capturing from the microphone and transmitting via OSTP multicast.
 /// Switches AVAudioSession to .playAndRecord. Returns NO on failure.
 - (BOOL)startMicTransmit;
 
 /// Stop mic capture and transmission. Restores AVAudioSession to .playback.
 - (void)stopMicTransmit;
+
+// ── Output Latency Compensation ───────────────────────────────────────────
+
+/// Hardware output latency in milliseconds (Bluetooth/AirPlay).
+/// Set this from AVAudioSession.outputLatency when the audio route changes.
+/// The sync engine adds this to buffer target so all devices stay aligned.
+@property (nonatomic, assign) float outputLatencyMs;
+
+// ── Loudness Normalization ──────────────────────────────────────────────────
+
+/// EBU R128 loudness normalization (target -23 LUFS). Toggleable at runtime.
+@property (nonatomic, assign) BOOL loudnessNormEnabled;
+
+// ── Spatial Audio ───────────────────────────────────────────────────────────
+
+/// AirPods head tracking via CMHeadphoneMotionManager. Toggleable at runtime.
+@property (nonatomic, assign) BOOL spatialAudioEnabled;
+
+// ── 3-Band EQ ─────────────────────────────────────────────────────────────
+
+/// Set 3-band parametric EQ gain (band: 0=low 200Hz, 1=mid 1kHz, 2=high 5kHz; gain in dB, -12..+12)
+- (void)setEQBand:(int)band gain:(float)gainDb;
+
+// ── Compressor ────────────────────────────────────────────────────────────
+
+/// Set compressor parameters (threshold dB, ratio, attack ms, release ms, enabled)
+- (void)setCompressorThreshold:(float)thresh ratio:(float)ratio attack:(float)attackMs release:(float)releaseMs enabled:(BOOL)enabled;
+
+// ── Recording ─────────────────────────────────────────────────────────────
+
+/// Start recording received audio to a WAV file at the given path.
+/// Returns YES on success. Recording captures primary output audio.
+- (BOOL)startRecordingToFile:(NSString *)path;
+
+/// Stop recording and finalize the WAV file.
+- (void)stopRecording;
+
+/// Whether currently recording
+@property (nonatomic, readonly) BOOL isRecording;
+
+// ── DJ Mode ──────────────────────────────────────────────────────────────
+
+/// Start DJ broadcast: decode audio file and stream via OSTP to relay
+- (BOOL)startDJBroadcast:(NSString *)filePath;
+
+/// Stop DJ broadcast
+- (void)stopDJ;
+
+/// Skip to next track (for playlist mode)
+- (void)skipDJTrack;
+
+/// Whether DJ mode is active
+@property (nonatomic, readonly) BOOL isDJActive;
+
+/// Current track filename
+@property (nonatomic, readonly, copy, nullable) NSString *djCurrentTrack;
+
+/// Playback progress (0.0 - 1.0)
+@property (nonatomic, readonly) float djProgress;
+
+/// Enable/disable mic mixing in DJ mode (talk over music)
+@property (nonatomic, assign) BOOL djMicMixEnabled;
+
+/// Mic mix gain (0.0 - 2.0, default 1.0). Music gain is always 1.0.
+@property (nonatomic, assign) float djMicGain;
+
+/// Music gain when mic mixing (0.0 - 1.0, default 0.7 = auto-duck)
+@property (nonatomic, assign) float djMusicGain;
 
 @end
 

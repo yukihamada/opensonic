@@ -25,8 +25,10 @@ struct ContentView: View {
     @State private var showCreateGroup = false
     @State private var groupName       = ""
 
-    @AppStorage("autoConnect") private var autoConnect = false
+    @AppStorage("autoConnect") private var autoConnect = true
     @AppStorage("streamMode") private var streamMode = "sync"
+
+    @StateObject private var playerModel = PlayerModel()
 
     var body: some View {
         ScrollView {
@@ -57,6 +59,7 @@ struct ContentView: View {
                     }
                 }
                 speakersCard
+                playerSection
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -102,11 +105,17 @@ struct ContentView: View {
         }
         .onAppear {
             speakers.audioReceiver = receiver
+            playerModel.speakersController = speakers
+            playerModel.daemon = speakers.primaryDaemon
             loadSavedSettings()
             if autoConnect { receiver.start() }
             Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
                 Task { @MainActor in
                     speakers.applyServerRxDelay()
+                    // Rebind player if current daemon disconnected
+                    if !(playerModel.daemon?.isConnected ?? false) {
+                        playerModel.rebindIfNeeded(speakers.primaryDaemon)
+                    }
                     // Auto-recalculate sync delays when local devices are active
                     if !receiver.activeOutputs.isEmpty {
                         speakers.recalculateAllDelays()
@@ -115,7 +124,30 @@ struct ContentView: View {
                 }
             }
         }
+        .onChange(of: speakers.speakers.count) { _ in
+            playerModel.rebindIfNeeded(speakers.primaryDaemon)
+        }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: receiver.state.rawValue)
+    }
+
+    // MARK: - Player section
+
+    private var playerSection: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Label("Music Player", systemImage: "music.note")
+                    .font(.headline)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+            Divider().padding(.horizontal, 16)
+            PlayerView(model: playerModel)
+                .padding(.horizontal, 0)
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(20)
     }
 
     // MARK: - Relay Banner

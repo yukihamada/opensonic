@@ -88,6 +88,11 @@ final class SpeakersController: ObservableObject {
     // NOT @Published — each RemoteSpeakerRow observes its daemon directly
     var clients: [UUID: DaemonClient] = [:]
 
+    /// First connected daemon (used by PlayerModel).
+    var primaryDaemon: DaemonClient? {
+        clients.values.first(where: { $0.isConnected }) ?? clients.values.first
+    }
+
     /// Set by ContentView so auto-sync can update the local jitter buffer.
     weak var audioReceiver: AudioReceiver?
 
@@ -136,6 +141,16 @@ final class SpeakersController: ObservableObject {
     /// Mute/unmute all connected remote speakers
     func setAllMute(_ m: Bool) {
         clients.values.forEach { $0.setMonitorMute(m) }
+    }
+
+    /// Upload a file to ALL connected remote daemons simultaneously.
+    func uploadToAll(_ data: Data, name: String, onProgress: ((Double) -> Void)? = nil) async {
+        let connected = clients.values.filter { $0.isConnected }
+        await withTaskGroup(of: Void.self) { group in
+            for client in connected {
+                group.addTask { await client.uploadFile(data, name: name, onProgress: onProgress) }
+            }
+        }
     }
 
     /// Set delay on ALL speakers simultaneously (iPhone jitter buffer + all remotes).

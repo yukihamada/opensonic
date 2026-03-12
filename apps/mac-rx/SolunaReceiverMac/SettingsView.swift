@@ -9,12 +9,13 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var receiver: AudioReceiver
+    @StateObject private var channelStore = ChannelStore()
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("multicastGroup") private var multicastGroup = "239.69.0.1"
     @AppStorage("port") private var port = 5004
     @AppStorage("channels") private var channels = 2
-    @AppStorage("autoConnect") private var autoConnect = false
+    @AppStorage("autoConnect") private var autoConnect = true
     @AppStorage("streamMode") private var streamMode = "sync"
     @AppStorage("channel") private var channel = "soluna"
     @State private var tempMulticastGroup: String = ""
@@ -22,6 +23,7 @@ struct SettingsView: View {
     @State private var tempChannels: Int = 1
     @State private var tempChannel: String = ""
     @State private var showingResetAlert = false
+    @State private var showChannelPurchase = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,13 +59,52 @@ struct SettingsView: View {
                         Image(systemName: "dot.radiowaves.left.and.right")
                             .foregroundColor(.purple)
                             .frame(width: 28)
-                        TextField("Channel name", text: $tempChannel)
-                            .disableAutocorrection(true)
+                        Text(tempChannel.isEmpty ? "soluna" : tempChannel)
+                        Spacer()
+                        if channelStore.isPurchased {
+                            Text("Custom")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.blue)
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    if channelStore.isPurchased {
+                        Button {
+                            showChannelPurchase = true
+                        } label: {
+                            Label("Change Channel Name", systemImage: "pencil")
+                                .font(.subheadline)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button {
+                            showChannelPurchase = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "star.fill")
+                                    .foregroundColor(.yellow)
+                                Text("Get Custom Channel")
+                                    .font(.subheadline)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     Text("Nearby devices on the same channel share audio automatically.")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                }
+                .sheet(isPresented: $showChannelPurchase) {
+                    ChannelPurchaseView(store: channelStore, activeChannel: $tempChannel)
+                        .frame(width: 400, height: 500)
                 }
 
                 Section(header: Text("Audio")) {
@@ -195,7 +236,11 @@ struct SettingsView: View {
         tempMulticastGroup = multicastGroup
         tempPort = String(port)
         tempChannels = channels
-        tempChannel = channel
+        if let purchased = channelStore.purchasedChannelName, !purchased.isEmpty {
+            tempChannel = purchased
+        } else {
+            tempChannel = channel
+        }
     }
 
     private func saveSettings() {

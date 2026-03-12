@@ -326,7 +326,8 @@ struct WebSocketServer::Impl {
     const WebFile* web_files = nullptr;
     size_t web_file_count = 0;
 
-    WsMessageCallback message_cb;
+    WsMessageCallback  message_cb;
+    HttpPostCallback   http_post_cb;
 
     mutable std::mutex clients_mutex;
     std::vector<ClientConn> clients;
@@ -397,6 +398,10 @@ void WebSocketServer::set_web_files(const WebFile* files, size_t count) {
 
 void WebSocketServer::set_message_callback(WsMessageCallback cb) {
     impl_->message_cb = std::move(cb);
+}
+
+void WebSocketServer::set_http_post_handler(HttpPostCallback cb) {
+    impl_->http_post_cb = std::move(cb);
 }
 
 bool WebSocketServer::start(uint16_t port) {
@@ -644,15 +649,39 @@ void WebSocketServer::Impl::serve_loop(uint16_t port) {
 }
 
 void WebSocketServer::Impl::handle_http(ClientConn& client) {
-    // Check if we have a complete HTTP request
+    // Check if we have a complete HTTP request (headers + body for POST)
     std::string data(client.recv_buf.begin(), client.recv_buf.end());
     auto header_end = data.find("\r\n\r\n");
-    if (header_end == std::string::npos) return; // incomplete
+    if (header_end == std::string::npos) return; // incomplete headers
 
     HttpRequest req;
     if (!parse_http_request(data, req)) {
         close_client(client);
         return;
+    }
+
+    // For POST: check Content-Length and wait for full body
+    std::vector<uint8_t> post_body;
+    if (req.method == "POST") {
+        // Extract Content-Length header
+        std::string lower_data = data.substr(0, header_end);
+        std::transform(lower_data.begin(), lower_data.end(), lower_data.begin(), ::tolower);
+        size_t cl_pos = lower_data.find("content-length:");
+        size_t content_length = 0;
+        if (cl_pos != std::string::npos) {
+            size_t val_start = cl_pos + 15;
+            while (val_start < lower_data.size() && lower_data[val_start] == ' ') val_start++;
+            size_t val_end = lower_data.find_first_of("\r\n", val_start);
+            if (val_end == std::string::npos) val_end = lower_data.size(); // last header
+            try { content_length = std::stoul(lower_data.substr(val_start, val_end - val_start)); }
+            catch (...) {}
+        }
+        size_t body_start = header_end + 4;
+        size_t received_body = (data.size() > body_start) ? data.size() - body_start : 0;
+        if (received_body < content_length) return; // wait for more data
+
+        post_body.assign(client.recv_buf.begin() + body_start,
+                         client.recv_buf.begin() + body_start + content_length);
     }
 
     client.recv_buf.clear();
@@ -665,13 +694,37 @@ void WebSocketServer::Impl::handle_http(ClientConn& client) {
             "Upgrade: websocket\r\n"
             "Connection: Upgrade\r\n"
             "Sec-WebSocket-Accept: " + accept + "\r\n\r\n";
-
         send_all(client, response.data(), response.size());
         client.is_websocket = true;
         return;
     }
 
-    // Serve static files
+    // Handle POST via registered callback
+    if (req.method == "POST" && http_post_cb) {
+        std::string out_ct = "application/json";
+        std::string resp_body = http_post_cb(req.path, post_body, out_ct);
+        if (!resp_body.empty()) {
+            std::string extra = "Access-Control-Allow-Origin: *\r\n";
+            std::string hdr = http_response(200, out_ct, resp_body.size(), extra);
+            send_all(client, hdr.data(), hdr.size());
+            send_all(client, resp_body.data(), resp_body.size());
+            return;
+        }
+    }
+
+    // OPTIONS pre-flight for CORS
+    if (req.method == "OPTIONS") {
+        std::string hdr =
+            "HTTP/1.1 204 No Content\r\n"
+            "Access-Control-Allow-Origin: *\r\n"
+            "Access-Control-Allow-Methods: POST, GET, OPTIONS\r\n"
+            "Access-Control-Allow-Headers: Content-Type\r\n"
+            "Content-Length: 0\r\n\r\n";
+        send_all(client, hdr.data(), hdr.size());
+        return;
+    }
+
+    // Serve static files (GET only)
     serve_file(client, req.path);
 }
 

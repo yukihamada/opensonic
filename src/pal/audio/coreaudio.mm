@@ -46,6 +46,7 @@ public:
     void close() override {
         stop();
         if (audio_unit_) {
+            AudioUnitUninitialize(audio_unit_);
             AudioComponentInstanceDispose(audio_unit_);
             audio_unit_ = nullptr;
         }
@@ -55,17 +56,6 @@ public:
         if (!audio_unit_ || running_.load()) return false;
         callback_ = std::move(callback);
         running_.store(true);
-
-        // Workaround: On macOS, HALOutput's IOProc can fail to fire after
-        // process restarts (stale device state). Uninit+reinit forces CoreAudio
-        // to tear down and re-register the IOProc.
-#if TARGET_OS_MAC && !TARGET_OS_IPHONE
-        AudioUnitUninitialize(audio_unit_);
-        OSStatus init_status = AudioUnitInitialize(audio_unit_);
-        if (init_status != noErr) {
-            fprintf(stderr, "CoreAudio: re-init failed: %d\n", (int)init_status);
-        }
-#endif
 
         OSStatus status = AudioOutputUnitStart(audio_unit_);
         if (status != noErr) {
@@ -158,7 +148,7 @@ private:
 
         // Allocate conversion buffer — oversized to handle iOS delivering
         // more frames than requested (IOBufferDuration is just a preference)
-        conversion_buffer_.resize(std::max(config.frames_per_buffer, 4096u) * config.channels);
+        conversion_buffer_.resize(std::max(config.frames_per_buffer, 8192u) * config.channels);
 
 #if TARGET_OS_MAC && !TARGET_OS_IPHONE
         // Check microphone permission for capture mode on macOS.
@@ -205,7 +195,10 @@ private:
         desc.componentSubType = kAudioUnitSubType_RemoteIO;
 #else
         desc.componentType = kAudioUnitType_Output;
-        desc.componentSubType = kAudioUnitSubType_HALOutput;
+        // Use DefaultOutput for playback (simpler, avoids stale IOProc issues).
+        // HALOutput is only needed for capture (explicit device selection).
+        desc.componentSubType = capture ? kAudioUnitSubType_HALOutput
+                                        : kAudioUnitSubType_DefaultOutput;
 #endif
         desc.componentManufacturer = kAudioUnitManufacturer_Apple;
 
@@ -222,11 +215,13 @@ private:
         }
 
         // Enable input or output
+        // Note: DefaultOutput (used for playback on macOS) doesn't support
+        // EnableIO — it only has an output bus. Only configure IO for HALOutput.
         UInt32 enable_io = 1;
         UInt32 disable_io = 0;
 
         if (capture) {
-            // Enable input
+            // HALOutput: Enable input
             status = AudioUnitSetProperty(audio_unit_,
                                           kAudioOutputUnitProperty_EnableIO,
                                           kAudioUnitScope_Input,
@@ -240,27 +235,19 @@ private:
                 return false;
             }
 
-            // Disable output
+            // HALOutput: Disable output
             status = AudioUnitSetProperty(audio_unit_,
                                           kAudioOutputUnitProperty_EnableIO,
                                           kAudioUnitScope_Output,
                                           0, // Output bus
                                           &disable_io,
                                           sizeof(disable_io));
-        } else {
-            // Enable output (already enabled by default on output bus)
-            // Disable input
-            status = AudioUnitSetProperty(audio_unit_,
-                                          kAudioOutputUnitProperty_EnableIO,
-                                          kAudioUnitScope_Input,
-                                          1,
-                                          &disable_io,
-                                          sizeof(disable_io));
         }
+        // For output (DefaultOutput on macOS / RemoteIO on iOS): no EnableIO needed
 
 #if TARGET_OS_MAC && !TARGET_OS_IPHONE
-        // Set device on macOS
-        {
+        // Set device on macOS (HALOutput only — DefaultOutput handles device automatically)
+        if (capture) {
             AudioDeviceID dev_id = 0;
 
             if (!device_id.empty() && device_id != "default") {
@@ -275,20 +262,7 @@ private:
                 }
             }
 
-            if (dev_id == 0 && !capture) {
-                // For output with no explicit device: use DefaultSystemOutputDevice
-                // (avoids feedback loop when a virtual device like Soluna is the
-                //  DefaultOutputDevice but not the physical speakers)
-                AudioObjectPropertyAddress addr = {
-                    kAudioHardwarePropertyDefaultSystemOutputDevice,
-                    kAudioObjectPropertyScopeGlobal,
-                    kAudioObjectPropertyElementMain
-                };
-                UInt32 sz = sizeof(dev_id);
-                AudioObjectGetPropertyData(kAudioObjectSystemObject, &addr, 0, nullptr, &sz, &dev_id);
-            }
-
-            if (dev_id == 0 && capture) {
+            if (dev_id == 0) {
                 // For capture with no explicit device: use DefaultInputDevice
                 AudioObjectPropertyAddress addr = {
                     kAudioHardwarePropertyDefaultInputDevice,
@@ -312,9 +286,9 @@ private:
                     char dev_name_buf[256];
                     CFStringGetCString(dev_name_ref, dev_name_buf, sizeof(dev_name_buf), kCFStringEncodingUTF8);
                     CFRelease(dev_name_ref);
-                    fprintf(stderr, "CoreAudio: Using output device %u: '%s'\n", dev_id, dev_name_buf);
+                    fprintf(stderr, "CoreAudio: Using device %u: '%s'\n", dev_id, dev_name_buf);
                 } else {
-                    fprintf(stderr, "CoreAudio: Using output device %u\n", dev_id);
+                    fprintf(stderr, "CoreAudio: Using device %u\n", dev_id);
                 }
 
                 // Ensure device sample rate matches our stream.
@@ -360,8 +334,10 @@ private:
                     fprintf(stderr, "CoreAudio: Failed to set device %u: %d\n", dev_id, (int)status);
                 }
             } else {
-                fprintf(stderr, "CoreAudio: WARNING — dev_id=0, no explicit device set (will use system default output)\n");
+                fprintf(stderr, "CoreAudio: WARNING — dev_id=0, no explicit device set (will use system default input)\n");
             }
+        } else {
+            fprintf(stderr, "CoreAudio: Using DefaultOutput (system default playback device)\n");
         }
 #else
         (void)device_id;
@@ -409,10 +385,9 @@ private:
         }
 
 #if TARGET_OS_MAC && !TARGET_OS_IPHONE
-        // On macOS, set the hardware buffer size on the device.
-        // For explicitly named devices, look up by name/ID.
-        // For capture with default device, query the AudioUnit's resolved device.
-        {
+        // On macOS HALOutput, set the hardware buffer size on the device.
+        // DefaultOutput doesn't support CurrentDevice property.
+        if (capture) {
             AudioDeviceID hw_dev = 0;
             if (!device_id.empty() && device_id != "default") {
                 try {
@@ -420,8 +395,8 @@ private:
                 } catch (const std::exception&) {
                     hw_dev = find_device_by_name(device_id, capture);
                 }
-            } else if (capture) {
-                // For default capture (e.g. auto-tune mic), query the resolved device
+            } else {
+                // For default capture, query the resolved device
                 UInt32 hw_sz = sizeof(hw_dev);
                 AudioUnitGetProperty(audio_unit_,
                     kAudioOutputUnitProperty_CurrentDevice,
@@ -590,11 +565,16 @@ private:
         }
 
         // Interleaved: single buffer with all channels
+        // Clamp frame count to conversion buffer capacity to prevent overflow
         const size_t total_samples = inNumberFrames * device->config_.channels;
+        if (total_samples > device->conversion_buffer_.size()) {
+            inNumberFrames = static_cast<UInt32>(device->conversion_buffer_.size() / device->config_.channels);
+        }
+        const size_t clamped_total = inNumberFrames * device->config_.channels;
         AudioBufferList buffer_list;
         buffer_list.mNumberBuffers = 1;
         buffer_list.mBuffers[0].mNumberChannels = device->config_.channels;
-        buffer_list.mBuffers[0].mDataByteSize = static_cast<UInt32>(total_samples * sizeof(float));
+        buffer_list.mBuffers[0].mDataByteSize = static_cast<UInt32>(clamped_total * sizeof(float));
         buffer_list.mBuffers[0].mData = device->conversion_buffer_.data();
 
         // Render input
@@ -625,7 +605,7 @@ private:
     std::atomic<bool> running_{false};
     bool is_capture_ = false;
     std::vector<float> conversion_buffer_;
-    int render_err_count_ = 0;
+    std::atomic<int> render_err_count_{0};
 };
 
 std::vector<AudioDeviceInfo> AudioDevice::enumerate() {

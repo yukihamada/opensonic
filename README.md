@@ -247,6 +247,7 @@ stderr に JSON で出力:
 | Windows | 受信（RX） | ✅ `soluna-rx-win` (WASAPI) |
 | ブラウザ | 受信（RX） | ✅ Dashboard → Browser タブ |
 | DAW (VST3) | 受信（RX） | ✅ `apps/vst/` |
+| **WAN リレー** | **Planet-scale (3B listeners)** | ✅ `apps/relay/` |
 | ESP32 | 受信（RX） | 🔨 開発中 |
 
 ---
@@ -259,7 +260,7 @@ apps/
   ios/            Soluna iPhone アプリ（RX + マイク TX + WAN P2P）
   daemon/         solunad — ヘッドレスデーモン（RPi / Linux / Mac CLI）
   plugin/         CoreAudio HAL ドライバ（Soluna.driver 仮想デバイス）
-  relay/          soluna-relay — WAN リレーサーバー（P2P シグナリング）
+  relay/          soluna-relay — WAN リレーサーバー（Planet-scale + P2P + 著作権 + ウォレット）
   mac/            macOS Menu bar アプリ（Swift SPM）
   linux-rx/       Linux/RPi CLI レシーバー（C++）
 deploy/
@@ -388,6 +389,101 @@ soluna-relay --port 5100
 # solunad（RPi 等）→ WAN グループに参加
 solunad --rx --device hw:1 --wan-relay <relay_host>:5100 --wan-group myroom
 ```
+
+---
+
+## Planet-Scale Distribution (2人から30億人まで)
+
+3層カスケードリレー + P2P スウォームで、2人のローカル接続から30億人のグローバルライブまでシームレスにスケール。
+
+```
+DJ → Origin (1台) → Region (~20台) → Edge (~10,000台) → Listeners (3B)
+     └→ P2P Swarm: リスナーが自動的にマイクロリレーになる (Fan-out 4)
+```
+
+| スケール | トポロジー |
+|---------|----------|
+| 2-4人 | P2P 直接接続 |
+| 5-50人 | 単一リレー |
+| 50-100K | Origin + Edge (2層) |
+| 100K+ | Origin + Region + Edge (3層 + P2P Swarm) |
+
+### リレーサーバー起動
+
+```bash
+# スタンドアロン（従来互換）
+soluna-relay --port 5100
+
+# Origin（最上位）
+soluna-relay --origin --cascade-secret SECRET --port 5100
+
+# Region（Origin に接続）
+soluna-relay --region origin.example.com:5100 --cascade-secret SECRET
+
+# Edge（Region に接続、ワーカー8スレッド）
+soluna-relay --edge region-nrt.example.com:5100 --cascade-secret SECRET --workers 8
+```
+
+### P2P ファイル配信
+
+曲ファイルを BitTorrent 方式で P2P 配信。全員がダウンロード完了後は帯域ゼロで SYNC 再生。
+
+```
+DJ: FILE_OFFER → P2P 配信開始 → 全員にファイル配布
+DJ: FILE_URL → CDN URL 共有 → 各自ダウンロード
+全員: FILE_COMPLETE → SYNC:play → ローカル再生（帯域ゼロ）
+```
+
+---
+
+## 著作権検出 & ロイヤリティ
+
+公開チャンネルで著作権曲を再生すると、非同期スペクトルフィンガープリントで自動検出。音質への影響はゼロ（try_lock、別スレッド）。
+
+| 接続モード | 著作権検出 | 理由 |
+|-----------|----------|------|
+| LAN マルチキャスト | なし | リレーを通らない |
+| P2P 直接 | なし | リレーを通らない |
+| リレー（公開） | あり | リレーで検査 |
+| プライベートモード | なし | ユーザーの選択 |
+
+### ティアード料金（DJが払う、リスナーは無料）
+
+| リスナー | 料金/人/分 |
+|---------|----------|
+| 1-100 | $0.001 |
+| 101-1,000 | $0.0005 |
+| 1,001-10,000 | $0.0002 |
+| 10,001-100,000 | $0.0001 |
+| 100,001+ | $0.00005 |
+
+収益分配: **権利者 70% / プラットフォーム 10% / DJ キャッシュバック 20%**
+
+ライセンス曲はワンクリックで配信可能（検出不要）:
+```
+LICENSED_PLAY:{"track":"Song","artist":"Artist","isrc":"XX-XXX","license":"jasrac"}
+```
+
+---
+
+## ウォレット & 経済システム
+
+DJ のウォレットにチャージ → 公開配信でリアルタイム課金 → いつでも出金。
+
+```bash
+# ウォレット操作（UDP プロトコル）
+WALLET          # 残高確認
+CHARGE:50.00:token  # チャージ
+WITHDRAW:25.00   # 出金
+TIP:1.00         # DJ に投げ銭
+SUPPORT:5.00     # DJ のロイヤリティ費用を応援
+TRANSACTIONS:10  # 取引履歴
+```
+
+- **BALANCE_UPDATE**: 60秒毎に全リスナーに DJ 残高をブロードキャスト
+- **SUPPORT**: リスナーが DJ のロイヤリティ費用を直接支援（全員に通知）
+- **残高ゼロ**: 5分猶予 → プライベートモードに自動切替（音楽は止まらない）
+- **有名DJ事前登録**: Calvin Harris、Tiesto、DJ Krush など50アカウントを $670 で事前作成
 
 ---
 
@@ -526,8 +622,12 @@ CLI の `--mode` フラグ、WebSocket の `mode.set` コマンド、Mac/iOS UI 
 
 ## 料金
 
-- **無料**: 1,000 ユーザーまで全機能利用可能
-- **エンタープライズ**: 1,000 ユーザー超の大規模利用向け（お問い合わせください）
+- **リスナー**: 完全無料（広告なし、サブスクなし）
+- **DJ（公開チャンネル + 著作権曲）**: ティアード課金（リスナー数に応じた段階的割引）
+- **DJ（プライベート / LAN / 自作曲）**: 完全無料
+- **エンタープライズ**: カスタム料金（お問い合わせください）
+
+詳細は [Protocol Spec §16](docs/protocol.md#16-billing-wallets--royalty-payouts) を参照。
 
 ---
 
@@ -571,6 +671,10 @@ Soluna is not limited to one-way multicast streaming. In Jam Mode, all participa
 - 4-stage PLC: Opus FEC, Opus PLC, WSOLA, silence
 - iPhone/iPad, Raspberry Pi, Linux, Windows, Browser, VST3 support
 - Bonjour auto-discovery on LAN
+- Planet-scale distribution: 3-tier cascade + P2P swarm for up to 3 billion listeners
+- Copyright detection with zero audio impact + tiered royalty billing
+- Built-in wallet system: DJ pays per play, listeners always free
+- P2P file distribution: BitTorrent-style song sharing with zero-bandwidth sync playback
 - Free for up to 1,000 users
 
 ---

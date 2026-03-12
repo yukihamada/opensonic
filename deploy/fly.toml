@@ -1,0 +1,28 @@
+# fly.toml app configuration file generated for soluna-web on 2026-03-01T13:32:11+09:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'soluna-web'
+primary_region = 'nrt'
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+  # Scale to ~10k concurrent: nginx can handle 10k+ with these limits
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 800
+    hard_limit = 1000
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1

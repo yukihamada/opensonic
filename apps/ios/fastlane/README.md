@@ -55,6 +55,14 @@ Upload existing IPA to TestFlight (skip build)
 
 Submit to App Store review with full metadata
 
+### ios create_iap
+
+```sh
+[bundle exec] fastlane ios create_iap
+```
+
+Create In-App Purchase subscription on App Store Connect
+
 ### ios build_local
 
 ```sh

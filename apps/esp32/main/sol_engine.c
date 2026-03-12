@@ -19,9 +19,11 @@
 
 static const char* TAG = "sol_engine";
 
-/* Static buffers (no malloc in audio path) */
-static int32_t s_tx_ring_buf[SOL_RING_FRAMES * SOL_MAX_CHANNELS];
-static int32_t s_rx_ring_buf[SOL_RING_FRAMES * SOL_MAX_CHANNELS];
+/* Static buffers (no malloc in audio path).
+ * Use SOL_RING_CHANNELS (2) for allocation to fit in ESP32 SRAM.
+ * With PSRAM, increase SOL_RING_FRAMES toward SOL_RING_CAPACITY_UNIFIED. */
+static int32_t s_tx_ring_buf[SOL_RING_FRAMES * SOL_RING_CHANNELS];
+static int32_t s_rx_ring_buf[SOL_RING_FRAMES * SOL_RING_CHANNELS];
 static sol_ring_t s_tx_ring;
 static sol_ring_t s_rx_ring;
 

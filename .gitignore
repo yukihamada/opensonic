@@ -20,6 +20,11 @@ xcuserdata/
 *.xccheckout
 *.moved-aside
 
+# Secrets
+.env
+.env.local
+.env.production
+
 # macOS
 .DS_Store
 
@@ -35,6 +40,7 @@ solctl
 *.deb
 *.rpm
 *.pkg
+*.dmg
 *.msi
 *.tar.gz
 *.zip

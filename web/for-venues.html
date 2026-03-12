@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna for Venues — バー、レストラン、イベントスペースのBGMを、分単位のマイクロ課金で。JASRAC固定費よりも安く、著作権を完全クリア。">
+    <meta property="og:title" content="Soluna for Venues — BGMの著作権問題を解決。">
+    <meta property="og:description" content="分単位のマイクロ課金で、JASRAC固定費より安く音楽を流せる。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/for-venues">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="ja_JP">
+    <meta name="keywords" content="BGM,著作権,店舗,バー,レストラン,マイクロ課金,JASRAC,音楽ライセンス,Soluna,オープンソース">
+    <meta name="author" content="Soluna Project">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#05060a">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Soluna for Venues — BGMの著作権問題を解決。">
+    <meta name="twitter:description" content="分単位のマイクロ課金で、JASRAC固定費より安く音楽を流せる。">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+    <link rel="canonical" href="https://solun.art/for-venues">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Soluna for Venues — BGMの著作権問題を解決。</title>
+    <style>
+        :root {
+            --bg: #05060a; --s1: #0c0e16; --s2: #12151f; --s3: #1a1e2e;
+            --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.12);
+            --text: #e8eaf2; --text2: #8b91a8; --text3: #50566e;
+            --blue: #3b82f6; --cyan: #06b6d4; --green: #10b981;
+            --purple: #8b5cf6; --amber: #f59e0b; --pink: #ec4899;
+            font-synthesis: none; -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+
+        .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+
+        nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 0 max(20px, calc(50% - 580px)); height: 60px; background: rgba(5,6,10,0.7); backdrop-filter: blur(24px) saturate(1.8); border-bottom: 1px solid var(--border); }
+        .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; }
+        .nav-logo .diamond { color: var(--cyan); font-size: 20px; }
+        .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .nav-links a { color: var(--text2); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--cyan); }
+        .nav-cta { padding: 8px 18px; background: linear-gradient(135deg, var(--cyan), var(--green)); color: #fff !important; border-radius: 10px; font-weight: 600; font-size: 13px !important; box-shadow: 0 2px 12px rgba(6,182,212,0.3); }
+
+        .section { padding: 100px max(20px, calc(50% - 580px)); }
+        .section-label { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; background: linear-gradient(90deg, var(--cyan), var(--green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        h1 { font-size: clamp(40px, 8vw, 72px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.05; margin-bottom: 28px; }
+        h2 { font-size: clamp(28px, 5vw, 44px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 16px; }
+        .h1-grad { background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .h1-accent { background: linear-gradient(135deg, var(--cyan), var(--green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 200% auto; animation: grad-shift 4s ease-in-out infinite; }
+        @keyframes grad-shift { 0%, 100% { background-position: 0% center; } 50% { background-position: 100% center; } }
+        .sub { font-size: 17px; color: var(--text2); line-height: 1.7; max-width: 560px; margin-bottom: 48px; }
+
+        .hero { position: relative; padding: 160px max(20px, calc(50% - 580px)) 100px; overflow: hidden; }
+        .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+        .hero-orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.15; animation: orb-float 20s ease-in-out infinite; }
+        .hero-orb-1 { width: 500px; height: 500px; background: var(--cyan); top: -10%; right: 10%; }
+        .hero-orb-2 { width: 400px; height: 400px; background: var(--green); bottom: -5%; left: 5%; animation-delay: -7s; }
+        @keyframes orb-float { 0%, 100% { transform: translate(0, 0) scale(1); } 33% { transform: translate(30px, -20px) scale(1.05); } 66% { transform: translate(-20px, 15px) scale(0.95); } }
+        .hero-content { position: relative; z-index: 1; }
+        .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(6,182,212,0.08); border: 1px solid rgba(6,182,212,0.2); color: #22d3ee; font-size: 13px; font-weight: 600; padding: 6px 16px; border-radius: 24px; margin-bottom: 32px; }
+        .hero-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .btn-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 12px; font-size: 15px; font-weight: 600; text-decoration: none; transition: transform 0.2s, opacity 0.2s; }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-primary { background: linear-gradient(135deg, var(--cyan), var(--green)); color: #fff; box-shadow: 0 4px 20px rgba(6,182,212,0.3); }
+        .btn-secondary { background: var(--s2); color: var(--text); border: 1px solid var(--border2); }
+
+        .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 48px; }
+        .compare-card { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 32px; }
+        .compare-card.highlight { border-color: rgba(6,182,212,0.3); background: linear-gradient(135deg, rgba(6,182,212,0.03), rgba(16,185,129,0.03)); }
+        .compare-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .compare-card ul { list-style: none; }
+        .compare-card li { padding: 8px 0; font-size: 14px; color: var(--text2); display: flex; align-items: flex-start; gap: 8px; }
+        .compare-card li .check { color: var(--green); flex-shrink: 0; }
+        .compare-card li .cross { color: var(--pink); flex-shrink: 0; }
+        .price-tag { font-size: 32px; font-weight: 800; margin: 16px 0; }
+        .price-tag small { font-size: 14px; font-weight: 400; color: var(--text2); }
+
+        .use-cases { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 24px; margin-top: 48px; }
+        .use-case { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
+        .use-case .icon { font-size: 32px; margin-bottom: 12px; }
+        .use-case h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+        .use-case p { font-size: 14px; color: var(--text2); line-height: 1.6; }
+
+        .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 32px; margin-top: 48px; counter-reset: step; }
+        .step { position: relative; padding: 32px; background: var(--s1); border: 1px solid var(--border); border-radius: 16px; counter-increment: step; }
+        .step::before { content: counter(step); position: absolute; top: 16px; right: 20px; font-size: 48px; font-weight: 900; color: rgba(6,182,212,0.08); }
+        .step h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+        .step p { font-size: 14px; color: var(--text2); }
+
+        .download-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 48px; }
+        .dl-card { background: var(--s1); border: 1px solid var(--border); border-radius: 14px; padding: 24px; text-align: center; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+        .dl-card:hover { border-color: var(--cyan); transform: translateY(-3px); }
+        .dl-card .dl-icon { font-size: 32px; margin-bottom: 12px; }
+        .dl-card .dl-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+        .dl-card .dl-desc { font-size: 12px; color: var(--text2); }
+
+        .cta-section { text-align: center; padding: 120px max(20px, calc(50% - 580px)); background: radial-gradient(ellipse at center, rgba(6,182,212,0.06) 0%, transparent 70%); }
+        .cta-section h2 { margin-bottom: 16px; }
+        .cta-section .sub { margin: 0 auto 48px; }
+        .cta-section .btn-row { justify-content: center; }
+
+        footer { padding: 60px max(20px, calc(50% - 580px)) 40px; border-top: 1px solid var(--border); }
+        .footer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 32px; margin-bottom: 40px; }
+        .footer-col h4 { font-size: 13px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 16px; }
+        .footer-col a { display: block; color: var(--text2); text-decoration: none; font-size: 14px; padding: 4px 0; transition: color 0.2s; }
+        .footer-col a:hover { color: var(--text); }
+        .footer-bottom { display: flex; justify-content: space-between; align-items: center; color: var(--text3); font-size: 13px; flex-wrap: wrap; gap: 12px; }
+
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .hero { padding-top: 120px; }
+            .comparison { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/" class="nav-logo"><span class="diamond">&#9670;</span> Soluna</a>
+    <div class="nav-links">
+        <a href="/">ホーム</a>
+        <a href="/for-djs">DJ向け</a>
+        <a href="/for-venues" class="active">店舗向け</a>
+        <a href="/for-events">イベント向け</a>
+        <a href="/for-developers">開発者向け</a>
+        <a href="/en/for-venues" title="English">EN</a>
+        <a href="https://testflight.apple.com/join/PYbefDSE" class="nav-cta">TestFlight</a>
+    </div>
+</nav>
+
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+    </div>
+    <div class="hero-content">
+        <div class="hero-badge"><span class="dot"></span> バー・レストラン・イベントスペース向け</div>
+        <h1><span class="h1-grad">BGMライセンス、</span><br><span class="h1-accent">使った分だけ。</span></h1>
+        <p class="sub">JASRAC年間契約より安い、分単位のマイクロ課金。著作権を完全にクリアにしながら、お店の雰囲気を音楽で演出。</p>
+        <div class="btn-row">
+            <a href="#setup" class="btn btn-primary">店舗BGMを設定する</a>
+            <a href="#compare" class="btn btn-secondary">料金を比較する</a>
+        </div>
+    </div>
+</section>
+
+<section class="section" id="compare">
+    <div class="reveal">
+        <div class="section-label">課題と解決策</div>
+        <h2>従来のBGM契約 vs. Soluna</h2>
+        <p class="sub">固定費の年間契約から、使った分だけの従量課金へ。</p>
+    </div>
+    <div class="comparison">
+        <div class="compare-card reveal reveal-delay-1">
+            <h3>&#128196; 従来のBGMライセンス</h3>
+            <div class="price-tag">&#165;6,000〜 <small>/月（年間契約）</small></div>
+            <ul>
+                <li><span class="cross">&#10005;</span> 営業時間外も固定費が発生</li>
+                <li><span class="cross">&#10005;</span> 店舗面積で料金が変動</li>
+                <li><span class="cross">&#10005;</span> 使用楽曲の申告義務</li>
+                <li><span class="cross">&#10005;</span> 複数権利団体への個別契約</li>
+                <li><span class="cross">&#10005;</span> 違反時の高額請求リスク</li>
+            </ul>
+        </div>
+        <div class="compare-card highlight reveal reveal-delay-2">
+            <h3>&#9670; Soluna マイクロ課金</h3>
+            <div class="price-tag" style="background: linear-gradient(90deg, var(--cyan), var(--green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">&#165;0.1〜 <small>/分（従量制）</small></div>
+            <ul>
+                <li><span class="check">&#10003;</span> 音楽を流した分だけ課金</li>
+                <li><span class="check">&#10003;</span> 店舗面積に関係なく均一</li>
+                <li><span class="check">&#10003;</span> 楽曲検出・申告すべて自動</li>
+                <li><span class="check">&#10003;</span> 全権利団体に一括精算</li>
+                <li><span class="check">&#10003;</span> リアルタイムでコスト確認</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<section class="section" style="background: var(--s1);">
+    <div class="reveal">
+        <div class="section-label">機能</div>
+        <h2>あらゆる店舗に対応</h2>
+    </div>
+    <div class="use-cases">
+        <div class="use-case reveal reveal-delay-1">
+            <div class="icon">&#127864;</div>
+            <h3>バー・クラブ</h3>
+            <p>深夜営業でも使った時間だけ課金。DJイベント時は自動で楽曲を検出しロイヤリティを精算。</p>
+        </div>
+        <div class="use-case reveal reveal-delay-2">
+            <div class="icon">&#127869;</div>
+            <h3>レストラン・カフェ</h3>
+            <p>ランチタイムとディナータイムだけBGMを流す運用にも最適。不要な時間のコストをゼロに。</p>
+        </div>
+        <div class="use-case reveal reveal-delay-3">
+            <div class="icon">&#127963;&#65039;</div>
+            <h3>イベントスペース</h3>
+            <p>イベント開催時のみ課金。複数フロアの音声を個別に管理し、それぞれのBGMをコントロール。</p>
+        </div>
+        <div class="use-case reveal reveal-delay-1">
+            <div class="icon">&#128136;</div>
+            <h3>美容室・サロン</h3>
+            <p>営業時間に合わせた自動再生。お客様の好みに合わせたプレイリストを簡単に切り替え。</p>
+        </div>
+        <div class="use-case reveal reveal-delay-2">
+            <div class="icon">&#127947;&#65039;</div>
+            <h3>フィットネスジム</h3>
+            <p>エリアごとに異なるBGM。スタジオレッスン中は専用プレイリストに自動切替。</p>
+        </div>
+        <div class="use-case reveal reveal-delay-3">
+            <div class="icon">&#128722;</div>
+            <h3>小売店舗</h3>
+            <p>営業時間に連動した自動ON/OFF。店舗チェーンの一括管理にも対応。</p>
+        </div>
+    </div>
+</section>
+
+<section class="section" id="setup">
+    <div class="reveal">
+        <div class="section-label">セットアップガイド</div>
+        <h2>3ステップで店舗BGMを開始</h2>
+    </div>
+    <div class="steps">
+        <div class="step reveal reveal-delay-1">
+            <h3>デバイスを設置</h3>
+            <p>Mac mini、Raspberry Pi、またはスマートフォンを店舗のスピーカーに接続。既存の音響設備をそのまま利用。</p>
+        </div>
+        <div class="step reveal reveal-delay-2">
+            <h3>Solunaアプリを起動</h3>
+            <p>アプリをインストールし、店舗情報を登録。プレイリストを選択するか、外部サービスと連携。</p>
+        </div>
+        <div class="step reveal reveal-delay-3">
+            <h3>BGMを再生</h3>
+            <p>音楽を流すだけで著作権処理は自動完了。ダッシュボードでリアルタイムにコストを確認。</p>
+        </div>
+    </div>
+</section>
+
+<section class="section" style="background: var(--s1);" id="download">
+    <div class="reveal">
+        <div class="section-label">ダウンロード</div>
+        <h2>今すぐダウンロード</h2>
+        <p class="sub">すべてのプラットフォームに対応。オープンソースで完全無料。</p>
+    </div>
+    <div class="download-grid">
+        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" class="dl-card reveal reveal-delay-1">
+            <div class="dl-icon">&#128187;</div>
+            <div class="dl-name">Mac (.pkg)</div>
+            <div class="dl-desc">macOS 12以降</div>
+        </a>
+        <a href="https://testflight.apple.com/join/PYbefDSE" class="dl-card reveal reveal-delay-2">
+            <div class="dl-icon">&#128241;</div>
+            <div class="dl-name">iOS (TestFlight)</div>
+            <div class="dl-desc">iPhone / iPad</div>
+        </a>
+        <a href="https://github.com/yukihamada/opensonic/releases/latest" class="dl-card reveal reveal-delay-3">
+            <div class="dl-icon">&#129302;</div>
+            <div class="dl-name">Android (.apk)</div>
+            <div class="dl-desc">Android 10以降</div>
+        </a>
+        <a href="/dashboard" class="dl-card reveal">
+            <div class="dl-icon">&#127760;</div>
+            <div class="dl-name">ブラウザ</div>
+            <div class="dl-desc">ダッシュボード</div>
+        </a>
+    </div>
+</section>
+
+<section class="cta-section">
+    <div class="reveal">
+        <h2><span class="h1-grad">BGMライセンスを、シンプルに。</span></h2>
+        <p class="sub">固定費の年間契約はもう不要。Solunaの従量課金で、使った分だけ支払おう。</p>
+        <div class="btn-row">
+            <a href="#setup" class="btn btn-primary">店舗BGMを設定する</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE" class="btn btn-secondary">TestFlightで試す</a>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="footer-grid">
+        <div class="footer-col">
+            <h4>Soluna</h4>
+            <a href="/">メインサイト</a>
+            <a href="https://github.com/yukihamada/opensonic">GitHub</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">TestFlight</a>
+            <a href="https://github.com/yukihamada/opensonic/blob/main/docs/protocol.md">プロトコル仕様</a>
+        </div>
+        <div class="footer-col">
+            <h4>活用シーン別</h4>
+            <a href="/for-djs">DJs</a>
+            <a href="/for-venues">Venues</a>
+            <a href="/for-events">Events</a>
+            <a href="/for-developers">Developers</a>
+        </div>
+        <div class="footer-col">
+            <h4>ダウンロード</h4>
+            <a href="https://github.com/yukihamada/opensonic/releases/latest">Mac (.pkg)</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">iOS (TestFlight)</a>
+            <a href="https://github.com/yukihamada/opensonic/releases/latest">Android (.apk)</a>
+        </div>
+    </div>
+    <div class="footer-bottom">
+        <span>&#9670; Soluna &mdash; Open Source Network Audio</span>
+        <span>MIT License</span>
+    </div>
+</footer>
+
+<script>
+const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.15 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+</script>
+</body>
+</html>

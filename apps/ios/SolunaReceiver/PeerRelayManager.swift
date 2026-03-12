@@ -124,11 +124,13 @@ final class PeerRelayManager: NSObject, ObservableObject {
             browser = br
         }
 
-        // Forward every received packet to connected peers
-        SolunaAudioReceiver.sharedInstance().setRelayCallback { [weak self] data in
+        // Forward every received packet to local (MultipeerConnectivity) AND WAN peers
+        SolunaAudioReceiver.sharedInstance().setRelayCallback { data in
             Task { @MainActor [weak self] in
                 self?.broadcastPacket(data)
             }
+            // WAN relay: forward to internet peers on the same group (non-blocking)
+            SolunaAudioReceiver.sharedInstance().sendAudio(viaWanRelay: data)
         }
     }
 

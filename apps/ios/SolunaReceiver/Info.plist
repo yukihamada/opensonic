@@ -17,9 +17,9 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key>
-    <string>202603032000</string>
+    <string>202603121354</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UIApplicationSceneManifest</key>
@@ -31,7 +31,7 @@
     <dict/>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
-        <string>armv7</string>
+        <string>arm64</string>
         <string>wifi</string>
     </array>
     <key>UISupportedInterfaceOrientations</key>
@@ -67,6 +67,40 @@
     <array>
         <string>_soluna._tcp</string>
         <string>_soluna-relay._tcp</string>
+    </array>
+
+    <!-- Head tracking for spatial audio (AirPods) -->
+    <key>NSMotionUsageDescription</key>
+    <string>Soluna uses head tracking with AirPods for spatial audio.</string>
+
+    <!-- Allow HTTP for music file download from relay server -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>46.225.77.119</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+            </dict>
+        </dict>
+    </dict>
+
+    <!-- Export compliance: no non-exempt encryption used -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+
+    <!-- URL Scheme for deep linking (soluna://channel/<name>) -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>soluna</string>
+            </array>
+            <key>CFBundleURLName</key>
+            <string>com.soluna.SolunaReceiver</string>
+        </dict>
     </array>
 </dict>
 </plist>

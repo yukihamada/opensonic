@@ -42,15 +42,31 @@
 /* FEC */
 #define SOL_FEC_GROUP_SIZE   5
 
-/* Ring buffer */
-#define SOL_RING_FRAMES      (SOL_FRAME_SIZE_SAMPLES * 8)  /* 8 packets */
+/* Ring buffer — unified capacity is 192000 frames (4s @ 48kHz).
+ * ESP32 internal SRAM cannot hold that; use 19200 (400ms) as a
+ * practical compromise.  Enable CONFIG_SPIRAM=y and set
+ * SOL_RING_FRAMES=192000 when PSRAM is available.                       */
+#define SOL_RING_CAPACITY_UNIFIED 192000          /* other platforms     */
+#define SOL_RING_FRAMES           19200           /* ESP32 SRAM budget   */
+#define SOL_RING_CHANNELS         2               /* static-alloc width  */
+
+/* Drift-correction / jitter-buffer parameters (unified across platforms) */
+#define SOL_TARGET_FILL_FRAMES    2880            /* 60 ms @ 48 kHz      */
+#define SOL_DRIFT_TRIGGER_MULT    3               /* discard when > target*3 */
+#define SOL_DRIFT_DIVISOR         80              /* frame_count/80+1 per cb */
+#define SOL_DRIFT_XFADE_LEN       48              /* crossfade after discard */
+
+/* Fade / sample-scale constants (float, matching iOS/Mac/Linux/Win)     */
+#define SOL_FADE_IN               0.002f
+#define SOL_FADE_OUT              0.004f
+#define SOL_SAMPLE_SCALE          8388608.0f      /* 2^23                */
 
 /* Task pinning: WiFi/Net on core 0, Audio on core 1 */
 #define SOL_CORE_NET   0
 #define SOL_CORE_AUDIO 1
 
 /* Memory budget */
-#define SOL_STACK_AUDIO   4096
+#define SOL_STACK_AUDIO   8192  /* increased for drift-correction float math */
 #define SOL_STACK_NET     4096
 #define SOL_STACK_PTP     3072
 #define SOL_STACK_CTRL    3072
@@ -104,10 +120,19 @@ typedef struct {
 typedef struct {
     int32_t* buffer;
     uint32_t capacity;    /* in frames */
-    uint32_t frame_size;  /* samples per frame */
+    uint32_t frame_size;  /* samples per frame (= channels) */
     volatile uint32_t read_pos;
     volatile uint32_t write_pos;
 } sol_ring_t;
+
+/* Playback state for drift correction & fade (used by I2S TX task) */
+typedef struct {
+    bool     prefilled;          /* initial prefill completed?           */
+    float    ramp;               /* current fade envelope [0..vol]       */
+    uint32_t drift_xfade;        /* crossfade countdown after discard    */
+    float    held_sample[SOL_MAX_CHANNELS]; /* last output sample per ch */
+    uint32_t target_fill_frames; /* target ring-buffer fill level        */
+} sol_playback_state_t;
 
 static inline void sol_ring_init(sol_ring_t* r, int32_t* buf,
                                   uint32_t capacity, uint32_t frame_size) {
@@ -141,6 +166,13 @@ static inline bool sol_ring_write(sol_ring_t* r, const int32_t* data, uint32_t f
     __sync_synchronize();
     r->write_pos = (wp + frames) % r->capacity;
     return true;
+}
+
+static inline void sol_ring_discard(sol_ring_t* r, uint32_t frames) {
+    uint32_t avail = sol_ring_available(r);
+    if (frames > avail) frames = avail;
+    __sync_synchronize();
+    r->read_pos = (r->read_pos + frames) % r->capacity;
 }
 
 static inline bool sol_ring_read(sol_ring_t* r, int32_t* data, uint32_t frames) {

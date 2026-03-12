@@ -17,6 +17,7 @@
 #include <soluna/pal/time.h>
 #include <soluna/pal/thread.h>
 #include <soluna/pipeline/ring_buffer.h>
+#include <soluna/pipeline/file_source.h>
 #include <soluna/pipeline/playout_buffer.h>
 #include <soluna/pipeline/pipeline.h>
 #include <soluna/sync/ptp_engine.h>
@@ -124,7 +125,7 @@ static bool is_interface_wifi(const std::string& ifname) {
 }
 
 #ifdef __APPLE__
-#include "../plugin/soluna_shm.h"
+#include "soluna/soluna_shm.h"
 #include <dns_sd.h>
 #include <sys/select.h>
 // ── Mac system volume helpers ────────────────────────────────────────────────
@@ -369,6 +370,25 @@ static std::atomic<uint64_t> g_crc_errors{0};
 static std::atomic<uint64_t> g_plc_frames{0};
 static std::atomic<uint64_t> g_lost_packets{0};
 
+// ── File Player globals ───────────────────────────────────────────────────────
+static std::atomic<bool>     g_player_active{false};
+static std::atomic<bool>     g_player_paused{false};
+// PTP ns timestamp when playback stream started (0 = not started)
+static std::atomic<int64_t>  g_player_stream_start_ns{0};
+// Decoded frames output so far (for current-position calculation)
+static std::atomic<int64_t>  g_player_frame_pos{0};
+// Ring buffer pointer (set by run_rx / run_tx before player can be used)
+static soluna::pipeline::RingBuffer* g_player_ring_ptr = nullptr;
+// Upload state (protected by g_player_mutex)
+static std::mutex            g_player_mutex;
+static std::string           g_player_file_path;
+static std::string           g_player_file_name;
+static uint32_t              g_player_file_size = 0;
+// Duration reported back to UI
+static std::atomic<uint64_t> g_player_duration_ms{0};
+// Player thread handle
+static std::thread           g_player_thread;
+
 // Config globals (set by run_tx / run_rx so ws_handle can reference them)
 static uint32_t g_cfg_channels    = 1;
 static uint32_t g_cfg_sample_rate = 48000;
@@ -511,6 +531,13 @@ static std::chrono::steady_clock::time_point g_wan_relay_last_hello;
 static std::mutex g_wan_peers_mutex;
 static std::vector<sockaddr_in> g_wan_peers;
 
+// Current WAN relay config (for channel.get / channel.set)
+static std::mutex g_wan_cfg_mutex;
+static std::string g_wan_cfg_host = "soluna-relay.fly.dev";
+static uint16_t    g_wan_cfg_port = 5100;
+static std::string g_wan_cfg_group = "default";
+static std::string g_wan_cfg_password;
+
 static void wan_relay_add_peer(const sockaddr_in& peer) {
     std::lock_guard<std::mutex> lk(g_wan_peers_mutex);
     for (const auto& p : g_wan_peers) {
@@ -522,6 +549,14 @@ static void wan_relay_add_peer(const sockaddr_in& peer) {
 
 static void wan_relay_init(const std::string& host, uint16_t port,
                            const std::string& group, const std::string& password) {
+    // Save config for channel.get / channel.set
+    {
+        std::lock_guard<std::mutex> lk(g_wan_cfg_mutex);
+        g_wan_cfg_host = host;
+        g_wan_cfg_port = port;
+        g_wan_cfg_group = group;
+        g_wan_cfg_password = password;
+    }
     g_wan_relay_sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (g_wan_relay_sock < 0) {
         fprintf(stderr, "[wan-relay] Failed to create socket\n");
@@ -1566,6 +1601,260 @@ static std::string ws_handle(const std::string& msg) {
             id, active ? "true" : "false",
             tx_file.c_str(), (unsigned long long)tx_frames,
             mon_file.c_str(), (unsigned long long)mon_frames);
+    // ── File Player commands ───────────────────────────────────────────────
+    } else if (cmd == "player.status") {
+        uint64_t pos_ms  = 0;
+        uint64_t dur_ms  = g_player_duration_ms.load();
+        bool     active  = g_player_active.load();
+        bool     paused  = g_player_paused.load();
+        if (active && g_player_ring_ptr && g_cfg_sample_rate > 0) {
+            int64_t frames = g_player_frame_pos.load();
+            pos_ms = (uint64_t)(frames * 1000 / g_cfg_sample_rate);
+        }
+        std::string fname;
+        { std::lock_guard<std::mutex> lk(g_player_mutex); fname = g_player_file_name; }
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":true,\"data\":"
+            "\"{\\\"active\\\":%s,"
+            "\\\"paused\\\":%s,"
+            "\\\"pos_ms\\\":%llu,"
+            "\\\"dur_ms\\\":%llu,"
+            "\\\"file\\\":\\\"%s\\\"}\"}",
+            id,
+            active  ? "true" : "false",
+            paused  ? "true" : "false",
+            (unsigned long long)pos_ms,
+            (unsigned long long)dur_ms,
+            fname.c_str());
+    } else if (cmd == "player.play") {
+        bool ok = false;
+        { std::lock_guard<std::mutex> lk(g_player_mutex); ok = !g_player_file_path.empty(); }
+        if (ok && !g_player_active.load()) {
+            g_player_active.store(true);
+            g_player_paused.store(false);
+            g_player_frame_pos.store(0);
+            // Player thread is started by start_ws_server caller (run_rx/run_tx)
+            // via the player_start_fn callback; if ring is set, start directly.
+            if (g_player_ring_ptr) {
+                if (g_player_thread.joinable()) g_player_thread.join();
+                g_player_thread = std::thread([]() {
+                    using namespace soluna::pipeline;
+                    FileSource src;
+                    std::string path, name;
+                    {
+                        std::lock_guard<std::mutex> lk(g_player_mutex);
+                        path = g_player_file_path;
+                        name = g_player_file_name;
+                    }
+                    if (!src.open(path, g_cfg_sample_rate, g_cfg_channels)) {
+                        fprintf(stderr, "[player] Failed to open: %s\n", path.c_str());
+                        g_player_active.store(false);
+                        if (g_ws_server_ptr)
+                            g_ws_server_ptr->broadcast("{\"event\":\"player.error\",\"msg\":\"Cannot open file\"}");
+                        return;
+                    }
+                    g_player_duration_ms.store(src.duration_ms());
+
+                    // Broadcast stream start event
+                    int64_t start_ns = 0; // TODO: PTP integration
+                    {
+                        char ev[256];
+                        snprintf(ev, sizeof(ev),
+                            "{\"event\":\"player.stream_start\","
+                            "\"name\":\"%s\","
+                            "\"dur_ms\":%llu,"
+                            "\"fmt\":\"%s\","
+                            "\"ptp_start_ns\":%lld}",
+                            name.c_str(),
+                            (unsigned long long)src.duration_ms(),
+                            src.format_name(),
+                            (long long)start_ns);
+                        if (g_ws_server_ptr) g_ws_server_ptr->broadcast(ev);
+                    }
+
+                    // Send the compressed file to all WS clients so they can switch later
+                    {
+                        std::ifstream ffile(path, std::ios::binary);
+                        uint32_t fsize = 0;
+                        {
+                            std::lock_guard<std::mutex> lk(g_player_mutex);
+                            fsize = g_player_file_size;
+                        }
+                        if (ffile && g_ws_server_ptr) {
+                            // Announce
+                            char ev[256];
+                            snprintf(ev, sizeof(ev),
+                                "{\"event\":\"player.file_start\",\"name\":\"%s\",\"size\":%u}",
+                                name.c_str(), fsize);
+                            g_ws_server_ptr->broadcast(ev);
+
+                            // Send 32KB chunks as binary, prefixed with magic [0xFA,0xFB,hi,lo]
+                            constexpr size_t kChunk = 32768;
+                            std::vector<uint8_t> chunk(kChunk + 4);
+                            chunk[0] = 0xFA; chunk[1] = 0xFB;
+                            while (ffile && g_player_active.load()) {
+                                ffile.read(reinterpret_cast<char*>(chunk.data() + 4), kChunk);
+                                size_t n = (size_t)ffile.gcount();
+                                if (n == 0) break;
+                                chunk[2] = (uint8_t)((n >> 8) & 0xFF);
+                                chunk[3] = (uint8_t)(n & 0xFF);
+                                g_ws_server_ptr->broadcast_binary(chunk.data(), n + 4);
+                                // Small throttle to avoid flooding WebSocket
+                                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                            }
+                            g_ws_server_ptr->broadcast("{\"event\":\"player.file_done\"}");
+                        }
+                    }
+
+                    // Decode + stream PCM to ring buffer
+                    const size_t kChunkFrames = 480; // 10ms @ 48kHz
+                    std::vector<int32_t> pcm(kChunkFrames * g_cfg_channels);
+
+                    while (g_player_active.load() && !src.is_eof()) {
+                        if (g_player_paused.load()) {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                            continue;
+                        }
+                        size_t got = src.read_frames(pcm.data(), kChunkFrames);
+                        if (got == 0) break;
+
+                        // Back-pressure: wait for ring space
+                        if (g_player_ring_ptr) {
+                            int spin = 0;
+                            while (g_player_ring_ptr->available_write() < got
+                                   && g_player_active.load() && spin++ < 2000) {
+                                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                            }
+                            g_player_ring_ptr->write(pcm.data(), got);
+                        }
+
+                        // Also stream to browser as S16LE (same as audio.subscribe)
+                        if (g_audio_streaming.load() && g_ws_server_ptr) {
+                            constexpr uint32_t kWsFrames = 960;
+                            thread_local std::vector<int16_t> ws_acc;
+                            thread_local uint32_t ws_acc_f = 0;
+                            size_t prev = ws_acc.size();
+                            ws_acc.resize(prev + got * g_cfg_channels);
+                            for (size_t i = 0; i < got * g_cfg_channels; i++) {
+                                float f = pcm[i] * (1.0f / 8388607.0f);
+                                ws_acc[prev + i] = (int16_t)(f * 32767.0f);
+                            }
+                            ws_acc_f += (uint32_t)got;
+                            if (ws_acc_f >= kWsFrames) {
+                                g_ws_server_ptr->broadcast_binary(
+                                    reinterpret_cast<const uint8_t*>(ws_acc.data()),
+                                    ws_acc.size() * sizeof(int16_t));
+                                ws_acc.clear();
+                                ws_acc_f = 0;
+                            }
+                        }
+
+                        g_player_frame_pos.fetch_add((int64_t)got);
+                    }
+
+                    g_player_active.store(false);
+                    if (g_ws_server_ptr)
+                        g_ws_server_ptr->broadcast("{\"event\":\"player.done\"}");
+                    fprintf(stderr, "[player] Playback finished: %s\n", name.c_str());
+                });
+            }
+            snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+        } else {
+            snprintf(buf, sizeof(buf),
+                "{\"id\":%d,\"success\":false,\"data\":\"%s\"}",
+                id, g_player_active.load() ? "already playing" : "no file loaded");
+        }
+    } else if (cmd == "player.pause") {
+        g_player_paused.store(!g_player_paused.load());
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":true,\"data\":\"{\\\"paused\\\":%s}\"}",
+            id, g_player_paused.load() ? "true" : "false");
+    } else if (cmd == "player.stop") {
+        g_player_active.store(false);
+        g_player_paused.store(false);
+        g_player_frame_pos.store(0);
+        if (g_ws_server_ptr) g_ws_server_ptr->broadcast("{\"event\":\"player.stopped\"}");
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "player.seek") {
+        // {"command":"player.seek","pos_ms":12345}
+        uint64_t pos_ms = 0;
+        auto ppos = msg.find("\"pos_ms\":");
+        if (ppos != std::string::npos) {
+            try { pos_ms = std::stoull(msg.substr(ppos + 9)); } catch (...) {}
+        }
+        // Seek: update frame_pos (approximate; actual seek happens in player thread)
+        if (g_cfg_sample_rate > 0)
+            g_player_frame_pos.store((int64_t)(pos_ms * g_cfg_sample_rate / 1000));
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+    } else if (cmd == "player.file_ready") {
+        // Browser has received the complete file — send switch command
+        // Current position + 2s switch delay
+        uint64_t pos_ms = 0;
+        if (g_cfg_sample_rate > 0)
+            pos_ms = (uint64_t)(g_player_frame_pos.load() * 1000 / g_cfg_sample_rate);
+        const uint32_t switch_delay_ms = 2000;
+        uint64_t switch_pos_ms = pos_ms + switch_delay_ms;
+        if (g_ws_server_ptr) {
+            char ev[256];
+            snprintf(ev, sizeof(ev),
+                "{\"event\":\"player.switch\","
+                "\"switch_delay_ms\":%u,"
+                "\"file_pos_ms\":%llu}",
+                switch_delay_ms,
+                (unsigned long long)switch_pos_ms);
+            g_ws_server_ptr->broadcast(ev);
+        }
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+
+    // ── Channel control (WAN relay group) ────────────────────────────────────
+    } else if (cmd == "channel.get") {
+        std::lock_guard<std::mutex> lk(g_wan_cfg_mutex);
+        char json[512];
+        snprintf(json, sizeof(json),
+            "{\\\"channel\\\":\\\"%s\\\",\\\"host\\\":\\\"%s\\\","
+            "\\\"port\\\":%u,\\\"connected\\\":%s}",
+            g_wan_cfg_group.c_str(), g_wan_cfg_host.c_str(),
+            g_wan_cfg_port, g_wan_relay_running.load() ? "true" : "false");
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"%s\"}", id, json);
+
+    } else if (cmd == "channel.set") {
+        // {"command":"channel.set","channel":"ambient-tokyo"}
+        auto get_str = [&](const char* key) -> std::string {
+            std::string k = std::string("\"") + key + "\":\"";
+            auto p = msg.find(k);
+            if (p == std::string::npos) return "";
+            auto s = p + k.size();
+            auto e = msg.find('"', s);
+            return (e != std::string::npos) ? msg.substr(s, e - s) : "";
+        };
+        std::string new_channel = get_str("channel");
+        if (new_channel.empty()) {
+            snprintf(buf, sizeof(buf),
+                "{\"id\":%d,\"success\":false,\"data\":\"missing channel\"}", id);
+        } else {
+            // Disconnect existing WAN relay and reconnect with new channel
+            wan_relay_shutdown();
+            std::string host, password;
+            uint16_t port;
+            {
+                std::lock_guard<std::mutex> lk(g_wan_cfg_mutex);
+                host = g_wan_cfg_host;
+                port = g_wan_cfg_port;
+                password = g_wan_cfg_password;
+            }
+            wan_relay_init(host, port, new_channel, password);
+            fprintf(stderr, "[channel] Switched to channel: %s\n", new_channel.c_str());
+            // Broadcast channel change event to all connected clients
+            if (g_ws_server_ptr) {
+                char ev[256];
+                snprintf(ev, sizeof(ev),
+                    "{\"event\":\"channel.changed\",\"channel\":\"%s\"}",
+                    new_channel.c_str());
+                g_ws_server_ptr->broadcast(ev);
+            }
+            snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+        }
+
     } else {
         snprintf(buf, sizeof(buf),
             "{\"id\":%d,\"success\":false,\"data\":\"unknown command\"}", id);
@@ -1582,6 +1871,76 @@ static void start_ws_server(soluna::control::WebSocketServer& srv,
         reinterpret_cast<const soluna::control::WebFile*>(embedded_web_files),
         embedded_web_file_count);
     srv.set_message_callback(ws_handle);
+
+    // HTTP POST handler: /api/player/upload — receives raw audio file bytes
+    srv.set_http_post_handler([](const std::string& path,
+                                 const std::vector<uint8_t>& body,
+                                 std::string& out_ct) -> std::string {
+        // path may include query string: /api/player/upload?name=...
+        if (path.rfind("/api/player/upload", 0) != 0 || body.empty()) return "";
+        out_ct = "application/json";
+
+        // Detect format from magic bytes
+        std::string ext = "bin";
+        if (body.size() >= 4) {
+            if (body[0]=='R' && body[1]=='I' && body[2]=='F' && body[3]=='F') ext = "wav";
+            else if (body[0]==0xFF && (body[1]&0xE0)==0xE0) ext = "mp3";
+            else if (body[0]=='I' && body[1]=='D' && body[2]=='3') ext = "mp3";
+        }
+
+        // Extract filename from query string: /api/player/upload?name=track.mp3
+        std::string name = "upload." + ext;
+        auto qpos = path.find("?name=");
+        if (qpos != std::string::npos) {
+            name = path.substr(qpos + 6);
+            // Basic URL-decode of spaces
+            for (size_t i = 0; i < name.size(); i++) {
+                if (name[i] == '+') name[i] = ' ';
+                if (name[i] == '%' && i + 2 < name.size()) {
+                    char hex[3] = {name[i+1], name[i+2], 0};
+                    name[i] = (char)std::stoi(hex, nullptr, 16);
+                    name.erase(i+1, 2);
+                }
+            }
+        }
+
+        // Stop any current playback
+        g_player_active.store(false);
+        if (g_player_thread.joinable()) g_player_thread.join();
+
+        // Write to temp file
+        std::string tmp_path = "/tmp/soluna_player_" + name;
+        {
+            std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
+            if (!out || !out.write(reinterpret_cast<const char*>(body.data()), body.size())) {
+                return "{\"ok\":false,\"error\":\"write failed\"}";
+            }
+        }
+
+        {
+            std::lock_guard<std::mutex> lk(g_player_mutex);
+            g_player_file_path = tmp_path;
+            g_player_file_name = name;
+            g_player_file_size = (uint32_t)body.size();
+        }
+        g_player_frame_pos.store(0);
+
+        // Probe duration
+        {
+            soluna::pipeline::FileSource probe;
+            if (probe.open(tmp_path, g_cfg_sample_rate, g_cfg_channels)) {
+                g_player_duration_ms.store(probe.duration_ms());
+            }
+        }
+
+        char resp[256];
+        snprintf(resp, sizeof(resp),
+            "{\"ok\":true,\"name\":\"%s\",\"size\":%u,\"dur_ms\":%llu,\"fmt\":\"%s\"}",
+            name.c_str(), (uint32_t)body.size(),
+            (unsigned long long)g_player_duration_ms.load(),
+            (ext == "mp3" ? "MP3" : "WAV"));
+        return resp;
+    });
 
     if (https_enabled && !cert_path.empty() && !key_path.empty()) {
         if (srv.enable_tls(cert_path, key_path)) {
@@ -3321,6 +3680,11 @@ static int run_tx(DaemonConfig cfg) {
     // Finalize multi-track recordings
     recording_stop();
 
+    // Stop file player
+    g_player_active.store(false);
+    if (g_player_thread.joinable()) g_player_thread.join();
+    g_player_ring_ptr = nullptr;
+
     return 0;
 }
 
@@ -3360,6 +3724,7 @@ static int run_rx(DaemonConfig cfg) {
     const uint32_t kPrefillPackets = lp.prefill_packets;
     const uint32_t kRefillThreshold = lp.refill_threshold;
     RingBuffer ring(kFramesPerPacket * kRingPackets, frame_size);
+    g_player_ring_ptr = &ring;   // expose to file player
     std::atomic<bool> prefilled{false};
 
     // Opus decoder (RX) — lazily initialized on first Opus packet

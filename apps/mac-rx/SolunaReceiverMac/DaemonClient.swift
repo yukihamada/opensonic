@@ -40,6 +40,20 @@ final class DaemonClient: ObservableObject {
     @Published private(set) var devices: [String] = []
     @Published              var selectedDevice = ""
 
+    // ── Player ──────────────────────────────────────────────────────────────
+    @Published private(set) var playerActive:     Bool   = false
+    @Published private(set) var playerPaused:     Bool   = false
+    @Published private(set) var playerName:       String = ""
+    @Published private(set) var playerFmt:        String = ""
+    @Published private(set) var playerDurMs:      UInt64 = 0
+    @Published private(set) var playerPosMs:      UInt64 = 0
+    @Published private(set) var fileXferProgress: Double = 0
+
+    /// Called with (fileData, fileName) when the full file has been received.
+    var onFileReceived: ((Data, String) -> Void)?
+    /// Called with (delayMs, posMs) on player.switch event.
+    var onPlayerSwitch: ((UInt32, UInt64) -> Void)?
+
     /// Called when auto-sync completes with the measured latency (ms).
     /// Use this to update the local AudioReceiver's jitter buffer.
     var onSyncLatency: ((Int) -> Void)?
@@ -51,8 +65,13 @@ final class DaemonClient: ObservableObject {
     private var timer:         Timer?
     private var syncTimer:     Timer?
     private var retryTimer:    Timer?
-    private var lastHost =     ""
+    private(set) var lastHost  = ""
     private var pingStartTime: Date?
+
+    // file accumulation for player
+    private var _fileBuf      = Data()
+    private var _fileExpected = 0
+    private var _fileName     = ""
 
     // MARK: - Connection
 
@@ -107,6 +126,43 @@ final class DaemonClient: ObservableObject {
 
     func setGlobalRxDelay(_ ms: Int) {
         send(#"{"id":\#(nextId()),"command":"rx.set_global_delay","ms":\#(ms)}"#)
+    }
+
+    // MARK: - Player Commands
+
+    func playerPlay()      { send(#"{"id":\#(nextId()),"command":"player.play"}"#) }
+    func playerPause()     { send(#"{"id":\#(nextId()),"command":"player.pause"}"#) }
+    func playerStop()      { send(#"{"id":\#(nextId()),"command":"player.stop"}"#); playerActive = false }
+    func playerFileReady() { send(#"{"id":\#(nextId()),"command":"player.file_ready"}"#) }
+    func playerStatus()    { send(#"{"id":\#(nextId()),"command":"player.status"}"#) }
+    func playerSeek(ms: UInt64) {
+        send(#"{"id":\#(nextId()),"command":"player.seek","pos_ms":\#(ms)}"#)
+    }
+
+    func uploadFile(_ data: Data, name: String, onProgress: ((Double) -> Void)? = nil) async {
+        guard let url = httpUploadURL(name: name) else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 120
+        let delegate = UploadDelegate()
+        delegate.onProgress = onProgress
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        _ = try? await session.upload(for: req, from: data)
+    }
+
+    private func httpUploadURL(name: String) -> URL? {
+        let h = lastHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !h.isEmpty else { return nil }
+        let stripped = h.hasPrefix("ws://")  ? String(h.dropFirst(5)) :
+                       h.hasPrefix("wss://") ? String(h.dropFirst(6)) : h
+        let bare    = stripped.components(separatedBy: "/").first ?? stripped
+        let isIP    = bare.allSatisfy { $0.isNumber || $0 == "." || $0 == ":" }
+        let isLocal = isIP || bare.lowercased().hasSuffix(".local")
+        let scheme  = isLocal ? "http" : "https"
+        let port    = isLocal ? ":8400" : ""
+        let enc     = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
+        return URL(string: "\(scheme)://\(bare)\(port)/api/player/upload?name=\(enc)")
     }
 
     // MARK: - Stream mode
@@ -174,6 +230,7 @@ final class DaemonClient: ObservableObject {
         send(#"{"id":\#(nextId()),"command":"monitor.list_devices"}"#)
         send(#"{"id":\#(nextId()),"command":"system.info"}"#)
         getMode()
+        playerStatus()
     }
 
     private func nextId() -> Int { msgId += 1; return msgId }
@@ -187,16 +244,18 @@ final class DaemonClient: ObservableObject {
             guard let self else { return }
             switch result {
             case .success(let message):
-                if case .string(let text) = message {
+                switch message {
+                case .string(let text):
                     Task { @MainActor [weak self] in
                         guard let self else { return }
                         self.isConnected = true
                         self.parse(text)
                     }
+                case .data(let data):
+                    Task { @MainActor [weak self] in self?.handleBinary(data) }
+                @unknown default: break
                 }
-                Task { @MainActor [weak self] in
-                    self?.receiveLoop()
-                }
+                self.receiveLoop()
             case .failure:
                 Task { @MainActor [weak self] in
                     guard let self else { return }
@@ -214,10 +273,66 @@ final class DaemonClient: ObservableObject {
         }
     }
 
+    @MainActor private func handleBinary(_ data: Data) {
+        guard data.count >= 2 else { return }
+        if data[0] == 0xFA && data[1] == 0xFB {
+            // File chunk: [0xFA, 0xFB, size_hi, size_lo, payload…]
+            let payload = data.count > 4 ? data[4...] : Data()
+            _fileBuf.append(payload)
+            if _fileExpected > 0 {
+                fileXferProgress = min(1.0, Double(_fileBuf.count) / Double(_fileExpected))
+            }
+        }
+        // Other binary frames (PCM audio) handled by AudioReceiver via RTP
+    }
+
+    private func handleEvent(_ event: String, json: [String: Any]) {
+        switch event {
+        case "player.stream_start":
+            playerName   = json["name"]  as? String ?? ""
+            playerFmt    = json["fmt"]   as? String ?? ""
+            playerDurMs  = UInt64((json["dur_ms"] as? Int) ?? 0)
+            playerActive = true
+            playerPaused = false
+            _fileBuf.removeAll()
+            _fileExpected = 0
+            fileXferProgress = 0
+
+        case "player.file_start":
+            _fileName    = json["name"] as? String ?? playerName
+            _fileExpected = (json["size"] as? Int) ?? 0
+            _fileBuf.removeAll()
+            fileXferProgress = 0
+
+        case "player.file_done":
+            fileXferProgress = 1.0
+            onFileReceived?(_fileBuf, _fileName)
+
+        case "player.switch":
+            let delay = UInt32((json["switch_delay_ms"] as? Int) ?? 2000)
+            let pos   = UInt64((json["file_pos_ms"]     as? Int) ?? 0)
+            onPlayerSwitch?(delay, pos)
+
+        case "player.done", "player.stopped":
+            playerActive = false
+
+        default: break
+        }
+    }
+
     private func parse(_ text: String) {
         guard
-            let data    = text.data(using: .utf8),
-            let json    = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let data = text.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return }
+
+        // Broadcast events (player.stream_start, etc.)
+        if let event = json["event"] as? String {
+            handleEvent(event, json: json)
+            return
+        }
+
+        guard
             let success = json["success"] as? Bool, success,
             let raw     = json["data"] as? String, !raw.isEmpty,
             let inner   = raw.data(using: .utf8)
@@ -233,20 +348,15 @@ final class DaemonClient: ObservableObject {
         guard let d = try? JSONSerialization.jsonObject(with: inner) as? [String: Any] else { return }
 
         if d["pong"] != nil {
-            // time.ping response — compute RTT and apply auto-sync
             guard let t1 = pingStartTime else { return }
             pingStartTime = nil
             let rttMs = (Date().timeIntervalSince1970 - t1.timeIntervalSince1970) * 1000
-            // one-way delay = RTT/2; add 15ms safety margin; minimum 20ms
             let latency = max(20, Int(rttMs / 2) + 15)
             measuredLatencyMs = latency
-            // Apply to Mac speaker delay (this DaemonClient is connected to solunad)
             setMonitorDelay(latency)
-            // Apply to iPhone jitter buffer via callback
             onSyncLatency?(latency)
 
         } else if d["supported"] != nil {
-            // monitor.stats
             monitorSupported = d["supported"] as? Bool ?? false
             monitorRunning   = d["running"]   as? Bool ?? false
             if let v = d["volume"] as? Double { monitorVolume = Float(v) }
@@ -256,12 +366,32 @@ final class DaemonClient: ObservableObject {
             if let rxd = d["rx_delay_ms"] as? Int { rxDelayMs = rxd }
 
         } else if d["tunnel_url"] != nil {
-            // system.info
             tunnelURL = d["tunnel_url"] as? String ?? ""
 
         } else if let mode = d["mode"] as? String {
-            // mode.get / mode.set response
             streamMode = mode
+
+        } else if let active = d["active"] as? Bool, d["pos_ms"] != nil {
+            // player.status response
+            playerActive = active
+            playerPaused = d["paused"] as? Bool ?? false
+            playerPosMs  = UInt64((d["pos_ms"] as? Int) ?? 0)
+            playerDurMs  = UInt64((d["dur_ms"] as? Int) ?? 0)
+            playerName   = d["file"] as? String ?? ""
         }
+    }
+}
+
+// MARK: - Upload progress delegate
+
+private final class UploadDelegate: NSObject, URLSessionTaskDelegate {
+    var onProgress: ((Double) -> Void)?
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    didSendBodyData bytesSent: Int64,
+                    totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        let pct = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
+        DispatchQueue.main.async { self.onProgress?(pct) }
     }
 }

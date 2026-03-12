@@ -48,14 +48,14 @@ platform :ios do
     # Build library first
     build_lib
 
-    # Get or create provisioning profile
-    sigh(
-      api_key: api_key,
-      app_identifier: APP_IDENTIFIER,
-      readonly: false
+    # Use automatic signing with provisioning updates
+    update_code_signing_settings(
+      use_automatic_signing: true,
+      path: "SolunaReceiver.xcodeproj",
+      team_id: "5BV85JW8US",
+      targets: ["SolunaReceiver"]
     )
 
-    # Build app
     build_app(
       project: "SolunaReceiver.xcodeproj",
       scheme: "SolunaReceiver",
@@ -63,7 +63,8 @@ platform :ios do
       export_method: "app-store",
       output_directory: "./build",
       output_name: "SolunaReceiver.ipa",
-      clean: true
+      clean: true,
+      xcargs: "-allowProvisioningUpdates -authenticationKeyPath #{ENV['APP_STORE_CONNECT_API_KEY_PATH']} -authenticationKeyID #{ENV['APP_STORE_CONNECT_API_KEY_ID']} -authenticationKeyIssuerID #{ENV['APP_STORE_CONNECT_ISSUER_ID']}"
     )
 
     # Upload to TestFlight
@@ -101,10 +102,11 @@ platform :ios do
     deliver(
       api_key: api_key,
       app_identifier: APP_IDENTIFIER,
-      skip_binary_upload: true,
+      skip_binary_upload: false,
       skip_metadata: false,
-      skip_screenshots: false,
-      overwrite_screenshots: true,
+      skip_screenshots: true,
+      overwrite_screenshots: false,
+      ignore_language_directory_validation: true,
       force: true,
       submit_for_review: true,
       automatic_release: true,
@@ -137,6 +139,161 @@ platform :ios do
         notes: "This app receives audio over WiFi multicast. To test, run the Soluna transmitter (solunad --tx) on a Mac on the same WiFi network. The app auto-detects and plays the audio stream. No login required."
       }
     )
+  end
+
+  desc "Create In-App Purchase subscription on App Store Connect"
+  lane :create_iap do
+    require 'net/http'
+    require 'json'
+    require 'jwt'
+    require 'openssl'
+
+    key_id = ENV["APP_STORE_CONNECT_API_KEY_ID"]
+    issuer_id = ENV["APP_STORE_CONNECT_ISSUER_ID"]
+    key_path = ENV["APP_STORE_CONNECT_API_KEY_PATH"]
+
+    UI.user_error!("Missing APP_STORE_CONNECT_API_KEY_ID") unless key_id
+    UI.user_error!("Missing APP_STORE_CONNECT_ISSUER_ID") unless issuer_id
+    UI.user_error!("Missing APP_STORE_CONNECT_API_KEY_PATH") unless key_path
+
+    # Generate JWT token
+    private_key = OpenSSL::PKey::EC.new(File.read(key_path))
+    header = { kid: key_id }
+    payload = {
+      iss: issuer_id,
+      iat: Time.now.to_i,
+      exp: Time.now.to_i + 1200,
+      aud: "appstoreconnect-v1"
+    }
+    token = JWT.encode(payload, private_key, "ES256", header)
+
+    base_url = "https://api.appstoreconnect.apple.com/v1"
+    headers = {
+      "Authorization" => "Bearer #{token}",
+      "Content-Type" => "application/json"
+    }
+
+    # Helper for API requests
+    api_request = lambda do |method, path, body = nil|
+      uri = URI("#{base_url}#{path}")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true
+      req = case method
+            when :get then Net::HTTP::Get.new(uri)
+            when :post then Net::HTTP::Post.new(uri)
+            end
+      headers.each { |k, v| req[k] = v }
+      req.body = body.to_json if body
+      resp = http.request(req)
+      UI.message("#{method.upcase} #{path} → #{resp.code}")
+      JSON.parse(resp.body) rescue {}
+    end
+
+    # 1. Get the app ID
+    UI.message("Finding app #{APP_IDENTIFIER}...")
+    apps = api_request.call(:get, "/apps?filter[bundleId]=#{APP_IDENTIFIER}")
+    app_id = apps.dig("data", 0, "id")
+    UI.user_error!("App not found: #{APP_IDENTIFIER}") unless app_id
+    UI.success("App ID: #{app_id}")
+
+    # 2. Create Subscription Group
+    UI.message("Creating subscription group 'Soluna Channel'...")
+    group_body = {
+      data: {
+        type: "subscriptionGroups",
+        attributes: { referenceName: "Soluna Channel" },
+        relationships: {
+          app: { data: { type: "apps", id: app_id } }
+        }
+      }
+    }
+    group_resp = api_request.call(:post, "/subscriptionGroups", group_body)
+    group_id = group_resp.dig("data", "id")
+
+    if group_id
+      UI.success("Subscription group created: #{group_id}")
+    else
+      # Group might already exist
+      UI.message("Checking existing groups...")
+      existing = api_request.call(:get, "/apps/#{app_id}/subscriptionGroups")
+      group_id = existing.dig("data", 0, "id")
+      if group_id
+        UI.message("Using existing group: #{group_id}")
+      else
+        UI.user_error!("Failed to create/find subscription group: #{group_resp}")
+      end
+    end
+
+    # 3. Create Subscription (com.soluna.channel.yearly)
+    product_id = "com.soluna.channel.yearly"
+    UI.message("Creating subscription '#{product_id}'...")
+    sub_body = {
+      data: {
+        type: "subscriptions",
+        attributes: {
+          name: "Custom Channel (Yearly)",
+          productId: product_id,
+          subscriptionPeriod: "ONE_YEAR",
+          reviewNote: "Unlocks custom channel name for audio streaming. Channel name is chosen by user after purchase.",
+          familySharable: false
+        },
+        relationships: {
+          group: { data: { type: "subscriptionGroups", id: group_id } }
+        }
+      }
+    }
+    sub_resp = api_request.call(:post, "/subscriptions", sub_body)
+    sub_id = sub_resp.dig("data", "id")
+
+    if sub_id
+      UI.success("Subscription created: #{sub_id} (#{product_id})")
+    else
+      errors = sub_resp.dig("errors") || []
+      if errors.any? { |e| e["detail"]&.include?("already exists") }
+        UI.message("Subscription #{product_id} already exists")
+      else
+        UI.user_error!("Failed to create subscription: #{sub_resp}")
+      end
+    end
+
+    # 4. Create Localization (Japanese)
+    if sub_id
+      UI.message("Adding Japanese localization...")
+      loc_body = {
+        data: {
+          type: "subscriptionLocalizations",
+          attributes: {
+            locale: "ja",
+            name: "カスタムチャンネル（年額）",
+            description: "お好きな名前のオーディオチャンネルを作成できます。WANリレー経由で世界中からアクセス可能。"
+          },
+          relationships: {
+            subscription: { data: { type: "subscriptions", id: sub_id } }
+          }
+        }
+      }
+      api_request.call(:post, "/subscriptionLocalizations", loc_body)
+
+      # English localization
+      loc_en_body = {
+        data: {
+          type: "subscriptionLocalizations",
+          attributes: {
+            locale: "en-US",
+            name: "Custom Channel (Yearly)",
+            description: "Create your own named audio channel. Accessible worldwide via WAN relay."
+          },
+          relationships: {
+            subscription: { data: { type: "subscriptions", id: sub_id } }
+          }
+        }
+      }
+      api_request.call(:post, "/subscriptionLocalizations", loc_en_body)
+      UI.success("Localizations added (ja, en-US)")
+    end
+
+    UI.success("✅ In-App Purchase setup complete: #{product_id}")
+    UI.message("⚠️  Price (¥1,000/year) must be set in App Store Connect UI → Subscriptions → Pricing")
   end
 
   desc "Build for local testing (no signing)"

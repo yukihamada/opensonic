@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var receiver: AudioReceiver
+    @StateObject private var channelStore = ChannelStore()
     @Environment(\.presentationMode) private var presentationMode
 
     @AppStorage("multicastGroup") private var multicastGroup = "239.69.0.1"
@@ -21,6 +22,7 @@ struct SettingsView: View {
     @State private var tempChannels: Int = 1
     @State private var tempChannel: String = ""
     @State private var showingResetAlert = false
+    @State private var showChannelPurchase = false
 
     var body: some View {
         NavigationView {
@@ -51,10 +53,46 @@ struct SettingsView: View {
                         Image(systemName: "dot.radiowaves.left.and.right")
                             .foregroundColor(.purple)
                             .frame(width: 28)
-                        TextField("Channel name", text: $tempChannel)
-                            .autocapitalization(.none)
-                            .autocorrectionDisabled()
+                        Text(tempChannel.isEmpty ? "soluna" : tempChannel)
+                            .font(.body)
+                        Spacer()
+                        if channelStore.isPurchased {
+                            Text("Custom")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.blue)
+                                .clipShape(Capsule())
+                        }
                     }
+
+                    if channelStore.isPurchased {
+                        Button {
+                            showChannelPurchase = true
+                        } label: {
+                            Label("Change Channel Name", systemImage: "pencil")
+                                .font(.subheadline)
+                        }
+                    } else {
+                        Button {
+                            showChannelPurchase = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "star.fill")
+                                    .foregroundColor(.yellow)
+                                Text("Get Custom Channel")
+                                    .font(.subheadline)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+                .sheet(isPresented: $showChannelPurchase) {
+                    ChannelPurchaseView(store: channelStore, activeChannel: $tempChannel)
                 }
 
                 Section(header: Text("Audio")) {
@@ -165,7 +203,12 @@ struct SettingsView: View {
         tempMulticastGroup = multicastGroup
         tempPort = String(port)
         tempChannels = channels
-        tempChannel = channel
+        // Use purchased channel name if available
+        if let purchased = channelStore.purchasedChannelName, !purchased.isEmpty {
+            tempChannel = purchased
+        } else {
+            tempChannel = channel
+        }
     }
 
     private func saveSettings() {

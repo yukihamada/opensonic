@@ -2,7 +2,8 @@
 # ──────────────────────────────────────────────────────────────
 # Soluna .pkg postinstall — root 権限で実行
 # ──────────────────────────────────────────────────────────────
-set -euo pipefail
+set -uo pipefail
+# NOTE: Do NOT use -e (errexit) — any non-zero exit causes "Installation failed"
 
 SHM_DIR="/private/var/db/soluna"
 SERVICE_ID="io.soluna.daemon"
@@ -66,11 +67,12 @@ chown "$CONSOLE_USER:staff" "$LAUNCH_AGENTS/$SERVICE_ID.plist"
 
 # ── 5. LaunchAgent 登録 ─────────────────────────────────────
 launchctl bootout "gui/$CONSOLE_UID/$SERVICE_ID" 2>/dev/null || true
-launchctl bootstrap "gui/$CONSOLE_UID" "$LAUNCH_AGENTS/$SERVICE_ID.plist"
+sleep 1
+launchctl bootstrap "gui/$CONSOLE_UID" "$LAUNCH_AGENTS/$SERVICE_ID.plist" 2>/dev/null || true
 
 # ── 6. Soluna.app を起動 ────────────────────────────────────
 if [ -d "/Applications/Soluna.app" ]; then
-    su "$CONSOLE_USER" -c 'open "/Applications/Soluna.app"' &
+    su "$CONSOLE_USER" -c 'open "/Applications/Soluna.app"' 2>/dev/null &
 fi
 
 exit 0

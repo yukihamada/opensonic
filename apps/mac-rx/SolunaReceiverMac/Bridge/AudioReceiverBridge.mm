@@ -20,8 +20,9 @@
 
 #include <AudioToolbox/AudioToolbox.h>
 #include <Accelerate/Accelerate.h>
+#import <AVFoundation/AVFoundation.h>
 
-#include "../../../plugin/soluna_shm.h"
+#include "../../../../include/soluna/soluna_shm.h"
 
 #include <atomic>
 #include <thread>
@@ -32,6 +33,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <random>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -189,11 +191,12 @@ private:
 
         // PLC: conceal gaps of ≤2 packets by repeating the last known frame
         if (gap > 0 && gap <= 2 && frames > 0 && !last_frame_.empty()) {
+            size_t plc_frames = last_frame_.size() / config_.channels;
             for (int32_t i = 0; i < gap; i++) {
-                ring.write(last_frame_.data(), frames);
+                ring.write(last_frame_.data(), plc_frames);
                 // Fan-out PLC frames to extra sinks
                 if (on_audio_written) {
-                    on_audio_written(last_frame_.data(), frames);
+                    on_audio_written(last_frame_.data(), plc_frames);
                 }
             }
             stats_.packets_concealed += static_cast<uint64_t>(gap);
@@ -668,21 +671,29 @@ public:
     bool start() {
         AudioComponentDescription desc = {};
         desc.componentType = kAudioUnitType_Output;
+        // Use HALOutput for explicit device routing (OutputSink targets a specific device_id)
         desc.componentSubType = kAudioUnitSubType_HALOutput;
         desc.componentManufacturer = kAudioUnitManufacturer_Apple;
 
         AudioComponent component = AudioComponentFindNext(nullptr, &desc);
-        if (!component) return false;
+        if (!component) {
+            fprintf(stderr, "[OutputSink] HALOutput component not found\n");
+            return false;
+        }
 
         OSStatus status = AudioComponentInstanceNew(component, &audio_unit_);
-        if (status != noErr) return false;
+        if (status != noErr) {
+            fprintf(stderr, "[OutputSink] Failed to create audio unit: %d\n", (int)status);
+            return false;
+        }
 
-        // Set device
+        // Route to the specific device
         status = AudioUnitSetProperty(audio_unit_,
             kAudioOutputUnitProperty_CurrentDevice,
             kAudioUnitScope_Global, 0,
             &device_id_, sizeof(device_id_));
         if (status != noErr) {
+            fprintf(stderr, "[OutputSink] Failed to set device %u: %d\n", device_id_, (int)status);
             AudioComponentInstanceDispose(audio_unit_);
             audio_unit_ = nullptr;
             return false;
@@ -704,6 +715,7 @@ public:
             kAudioUnitScope_Input, 0,
             &fmt, sizeof(fmt));
         if (status != noErr) {
+            fprintf(stderr, "[OutputSink] Failed to set format: %d\n", (int)status);
             AudioComponentInstanceDispose(audio_unit_);
             audio_unit_ = nullptr;
             return false;
@@ -716,14 +728,6 @@ public:
             kAudioUnitScope_Global, 0,
             &buf_frames, sizeof(buf_frames));
 
-        // Set HW buffer size on device
-        AudioObjectPropertyAddress buf_addr = {
-            kAudioDevicePropertyBufferFrameSize,
-            kAudioObjectPropertyScopeGlobal,
-            kAudioObjectPropertyElementMain
-        };
-        AudioObjectSetPropertyData(device_id_, &buf_addr, 0, nullptr, sizeof(buf_frames), &buf_frames);
-
         // Render callback
         AURenderCallbackStruct cbs = {};
         cbs.inputProc = render_cb;
@@ -733,6 +737,7 @@ public:
             kAudioUnitScope_Input, 0,
             &cbs, sizeof(cbs));
         if (status != noErr) {
+            fprintf(stderr, "[OutputSink] Failed to set render callback: %d\n", (int)status);
             AudioComponentInstanceDispose(audio_unit_);
             audio_unit_ = nullptr;
             return false;
@@ -740,6 +745,7 @@ public:
 
         status = AudioUnitInitialize(audio_unit_);
         if (status != noErr) {
+            fprintf(stderr, "[OutputSink] Failed to initialize: %d\n", (int)status);
             AudioComponentInstanceDispose(audio_unit_);
             audio_unit_ = nullptr;
             return false;
@@ -748,11 +754,13 @@ public:
         running_.store(true);
         status = AudioOutputUnitStart(audio_unit_);
         if (status != noErr) {
+            fprintf(stderr, "[OutputSink] Failed to start: %d\n", (int)status);
             running_.store(false);
             AudioComponentInstanceDispose(audio_unit_);
             audio_unit_ = nullptr;
             return false;
         }
+        fprintf(stderr, "[OutputSink] Started successfully (HALOutput, device=%u, %uch)\n", device_id_, channels_);
         return true;
     }
 
@@ -1031,6 +1039,9 @@ public:
     enum class State { Disconnected, Connecting, Connected, Error };
 
     using RxCallback = std::function<void(const uint8_t*, size_t)>;
+    using MetaCallback = std::function<void(const std::string&)>;
+    using FileCallback = std::function<void(const std::string&)>;
+    using SyncCallback = std::function<void(const std::string&)>;
 
     WanRelayClient() = default;
     ~WanRelayClient() { disconnect(); }
@@ -1117,6 +1128,25 @@ public:
                         fprintf(stderr, "[wan-p2p] Peer discovered (during join): %s:%u\n", ip.c_str(), pport);
                     }
                 }
+                // Handle FILE/SYNC/META that arrive during join handshake
+                else if (n >= 5 && strncmp(buf, "FILE:", 5) == 0) {
+                    std::string fname(buf + 5, n - 5);
+                    while (!fname.empty() && (fname.back() == '\n' || fname.back() == '\r')) fname.pop_back();
+                    std::lock_guard<std::mutex> lk(cb_mutex_);
+                    if (file_callback_) file_callback_(fname);
+                }
+                else if (n >= 5 && strncmp(buf, "SYNC:", 5) == 0) {
+                    std::string sync(buf + 5, n - 5);
+                    while (!sync.empty() && (sync.back() == '\n' || sync.back() == '\r')) sync.pop_back();
+                    std::lock_guard<std::mutex> lk(cb_mutex_);
+                    if (sync_callback_) sync_callback_(sync);
+                }
+                else if (n >= 5 && strncmp(buf, "META:", 5) == 0) {
+                    std::string meta(buf + 5, n - 5);
+                    while (!meta.empty() && (meta.back() == '\n' || meta.back() == '\r')) meta.pop_back();
+                    std::lock_guard<std::mutex> lk(cb_mutex_);
+                    if (meta_callback_) meta_callback_(meta);
+                }
             }
         }
 
@@ -1176,12 +1206,45 @@ public:
         rx_callback_ = std::move(cb);
     }
 
+    void set_meta_callback(MetaCallback cb) {
+        std::lock_guard<std::mutex> lock(cb_mutex_);
+        meta_callback_ = std::move(cb);
+    }
+
+    void set_file_callback(FileCallback cb) {
+        std::lock_guard<std::mutex> lock(cb_mutex_);
+        file_callback_ = std::move(cb);
+    }
+
+    void set_sync_callback(SyncCallback cb) {
+        std::lock_guard<std::mutex> lock(cb_mutex_);
+        sync_callback_ = std::move(cb);
+    }
+
+    void send_ready(const std::string& filename) {
+        if (udp_sock_ < 0 || state_.load() != State::Connected) return;
+        std::string msg = "READY:" + filename + "\n";
+        sendto(udp_sock_, msg.c_str(), msg.size(), 0,
+               reinterpret_cast<const sockaddr*>(&relay_addr_), sizeof(relay_addr_));
+    }
+
+    /// Send a raw text command to relay (e.g. "FILE:song.mp3\n", "META:{...}\n")
+    void send_command(const std::string& cmd) {
+        if (udp_sock_ < 0 || state_.load() != State::Connected) return;
+        sendto(udp_sock_, cmd.c_str(), cmd.size(), 0,
+               reinterpret_cast<const sockaddr*>(&relay_addr_), sizeof(relay_addr_));
+    }
+
     State state() const { return state_.load(std::memory_order_relaxed); }
     const std::string& group() const { return group_; }
     const std::string& error() const { return error_; }
 
 private:
     void recv_loop() {
+        // Set receive timeout so heartbeat can fire between packets
+        struct timeval tv{1, 0};
+        setsockopt(udp_sock_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
         uint8_t buf[65536];
         auto last_hello = std::chrono::steady_clock::now();
 
@@ -1212,6 +1275,30 @@ private:
                         sendto(udp_sock_, punch, 6, 0,
                                reinterpret_cast<const sockaddr*>(&peer), sizeof(peer));
                     }
+                }
+                // META message: metadata broadcast from relay
+                else if (n >= 5 && memcmp(buf, "META:", 5) == 0) {
+                    std::string meta((const char*)buf + 5, n - 5);
+                    while (!meta.empty() && (meta.back() == '\n' || meta.back() == '\r'))
+                        meta.pop_back();
+                    std::lock_guard<std::mutex> lk(cb_mutex_);
+                    if (meta_callback_) meta_callback_(meta);
+                }
+                // FILE: message — file sync mode, download and prepare
+                else if (n >= 5 && memcmp(buf, "FILE:", 5) == 0) {
+                    std::string filename((const char*)buf + 5, n - 5);
+                    while (!filename.empty() && (filename.back() == '\n' || filename.back() == '\r'))
+                        filename.pop_back();
+                    std::lock_guard<std::mutex> lk(cb_mutex_);
+                    if (file_callback_) file_callback_(filename);
+                }
+                // SYNC: message — file sync mode, play/pause/seek
+                else if (n >= 5 && memcmp(buf, "SYNC:", 5) == 0) {
+                    std::string sync((const char*)buf + 5, n - 5);
+                    while (!sync.empty() && (sync.back() == '\n' || sync.back() == '\r'))
+                        sync.pop_back();
+                    std::lock_guard<std::mutex> lk(cb_mutex_);
+                    if (sync_callback_) sync_callback_(sync);
                 }
                 // RTP/OSTP audio packet from relay or peer
                 else if (n >= 12 && (buf[0] & 0xC0) == 0x80) {
@@ -1252,6 +1339,9 @@ private:
     std::thread recv_thread_;
     std::mutex cb_mutex_;
     RxCallback rx_callback_;
+    MetaCallback meta_callback_;
+    FileCallback file_callback_;
+    SyncCallback sync_callback_;
     std::mutex peers_mutex_;
     std::vector<sockaddr_in> peers_;
 };
@@ -1597,6 +1687,425 @@ private:
     std::thread tx_thread_;
 };
 
+// ============================================================================
+// DJBroadcaster — decode audio files and stream via OSTP to relay
+// ============================================================================
+
+class DJBroadcaster {
+public:
+    DJBroadcaster() = default;
+    ~DJBroadcaster() { stop_mic_capture(); stop(); }
+
+    // ── Mic mixing ──────────────────────────────────────────────────────
+    std::atomic<bool> mic_mix_enabled_{false};
+    std::atomic<float> mic_gain_{1.0f};
+    std::atomic<float> music_gain_{0.7f};
+
+    void set_mic_mix(bool enabled) {
+        if (enabled && !mic_queue_) {
+            start_mic_capture();
+        } else if (!enabled && mic_queue_) {
+            stop_mic_capture();
+        }
+        mic_mix_enabled_ = enabled;
+    }
+
+    bool start_file(const std::string& filepath) {
+        if (running_.load()) return false;
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            playlist_.clear();
+            playlist_.push_back(filepath);
+            playlist_index_ = 0;
+        }
+        running_.store(true);
+        skip_flag_.store(false);
+        thread_ = std::thread([this]() { broadcast_loop(); });
+        return true;
+    }
+
+    bool start_directory(const std::string& dirpath, bool shuffle) {
+        if (running_.load()) return false;
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            playlist_.clear();
+
+            // Scan directory for audio files using NSFileManager
+            @autoreleasepool {
+                NSArray* exts = @[@"mp3", @"m4a", @"wav", @"aac", @"flac", @"aiff", @"alac"];
+                NSArray* contents = [[NSFileManager defaultManager]
+                    contentsOfDirectoryAtPath:@(dirpath.c_str()) error:nil];
+                for (NSString* name in contents) {
+                    if ([exts containsObject:name.pathExtension.lowercaseString]) {
+                        playlist_.push_back(dirpath + "/" + [name UTF8String]);
+                    }
+                }
+            }
+
+            if (playlist_.empty()) {
+                fprintf(stderr, "[DJ] No audio files found in %s\n", dirpath.c_str());
+                return false;
+            }
+
+            if (shuffle) {
+                std::shuffle(playlist_.begin(), playlist_.end(),
+                            std::mt19937{std::random_device{}()});
+            }
+            playlist_index_ = 0;
+        }
+        running_.store(true);
+        skip_flag_.store(false);
+        thread_ = std::thread([this]() { broadcast_loop(); });
+        return true;
+    }
+
+    void stop() {
+        if (!running_.load()) return;
+        running_.store(false);
+        if (thread_.joinable()) thread_.join();
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            current_track_.clear();
+        }
+        progress_.store(0.0f);
+        fprintf(stderr, "[DJ] Stopped\n");
+    }
+
+    void skip() {
+        skip_flag_.store(true);
+    }
+
+    bool is_active() const { return running_.load(); }
+
+    std::string current_track() const {
+        std::lock_guard<std::mutex> lk(mutex_);
+        return current_track_;
+    }
+
+    float progress() const { return progress_.load(std::memory_order_relaxed); }
+
+    /// Callback to send OSTP audio packets via relay
+    std::function<void(const uint8_t*, size_t)> tx_relay_callback;
+
+    /// Callback to send text commands (FILE:/META:/SYNC:) via relay
+    std::function<void(const std::string&)> send_relay_cmd;
+
+private:
+    // ── Mic capture internals ───────────────────────────────────────────
+    AudioQueueRef mic_queue_ = nullptr;
+    std::vector<float> mic_ring_;  // stereo ring buffer
+    std::atomic<size_t> mic_write_pos_{0};
+    size_t mic_read_pos_ = 0;
+    static constexpr size_t kMicRingSize = 48000;  // 1 second @ 48kHz
+
+    void start_mic_capture() {
+        mic_ring_.assign(kMicRingSize * 2, 0.0f);  // stereo
+        mic_write_pos_.store(0, std::memory_order_relaxed);
+        mic_read_pos_ = 0;
+
+        AudioStreamBasicDescription fmt{};
+        fmt.mSampleRate = 48000;
+        fmt.mFormatID = kAudioFormatLinearPCM;
+        fmt.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
+        fmt.mBytesPerPacket = 4;
+        fmt.mFramesPerPacket = 1;
+        fmt.mBytesPerFrame = 4;
+        fmt.mChannelsPerFrame = 1;  // mono mic
+        fmt.mBitsPerChannel = 32;
+
+        OSStatus st = AudioQueueNewInput(&fmt, mic_aq_callback, this,
+                                         nullptr, nullptr, 0, &mic_queue_);
+        if (st != noErr) {
+            fprintf(stderr, "[DJ-Mic] AudioQueueNewInput failed: %d\n", (int)st);
+            mic_queue_ = nullptr;
+            return;
+        }
+
+        // 3 buffers of 480 frames (10ms) each
+        for (int i = 0; i < 3; i++) {
+            AudioQueueBufferRef buf;
+            AudioQueueAllocateBuffer(mic_queue_, 480 * 4, &buf);
+            AudioQueueEnqueueBuffer(mic_queue_, buf, 0, nullptr);
+        }
+        st = AudioQueueStart(mic_queue_, nullptr);
+        if (st != noErr) {
+            fprintf(stderr, "[DJ-Mic] AudioQueueStart failed: %d\n", (int)st);
+            AudioQueueDispose(mic_queue_, true);
+            mic_queue_ = nullptr;
+            return;
+        }
+        fprintf(stderr, "[DJ-Mic] Mic capture started\n");
+    }
+
+    void stop_mic_capture() {
+        if (mic_queue_) {
+            AudioQueueStop(mic_queue_, true);
+            AudioQueueDispose(mic_queue_, true);
+            mic_queue_ = nullptr;
+            fprintf(stderr, "[DJ-Mic] Mic capture stopped\n");
+        }
+    }
+
+    static void mic_aq_callback(void* ctx, AudioQueueRef queue,
+                                AudioQueueBufferRef buf,
+                                const AudioTimeStamp*, UInt32,
+                                const AudioStreamPacketDescription*) {
+        auto* self = static_cast<DJBroadcaster*>(ctx);
+        const float* data = (const float*)buf->mAudioData;
+        size_t frames = buf->mAudioDataByteSize / sizeof(float);
+        size_t wr = self->mic_write_pos_.load(std::memory_order_relaxed);
+        for (size_t i = 0; i < frames; i++) {
+            size_t idx = (wr + i) % self->kMicRingSize;
+            self->mic_ring_[idx * 2]     = data[i];  // L = mono
+            self->mic_ring_[idx * 2 + 1] = data[i];  // R = mono
+        }
+        self->mic_write_pos_.store(wr + frames, std::memory_order_release);
+        AudioQueueEnqueueBuffer(queue, buf, 0, nullptr);
+    }
+
+    /// Mix mic samples into interleaved S24 payload buffer (in-place)
+    void mix_mic_into_payload(int32_t* payload, AVAudioFrameCount frames) {
+        if (!mic_mix_enabled_.load(std::memory_order_relaxed)) return;
+
+        float mg  = mic_gain_.load(std::memory_order_relaxed);
+        float mug = music_gain_.load(std::memory_order_relaxed);
+        size_t mic_avail = mic_write_pos_.load(std::memory_order_acquire) - mic_read_pos_;
+        size_t mic_frames = std::min(mic_avail, (size_t)frames);
+
+        for (AVAudioFrameCount i = 0; i < frames; i++) {
+            for (int ch = 0; ch < 2; ch++) {
+                float music = (float)payload[i * 2 + ch] / 8388607.0f * mug;
+                float mic = 0.0f;
+                if (i < mic_frames) {
+                    size_t idx = (mic_read_pos_ + i) % kMicRingSize;
+                    mic = mic_ring_[idx * 2 + ch] * mg;
+                }
+                float mixed = music + mic;
+                if (mixed > 1.0f) mixed = 1.0f;
+                if (mixed < -1.0f) mixed = -1.0f;
+                payload[i * 2 + ch] = (int32_t)(mixed * 8388607.0f);
+            }
+        }
+        mic_read_pos_ += mic_frames;
+    }
+
+    void broadcast_loop() {
+        while (running_.load()) {
+            std::string filepath;
+            {
+                std::lock_guard<std::mutex> lk(mutex_);
+                if (playlist_index_ >= playlist_.size()) break;
+                filepath = playlist_[playlist_index_];
+                playlist_index_++;
+            }
+
+            broadcast_file(filepath);
+
+            if (!running_.load()) break;
+        }
+        running_.store(false);
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            current_track_.clear();
+        }
+        progress_.store(0.0f);
+        fprintf(stderr, "[DJ] Playlist finished\n");
+    }
+
+    void broadcast_file(const std::string& filepath) {
+        @autoreleasepool {
+            // Extract filename for display/relay commands
+            NSString* nsPath = @(filepath.c_str());
+            NSString* filename = [nsPath lastPathComponent];
+            {
+                std::lock_guard<std::mutex> lk(mutex_);
+                current_track_ = [filename UTF8String];
+            }
+            progress_.store(0.0f);
+
+            fprintf(stderr, "[DJ] Broadcasting: %s\n", filepath.c_str());
+
+            // Send FILE: command to relay
+            if (send_relay_cmd) {
+                std::string cmd = "FILE:" + std::string([filename UTF8String]) + "\n";
+                send_relay_cmd(cmd);
+            }
+
+            // Open audio file with AVAudioFile
+            NSError* error = nil;
+            NSURL* url = [NSURL fileURLWithPath:nsPath];
+            AVAudioFile* file = [[AVAudioFile alloc] initForReading:url error:&error];
+            if (!file || error) {
+                fprintf(stderr, "[DJ] Failed to open %s: %s\n",
+                        filepath.c_str(),
+                        error ? [[error localizedDescription] UTF8String] : "unknown");
+                return;
+            }
+
+            // Set up processing format: 48kHz stereo float32
+            AVAudioFormat* procFormat = [[AVAudioFormat alloc]
+                initWithCommonFormat:AVAudioPCMFormatFloat32
+                          sampleRate:48000
+                            channels:2
+                         interleaved:NO];
+
+            AVAudioFrameCount totalFrames = (AVAudioFrameCount)file.length;
+            double srcRate = file.processingFormat.sampleRate;
+            // Total frames in output rate
+            AVAudioFrameCount totalOutFrames = (AVAudioFrameCount)(
+                (double)totalFrames * 48000.0 / srcRate);
+
+            // Read in chunks of 480 frames (10ms at 48kHz) for OSTP packets
+            constexpr AVAudioFrameCount kChunkFrames = 480;
+            AVAudioPCMBuffer* readBuf = [[AVAudioPCMBuffer alloc]
+                initWithPCMFormat:file.processingFormat
+                    frameCapacity:kChunkFrames * 4];
+
+            // Converter for sample rate / format conversion
+            AVAudioConverter* converter = nil;
+            AVAudioPCMBuffer* convBuf = nil;
+            if (file.processingFormat.sampleRate != 48000 ||
+                file.processingFormat.channelCount != 2) {
+                converter = [[AVAudioConverter alloc]
+                    initFromFormat:file.processingFormat
+                         toFormat:procFormat];
+                convBuf = [[AVAudioPCMBuffer alloc]
+                    initWithPCMFormat:procFormat
+                        frameCapacity:kChunkFrames * 4];
+            }
+
+            // OSTP packet state
+            std::vector<int32_t> s24_buf(kChunkFrames * 2);
+            std::vector<uint8_t> packet_buf(transport::kMaxPacketSize);
+            uint32_t rtp_ts = 0;
+
+            // Pacing: 10ms per 480-frame chunk at 48kHz
+            auto next_send = std::chrono::steady_clock::now();
+            const auto chunk_duration = std::chrono::microseconds(10000); // 10ms
+
+            AVAudioFrameCount framesRead = 0;
+            skip_flag_.store(false);
+
+            // Send META with track info
+            if (send_relay_cmd) {
+                std::string meta = "META:{\"track\":\"" +
+                    std::string([filename UTF8String]) + "\"}\n";
+                send_relay_cmd(meta);
+            }
+
+            while (running_.load() && !skip_flag_.load()) {
+                // Read a chunk from the file
+                readBuf.frameLength = 0;
+                BOOL ok = [file readIntoBuffer:readBuf frameCount:kChunkFrames error:&error];
+                if (!ok || readBuf.frameLength == 0) break; // EOF or error
+
+                // Get float samples (converting if needed)
+                const float* left = nullptr;
+                const float* right = nullptr;
+                AVAudioFrameCount frames = 0;
+
+                if (converter) {
+                    convBuf.frameLength = 0;
+                    [converter convertToBuffer:convBuf
+                                         error:&error
+                            withInputFromBlock:^AVAudioBuffer*(AVAudioPacketCount inCount,
+                                                              AVAudioConverterInputStatus* outStatus) {
+                        *outStatus = AVAudioConverterInputStatus_HaveData;
+                        return readBuf;
+                    }];
+                    frames = convBuf.frameLength;
+                    left = convBuf.floatChannelData[0];
+                    right = (convBuf.format.channelCount >= 2) ?
+                            convBuf.floatChannelData[1] : convBuf.floatChannelData[0];
+                } else {
+                    frames = readBuf.frameLength;
+                    left = readBuf.floatChannelData[0];
+                    right = (readBuf.format.channelCount >= 2) ?
+                            readBuf.floatChannelData[1] : readBuf.floatChannelData[0];
+                }
+
+                if (frames == 0) break;
+
+                // Convert float32 non-interleaved → interleaved int32 S24
+                for (AVAudioFrameCount i = 0; i < frames; i++) {
+                    float lv = left[i];
+                    float rv = right[i];
+                    if (lv > 1.0f) lv = 1.0f;
+                    if (lv < -1.0f) lv = -1.0f;
+                    if (rv > 1.0f) rv = 1.0f;
+                    if (rv < -1.0f) rv = -1.0f;
+                    s24_buf[i * 2]     = static_cast<int32_t>(lv * 8388607.0f);
+                    s24_buf[i * 2 + 1] = static_cast<int32_t>(rv * 8388607.0f);
+                }
+
+                // Mix mic audio into music if enabled
+                mix_mic_into_payload(s24_buf.data(), frames);
+
+                // Build OSTP packet
+                uint16_t seq_lo = static_cast<uint16_t>(seq_ & 0xFFFF);
+                uint16_t seq_hi = static_cast<uint16_t>((seq_ >> 16) & 0xFFFF);
+
+                struct timespec wall_ts;
+                clock_gettime(CLOCK_REALTIME, &wall_ts);
+                uint32_t media_ts = static_cast<uint32_t>(
+                    (static_cast<uint64_t>(wall_ts.tv_sec) * 1'000'000'000ULL +
+                     wall_ts.tv_nsec) & 0xFFFFFFFF);
+
+                size_t pkt_size = transport::ostp_build_packet(
+                    packet_buf.data(), packet_buf.size(),
+                    ssrc_, seq_lo, rtp_ts,
+                    96, 1, seq_hi, media_ts,
+                    s24_buf.data(),
+                    frames * 2 * sizeof(int32_t)
+                );
+
+                if (pkt_size > 0 && tx_relay_callback) {
+                    tx_relay_callback(packet_buf.data(), pkt_size);
+                }
+
+                seq_++;
+                rtp_ts += frames;
+                framesRead += readBuf.frameLength;
+
+                // Update progress
+                if (totalOutFrames > 0) {
+                    progress_.store(
+                        std::min(1.0f, static_cast<float>(framesRead) /
+                                       static_cast<float>(totalFrames)),
+                        std::memory_order_relaxed);
+                }
+
+                // Pace in real-time
+                next_send += chunk_duration;
+                std::this_thread::sleep_until(next_send);
+            }
+
+            // Send SYNC: command when track ends
+            if (send_relay_cmd) {
+                std::string cmd = "SYNC:end\n";
+                send_relay_cmd(cmd);
+            }
+
+            fprintf(stderr, "[DJ] Finished: %s (frames=%u)\n",
+                    filepath.c_str(), (unsigned)framesRead);
+        } // @autoreleasepool
+    }
+
+    std::thread thread_;
+    std::atomic<bool> running_{false};
+    std::atomic<bool> skip_flag_{false};
+    mutable std::mutex mutex_;
+    std::vector<std::string> playlist_;
+    size_t playlist_index_ = 0;
+    std::string current_track_;
+    std::atomic<float> progress_{0.0f};
+
+    // OSTP state
+    uint32_t ssrc_ = 0x444A4D58; // 'DJMX'
+    uint32_t seq_ = 0;
+    uint32_t rtp_ts_ = 0;
+};
+
 /// Internal receiver implementation
 class ReceiverImpl {
 public:
@@ -1607,8 +2116,8 @@ public:
         , volume_(1.0f)
         , muted_(false)
         , running_(false)
-        , target_fill_frames_(3840)  // 80ms default — absorbs WiFi jitter
-        , ring_buffer_(48000, channels * sizeof(int32_t))  // 1s capacity (next pow2 = 65536)
+        , target_fill_frames_(2880)  // 60ms default — matched with iOS for sync
+        , ring_buffer_(192000, channels * sizeof(int32_t))  // 4s capacity — matched with iOS
         , read_buffer_(4096 * channels)
         , drain_buf_(4096 * channels)
         , held_sample_(channels, 0)
@@ -1643,38 +2152,80 @@ public:
             }
         };
 
-        // Create audio output device
-        audio_device_ = pal::AudioDevice::create();
-        if (!audio_device_) {
-            fprintf(stderr, "[SolunaRx] Failed to create audio device\n");
-            return false;
-        }
+        // Create audio output directly (inline DefaultOutput — bypasses pal::AudioDevice)
+        fprintf(stderr, "[SolunaRx] Opening audio output: %uHz, %uch (inline DefaultOutput)\n",
+                kDefaultSampleRate, channels_);
+        {
+            AudioComponentDescription desc = {};
+            desc.componentType = kAudioUnitType_Output;
+            desc.componentSubType = kAudioUnitSubType_DefaultOutput;
+            desc.componentManufacturer = kAudioUnitManufacturer_Apple;
 
-        pal::AudioStreamConfig audio_config;
-        audio_config.sample_rate = kDefaultSampleRate;
-        audio_config.channels = channels_;
-        audio_config.frames_per_buffer = 256;  // ~5ms
-        audio_config.format = SampleFormat::S24_LE;
+            AudioComponent comp = AudioComponentFindNext(nullptr, &desc);
+            if (!comp) {
+                fprintf(stderr, "[SolunaRx] DefaultOutput component not found\n");
+                return false;
+            }
 
-        fprintf(stderr, "[SolunaRx] Opening audio output: %uHz, %uch, %u frames/buf\n",
-                audio_config.sample_rate, audio_config.channels, audio_config.frames_per_buffer);
+            OSStatus st = AudioComponentInstanceNew(comp, &inline_audio_unit_);
+            if (st != noErr) {
+                fprintf(stderr, "[SolunaRx] Failed to create audio unit: %d\n", (int)st);
+                return false;
+            }
 
-        if (!audio_device_->open_output("default", audio_config)) {
-            fprintf(stderr, "[SolunaRx] Failed to open audio output\n");
-            return false;
+            AudioStreamBasicDescription fmt = {};
+            fmt.mSampleRate = kDefaultSampleRate;
+            fmt.mFormatID = kAudioFormatLinearPCM;
+            fmt.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
+            fmt.mBytesPerPacket = sizeof(float) * channels_;
+            fmt.mFramesPerPacket = 1;
+            fmt.mBytesPerFrame = sizeof(float) * channels_;
+            fmt.mChannelsPerFrame = channels_;
+            fmt.mBitsPerChannel = 32;
+
+            st = AudioUnitSetProperty(inline_audio_unit_,
+                kAudioUnitProperty_StreamFormat,
+                kAudioUnitScope_Input, 0, &fmt, sizeof(fmt));
+            if (st != noErr) {
+                fprintf(stderr, "[SolunaRx] Failed to set format: %d\n", (int)st);
+                AudioComponentInstanceDispose(inline_audio_unit_);
+                inline_audio_unit_ = nullptr;
+                return false;
+            }
+
+            AURenderCallbackStruct cbs = {};
+            cbs.inputProc = inline_render_cb;
+            cbs.inputProcRefCon = this;
+            st = AudioUnitSetProperty(inline_audio_unit_,
+                kAudioUnitProperty_SetRenderCallback,
+                kAudioUnitScope_Input, 0, &cbs, sizeof(cbs));
+            if (st != noErr) {
+                fprintf(stderr, "[SolunaRx] Failed to set callback: %d\n", (int)st);
+                AudioComponentInstanceDispose(inline_audio_unit_);
+                inline_audio_unit_ = nullptr;
+                return false;
+            }
+
+            st = AudioUnitInitialize(inline_audio_unit_);
+            if (st != noErr) {
+                fprintf(stderr, "[SolunaRx] Failed to init audio unit: %d\n", (int)st);
+                AudioComponentInstanceDispose(inline_audio_unit_);
+                inline_audio_unit_ = nullptr;
+                return false;
+            }
         }
 
         running_.store(true);
 
-        // Start audio playback FIRST so the render callback is active before data arrives
-        auto callback = [this](float* buffer, uint32_t frame_count) {
-            audio_callback(buffer, frame_count);
-        };
-
-        if (!audio_device_->start(callback)) {
-            fprintf(stderr, "[SolunaRx] Failed to start audio device\n");
-            running_.store(false);
-            return false;
+        // Start audio playback
+        {
+            OSStatus st = AudioOutputUnitStart(inline_audio_unit_);
+            if (st != noErr) {
+                fprintf(stderr, "[SolunaRx] Failed to start audio unit: %d\n", (int)st);
+                running_.store(false);
+                return false;
+            }
+            fprintf(stderr, "[SolunaRx] Inline audio unit started successfully\n");
         }
 
         // Flush ALL stale packets from the UDP socket buffer.
@@ -1735,6 +2286,11 @@ public:
             extra_sinks_.clear();
         }
 
+        if (inline_audio_unit_) {
+            AudioOutputUnitStop(inline_audio_unit_);
+            AudioComponentInstanceDispose(inline_audio_unit_);
+            inline_audio_unit_ = nullptr;
+        }
         if (audio_device_) {
             audio_device_->stop();
             audio_device_->close();
@@ -1778,6 +2334,10 @@ public:
     }
     bool is_sync_mode() const { return sync_mode_.load(); }
 
+    // ── Loudness normalization (EBU R128) ─────────────────────────────────
+    void set_loudness_norm(bool enabled) { loudness_norm_enabled_.store(enabled); }
+    bool is_loudness_norm() const { return loudness_norm_enabled_.load(); }
+
     void set_sync_delay_ms(uint32_t ms) {
         ms = std::max(50u, std::min(1000u, ms));
         sync_delay_ms_.store(ms);
@@ -1796,8 +2356,12 @@ public:
         return health_.load(std::memory_order_relaxed);
     }
 
-    void set_network_disabled(bool d) { network_disabled_.store(d); }
-    bool is_network_disabled() const { return network_disabled_.load(); }
+    void set_relay_network_disabled(bool d) { relay_network_disabled_.store(d); }
+    void set_filesync_network_disabled(bool d) { filesync_network_disabled_.store(d); }
+    bool is_network_disabled() const {
+        return relay_network_disabled_.load(std::memory_order_relaxed) ||
+               filesync_network_disabled_.load(std::memory_order_relaxed);
+    }
 
     // ── Relay support ──────────────────────────────────────────────────────
 
@@ -1808,6 +2372,20 @@ public:
 
     void inject_raw_packet(const uint8_t* data, size_t len) {
         if (rtp_receiver_) rtp_receiver_->inject_raw_packet(data, len, ring_buffer_);
+    }
+
+    /// Inject decoded PCM samples directly into the ring buffer.
+    /// @param samples Interleaved int32_t samples (24-bit range: -8388608..8388607)
+    /// @param frame_count Number of frames (each frame = channels_ samples)
+    void inject_pcm_samples(const int32_t* samples, size_t frame_count) {
+        ring_buffer_.write(samples, frame_count);
+    }
+
+    /// Request a ring-buffer flush from the audio callback thread (thread-safe).
+    /// The actual reset happens at the top of the next audio_callback to avoid
+    /// racing with the audio thread's reads of ring_buffer_, prefilled_, and ramp_.
+    void flush_ring_buffer() {
+        flush_requested_.store(true, std::memory_order_release);
     }
 
     // ── Multi-output support ─────────────────────────────────────────────
@@ -1948,11 +2526,22 @@ public:
                 rtp_receiver_->inject_raw_packet(data, len, ring_buffer_);
             }
         });
-        return wan_relay_->connect(host, port, group, password, device_name);
+        // Apply stored callbacks BEFORE connect so they're active when
+        // the relay sends FILE:/SYNC: to new joiners immediately after JOIN
+        if (stored_meta_cb_) wan_relay_->set_meta_callback(stored_meta_cb_);
+        if (stored_file_cb_) wan_relay_->set_file_callback(stored_file_cb_);
+        if (stored_sync_cb_) wan_relay_->set_sync_callback(stored_sync_cb_);
+        bool ok = wan_relay_->connect(host, port, group, password, device_name);
+        if (ok) {
+            // Switch to relay-only mode: multicast is LAN-only, relay carries WAN audio
+            set_relay_network_disabled(true);
+        }
+        return ok;
     }
 
     void wan_relay_disconnect() {
         if (wan_relay_) wan_relay_->disconnect();
+        set_relay_network_disabled(false);  // restore multicast
     }
 
     WanRelayClient::State wan_relay_state() const {
@@ -1971,6 +2560,32 @@ public:
     void wan_relay_send_audio(const uint8_t* data, size_t len) {
         if (wan_relay_ && wan_relay_->state() == WanRelayClient::State::Connected) {
             wan_relay_->send_audio(data, len);
+        }
+    }
+
+    void wan_relay_set_meta_callback(WanRelayClient::MetaCallback cb) {
+        stored_meta_cb_ = cb;
+        if (wan_relay_) wan_relay_->set_meta_callback(std::move(cb));
+    }
+
+    void wan_relay_set_file_callback(WanRelayClient::FileCallback cb) {
+        stored_file_cb_ = cb;
+        if (wan_relay_) wan_relay_->set_file_callback(std::move(cb));
+    }
+
+    void wan_relay_set_sync_callback(WanRelayClient::SyncCallback cb) {
+        stored_sync_cb_ = cb;
+        if (wan_relay_) wan_relay_->set_sync_callback(std::move(cb));
+    }
+
+    void wan_relay_send_ready(const std::string& filename) {
+        if (wan_relay_) wan_relay_->send_ready(filename);
+    }
+
+    /// Send a raw text command via WAN relay (for DJ mode FILE:/META:/SYNC: commands)
+    void wan_relay_send_cmd(const std::string& cmd) {
+        if (wan_relay_ && wan_relay_->state() == WanRelayClient::State::Connected) {
+            wan_relay_->send_command(cmd);
         }
     }
 
@@ -2100,8 +2715,8 @@ private:
         uint64_t loop_count = 0;
         uint64_t last_log_pkts = 0;
         while (running_.load()) {
-            // When network_disabled_, audio arrives via inject_raw_packet instead
-            if (!network_disabled_.load() && rtp_receiver_) {
+            // When network disabled, audio arrives via inject_raw_packet instead
+            if (!is_network_disabled() && rtp_receiver_) {
                 for (int i = 0; i < 10 && running_.load(); i++) {
                     if (!rtp_receiver_->receive_packet(ring_buffer_)) break;
                 }
@@ -2287,57 +2902,82 @@ private:
     }
 
     void audio_callback(float* buffer, uint32_t frame_count) {
+        // Handle deferred flush request from main thread (see flush_ring_buffer())
+        if (flush_requested_.load(std::memory_order_acquire)) {
+            flush_requested_.store(false, std::memory_order_relaxed);
+            ring_buffer_.reset();
+            prefilled_ = false;
+            ramp_ = 0.0f;
+        }
+
         audio_cb_count_.fetch_add(1, std::memory_order_relaxed);
         const float vol = (muted_.load() || health_silenced_.load(std::memory_order_relaxed))
                           ? 0.0f : volume_.load();
         const uint32_t total_samples = frame_count * channels_;
 
-        // Adaptive target: always >= frame_count*4 to prevent immediate underrun
+        // Adaptive target: always >= frame_count*3 to prevent immediate underrun
         uint32_t target = target_fill_frames_.load() + primary_delay_frames_.load();
-        const uint32_t min_target = frame_count * 4;
-        if (target < min_target) {
-            target = min_target;
-        }
+        const uint32_t min_target = frame_count * 3;
+        if (target < min_target) target = min_target;
 
-        // ── Latency management ────────────────────────────────────────────────
-        // Gradual drift correction: when buffer exceeds target, discard a few
-        // frames per callback to gently bring it back. This avoids the audible
-        // glitches caused by discarding large chunks at once.
+        // ── Gradual drift correction with crossfade ────────────────────────
+        // Only discard when buffer is significantly overfilled (3x target)
+        // to avoid WiFi burst → discard → underrun cycle.
+        // Matched with iOS: very gradual (frame_count/80) to keep sync stable.
         {
             size_t avail_now = ring_buffer_.available_read();
-            if (prefilled_ && avail_now > static_cast<size_t>(target) + frame_count * 2) {
-                // Soft drift: discard up to 10% of frame_count per callback (max ~25 frames)
-                // This creates an imperceptible speed-up instead of audible gaps
-                size_t drift = std::min(avail_now - static_cast<size_t>(target),
-                                        static_cast<size_t>(frame_count / 10 + 1));
+            if (prefilled_ && avail_now > static_cast<size_t>(target) * 3) {
+                size_t excess = avail_now - static_cast<size_t>(target) * 2;
+                size_t drift = std::min(excess, static_cast<size_t>(frame_count / 80 + 1));
                 ring_buffer_.discard(drift);
+                drift_xfade_ = 48;
             }
         }
 
         const size_t avail = ring_buffer_.available_read();
-        const bool has_data = (avail >= frame_count);
 
-        constexpr float kFadeIn  = 0.001f;
-        constexpr float kFadeOut = 0.005f;
+        constexpr float kFadeIn  = 0.002f;  // matched with iOS
+        constexpr float kFadeOut = 0.004f;
 
+        // Balance gains (needed by both underrun and normal paths)
+        const float bal = primary_balance_.load(std::memory_order_relaxed);
+        const float gain_l = (channels_ >= 2 && bal > 0) ? (1.0f - bal) : 1.0f;
+        const float gain_r = (channels_ >= 2 && bal < 0) ? (1.0f + bal) : 1.0f;
+
+        // ── Initial prefill (only at startup, NOT reset on underrun) ───────
         if (!prefilled_) {
-            if (avail < target) {
-                ramp_ *= (1.0f - kFadeOut);
+            if (avail < min_target) {
                 std::memset(buffer, 0, total_samples * sizeof(float));
                 return;
             }
             prefilled_ = true;
-            // On first fill: discard excess beyond 3× target to minimize initial latency.
-            const size_t ideal_fill = static_cast<size_t>(target) * 3;
-            if (avail > ideal_fill + frame_count) {
-                ring_buffer_.discard(avail - ideal_fill);
-            }
+            ramp_ = 0.0f;  // ensure clean fade-in
         }
 
-        if (!has_data) {
-            prefilled_ = false;
+        // ── Underrun: play what we have, then fade out remainder ──────────
+        // Matched with iOS: no prefill reset on underrun to avoid 80ms gaps.
+        if (avail < frame_count) {
             record_underrun_now();
-            for (uint32_t i = 0; i < frame_count; i++) {
+            maybe_check_recovery();
+            const size_t have = avail;
+            if (have > 0) {
+                ring_buffer_.read(read_buffer_.data(), have);
+                const int32_t* src = read_buffer_.data();
+                for (uint32_t i = 0; i < have; i++) {
+                    ramp_ += kFadeIn * (vol - ramp_);
+                    for (uint32_t ch = 0; ch < channels_; ch++) {
+                        const uint32_t idx = i * channels_ + ch;
+                        float s = static_cast<float>(src[idx]) / 8388608.0f;
+                        if (s > 1.0f) s = 1.0f;
+                        else if (s < -1.0f) s = -1.0f;
+                        float ch_gain = (ch == 0) ? gain_l : (ch == 1) ? gain_r : 1.0f;
+                        float out = s * ramp_ * ch_gain;
+                        buffer[idx] = out;
+                        held_sample_[ch] = out;
+                    }
+                }
+            }
+            for (uint32_t i = static_cast<uint32_t>(have); i < frame_count; i++) {
                 ramp_ *= (1.0f - kFadeOut);
                 for (uint32_t ch = 0; ch < channels_; ch++) {
                     buffer[i * channels_ + ch] = held_sample_[ch] * ramp_;
@@ -2352,14 +2992,11 @@ private:
         // Normal playback with soft limiter to prevent clipping
         ring_buffer_.read(read_buffer_.data(), frame_count);
         const int32_t* src = read_buffer_.data();
-        const float bal = primary_balance_.load(std::memory_order_relaxed);
-        const float gain_l = (channels_ >= 2 && bal > 0) ? (1.0f - bal) : 1.0f;
-        const float gain_r = (channels_ >= 2 && bal < 0) ? (1.0f + bal) : 1.0f;
         for (uint32_t i = 0; i < frame_count; i++) {
             ramp_ += kFadeIn * (vol - ramp_);
             for (uint32_t ch = 0; ch < channels_; ch++) {
                 const uint32_t idx = i * channels_ + ch;
-                float s = static_cast<float>(src[idx]) / 8388607.0f;
+                float s = static_cast<float>(src[idx]) / 8388608.0f;  // matched with iOS
                 // Soft limiter: tanh-style knee at ±0.9 to prevent hard clipping
                 if (s > 0.9f)       s = 0.9f + 0.1f * std::tanh((s - 0.9f) * 5.0f);
                 else if (s < -0.9f) s = -0.9f + 0.1f * std::tanh((s + 0.9f) * 5.0f);
@@ -2370,9 +3007,57 @@ private:
                 // Crossover filter (LPF/HPF)
                 s = primary_crossover_.process(s, ch);
                 float ch_gain = (ch == 0) ? gain_l : (ch == 1) ? gain_r : 1.0f;
-                const float out = s * ramp_ * ch_gain;
+                float out = s * ramp_ * ch_gain;
+                // Drift crossfade to smooth discontinuities after discard
+                if (drift_xfade_ > 0) {
+                    float alpha = 1.0f - static_cast<float>(drift_xfade_) / 49.0f;
+                    out = out * alpha + held_sample_[ch] * (1.0f - alpha);
+                }
                 buffer[idx] = out;
                 held_sample_[ch] = out;
+            }
+            if (drift_xfade_ > 0) drift_xfade_--;
+        }
+
+        // ── EBU R128 loudness normalization ──────────────────────────────
+        if (loudness_norm_enabled_.load(std::memory_order_relaxed)) {
+            // Simplified K-weighted loudness measurement — mean square power
+            float sum_sq = 0;
+            for (uint32_t i = 0; i < total_samples; i++) {
+                float s = buffer[i];
+                sum_sq += s * s;
+            }
+            float mean_sq = sum_sq / total_samples;
+
+            // Store power (mean square) in sliding window (~400ms at ~120 callbacks/sec)
+            // Power-domain averaging is correct for EBU R128 (not dB averaging)
+            loudness_window_[loudness_window_pos_] = mean_sq;
+            loudness_window_pos_ = (loudness_window_pos_ + 1) % 48;
+            if (loudness_window_pos_ == 0) loudness_window_full_ = true;
+
+            // Calculate integrated loudness — average power then convert to dB
+            int count = loudness_window_full_ ? 48 : loudness_window_pos_;
+            if (count > 0) {
+                float power_sum = 0;
+                for (int i = 0; i < count; i++) power_sum += loudness_window_[i];
+                float avg_power = power_sum / count;
+                float avg_db = (avg_power > 1e-20f) ? 10.0f * log10f(avg_power) : -100.0f;
+
+                // Target -23 LUFS, calculate needed gain
+                float target_db = -23.0f;
+                float gain_db = target_db - avg_db;
+                // Clamp gain to reasonable range (-12 to +12 dB)
+                if (gain_db < -12.0f) gain_db = -12.0f;
+                if (gain_db > 12.0f) gain_db = 12.0f;
+
+                float target_gain = powf(10.0f, gain_db / 20.0f);
+                // Smooth gain changes (EMA)
+                loudness_current_gain_ = loudness_current_gain_ * 0.95f + target_gain * 0.05f;
+            }
+
+            // Apply gain
+            for (uint32_t i = 0; i < total_samples; i++) {
+                buffer[i] *= loudness_current_gain_;
             }
         }
 
@@ -2419,10 +3104,14 @@ private:
     std::atomic<bool>     muted_;
     std::atomic<bool>     running_;
     std::atomic<uint32_t> target_fill_frames_;
-    std::atomic<bool>     sync_mode_{false};
+    std::atomic<bool>     sync_mode_{true};
     std::atomic<uint32_t> sync_delay_ms_{200};     // target end-to-end delay (ms)
-    std::atomic<bool>     network_disabled_{false};
+    std::atomic<bool>     relay_network_disabled_{false};
+    std::atomic<bool>     filesync_network_disabled_{false};
+    std::atomic<bool>     flush_requested_{false};
     std::atomic<uint64_t> audio_cb_count_{0};   ///< audio callback invocation counter (debug)
+    // Loudness normalization (EBU R128):
+    std::atomic<bool>     loudness_norm_enabled_{false};
     // Health tracking atomics (written audio-cb, read ObjC):
     std::atomic<int>      health_{0};           ///< 0=good 1=stressed 2=silenced
     std::atomic<bool>     health_silenced_{false};
@@ -2432,7 +3121,13 @@ private:
     // audio_callback-only state (no atomics needed):
     bool                  prefilled_ = false;
     float                 ramp_      = 0.0f;
+    int                   drift_xfade_ = 0;  // crossfade counter after drift discard
     std::vector<float>    held_sample_;
+    // Loudness normalization state (audio-callback-only):
+    float loudness_current_gain_ = 1.0f;
+    float loudness_window_[48]{};           // 400ms window at ~120 callbacks/sec
+    int   loudness_window_pos_ = 0;
+    bool  loudness_window_full_ = false;
     // Health tracking — audio-callback-only (no atomic needed):
     uint64_t health_window_start_ms_    = 0;
     uint32_t health_underruns_in_window_ = 0;
@@ -2451,8 +3146,26 @@ private:
     std::function<void(const float*, uint32_t)> record_callback_;
     std::mutex record_mutex_;
 
+    static OSStatus inline_render_cb(void* ref,
+                                     AudioUnitRenderActionFlags*,
+                                     const AudioTimeStamp*,
+                                     UInt32,
+                                     UInt32 frame_count,
+                                     AudioBufferList* ioData) {
+        auto* self = static_cast<ReceiverImpl*>(ref);
+        auto* dst = static_cast<float*>(ioData->mBuffers[0].mData);
+        const uint32_t total = frame_count * self->channels_;
+        if (!self->running_.load()) {
+            std::memset(dst, 0, total * sizeof(float));
+            return noErr;
+        }
+        self->audio_callback(dst, frame_count);
+        return noErr;
+    }
+
     std::unique_ptr<SimpleRtpReceiver> rtp_receiver_;
-    std::unique_ptr<pal::AudioDevice>  audio_device_;
+    std::unique_ptr<pal::AudioDevice>  audio_device_;  // unused (kept for future)
+    AudioUnit inline_audio_unit_ = nullptr;
     pipeline::RingBuffer  ring_buffer_;
     std::vector<int32_t>  read_buffer_;
     std::vector<int32_t>  drain_buf_;
@@ -2466,6 +3179,9 @@ private:
 
     // WAN relay client
     std::unique_ptr<WanRelayClient> wan_relay_;
+    WanRelayClient::MetaCallback stored_meta_cb_;
+    WanRelayClient::FileCallback stored_file_cb_;
+    WanRelayClient::SyncCallback stored_sync_cb_;
 };
 
 } // anonymous namespace
@@ -2595,6 +3311,7 @@ private:
     std::unique_ptr<ReceiverImpl> _impl;
     std::unique_ptr<TransmitterImpl> _txImpl;
     std::unique_ptr<ShmTransmitter> _shmTxImpl;
+    std::unique_ptr<DJBroadcaster> _djImpl;
     NSTimer *_statsTimer;
     uint32_t _bufferTargetMs;
     ExtAudioFileRef _recordFile;
@@ -2750,7 +3467,15 @@ private:
 }
 
 - (void)setNetworkDisabled:(BOOL)disabled {
-    if (_impl) _impl->set_network_disabled((bool)disabled);
+    if (_impl) _impl->set_filesync_network_disabled((bool)disabled);
+}
+
+- (BOOL)relayNetworkDisabled {
+    return _impl ? (BOOL)_impl->is_network_disabled() : NO;
+}
+
+- (void)setRelayNetworkDisabled:(BOOL)disabled {
+    if (_impl) _impl->set_relay_network_disabled((bool)disabled);
 }
 
 - (SolunaReceiverStats *)currentStats {
@@ -3003,6 +3728,18 @@ private:
     }
 }
 
+- (void)injectPcmSamples:(NSData *)data frameCount:(NSUInteger)frameCount {
+    if (_impl && data.length > 0) {
+        _impl->inject_pcm_samples(static_cast<const int32_t*>(data.bytes), frameCount);
+    }
+}
+
+- (void)flushRingBuffer {
+    if (_impl) {
+        _impl->flush_ring_buffer();
+    }
+}
+
 // ── Recording ──────────────────────────────────────────────────────────────
 
 - (BOOL)startRecordingToFile:(NSString *)path {
@@ -3108,6 +3845,16 @@ private:
     if (_impl) _impl->set_sync_delay_ms(syncDelayMs);
 }
 
+// ── Loudness Normalization ──────────────────────────────────────────────────
+
+- (void)setLoudnessNormEnabled:(BOOL)enabled {
+    if (_impl) _impl->set_loudness_norm(enabled);
+}
+
+- (BOOL)loudnessNormEnabled {
+    return _impl ? _impl->is_loudness_norm() : NO;
+}
+
 // ── Mic Transmit (TX) ───────────────────────────────────────────────────────
 
 - (BOOL)isMicTransmitting {
@@ -3189,6 +3936,14 @@ private:
                 impl->wan_relay_send_audio(data, len);
             };
         }
+        if (_djImpl) {
+            _djImpl->tx_relay_callback = [impl](const uint8_t* data, size_t len) {
+                impl->wan_relay_send_audio(data, len);
+            };
+            _djImpl->send_relay_cmd = [impl](const std::string& cmd) {
+                impl->wan_relay_send_cmd(cmd);
+            };
+        }
     }
 
     return ok ? YES : NO;
@@ -3201,6 +3956,10 @@ private:
     }
     if (_shmTxImpl) {
         _shmTxImpl->tx_relay_callback = nullptr;
+    }
+    if (_djImpl) {
+        _djImpl->tx_relay_callback = nullptr;
+        _djImpl->send_relay_cmd = nullptr;
     }
     if (_impl) _impl->wan_relay_disconnect();
 }
@@ -3226,6 +3985,53 @@ private:
     if (!_impl) return nil;
     auto e = _impl->wan_relay_error();
     return e.empty() ? nil : [NSString stringWithUTF8String:e.c_str()];
+}
+
+// ── Metadata / File-Sync Callbacks ──────────────────────────────────────────
+
+- (void)setMetaCallback:(nullable void(^)(NSString *))callback {
+    if (_impl) {
+        if (callback) {
+            _impl->wan_relay_set_meta_callback([callback](const std::string& json) {
+                NSString *str = [NSString stringWithUTF8String:json.c_str()];
+                dispatch_async(dispatch_get_main_queue(), ^{ callback(str); });
+            });
+        } else {
+            _impl->wan_relay_set_meta_callback(nullptr);
+        }
+    }
+}
+
+- (void)setFileCallback:(nullable void(^)(NSString *))callback {
+    if (_impl) {
+        if (callback) {
+            _impl->wan_relay_set_file_callback([callback](const std::string& filename) {
+                NSString *str = [NSString stringWithUTF8String:filename.c_str()];
+                dispatch_async(dispatch_get_main_queue(), ^{ callback(str); });
+            });
+        } else {
+            _impl->wan_relay_set_file_callback(nullptr);
+        }
+    }
+}
+
+- (void)setSyncCallback:(nullable void(^)(NSString *))callback {
+    if (_impl) {
+        if (callback) {
+            _impl->wan_relay_set_sync_callback([callback](const std::string& sync) {
+                NSString *str = [NSString stringWithUTF8String:sync.c_str()];
+                dispatch_async(dispatch_get_main_queue(), ^{ callback(str); });
+            });
+        } else {
+            _impl->wan_relay_set_sync_callback(nullptr);
+        }
+    }
+}
+
+- (void)sendReady:(NSString *)filename {
+    if (_impl) {
+        _impl->wan_relay_send_ready(std::string(filename.UTF8String));
+    }
 }
 
 // ── System Audio Transmit (SHM) ─────────────────────────────────────────────
@@ -3272,6 +4078,102 @@ private:
         _shmTxImpl->stop();
         _shmTxImpl.reset();
     }
+}
+
+// ── DJ Mode ─────────────────────────────────────────────────────────────────
+
+- (BOOL)isDJActive {
+    return _djImpl && _djImpl->is_active();
+}
+
+- (NSString *)djCurrentTrack {
+    if (!_djImpl) return nil;
+    auto t = _djImpl->current_track();
+    return t.empty() ? nil : [NSString stringWithUTF8String:t.c_str()];
+}
+
+- (float)djProgress {
+    return _djImpl ? _djImpl->progress() : 0.0f;
+}
+
+- (BOOL)startDJBroadcast:(NSString *)filePath {
+    // Stop existing DJ session if any
+    if (_djImpl) _djImpl->stop();
+
+    _djImpl = std::make_unique<DJBroadcaster>();
+
+    // Wire relay callbacks using ReceiverImpl's WAN relay
+    if (_impl) {
+        auto* impl = _impl.get();
+        _djImpl->tx_relay_callback = [impl](const uint8_t* data, size_t len) {
+            impl->wan_relay_send_audio(data, len);
+        };
+        _djImpl->send_relay_cmd = [impl](const std::string& cmd) {
+            impl->wan_relay_send_cmd(cmd);
+        };
+    }
+
+    return _djImpl->start_file([filePath UTF8String]) ? YES : NO;
+}
+
+- (BOOL)startDJDirectory:(NSString *)dirPath shuffle:(BOOL)shuffle {
+    // Stop existing DJ session if any
+    if (_djImpl) _djImpl->stop();
+
+    _djImpl = std::make_unique<DJBroadcaster>();
+
+    // Wire relay callbacks using ReceiverImpl's WAN relay
+    if (_impl) {
+        auto* impl = _impl.get();
+        _djImpl->tx_relay_callback = [impl](const uint8_t* data, size_t len) {
+            impl->wan_relay_send_audio(data, len);
+        };
+        _djImpl->send_relay_cmd = [impl](const std::string& cmd) {
+            impl->wan_relay_send_cmd(cmd);
+        };
+    }
+
+    return _djImpl->start_directory([dirPath UTF8String], (bool)shuffle) ? YES : NO;
+}
+
+- (void)stopDJ {
+    if (_djImpl) {
+        _djImpl->stop();
+        _djImpl.reset();
+    }
+    fprintf(stderr, "[DJ] DJ mode stopped\n");
+}
+
+- (void)skipDJTrack {
+    if (_djImpl) {
+        _djImpl->skip();
+    }
+}
+
+// ── DJ Mic Mix ──────────────────────────────────────────────────────────────
+
+- (void)setDjMicMixEnabled:(BOOL)enabled {
+    if (_djImpl) _djImpl->set_mic_mix(enabled);
+}
+
+- (BOOL)djMicMixEnabled {
+    return _djImpl ? _djImpl->mic_mix_enabled_.load() : NO;
+}
+
+- (void)setDjMicGain:(float)gain {
+    if (_djImpl) _djImpl->mic_gain_.store(gain, std::memory_order_relaxed);
+}
+
+- (float)djMicGain {
+    return _djImpl ? _djImpl->mic_gain_.load(std::memory_order_relaxed) : 1.0f;
+}
+
+- (void)setDjMusicGain:(float)gain {
+    if (_djImpl) _djImpl->music_gain_.store(gain, std::memory_order_relaxed);
+}
+
+- (float)djMusicGain {
+    return _djImpl ? _djImpl->music_gain_.load(std::memory_order_relaxed) : 0.7f;
 }
 
 @end

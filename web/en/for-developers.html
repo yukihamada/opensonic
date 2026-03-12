@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna for Developers — OST protocol, REST API, WebSocket, Prometheus metrics. Open source network audio infrastructure.">
+    <meta property="og:title" content="Soluna for Developers — Open Source Network Audio.">
+    <meta property="og:description" content="OST protocol, REST API, WebSocket support. Integrate audio streaming into your app.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/en/for-developers">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="en_US">
+    <meta name="keywords" content="API,WebSocket,Prometheus,OST protocol,open source,network audio,Rust,P2P,Soluna">
+    <meta name="author" content="Soluna Project">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#05060a">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Soluna for Developers — Open Source Network Audio.">
+    <meta name="twitter:description" content="OST protocol, REST API, WebSocket support. Integrate audio streaming into your app.">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+    <link rel="canonical" href="https://solun.art/en/for-developers">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Soluna for Developers — Open Source Network Audio.</title>
+    <style>
+        :root {
+            --bg: #05060a; --s1: #0c0e16; --s2: #12151f; --s3: #1a1e2e;
+            --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.12);
+            --text: #e8eaf2; --text2: #8b91a8; --text3: #50566e;
+            --blue: #3b82f6; --cyan: #06b6d4; --green: #10b981;
+            --purple: #8b5cf6; --amber: #f59e0b; --pink: #ec4899;
+            font-synthesis: none; -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+
+        .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+
+        nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 0 max(20px, calc(50% - 580px)); height: 60px; background: rgba(5,6,10,0.7); backdrop-filter: blur(24px) saturate(1.8); border-bottom: 1px solid var(--border); }
+        .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; }
+        .nav-logo .diamond { color: var(--green); font-size: 20px; }
+        .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .nav-links a { color: var(--text2); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--green); }
+        .nav-cta { padding: 8px 18px; background: linear-gradient(135deg, var(--green), var(--cyan)); color: #fff !important; border-radius: 10px; font-weight: 600; font-size: 13px !important; box-shadow: 0 2px 12px rgba(16,185,129,0.3); }
+
+        .section { padding: 100px max(20px, calc(50% - 580px)); }
+        .section-label { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; background: linear-gradient(90deg, var(--green), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        h1 { font-size: clamp(40px, 8vw, 72px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.05; margin-bottom: 28px; }
+        h2 { font-size: clamp(28px, 5vw, 44px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 16px; }
+        .h1-grad { background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .h1-accent { background: linear-gradient(135deg, var(--green), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 200% auto; animation: grad-shift 4s ease-in-out infinite; }
+        @keyframes grad-shift { 0%, 100% { background-position: 0% center; } 50% { background-position: 100% center; } }
+        .sub { font-size: 17px; color: var(--text2); line-height: 1.7; max-width: 560px; margin-bottom: 48px; }
+
+        .hero { position: relative; padding: 160px max(20px, calc(50% - 580px)) 100px; overflow: hidden; }
+        .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+        .hero-orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.15; animation: orb-float 20s ease-in-out infinite; }
+        .hero-orb-1 { width: 500px; height: 500px; background: var(--green); top: -10%; right: 10%; }
+        .hero-orb-2 { width: 400px; height: 400px; background: var(--cyan); bottom: -5%; left: 5%; animation-delay: -7s; }
+        @keyframes orb-float { 0%, 100% { transform: translate(0, 0) scale(1); } 33% { transform: translate(30px, -20px) scale(1.05); } 66% { transform: translate(-20px, 15px) scale(0.95); } }
+        .hero-content { position: relative; z-index: 1; }
+        .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); color: #34d399; font-size: 13px; font-weight: 600; padding: 6px 16px; border-radius: 24px; margin-bottom: 32px; }
+        .hero-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .btn-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 12px; font-size: 15px; font-weight: 600; text-decoration: none; transition: transform 0.2s, opacity 0.2s; }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-primary { background: linear-gradient(135deg, var(--green), var(--cyan)); color: #fff; box-shadow: 0 4px 20px rgba(16,185,129,0.3); }
+        .btn-secondary { background: var(--s2); color: var(--text); border: 1px solid var(--border2); }
+
+        .code-block { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-top: 16px; overflow-x: auto; font-family: "SF Mono", "Fira Code", "Consolas", monospace; font-size: 13px; line-height: 1.7; color: var(--text2); }
+        .code-block .comment { color: var(--text3); }
+        .code-block .keyword { color: var(--purple); }
+        .code-block .string { color: var(--green); }
+        .code-block .func { color: var(--cyan); }
+        .code-block .num { color: var(--amber); }
+
+        .api-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-top: 48px; }
+        .api-card { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
+        .api-card .method { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; padding: 3px 8px; border-radius: 4px; margin-bottom: 12px; }
+        .api-card .method.get { background: rgba(16,185,129,0.15); color: var(--green); }
+        .api-card .method.post { background: rgba(59,130,246,0.15); color: var(--blue); }
+        .api-card .method.ws { background: rgba(139,92,246,0.15); color: var(--purple); }
+        .api-card .endpoint { font-family: "SF Mono", "Fira Code", monospace; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+        .api-card p { font-size: 13px; color: var(--text2); }
+
+        .tech-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 24px; margin-top: 48px; }
+        .tech-card { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
+        .tech-card .icon { font-size: 28px; margin-bottom: 12px; }
+        .tech-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+        .tech-card p { font-size: 14px; color: var(--text2); line-height: 1.6; }
+        .tech-card .tag-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+        .tech-card .tech-tag { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: rgba(16,185,129,0.08); color: var(--green); border: 1px solid rgba(16,185,129,0.15); }
+
+        .arch-section { margin-top: 48px; }
+        .arch-diagram { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 40px; text-align: center; font-family: "SF Mono", "Fira Code", monospace; font-size: 13px; color: var(--text2); line-height: 2.2; }
+        .arch-diagram .layer { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin: 8px 0; }
+        .arch-diagram .box { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border2); background: var(--s2); }
+        .arch-diagram .box.highlight { border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.05); color: var(--green); }
+        .arch-diagram .arrow { color: var(--text3); font-size: 18px; }
+
+        .download-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 48px; }
+        .dl-card { background: var(--s1); border: 1px solid var(--border); border-radius: 14px; padding: 24px; text-align: center; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+        .dl-card:hover { border-color: var(--green); transform: translateY(-3px); }
+        .dl-card .dl-icon { font-size: 32px; margin-bottom: 12px; }
+        .dl-card .dl-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+        .dl-card .dl-desc { font-size: 12px; color: var(--text2); }
+
+        .cta-section { text-align: center; padding: 120px max(20px, calc(50% - 580px)); background: radial-gradient(ellipse at center, rgba(16,185,129,0.06) 0%, transparent 70%); }
+        .cta-section h2 { margin-bottom: 16px; }
+        .cta-section .sub { margin: 0 auto 48px; }
+        .cta-section .btn-row { justify-content: center; }
+
+        footer { padding: 60px max(20px, calc(50% - 580px)) 40px; border-top: 1px solid var(--border); }
+        .footer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 32px; margin-bottom: 40px; }
+        .footer-col h4 { font-size: 13px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 16px; }
+        .footer-col a { display: block; color: var(--text2); text-decoration: none; font-size: 14px; padding: 4px 0; transition: color 0.2s; }
+        .footer-col a:hover { color: var(--text); }
+        .footer-bottom { display: flex; justify-content: space-between; align-items: center; color: var(--text3); font-size: 13px; flex-wrap: wrap; gap: 12px; }
+
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .hero { padding-top: 120px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/en/" class="nav-logo"><span class="diamond">&#9670;</span> Soluna</a>
+    <div class="nav-links">
+        <a href="/en/">Home</a>
+        <a href="/en/for-djs">For DJs</a>
+        <a href="/en/for-venues">For Venues</a>
+        <a href="/en/for-events">For Events</a>
+        <a href="/en/for-developers" class="active">For Developers</a>
+        <a href="/for-developers" title="日本語">JP</a>
+        <a href="https://testflight.apple.com/join/PYbefDSE" class="nav-cta">TestFlight</a>
+    </div>
+</nav>
+
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+    </div>
+    <div class="hero-content">
+        <div class="hero-badge"><span class="dot"></span> For Developers &amp; Tinkerers</div>
+        <h1><span class="h1-grad">Audio streaming,</span><br><span class="h1-accent">powered by your code.</span></h1>
+        <p class="sub">OST protocol, REST API, WebSocket, Prometheus metrics. Integrate open source network audio infrastructure into your project.</p>
+        <div class="btn-row">
+            <a href="https://github.com/yukihamada/opensonic" class="btn btn-primary">View on GitHub</a>
+            <a href="https://github.com/yukihamada/opensonic/blob/main/docs/protocol.md" class="btn btn-secondary">Protocol Spec</a>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="reveal">
+        <div class="section-label">Quick Start</div>
+        <h2>Set Up in 5 Minutes</h2>
+        <p class="sub">Just install and launch. No configuration files needed.</p>
+    </div>
+    <div class="code-block reveal">
+        <span class="comment"># Install</span><br>
+        curl -fsSL https://raw.githubusercontent.com/yukihamada/opensonic/main/web/install.sh | bash<br><br>
+        <span class="comment"># Start a transmitter node</span><br>
+        opensonic tx <span class="string">--port 4400</span><br><br>
+        <span class="comment"># Start a receiver node (from another machine)</span><br>
+        opensonic rx <span class="string">--connect 192.168.1.10:4400</span><br><br>
+        <span class="comment"># Check status via REST API</span><br>
+        curl <span class="string">http://localhost:4400/api/status</span> | jq<br><br>
+        <span class="comment"># Prometheus metrics</span><br>
+        curl <span class="string">http://localhost:4400/metrics</span>
+    </div>
+</section>
+
+<section class="section" style="background: var(--s1);">
+    <div class="reveal">
+        <div class="section-label">API Reference</div>
+        <h2>API Endpoints</h2>
+        <p class="sub">Fully controllable via RESTful API and WebSocket.</p>
+    </div>
+    <div class="api-grid">
+        <div class="api-card reveal reveal-delay-1">
+            <span class="method get">GET</span>
+            <div class="endpoint">/api/status</div>
+            <p>Get node status, connected peer count, and audio stream statistics.</p>
+        </div>
+        <div class="api-card reveal reveal-delay-2">
+            <span class="method get">GET</span>
+            <div class="endpoint">/api/peers</div>
+            <p>List of connected peers including latency, bandwidth usage, and connection time for each.</p>
+        </div>
+        <div class="api-card reveal reveal-delay-3">
+            <span class="method post">POST</span>
+            <div class="endpoint">/api/stream/start</div>
+            <p>Start an audio stream. Specify codec, bitrate, and channel count.</p>
+        </div>
+        <div class="api-card reveal reveal-delay-1">
+            <span class="method post">POST</span>
+            <div class="endpoint">/api/stream/stop</div>
+            <p>Stop the audio stream. Propagates stop signal to connected peers.</p>
+        </div>
+        <div class="api-card reveal reveal-delay-2">
+            <span class="method ws">WS</span>
+            <div class="endpoint">/ws/audio</div>
+            <p>Real-time audio streaming via WebSocket. Supports browser playback.</p>
+        </div>
+        <div class="api-card reveal reveal-delay-3">
+            <span class="method get">GET</span>
+            <div class="endpoint">/metrics</div>
+            <p>Prometheus-format metrics output. Perfect for Grafana dashboard integration.</p>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="reveal">
+        <div class="section-label">Architecture</div>
+        <h2>Architecture</h2>
+        <p class="sub">Modular design built on a P2P mesh network.</p>
+    </div>
+    <div class="arch-diagram reveal">
+        <div class="layer">
+            <div class="box">DJ Software</div>
+            <div class="box">DAW</div>
+            <div class="box">System Audio</div>
+            <div class="box">Microphone</div>
+        </div>
+        <div class="arrow">&#8595;</div>
+        <div class="layer">
+            <div class="box highlight">OSTP Protocol Layer</div>
+        </div>
+        <div class="arrow">&#8595;</div>
+        <div class="layer">
+            <div class="box">Audio Capture</div>
+            <div class="box highlight">P2P Mesh</div>
+            <div class="box">Codec Engine</div>
+        </div>
+        <div class="arrow">&#8595;</div>
+        <div class="layer">
+            <div class="box">REST API</div>
+            <div class="box">WebSocket</div>
+            <div class="box">Prometheus</div>
+        </div>
+        <div class="arrow">&#8595;</div>
+        <div class="layer">
+            <div class="box">iPhone</div>
+            <div class="box">Raspberry Pi</div>
+            <div class="box">Browser</div>
+            <div class="box">Smart Speaker</div>
+        </div>
+    </div>
+</section>
+
+<section class="section" style="background: var(--s1);">
+    <div class="reveal">
+        <div class="section-label">Technology</div>
+        <h2>Technology Stack</h2>
+    </div>
+    <div class="tech-grid">
+        <div class="tech-card reveal reveal-delay-1">
+            <div class="icon">&#128268;</div>
+            <h3>OST Protocol</h3>
+            <p>Open Sonic Transport Protocol. An open protocol for low-latency P2P audio streaming.</p>
+            <div class="tag-row">
+                <span class="tech-tag">UDP</span>
+                <span class="tech-tag">P2P</span>
+                <span class="tech-tag">NAT Traversal</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-2">
+            <div class="icon">&#128295;</div>
+            <h3>Rust Core Engine</h3>
+            <p>Memory-safe with zero-cost abstractions. A core engine optimized for real-time audio processing.</p>
+            <div class="tag-row">
+                <span class="tech-tag">Rust</span>
+                <span class="tech-tag">tokio</span>
+                <span class="tech-tag">cpal</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-3">
+            <div class="icon">&#128202;</div>
+            <h3>Monitoring & Observability</h3>
+            <p>Prometheus metrics output for seamless integration with Grafana dashboards.</p>
+            <div class="tag-row">
+                <span class="tech-tag">Prometheus</span>
+                <span class="tech-tag">Grafana</span>
+                <span class="tech-tag">/metrics</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-1">
+            <div class="icon">&#127760;</div>
+            <h3>Web Audio API</h3>
+            <p>Receive and play audio via WebSocket from the browser. No plugins required.</p>
+            <div class="tag-row">
+                <span class="tech-tag">WebSocket</span>
+                <span class="tech-tag">Web Audio</span>
+                <span class="tech-tag">PCM</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-2">
+            <div class="icon">&#128272;</div>
+            <h3>Rights Management Engine</h3>
+            <p>Automated track detection via audio fingerprinting and royalty calculation API.</p>
+            <div class="tag-row">
+                <span class="tech-tag">Fingerprint</span>
+                <span class="tech-tag">Royalty API</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-3">
+            <div class="icon">&#128230;</div>
+            <h3>Cross-Platform</h3>
+            <p>Runs on macOS, iOS, Android, Linux, and Raspberry Pi. Works on any device.</p>
+            <div class="tag-row">
+                <span class="tech-tag">Swift</span>
+                <span class="tech-tag">Kotlin</span>
+                <span class="tech-tag">ARM</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="reveal">
+        <div class="section-label">Code Example</div>
+        <h2>Receive Audio via WebSocket</h2>
+        <p class="sub">Add audio playback to your browser with just a few lines of JavaScript.</p>
+    </div>
+    <div class="code-block reveal">
+        <span class="comment">// Receive and play audio stream via WebSocket</span><br>
+        <span class="keyword">const</span> ctx = <span class="keyword">new</span> <span class="func">AudioContext</span>({ sampleRate: <span class="num">48000</span> });<br>
+        <span class="keyword">const</span> ws = <span class="keyword">new</span> <span class="func">WebSocket</span>(<span class="string">'ws://localhost:4400/ws/audio'</span>);<br>
+        ws.binaryType = <span class="string">'arraybuffer'</span>;<br><br>
+        ws.<span class="func">onmessage</span> = (event) =&gt; {<br>
+        &nbsp;&nbsp;<span class="keyword">const</span> pcm = <span class="keyword">new</span> <span class="func">Float32Array</span>(event.data);<br>
+        &nbsp;&nbsp;<span class="keyword">const</span> buffer = ctx.<span class="func">createBuffer</span>(<span class="num">2</span>, pcm.length / <span class="num">2</span>, <span class="num">48000</span>);<br>
+        &nbsp;&nbsp;<span class="comment">// De-interleave into channels</span><br>
+        &nbsp;&nbsp;<span class="keyword">const</span> L = buffer.<span class="func">getChannelData</span>(<span class="num">0</span>);<br>
+        &nbsp;&nbsp;<span class="keyword">const</span> R = buffer.<span class="func">getChannelData</span>(<span class="num">1</span>);<br>
+        &nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="num">0</span>; i &lt; L.length; i++) {<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;L[i] = pcm[i * <span class="num">2</span>];<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;R[i] = pcm[i * <span class="num">2</span> + <span class="num">1</span>];<br>
+        &nbsp;&nbsp;}<br>
+        &nbsp;&nbsp;<span class="keyword">const</span> src = ctx.<span class="func">createBufferSource</span>();<br>
+        &nbsp;&nbsp;src.buffer = buffer;<br>
+        &nbsp;&nbsp;src.<span class="func">connect</span>(ctx.destination);<br>
+        &nbsp;&nbsp;src.<span class="func">start</span>();<br>
+        };
+    </div>
+</section>
+
+<section class="section" style="background: var(--s1);" id="download">
+    <div class="reveal">
+        <div class="section-label">Download</div>
+        <h2>Download Now</h2>
+        <p class="sub">Available on all platforms. MIT License.</p>
+    </div>
+    <div class="download-grid">
+        <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" class="dl-card reveal reveal-delay-1">
+            <div class="dl-icon">&#128187;</div>
+            <div class="dl-name">Mac (.pkg)</div>
+            <div class="dl-desc">macOS 12+</div>
+        </a>
+        <a href="https://testflight.apple.com/join/PYbefDSE" class="dl-card reveal reveal-delay-2">
+            <div class="dl-icon">&#128241;</div>
+            <div class="dl-name">iOS (TestFlight)</div>
+            <div class="dl-desc">iPhone / iPad</div>
+        </a>
+        <a href="https://github.com/yukihamada/opensonic/releases/latest" class="dl-card reveal reveal-delay-3">
+            <div class="dl-icon">&#129302;</div>
+            <div class="dl-name">Android (.apk)</div>
+            <div class="dl-desc">Android 10+</div>
+        </a>
+        <a href="/dashboard" class="dl-card reveal">
+            <div class="dl-icon">&#127760;</div>
+            <div class="dl-name">Browser</div>
+            <div class="dl-desc">Dashboard</div>
+        </a>
+    </div>
+</section>
+
+<section class="cta-section">
+    <div class="reveal">
+        <h2><span class="h1-grad">Let's build it together, open source.</span></h2>
+        <p class="sub">Soluna is community-driven. Issues, PRs, forks — all welcome.</p>
+        <div class="btn-row">
+            <a href="https://github.com/yukihamada/opensonic" class="btn btn-primary">View on GitHub</a>
+            <a href="https://github.com/yukihamada/opensonic/blob/main/docs/protocol.md" class="btn btn-secondary">Protocol Spec</a>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="footer-grid">
+        <div class="footer-col">
+            <h4>Soluna</h4>
+            <a href="/en/">Main Site</a>
+            <a href="https://github.com/yukihamada/opensonic">GitHub</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">TestFlight</a>
+            <a href="https://github.com/yukihamada/opensonic/blob/main/docs/protocol.md">Protocol Spec</a>
+        </div>
+        <div class="footer-col">
+            <h4>Use Cases</h4>
+            <a href="/en/for-djs">DJs</a>
+            <a href="/en/for-venues">Venues</a>
+            <a href="/en/for-events">Events</a>
+            <a href="/en/for-developers">Developers</a>
+        </div>
+        <div class="footer-col">
+            <h4>Download</h4>
+            <a href="https://github.com/yukihamada/opensonic/releases/latest">Mac (.pkg)</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">iOS (TestFlight)</a>
+            <a href="https://github.com/yukihamada/opensonic/releases/latest">Android (.apk)</a>
+        </div>
+    </div>
+    <div class="footer-bottom">
+        <span>&#9670; Soluna &mdash; Open Source Network Audio</span>
+        <span>MIT License</span>
+    </div>
+</footer>
+
+<script>
+const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.15 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+</script>
+</body>
+</html>

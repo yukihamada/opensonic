@@ -153,8 +153,17 @@ final class AudioReceiver: ObservableObject {
     }
 
     /// Synchronized playback mode — all receivers output at same wall-clock time
-    @Published var isSyncMode: Bool = false {
-        didSet { receiver.syncMode = isSyncMode }
+    /// Default: true (perfectly synced playback across devices)
+    /// When toggled off (Jam/Fast mode), buffer is minimized for lowest latency
+    @Published var isSyncMode: Bool = true {
+        didSet {
+            receiver.syncMode = isSyncMode
+            if !isSyncMode {
+                bufferMs = 5
+            } else {
+                bufferMs = 60  // matched with iOS for sync
+            }
+        }
     }
 
     /// Target end-to-end delay in ms (50-1000) for sync mode
@@ -355,6 +364,16 @@ final class AudioReceiver: ObservableObject {
         refreshDevices()
         restoreSavedDevices()
         updateNowPlaying()
+
+        // Setup metadata and file-sync callbacks (stored in C++ for when relay connects)
+        setupMetaCallback()
+
+        // Auto-connect to WAN relay for default channel
+        let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self, self.state == .receiving, self.relayState == .disconnected else { return }
+            self.connectRelay(group: ch)
+        }
     }
 
     /// Stop receiving audio
@@ -371,6 +390,16 @@ final class AudioReceiver: ObservableObject {
 
         // Disconnect WAN relay
         disconnectRelay()
+
+        // Clean up file-sync
+        stopFileSyncPump()
+        fileSyncQueue.sync { fileSyncAudioFile = nil }
+        currentSyncFile = nil
+        pendingSyncCmd = nil
+        receiver.networkDisabled = false
+        receiver.setMetaCallback(nil)
+        receiver.setFileCallback(nil)
+        receiver.setSyncCallback(nil)
 
         state = .stopped
         receiver.stop()
@@ -430,7 +459,11 @@ final class AudioReceiver: ObservableObject {
     /// Connect to WAN relay server with group code
     func connectRelay(group: String, password: String = "",
                       host: String = "46.225.77.119", port: UInt16 = 5100) {
-        guard isPlaying else { return }
+        NSLog("[FileSync] connectRelay called, isPlaying=\(isPlaying), state=\(state), relayState=\(relayState)")
+        guard isPlaying else {
+            NSLog("[FileSync] connectRelay skipped: not playing")
+            return
+        }
         relayState = .connecting
         relayError = nil
 
@@ -438,11 +471,9 @@ final class AudioReceiver: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             let ok = self.receiver.connect(toRelay: host, port: port, group: group, password: password)
+            NSLog("[FileSync] connectRelay result: \(ok)")
             Task { @MainActor in
                 self.updateRelayState()
-                if !ok {
-                    // Error state already set by updateRelayState
-                }
             }
         }
     }
@@ -901,6 +932,409 @@ final class AudioReceiver: ObservableObject {
 
     /// Extra output peak level by device ID
     func deviceLevelPeak(for deviceId: UInt32) -> Float { receiver.levelPeak(forDevice: deviceId) }
+
+    // MARK: - Metadata & File Sync
+
+    private func setupMetaCallback() {
+        receiver.setMetaCallback { [weak self] jsonStr in
+            guard let self, let data = jsonStr.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            // Update now playing info from META messages
+            let title = json["title"] as? String ?? json["track"] as? String
+            let artist = json["artist"] as? String
+            var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+            info[MPMediaItemPropertyTitle] = title ?? "Soluna Rx"
+            info[MPMediaItemPropertyArtist] = artist ?? "Receiving Audio"
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        }
+
+        // FILE: callback — download music file for file-sync mode
+        receiver.setFileCallback { [weak self] filename in
+            guard let self else { return }
+            NSLog("[FileSync] FILE received: \(filename)")
+            self.downloadAndPrepare(filename: filename)
+        }
+
+        // SYNC: callback — play/pause/seek in file-sync mode
+        receiver.setSyncCallback { [weak self] syncCmd in
+            guard let self else { return }
+            NSLog("[FileSync] SYNC received: \(syncCmd)")
+            self.handleSyncCommand(syncCmd)
+        }
+        NSLog("[FileSync] Callbacks registered")
+    }
+
+    // MARK: - File Sync Mode
+
+    /// Serial queue protecting all file-sync mutable state:
+    /// fileSyncAudioFile, fileSyncConverter, fileSyncPlaying, fileSyncOutputFormat
+    private let fileSyncQueue = DispatchQueue(label: "com.soluna.filesync", qos: .userInteractive)
+
+    private var currentSyncFile: String?
+    private var pendingSyncCmd: String?
+    private var fileSyncTimer: DispatchSourceTimer?
+    // Protected by fileSyncQueue:
+    private var fileSyncAudioFile: AVAudioFile?
+    private var fileSyncConverter: AVAudioConverter?
+    private var fileSyncOutputFormat: AVAudioFormat?
+    private var fileSyncPlaying: Bool = false
+    private static let kPipelineSampleRate: Double = 48000
+
+    private func downloadAndPrepare(filename: String) {
+        NSLog("[FileSync] downloadAndPrepare: %@", filename)
+        let encoded = filename.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? filename
+        guard let url = URL(string: "http://46.225.77.119:5102/api/music/\(encoded)") else {
+            NSLog("[FileSync] URL encoding failed for: %@", filename)
+            return
+        }
+
+        // New track: stop current file-sync pump
+        stopFileSyncPump()
+        fileSyncQueue.sync {
+            fileSyncAudioFile = nil
+        }
+        pendingSyncCmd = nil
+        // Re-enable PCM streaming during download gap
+        receiver.networkDisabled = false
+        NSLog("[FileSync] PCM streaming re-enabled for track transition")
+
+        currentSyncFile = filename
+
+        // Check if already cached
+        let cacheDir = FileManager.default.temporaryDirectory.appendingPathComponent("soluna-music")
+        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        let localFile = cacheDir.appendingPathComponent(filename)
+
+        if FileManager.default.fileExists(atPath: localFile.path) {
+            NSLog("[FileSync] Cached: \(localFile.path)")
+            prepareAudioFile(url: localFile)
+            receiver.sendReady(filename)
+            return
+        }
+
+        // Download
+        NSLog("[FileSync] Downloading: %@", url.absoluteString)
+        URLSession.shared.downloadTask(with: url) { [weak self] tempURL, response, error in
+            if let error {
+                NSLog("[FileSync] Download error: \(error)")
+                return
+            }
+            guard let self, let tempURL else {
+                NSLog("[FileSync] Download failed: no tempURL")
+                return
+            }
+            let httpCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            NSLog("[FileSync] Downloaded: HTTP \(httpCode)")
+            guard httpCode == 200 else {
+                NSLog("[FileSync] Skipping non-200 response")
+                return
+            }
+            do {
+                try FileManager.default.moveItem(at: tempURL, to: localFile)
+            } catch {
+                NSLog("[FileSync] Move error: \(error)")
+            }
+            DispatchQueue.main.async {
+                self.prepareAudioFile(url: localFile)
+                self.receiver.sendReady(filename)
+            }
+        }.resume()
+    }
+
+    private func prepareAudioFile(url: URL) {
+        NSLog("[FileSync] prepareAudioFile: %@", url.lastPathComponent)
+        do {
+            let audioFile = try AVAudioFile(forReading: url)
+            let srcFmt = audioFile.processingFormat
+            let dstChannels = UInt32(receiver.channels)
+            guard let dstFmt = AVAudioFormat(standardFormatWithSampleRate: Self.kPipelineSampleRate,
+                                              channels: dstChannels) else {
+                NSLog("[FileSync] Failed to create output format")
+                return
+            }
+
+            let converter: AVAudioConverter?
+            if srcFmt.sampleRate != Self.kPipelineSampleRate || srcFmt.channelCount != dstChannels {
+                converter = AVAudioConverter(from: srcFmt, to: dstFmt)
+                NSLog("[FileSync] Converter: %.0fHz/%dch -> %.0fHz/%dch",
+                      srcFmt.sampleRate, srcFmt.channelCount, dstFmt.sampleRate, dstChannels)
+            } else {
+                converter = nil
+                NSLog("[FileSync] No conversion needed")
+            }
+
+            fileSyncQueue.sync {
+                fileSyncAudioFile = audioFile
+                fileSyncConverter = converter
+                fileSyncOutputFormat = dstFmt
+            }
+
+            NSLog("[FileSync] Audio file ready: %.0f Hz, %d ch, %lld frames",
+                  srcFmt.sampleRate, srcFmt.channelCount, audioFile.length)
+
+            // Replay pending SYNC if any
+            if let pending = pendingSyncCmd {
+                NSLog("[FileSync] Replaying pending sync")
+                pendingSyncCmd = nil
+                handleSyncCommand(pending)
+            }
+        } catch {
+            NSLog("[FileSync] Failed to open audio file: %@", error.localizedDescription)
+        }
+    }
+
+    /// Start a high-frequency timer that reads PCM from the audio file and injects into ring buffer
+    private func startFileSyncPump() {
+        stopFileSyncPump()
+
+        // Snapshot state under lock
+        let (audioFile, dstFmt): (AVAudioFile?, AVAudioFormat?) = fileSyncQueue.sync {
+            return (fileSyncAudioFile, fileSyncOutputFormat)
+        }
+        guard let audioFile, let dstFmt else { return }
+
+        // Output at 48000Hz, 10ms per pump = 480 frames
+        let outFramesPerPump = AVAudioFrameCount(Self.kPipelineSampleRate * 0.01)
+        let dstChannels = dstFmt.channelCount
+
+        fileSyncQueue.sync {
+            fileSyncPlaying = true
+        }
+        // Flush stale PCM data from ring buffer before prefilling with file-sync audio
+        receiver.flushRingBuffer()
+        receiver.networkDisabled = true
+        NSLog("[FileSync] Pump started: %d out frames/pump @ 48kHz (buffer flushed)", outFramesPerPump)
+
+        // Prefill: inject 200ms worth of audio upfront to satisfy ring buffer target
+        let prefillPumps = 20  // 20 × 10ms = 200ms
+        for _ in 0..<prefillPumps {
+            let (pAudioFile, pConverter): (AVAudioFile?, AVAudioConverter?) = fileSyncQueue.sync {
+                return (fileSyncAudioFile, fileSyncConverter)
+            }
+            guard let pAudioFile else { break }
+            let outBuf: AVAudioPCMBuffer
+            if let converter = pConverter {
+                guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: dstFmt,
+                                                           frameCapacity: outFramesPerPump) else { break }
+                let _ = converter.convert(to: outputBuffer, error: nil) { inNumPackets, outStatus in
+                    guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: pAudioFile.processingFormat,
+                                                              frameCapacity: inNumPackets) else {
+                        outStatus.pointee = .noDataNow
+                        return nil
+                    }
+                    do {
+                        try pAudioFile.read(into: inputBuffer, frameCount: inNumPackets)
+                        if inputBuffer.frameLength == 0 {
+                            outStatus.pointee = .endOfStream
+                            return nil
+                        }
+                        outStatus.pointee = .haveData
+                        return inputBuffer
+                    } catch {
+                        outStatus.pointee = .endOfStream
+                        return nil
+                    }
+                }
+                if outputBuffer.frameLength == 0 { break }
+                outBuf = outputBuffer
+            } else {
+                guard let directBuf = AVAudioPCMBuffer(pcmFormat: dstFmt,
+                                                        frameCapacity: outFramesPerPump) else { break }
+                do {
+                    try pAudioFile.read(into: directBuf, frameCount: outFramesPerPump)
+                    if directBuf.frameLength == 0 { break }
+                } catch { break }
+                outBuf = directBuf
+            }
+            let frames = Int(outBuf.frameLength)
+            let chCount = Int(dstChannels)
+            var int32Buf = [Int32](repeating: 0, count: frames * chCount)
+            for ch in 0..<chCount {
+                guard let chData = outBuf.floatChannelData?[ch] else { continue }
+                for i in 0..<frames {
+                    let sample = chData[i]
+                    let scaled = max(-1.0, min(1.0, sample)) * 8388608.0
+                    int32Buf[i * chCount + ch] = Int32(clamping: Int64(scaled))
+                }
+            }
+            let data = Data(bytes: &int32Buf, count: int32Buf.count * MemoryLayout<Int32>.size)
+            receiver.injectPcmSamples(data, frameCount: UInt(frames))
+        }
+        NSLog("[FileSync] Prefilled %d pumps (200ms)", prefillPumps)
+
+        let timer = DispatchSource.makeTimerSource(queue: fileSyncQueue)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(10), leeway: .milliseconds(1))
+        timer.setEventHandler { [weak self] in
+            // Already on fileSyncQueue -- safe to access file-sync state directly
+            guard let self, self.fileSyncPlaying, let audioFile = self.fileSyncAudioFile else { return }
+
+            let outBuf: AVAudioPCMBuffer
+
+            if let converter = self.fileSyncConverter {
+                // Need sample rate conversion
+                guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: dstFmt,
+                                                           frameCapacity: outFramesPerPump) else { return }
+                var gotData = false
+                let status = converter.convert(to: outputBuffer, error: nil) { inNumPackets, outStatus in
+                    guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat,
+                                                              frameCapacity: inNumPackets) else {
+                        outStatus.pointee = .noDataNow
+                        return nil
+                    }
+                    do {
+                        try audioFile.read(into: inputBuffer, frameCount: inNumPackets)
+                        if inputBuffer.frameLength == 0 {
+                            outStatus.pointee = .endOfStream
+                            return nil
+                        }
+                        gotData = true
+                        outStatus.pointee = .haveData
+                        return inputBuffer
+                    } catch {
+                        outStatus.pointee = .endOfStream
+                        return nil
+                    }
+                }
+
+                if status == .error || (!gotData && outputBuffer.frameLength == 0) {
+                    // Dispatch to main to avoid deadlock (we are on fileSyncQueue)
+                    DispatchQueue.main.async {
+                        NSLog("[FileSync] End of track, stopping pump")
+                        self.stopFileSyncPump()
+                        self.receiver.networkDisabled = false
+                    }
+                    return
+                }
+                outBuf = outputBuffer
+            } else {
+                // No conversion needed (already 48kHz)
+                guard let directBuf = AVAudioPCMBuffer(pcmFormat: dstFmt,
+                                                        frameCapacity: outFramesPerPump) else { return }
+                do {
+                    try audioFile.read(into: directBuf, frameCount: outFramesPerPump)
+                    if directBuf.frameLength == 0 {
+                        DispatchQueue.main.async {
+                            NSLog("[FileSync] End of track, stopping pump")
+                            self.stopFileSyncPump()
+                            self.receiver.networkDisabled = false
+                        }
+                        return
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        self.stopFileSyncPump()
+                        self.receiver.networkDisabled = false
+                    }
+                    return
+                }
+                outBuf = directBuf
+            }
+
+            // Convert float32 non-interleaved -> int32 interleaved for ring buffer
+            let frames = Int(outBuf.frameLength)
+            let chCount = Int(dstChannels)
+            var int32Buf = [Int32](repeating: 0, count: frames * chCount)
+
+            for ch in 0..<chCount {
+                guard let chData = outBuf.floatChannelData?[ch] else { continue }
+                for i in 0..<frames {
+                    let sample = chData[i]
+                    let scaled = max(-1.0, min(1.0, sample)) * 8388608.0
+                    int32Buf[i * chCount + ch] = Int32(clamping: Int64(scaled))
+                }
+            }
+
+            let data = Data(bytes: &int32Buf, count: int32Buf.count * MemoryLayout<Int32>.size)
+            self.receiver.injectPcmSamples(data, frameCount: UInt(frames))
+        }
+        timer.resume()
+        fileSyncTimer = timer
+    }
+
+    private func stopFileSyncPump() {
+        fileSyncQueue.sync {
+            fileSyncPlaying = false
+        }
+        fileSyncTimer?.cancel()
+        fileSyncTimer = nil
+    }
+
+    private func handleSyncCommand(_ cmd: String) {
+        let hasFile = fileSyncQueue.sync { fileSyncAudioFile != nil }
+        NSLog("[FileSync] handleSync: %@, hasFile=%d", cmd, hasFile ? 1 : 0)
+
+        // If audio file isn't loaded yet, store command for replay after download
+        guard hasFile else {
+            NSLog("[FileSync] Audio file not ready, storing pending sync")
+            pendingSyncCmd = cmd
+            return
+        }
+
+        let parts = cmd.split(separator: ":")
+        guard let action = parts.first else { return }
+
+        switch action {
+        case "play":
+            // Format: play:<pos_ms>:<wall_clock_ms>
+            guard parts.count >= 3,
+                  let posMs = Double(parts[1]),
+                  let wallMs = Double(parts[2]) else { return }
+
+            let nowMs = Date().timeIntervalSince1970 * 1000
+            let elapsedMs = nowMs - wallMs
+            // Add prefill offset: the ring buffer will be prefilled with 200ms of audio
+            // before playback starts, so we need to seek 200ms ahead to compensate.
+            let prefillMs: Double = 200.0
+            let currentPosMs = posMs + max(0, elapsedMs) + prefillMs
+
+            let (srcRate, totalFrames) = fileSyncQueue.sync { () -> (Double, AVAudioFramePosition) in
+                guard let af = fileSyncAudioFile else { return (48000, 0) }
+                return (af.processingFormat.sampleRate, af.length)
+            }
+            let durationMs = Double(totalFrames) / srcRate * 1000.0
+            NSLog("[FileSync] play: seekTo=%.0fms (elapsed=%.0f + prefill=%.0f), duration=%.0fms",
+                  currentPosMs, elapsedMs, prefillMs, durationMs)
+
+            if currentPosMs >= durationMs {
+                NSLog("[FileSync] Seek past end of track, keeping PCM streaming")
+                return
+            }
+
+            // Seek to position in source audio file (use source sample rate)
+            let seekFrame = AVAudioFramePosition(currentPosMs / 1000.0 * srcRate)
+            fileSyncQueue.sync {
+                fileSyncAudioFile?.framePosition = seekFrame
+                fileSyncConverter?.reset()
+            }
+            NSLog("[FileSync] Seeking to frame %lld / %lld", seekFrame, totalFrames)
+
+            startFileSyncPump()
+
+        case "pause":
+            stopFileSyncPump()
+            receiver.networkDisabled = false
+
+        case "seek":
+            guard parts.count >= 2, let posMs = Double(parts[1]) else { return }
+            fileSyncQueue.sync {
+                guard let audioFile = fileSyncAudioFile else { return }
+                let seekFrame = AVAudioFramePosition(posMs / 1000.0 * audioFile.processingFormat.sampleRate)
+                audioFile.framePosition = seekFrame
+                fileSyncConverter?.reset()
+            }
+
+        case "skip":
+            stopFileSyncPump()
+            fileSyncQueue.sync {
+                fileSyncAudioFile = nil
+            }
+            receiver.networkDisabled = false
+            NSLog("[FileSync] PCM streaming re-enabled (file-sync ended)")
+
+        default:
+            break
+        }
+    }
 
     // MARK: - Internal delegate handling
 

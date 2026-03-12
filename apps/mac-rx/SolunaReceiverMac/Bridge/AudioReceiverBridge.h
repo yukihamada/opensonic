@@ -96,9 +96,12 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 /// Current device health (good / stressed / silenced)
 @property (nonatomic, readonly) SolunaDeviceHealth deviceHealth;
 
-/// When YES, the receive loop ignores multicast packets.
-/// Audio only arrives via -injectRawPacket: (peer relay mode).
+/// When YES (from file-sync), the receive loop ignores multicast packets.
 @property (nonatomic, assign) BOOL networkDisabled;
+
+/// When YES (from peer relay), the receive loop ignores multicast packets.
+/// Separate from networkDisabled so file-sync and relay don't conflict.
+@property (nonatomic, assign) BOOL relayNetworkDisabled;
 
 /// Singleton instance
 + (instancetype)sharedInstance;
@@ -177,6 +180,11 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 /// Set spatial audio on an extra output
 - (void)setSpatialEnabled:(BOOL)enabled width:(float)width crossfeed:(float)crossfeed forOutput:(int)sinkIndex;
 
+// ── Loudness Normalization ──────────────────────────────────────────────────
+
+/// EBU R128 loudness normalization (target -23 LUFS). Toggleable at runtime.
+@property (nonatomic, assign) BOOL loudnessNormEnabled;
+
 /// Set a callback to be notified when audio devices change (hot-plug)
 - (void)setDeviceChangeCallback:(nullable void(^)(void))callback;
 
@@ -218,6 +226,14 @@ typedef NS_ENUM(NSInteger, SolunaReceiverState) {
 /// bypassing the UDP socket. Thread-safe.
 - (void)injectRawPacket:(NSData * _Nonnull)data;
 
+/// Inject decoded PCM samples directly into the ring buffer.
+/// Data must be interleaved int32_t samples (24-bit range). Thread-safe.
+- (void)injectPcmSamples:(NSData * _Nonnull)data frameCount:(NSUInteger)frameCount;
+
+/// Flush the ring buffer and reset prefill state. Call before file-sync prefill
+/// to discard stale PCM data and ensure clean timing.
+- (void)flushRingBuffer;
+
 // ── WAN Relay (Group Code) ────────────────────────────────────────────────
 
 /// WAN relay connection state
@@ -246,6 +262,20 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 
 /// Error message from last relay operation (nil if no error)
 @property (nonatomic, readonly, copy, nullable) NSString *relayError;
+
+// ── Metadata / File-Sync Callbacks ──────────────────────────────────────
+
+/// Set callback for metadata received from WAN relay (META: messages).
+- (void)setMetaCallback:(nullable void(^)(NSString * _Nonnull jsonMeta))callback;
+
+/// Set callback for FILE: messages (file-sync mode).
+- (void)setFileCallback:(nullable void(^)(NSString * _Nonnull filename))callback;
+
+/// Set callback for SYNC: messages (file-sync mode).
+- (void)setSyncCallback:(nullable void(^)(NSString * _Nonnull syncCmd))callback;
+
+/// Send READY notification to relay after file download completes.
+- (void)sendReady:(NSString * _Nonnull)filename;
 
 // ── Mic Transmit (TX) ────────────────────────────────────────────────────
 
@@ -294,6 +324,38 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 
 /// Stop system audio transmission.
 - (void)stopShmTransmit;
+
+// ── DJ Mode ──────────────────────────────────────────────────────────────
+
+/// Start DJ broadcast: decode audio file and stream via OSTP to relay
+- (BOOL)startDJBroadcast:(NSString *)filePath;
+
+/// Start DJ broadcast from directory (shuffle playlist)
+- (BOOL)startDJDirectory:(NSString *)dirPath shuffle:(BOOL)shuffle;
+
+/// Stop DJ broadcast
+- (void)stopDJ;
+
+/// Skip to next track
+- (void)skipDJTrack;
+
+/// Whether DJ mode is active
+@property (nonatomic, readonly) BOOL isDJActive;
+
+/// Current track filename
+@property (nonatomic, readonly, copy, nullable) NSString *djCurrentTrack;
+
+/// Playback progress (0.0 - 1.0)
+@property (nonatomic, readonly) float djProgress;
+
+/// Enable/disable mic mixing in DJ mode (talk over music)
+@property (nonatomic, assign) BOOL djMicMixEnabled;
+
+/// Mic mix gain (0.0 - 2.0, default 1.0). Music gain is always 1.0.
+@property (nonatomic, assign) float djMicGain;
+
+/// Music gain when mic mixing (0.0 - 1.0, default 0.7 = auto-duck)
+@property (nonatomic, assign) float djMusicGain;
 
 @end
 

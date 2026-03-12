@@ -9,9 +9,8 @@
 #   bash scripts/install-mac.sh
 #
 # Components:
-#   1. Soluna.driver   — CoreAudio 仮想デバイス (HAL プラグイン)
-#   2. Soluna.app      — GUI アプリ (Audio TX / Mic TX / WAN P2P)
-#   3. solunad + solctl + LaunchAgent — バックグラウンドサービス
+#   1. Soluna.app      — GUI アプリ (Audio TX / Mic TX / WAN P2P)
+#   2. solunad + LaunchAgent — バックグラウンドサービス
 #
 # SPDX-License-Identifier: MIT
 # ──────────────────────────────────────────────────────────────
@@ -65,12 +64,11 @@ else
 fi
 
 BUILD_DIR="$SRC_DIR/build-mac"
-DRIVER_DEST="/Library/Audio/Plug-Ins/HAL/Soluna.driver"
 SHM_DIR="/private/var/db/soluna"
 NPROC=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
-# ── Step 1: cmake — libsoluna_core.a + Soluna.driver ────────
-info "Building Soluna core + driver (cmake)..."
+# ── Step 1: cmake — libsoluna_core.a + solunad ──────────────
+info "Building Soluna core (cmake)..."
 CMAKE_LOG="$BUILD_DIR/cmake.log"
 mkdir -p "$BUILD_DIR"
 
@@ -89,9 +87,7 @@ if ! cmake --build "$BUILD_DIR" -j"$NPROC" >> "$CMAKE_LOG" 2>&1; then
     fail "cmake build failed. Full log: $CMAKE_LOG"
 fi
 
-DRIVER_SRC="$BUILD_DIR/apps/plugin/Soluna.driver"
-[[ -d "$DRIVER_SRC" ]] || fail "Build failed: Soluna.driver not found in $BUILD_DIR. Check: $CMAKE_LOG"
-ok "Soluna.driver built"
+ok "Soluna core built"
 
 # ── Step 2: xcodebuild — Soluna.app ─────────────────────────
 XCODEPROJ="$SRC_DIR/apps/mac-rx/SolunaReceiverMac.xcodeproj"
@@ -123,19 +119,7 @@ else
     warn "Xcode project not found at $XCODEPROJ — skipping app build"
 fi
 
-# ── Step 3: Install Soluna.driver → /Library/Audio/Plug-Ins/HAL/ ──
-info "Installing Soluna.driver..."
-echo "  (sudo required for /Library/Audio/Plug-Ins/HAL/)"
-
-codesign --force --sign - --deep "$DRIVER_SRC" 2>/dev/null || true
-
-sudo rm -rf "$DRIVER_DEST"
-sudo cp -r "$DRIVER_SRC" "$DRIVER_DEST"
-sudo chown -R root:wheel "$DRIVER_DEST"
-sudo chmod -R 755 "$DRIVER_DEST"
-ok "Soluna.driver → $DRIVER_DEST"
-
-# ── Step 4: Install Soluna.app → /Applications/ ──────────────
+# ── Step 3: Install Soluna.app → /Applications/ ──────────────
 if [[ -d "$APP_OUTPUT/SolunaReceiverMac.app" ]]; then
     info "Installing Soluna.app..."
     rm -rf "/Applications/Soluna.app"
@@ -144,7 +128,7 @@ if [[ -d "$APP_OUTPUT/SolunaReceiverMac.app" ]]; then
     ok "Soluna.app → /Applications/Soluna.app"
 fi
 
-# ── Step 5: Shared memory directory ──────────────────────────
+# ── Step 4: Shared memory directory ──────────────────────────
 info "Creating shared memory directory..."
 if [[ ! -d "$SHM_DIR" ]]; then
     sudo mkdir -p "$SHM_DIR"
@@ -155,28 +139,16 @@ else
     ok "$SHM_DIR already exists"
 fi
 
-# ── Step 6: Restart coreaudiod ───────────────────────────────
-info "Restarting coreaudiod..."
-sudo killall coreaudiod 2>/dev/null || true
-sleep 2
-ok "coreaudiod restarted"
-
-# ── Step 7: solunad + solctl + LaunchAgent ────────────────────
+# ── Step 5: solunad + LaunchAgent ─────────────────────────────
 INSTALL_DIR="/usr/local/bin"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 SERVICE_ID="io.soluna.daemon"
 
-info "Installing solunad + solctl..."
+info "Installing solunad..."
 if [[ -f "$BUILD_DIR/solunad" ]]; then
     sudo cp "$BUILD_DIR/solunad" "$INSTALL_DIR/solunad"
     sudo chmod +x "$INSTALL_DIR/solunad"
     ok "solunad → $INSTALL_DIR/solunad"
-
-    if [[ -f "$BUILD_DIR/solctl" ]]; then
-        sudo cp "$BUILD_DIR/solctl" "$INSTALL_DIR/solctl"
-        sudo chmod +x "$INSTALL_DIR/solctl"
-        ok "solctl → $INSTALL_DIR/solctl"
-    fi
 
     # LaunchAgent
     info "Installing LaunchAgent..."
@@ -223,16 +195,12 @@ fi
 info "Verifying installation..."
 sleep 2
 
-if system_profiler SPAudioDataType 2>/dev/null | grep -q "Soluna"; then
-    ok "Soluna audio device detected"
-else
-    warn "Soluna audio device not yet visible"
-    warn "Go to System Settings > Privacy & Security > allow the driver, then:"
-    warn "  sudo killall coreaudiod"
-fi
-
 if [[ -d "/Applications/Soluna.app" ]]; then
     ok "Soluna.app installed in /Applications"
+fi
+
+if [[ -f "$INSTALL_DIR/solunad" ]]; then
+    ok "solunad installed"
 fi
 
 # ── Done ─────────────────────────────────────────────────────
@@ -247,7 +215,6 @@ echo "       - Mic TX:   マイク音声を配信"
 echo "       - WAN P2P:  インターネット越しにグループ共有"
 echo ""
 echo "  Daemon commands:"
-echo "    solctl status               # daemon status"
 echo "    tail -f /tmp/solunad.log    # logs"
 echo ""
 echo "  Uninstall:"

@@ -69,11 +69,32 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
-    /// Jitter buffer target in ms (5–200 ms, default 80 ms — WiFi needs headroom)
-    @Published var bufferMs: UInt32 = 80 {
+    /// Jitter buffer target in ms (5–2000 ms, auto-adaptive from 60 ms)
+    @Published var bufferMs: UInt32 = 60 {
         didSet {
             receiver.bufferTargetMs = bufferMs
         }
+    }
+
+    /// Synchronized playback mode — all receivers output at same wall-clock time
+    /// Default: true (perfectly synced playback across devices)
+    /// When toggled off (Jam/Fast mode), buffer is minimized for lowest latency
+    @Published var isSyncMode: Bool = true {
+        didSet {
+            receiver.syncMode = isSyncMode
+            if !isSyncMode {
+                // Jam mode: minimize buffer for lowest possible latency
+                bufferMs = 5
+            } else {
+                // Sync mode: restore comfortable buffer for sync accuracy
+                bufferMs = 60
+            }
+        }
+    }
+
+    /// Target end-to-end delay in ms (50-1000) for sync mode
+    @Published var syncDelayMs: UInt32 = 200 {
+        didSet { receiver.syncDelayMs = syncDelayMs }
     }
 
     /// Whether mic transmit is active
@@ -84,6 +105,22 @@ final class AudioReceiver: ObservableObject {
 
     /// Mic input level (0.0 - 1.0) for UI meter
     @Published private(set) var micInputLevel: Float = 0.0
+
+    /// Output audio peak level (0.0 - 1.0) for visualization
+    @Published private(set) var outputLevel: Float = 0.0
+
+    /// Push-to-Talk mode
+    @Published var isPTTMode: Bool = false
+
+    /// Network quality stats
+    @Published var networkLatencyMs: Float = 0
+    @Published var jitterMs: Float = 0
+    @Published var packetLossPercent: Float = 0
+
+    /// Now Playing metadata
+    @Published var nowPlayingTitle: String?
+    @Published var nowPlayingArtist: String?
+    @Published var nowPlayingArtwork: URL?
 
     /// Error message if any
     @Published private(set) var errorMessage: String?
@@ -139,7 +176,10 @@ final class AudioReceiver: ObservableObject {
     private var wasPlayingBeforeDisconnect = false
     private var suppressInterruption = false
     private var interruptionObserver: Any?
+    private var routeChangeObserver: Any?
     private var watchdogTimer: Timer?
+    private var statsTimer: Timer?
+    private var levelTimer: Timer?
     private var lastPacketCount: UInt64 = 0
     private var staleTicks: Int = 0
 
@@ -150,22 +190,23 @@ final class AudioReceiver: ObservableObject {
         receiver.delegate = delegateHandler
         setupNetworkMonitor()
         setupAudioInterruptionHandler()
+        setupRouteChangeHandler()
+        updateOutputLatency()
     }
 
-    /// Start receiving audio with discovery-first P2P.
-    /// Scans for nearby peers on the same channel for 3 seconds.
-    /// If a peer is found → receive from them (no multicast).
-    /// If not → start multicast and become a relay for others.
+    /// Start receiving audio — instant multicast + parallel peer scan.
+    /// Audio begins immediately via multicast/relay. Peer discovery runs
+    /// concurrently and switches to P2P only if a peer is found.
     func start() {
         guard state == .stopped || state == .error else { return }
         errorMessage = nil
-        state = .connecting   // visual feedback during scan
+        state = .connecting   // visual feedback
 
         // Configure audio session for reliable background playback
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default, options: [.duckOthers])
-            try session.setPreferredIOBufferDuration(0.01) // 10ms
+            try session.setPreferredIOBufferDuration(0.005) // 5ms — aggressive, adaptive buffer handles the rest
             try session.setActive(true)
         } catch {
             print("[AudioReceiver] AVAudioSession error: \(error)")
@@ -174,28 +215,292 @@ final class AudioReceiver: ObservableObject {
         // Prevent screen lock during playback
         UIApplication.shared.isIdleTimerDisabled = true
 
+        // Start audio output immediately — no waiting for peer scan
+        let ok = receiver.start()
+        if !ok { return }
+
         let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
 
+        // Start watchdog, stats, and meta callback right away
+        startWatchdog()
+        startStatsPolling()
+        setupMetaCallback()
+
+        // Connect to WAN relay immediately — channel name is all you need.
+        // No local server (solunad) required. Audio flows via relay.
+        connectRelay(group: ch)
+
         Task {
+            // Peer scan runs in parallel — audio is already playing
             let foundPeer = await PeerRelayManager.shared.scanForPeers(channel: ch)
 
-            guard state == .connecting else { return } // user stopped during scan
-
-            let ok = receiver.start()   // starts audio output + ring buffer
-            if !ok { return }           // bridge sets state → .error via delegate
-
             if foundPeer {
-                // Peer mode — multicast already disabled by PeerRelayManager.
-                // Audio arrives via injectRawPacket → ring buffer → audio callback.
+                // Switch to P2P mode — PeerRelayManager disables multicast.
+                print("[AudioReceiver] Switched to P2P relay from peer")
             } else {
-                // Direct mode — wait for stable multicast, then become relay
-                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                // No peer — become relay for others after brief stabilization
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
                 guard state == .receiving else { return }
                 PeerRelayManager.shared.becomeDirectRelay()
             }
+        }
+    }
 
-            // Start watchdog for auto-reconnect
-            startWatchdog()
+    /// Listen for META messages from the WAN relay and update nowPlaying
+    private func setupMetaCallback() {
+        receiver.setMetaCallback { [weak self] jsonStr in
+            guard let self, let data = jsonStr.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            self.nowPlayingTitle = json["title"] as? String ?? json["track"] as? String
+            self.nowPlayingArtist = json["artist"] as? String
+            if let urlStr = json["artwork_url"] as? String {
+                self.nowPlayingArtwork = URL(string: urlStr)
+            }
+        }
+
+        // FILE: callback — download music file for file-sync mode
+        receiver.setFileCallback { [weak self] filename in
+            guard let self else { return }
+            self.downloadAndPrepare(filename: filename)
+        }
+
+        // SYNC: callback — play/pause/seek in file-sync mode
+        receiver.setSyncCallback { [weak self] syncCmd in
+            guard let self else { return }
+            self.handleSyncCommand(syncCmd)
+        }
+    }
+
+    // MARK: - File Sync Mode
+
+    private var currentSyncFile: String?
+    private var pendingSyncCmd: String?
+    private var fileSyncTimer: DispatchSourceTimer?
+    private var fileSyncAudioFile: AVAudioFile?
+    private var fileSyncConverter: AVAudioConverter?
+    private var fileSyncOutputFormat: AVAudioFormat?
+    private var fileSyncPlaying: Bool = false
+    private let fileSyncQueue = DispatchQueue(label: "com.soluna.filesync", qos: .userInteractive)
+    private static let kPipelineSampleRate: Double = 48000
+
+    private func downloadAndPrepare(filename: String) {
+        let encoded = filename.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? filename
+        guard let url = URL(string: "http://46.225.77.119:5102/api/music/\(encoded)") else { return }
+
+        // New track: stop current file-sync pump
+        stopFileSyncPump()
+        fileSyncQueue.sync {
+            fileSyncAudioFile = nil
+        }
+        pendingSyncCmd = nil
+        receiver.filesyncNetworkDisabled = false
+
+        currentSyncFile = filename
+        nowPlayingTitle = filename
+
+        // Check if already cached
+        let cacheDir = FileManager.default.temporaryDirectory.appendingPathComponent("soluna-music")
+        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        let localFile = cacheDir.appendingPathComponent(filename)
+
+        if FileManager.default.fileExists(atPath: localFile.path) {
+            prepareAudioFile(url: localFile)
+            receiver.sendReady(filename)
+            return
+        }
+
+        // Download
+        URLSession.shared.downloadTask(with: url) { [weak self] tempURL, response, error in
+            guard let self, let tempURL else { return }
+            let httpCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard httpCode == 200 else { return }
+            try? FileManager.default.moveItem(at: tempURL, to: localFile)
+            DispatchQueue.main.async {
+                self.prepareAudioFile(url: localFile)
+                self.receiver.sendReady(filename)
+            }
+        }.resume()
+    }
+
+    private func prepareAudioFile(url: URL) {
+        do {
+            let audioFile = try AVAudioFile(forReading: url)
+            let srcFmt = audioFile.processingFormat
+            let dstChannels = UInt32(receiver.channels)
+            guard let dstFmt = AVAudioFormat(standardFormatWithSampleRate: Self.kPipelineSampleRate,
+                                              channels: dstChannels) else { return }
+            let converter: AVAudioConverter?
+            if srcFmt.sampleRate != Self.kPipelineSampleRate || srcFmt.channelCount != dstChannels {
+                converter = AVAudioConverter(from: srcFmt, to: dstFmt)
+            } else {
+                converter = nil
+            }
+
+            fileSyncQueue.sync {
+                fileSyncAudioFile = audioFile
+                fileSyncConverter = converter
+                fileSyncOutputFormat = dstFmt
+            }
+
+            if let pending = pendingSyncCmd {
+                pendingSyncCmd = nil
+                handleSyncCommand(pending)
+            }
+        } catch { }
+    }
+
+    private func startFileSyncPump() {
+        stopFileSyncPump()
+        var audioFile: AVAudioFile?
+        var dstFmt: AVAudioFormat?
+        fileSyncQueue.sync {
+            audioFile = fileSyncAudioFile
+            dstFmt = fileSyncOutputFormat
+        }
+        guard let audioFile, let dstFmt else { return }
+
+        let outFramesPerPump = AVAudioFrameCount(Self.kPipelineSampleRate * 0.01)
+        let dstChannels = dstFmt.channelCount
+
+        fileSyncQueue.sync { fileSyncPlaying = true }
+        // Flush stale PCM data before prefilling with file-sync audio
+        receiver.flushRingBuffer()
+        receiver.filesyncNetworkDisabled = true
+
+        // Prefill 200ms
+        for _ in 0..<20 {
+            var af: AVAudioFile?
+            fileSyncQueue.sync { af = fileSyncAudioFile }
+            guard let af else { break }
+            guard let buf = pumpOneChunk(audioFile: af, dstFmt: dstFmt, frameCount: outFramesPerPump, dstChannels: dstChannels) else { break }
+            receiver.injectPcmSamples(buf.data, frameCount: UInt(buf.frames))
+        }
+
+        let timer = DispatchSource.makeTimerSource(queue: fileSyncQueue)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(10), leeway: .milliseconds(1))
+        timer.setEventHandler { [weak self] in
+            guard let self, self.fileSyncPlaying, let af = self.fileSyncAudioFile else { return }
+            guard let buf = self.pumpOneChunk(audioFile: af, dstFmt: dstFmt, frameCount: outFramesPerPump, dstChannels: dstChannels) else {
+                DispatchQueue.main.async {
+                    self.stopFileSyncPump()
+                    self.receiver.filesyncNetworkDisabled = false
+                }
+                return
+            }
+            self.receiver.injectPcmSamples(buf.data, frameCount: UInt(buf.frames))
+        }
+        timer.resume()
+        fileSyncTimer = timer
+    }
+
+    private func pumpOneChunk(audioFile: AVAudioFile, dstFmt: AVAudioFormat, frameCount: AVAudioFrameCount, dstChannels: UInt32) -> (data: Data, frames: Int)? {
+        let outBuf: AVAudioPCMBuffer
+
+        if let converter = fileSyncConverter {
+            guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: dstFmt, frameCapacity: frameCount) else { return nil }
+            var gotData = false
+            var convError: NSError?
+            let _ = converter.convert(to: outputBuffer, error: &convError) { inNumPackets, outStatus in
+                guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: inNumPackets) else {
+                    outStatus.pointee = .noDataNow
+                    return nil
+                }
+                do {
+                    try audioFile.read(into: inputBuffer, frameCount: inNumPackets)
+                    if inputBuffer.frameLength == 0 { outStatus.pointee = .endOfStream; return nil }
+                    gotData = true
+                    outStatus.pointee = .haveData
+                    return inputBuffer
+                } catch { outStatus.pointee = .endOfStream; return nil }
+            }
+            if let err = convError {
+                NSLog("[FileSync] Converter error: %@", err.localizedDescription)
+            }
+            if !gotData && outputBuffer.frameLength == 0 { return nil }
+            outBuf = outputBuffer
+        } else {
+            guard let directBuf = AVAudioPCMBuffer(pcmFormat: dstFmt, frameCapacity: frameCount) else { return nil }
+            do {
+                try audioFile.read(into: directBuf, frameCount: frameCount)
+                if directBuf.frameLength == 0 { return nil }
+            } catch { return nil }
+            outBuf = directBuf
+        }
+
+        let frames = Int(outBuf.frameLength)
+        let chCount = Int(dstChannels)
+        var int32Buf = [Int32](repeating: 0, count: frames * chCount)
+        for ch in 0..<chCount {
+            guard let chData = outBuf.floatChannelData?[ch] else { continue }
+            for i in 0..<frames {
+                let sample = chData[i]
+                let scaled = max(-1.0, min(1.0, sample)) * 8388608.0
+                int32Buf[i * chCount + ch] = Int32(clamping: Int64(scaled))
+            }
+        }
+        let data = Data(bytes: &int32Buf, count: int32Buf.count * MemoryLayout<Int32>.size)
+        return (data, frames)
+    }
+
+    private func stopFileSyncPump() {
+        fileSyncQueue.sync { fileSyncPlaying = false }
+        fileSyncTimer?.cancel()
+        fileSyncTimer = nil
+    }
+
+    private func handleSyncCommand(_ cmd: String) {
+        var audioFile: AVAudioFile?
+        fileSyncQueue.sync { audioFile = fileSyncAudioFile }
+        guard let audioFile else {
+            pendingSyncCmd = cmd
+            return
+        }
+
+        let parts = cmd.split(separator: ":")
+        guard let action = parts.first else { return }
+
+        switch action {
+        case "play":
+            guard parts.count >= 3,
+                  let posMs = Double(parts[1]),
+                  let wallMs = Double(parts[2]) else { return }
+
+            let nowMs = Date().timeIntervalSince1970 * 1000
+            let elapsedMs = nowMs - wallMs
+            // Add prefill offset: ring buffer prefilled with 200ms before playback starts
+            let prefillMs: Double = 200.0
+            let currentPosMs = posMs + max(0, elapsedMs) + prefillMs
+
+            let srcRate = audioFile.processingFormat.sampleRate
+            let durationMs = Double(audioFile.length) / srcRate * 1000.0
+            if currentPosMs >= durationMs { return }
+
+            fileSyncQueue.sync {
+                let seekFrame = AVAudioFramePosition(currentPosMs / 1000.0 * srcRate)
+                audioFile.framePosition = seekFrame
+                fileSyncConverter?.reset()
+            }
+            startFileSyncPump()
+
+        case "pause":
+            stopFileSyncPump()
+            receiver.filesyncNetworkDisabled = false
+
+        case "seek":
+            guard parts.count >= 2, let posMs = Double(parts[1]) else { return }
+            fileSyncQueue.sync {
+                let seekFrame = AVAudioFramePosition(posMs / 1000.0 * audioFile.processingFormat.sampleRate)
+                audioFile.framePosition = seekFrame
+                fileSyncConverter?.reset()
+            }
+
+        case "skip":
+            stopFileSyncPump()
+            fileSyncQueue.sync { fileSyncAudioFile = nil }
+            receiver.filesyncNetworkDisabled = false
+
+        default:
+            break
         }
     }
 
@@ -209,6 +514,18 @@ final class AudioReceiver: ObservableObject {
 
         disconnectRelay()
         stopWatchdog()
+        stopStatsPolling()
+        receiver.setMetaCallback(nil)
+        receiver.setFileCallback(nil)
+        receiver.setSyncCallback(nil)
+        stopFileSyncPump()
+        fileSyncQueue.sync { fileSyncAudioFile = nil }
+        currentSyncFile = nil
+        pendingSyncCmd = nil
+        receiver.filesyncNetworkDisabled = false
+        nowPlayingTitle = nil
+        nowPlayingArtist = nil
+        nowPlayingArtwork = nil
         state = .stopped
         receiver.stop()
         PeerRelayManager.shared.stop()
@@ -263,8 +580,8 @@ final class AudioReceiver: ObservableObject {
     // MARK: - WAN Relay
 
     func connectRelay(group: String, password: String = "",
-                      host: String = "46.225.77.119", port: UInt16 = 5100) {
-        guard state == .receiving else { return }
+                      host: String = "soluna-relay.fly.dev", port: UInt16 = 5100) {
+        guard state == .connecting || state == .receiving else { return }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             let ok = self.receiver.connect(toRelay: host, port: port,
@@ -304,6 +621,34 @@ final class AudioReceiver: ObservableObject {
         start()
     }
 
+    // MARK: - Network Stats Polling
+
+    func startStatsPolling() {
+        stopStatsPolling()
+        statsTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.networkLatencyMs = self.receiver.networkLatencyMs
+                self.jitterMs = self.receiver.jitterMs
+                self.packetLossPercent = self.receiver.packetLossPercent
+            }
+        }
+        // Level meter at ~30fps for smooth visualization
+        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.033, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.outputLevel = self.receiver.outputPeakLevel
+            }
+        }
+    }
+
+    func stopStatsPolling() {
+        statsTimer?.invalidate()
+        statsTimer = nil
+        levelTimer?.invalidate()
+        levelTimer = nil
+    }
+
     // MARK: - Watchdog (auto-reconnect on stream loss)
 
     private func startWatchdog() {
@@ -327,6 +672,8 @@ final class AudioReceiver: ObservableObject {
         guard state == .receiving || state == .connecting else { return }
         // Don't reconnect while mic is transmitting — reconnect kills the mic
         guard !isMicTransmitting else { return }
+        // Don't reconnect in file-sync mode — no RTP packets expected
+        guard currentSyncFile == nil else { return }
 
         if packetsReceived == lastPacketCount {
             staleTicks += 1
@@ -413,6 +760,23 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
+    private func setupRouteChangeHandler() {
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.updateOutputLatency()
+        }
+    }
+
+    private func updateOutputLatency() {
+        let session = AVAudioSession.sharedInstance()
+        let latencyMs = Float(session.outputLatency * 1000.0)
+        receiver.outputLatencyMs = latencyMs
+        let routeName = session.currentRoute.outputs.first?.portType.rawValue ?? "unknown"
+        print("[AudioReceiver] Output route: \(routeName), latency: \(String(format: "%.1f", latencyMs)) ms")
+    }
+
     // MARK: - Internal delegate handling
 
     fileprivate func handleStateChange(_ newState: SolunaReceiverState) {
@@ -426,6 +790,11 @@ final class AudioReceiver: ObservableObject {
         self.deviceHealth     = receiver.deviceHealth
         self.txPacketsSent    = receiver.txPacketsSent
         self.micInputLevel    = receiver.micInputLevel
+        // Read back adaptive buffer target from C++ (may have been auto-adjusted)
+        let currentTarget = receiver.bufferTargetMs
+        if currentTarget != bufferMs {
+            bufferMs = currentTarget
+        }
         // isMicTransmitting is managed by toggleMic()/stop() only.
         // Don't overwrite from bridge — it can cause false negatives
         // during session transitions.

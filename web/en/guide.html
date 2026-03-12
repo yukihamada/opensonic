@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soluna — Setup Guide</title>
+    <meta name="description" content="Soluna Setup Guide — Start real-time audio streaming to Mac, iPhone, Raspberry Pi, and browsers in 5 minutes.">
+    <meta property="og:title" content="Soluna — Setup Guide">
+    <meta property="og:description" content="Start real-time audio streaming to Mac, iPhone, Raspberry Pi, and browsers in 5 minutes.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/en/guide">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="en_US">
+    <meta name="keywords" content="setup,guide,install,Mac,iPhone,Raspberry Pi,audio streaming,Soluna,open source">
+    <meta name="author" content="Soluna Project">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#05060a">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Soluna — Setup Guide">
+    <meta name="twitter:description" content="Start real-time audio streaming to Mac, iPhone, Raspberry Pi, and browsers in 5 minutes.">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+    <link rel="canonical" href="https://solun.art/en/guide">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        /* Guide-specific overrides */
+        .guide-wrap {
+            max-width: 740px;
+            margin: 0 auto;
+            padding: 0 16px 80px;
+        }
+        .guide-hero {
+            text-align: center;
+            padding: 48px 0 32px;
+        }
+        .guide-hero .logo {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+        .guide-hero p {
+            color: var(--text2);
+            margin-top: 10px;
+            font-size: 15px;
+            max-width: 480px;
+            margin-inline: auto;
+            line-height: 1.7;
+        }
+
+        /* Section */
+        .guide-section {
+            margin-top: 40px;
+        }
+        .guide-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text3);
+            margin-bottom: 14px;
+        }
+
+        /* Step cards */
+        .steps {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .step {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px 20px;
+            position: relative;
+        }
+        .step-num {
+            flex-shrink: 0;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--blue);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 1px;
+        }
+        .step-body h3 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+        .step-body p {
+            font-size: 13px;
+            color: var(--text2);
+            line-height: 1.65;
+            margin-bottom: 10px;
+        }
+        .step-body p:last-child { margin-bottom: 0; }
+        .step-body code {
+            display: block;
+            background: var(--s3);
+            border: 1px solid var(--border);
+            border-radius: var(--r-xs);
+            padding: 10px 14px;
+            font-size: 12px;
+            color: #a8d8b0;
+            white-space: pre;
+            overflow-x: auto;
+            margin-top: 8px;
+            line-height: 1.7;
+        }
+        .step-body .note {
+            display: flex;
+            gap: 8px;
+            background: rgba(245,158,11,0.08);
+            border: 1px solid rgba(245,158,11,0.2);
+            border-radius: var(--r-xs);
+            padding: 10px 12px;
+            font-size: 12px;
+            color: var(--amber);
+            margin-top: 10px;
+            line-height: 1.6;
+        }
+
+        /* Platform pills */
+        .platform-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        .platform-card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .platform-card .pc-icon {
+            font-size: 24px;
+        }
+        .platform-card h3 {
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .platform-card p {
+            font-size: 12px;
+            color: var(--text2);
+            line-height: 1.6;
+        }
+        .platform-card .pc-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 20px;
+            margin-top: 4px;
+            width: fit-content;
+        }
+        .pc-badge.tx { background: rgba(59,130,246,0.15); color: #60a5fa; }
+        .pc-badge.rx { background: rgba(16,185,129,0.15); color: #34d399; }
+
+        /* Troubleshoot accordion */
+        .trouble-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        details.trouble {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        details.trouble summary {
+            padding: 14px 18px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none;
+        }
+        details.trouble summary::after {
+            content: '\25BE';
+            font-size: 12px;
+            color: var(--text3);
+            transition: transform 0.2s;
+        }
+        details.trouble[open] summary::after { transform: rotate(-180deg); }
+        details.trouble summary::-webkit-details-marker { display: none; }
+        .trouble-body {
+            padding: 0 18px 16px;
+            font-size: 13px;
+            color: var(--text2);
+            line-height: 1.7;
+        }
+        .trouble-body code {
+            display: block;
+            background: var(--s3);
+            border: 1px solid var(--border);
+            border-radius: var(--r-xs);
+            padding: 9px 12px;
+            font-size: 12px;
+            color: #a8d8b0;
+            white-space: pre;
+            overflow-x: auto;
+            margin-top: 8px;
+        }
+
+        /* Architecture diagram */
+        .arch-diagram {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12px;
+            color: var(--text2);
+            line-height: 2;
+            overflow-x: auto;
+        }
+        .arch-diagram .hl { color: var(--blue); }
+        .arch-diagram .grn { color: var(--green); }
+        .arch-diagram .amb { color: var(--amber); }
+
+        /* Inline code */
+        code.inline {
+            background: var(--s3);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--text);
+        }
+
+        /* Back button */
+        .guide-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text3);
+            font-size: 13px;
+            text-decoration: none;
+            padding: 8px 0;
+        }
+        .guide-back:hover { color: var(--text2); }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <span class="logo">&#9672; Soluna</span>
+        </div>
+        <div class="header-right">
+            <a href="/dashboard" class="guide-back">&larr; Dashboard</a>
+        </div>
+    </header>
+
+    <div class="guide-wrap">
+
+        <!-- Hero -->
+        <div class="guide-hero">
+            <div class="logo">Setup Guide</div>
+            <p>Stream audio from your Mac to iPhone, Raspberry Pi, and browsers in real time over the network. Follow this page and you'll be up and running in 5 minutes.</p>
+        </div>
+
+        <!-- Architecture -->
+        <div class="guide-section">
+            <div class="guide-section-title">How It Works</div>
+            <div class="arch-diagram">
+Simply set your <span class="hl">Mac</span>'s system output to <span class="hl">Soluna</span> (virtual device)
+                &darr;
+<span class="hl">Soluna.driver</span>  &larr; CoreAudio HAL plugin
+                &darr; Shared memory
+<span class="hl">Soluna.app</span> &mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&#9488;
+   &boxv;                                               &boxv;
+   &boxvr;&mdash;&mdash; <span class="grn">Audio TX</span>    &rarr; Stream system audio over network  &boxv;
+   &boxvr;&mdash;&mdash; <span class="grn">Mic TX</span>      &rarr; Stream microphone audio           &boxv;
+   &boxvr;&mdash;&mdash; <span class="grn">RX</span>          &rarr; Receive from other Mac / iPhone   &boxv;
+   &boxvr;&mdash;&mdash; <span class="grn">WAN P2P</span>     &rarr; Share groups over the internet     &boxv;
+   &boxur;&mdash;&mdash; <span class="grn">CoreAudio</span>   &rarr; Simultaneous Mac speaker playback  &boxv;
+                                                    &boxv;
+              <span class="amb">Web UI</span> http://localhost:8400 &larr;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&#9496;
+
+  * The .pkg installer sets up all components at once</div>
+        </div>
+
+        <!-- Platforms -->
+        <div class="guide-section">
+            <div class="guide-section-title">Supported Platforms</div>
+            <div class="platform-grid">
+                <div class="platform-card">
+                    <div class="pc-icon">&#128187;</div>
+                    <h3>Mac</h3>
+                    <p>Soluna.app handles TX + RX + WAN P2P in one app. System audio, mic streaming, multi-speaker sync.</p>
+                    <span class="pc-badge tx">TX + RX + WAN</span>
+                </div>
+                <div class="platform-card">
+                    <div class="pc-icon">&#128241;</div>
+                    <h3>iPhone</h3>
+                    <p>Receive with the Soluna Receiver app. Auto-discovery via Bonjour, individual volume and delay controls.</p>
+                    <span class="pc-badge rx">RX Receive</span>
+                </div>
+                <div class="platform-card">
+                    <div class="pc-icon">&#129388;</div>
+                    <h3>Raspberry Pi</h3>
+                    <p>Just run <code class="inline">soluna-rx</code>. High-quality playback with any ALSA-compatible DAC.</p>
+                    <span class="pc-badge rx">RX Receive</span>
+                </div>
+                <div class="platform-card">
+                    <div class="pc-icon">&#127760;</div>
+                    <h3>Browser</h3>
+                    <p>Listen instantly from the "Browser" tab in the dashboard. No installation required.</p>
+                    <span class="pc-badge rx">RX Receive</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mac setup -->
+        <div class="guide-section">
+            <div class="guide-section-title">Mac Setup</div>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:20px">The .pkg installer sets up Soluna.app + virtual audio device + background service all at once.</p>
+
+            <div style="text-align:center;margin-bottom:24px">
+                <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" style="display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff;font-size:16px;font-weight:700;padding:16px 32px;border-radius:14px;text-decoration:none;transition:opacity 0.2s;box-shadow:0 4px 20px rgba(59,130,246,0.3)">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                    Download Soluna-mac.pkg
+                </a>
+                <p style="font-size:12px;color:var(--text3);margin-top:10px">macOS 13 Ventura or later &bull; Apple Silicon + Intel supported</p>
+            </div>
+
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <h3>Download &amp; Install</h3>
+                        <p>Download <strong>Soluna-mac.pkg</strong> using the button above, then double-click to launch the installer.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <h3>Set Soluna as Sound Output</h3>
+                        <p>Go to <strong>System Settings &rarr; Sound &rarr; Output</strong> and select "<strong>Soluna</strong>".</p>
+                        <div class="note">&#9888; If "Soluna" doesn't appear, allow the driver in <strong>System Settings &rarr; Privacy &amp; Security</strong>, then run <code class="inline">sudo killall coreaudiod</code>.</div>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-body">
+                        <h3>Start Streaming with Soluna.app</h3>
+                        <p>Open <strong>/Applications/Soluna.app</strong> and turn on <strong>Audio TX</strong> &rarr; streaming starts!</p>
+                        <p style="margin-top:8px;font-size:12px;color:var(--text3)">The solunad background service is auto-configured by the installer. Check status with <code class="inline">solctl status</code>.</p>
+                    </div>
+                </div>
+            </div>
+
+            <p style="font-size:12px;color:var(--text3);margin-top:16px">For developers: To build from source, see the <a href="https://github.com/yukihamada/opensonic" style="color:var(--text2)">GitHub README</a>.</p>
+        </div>
+
+        <!-- iPhone setup -->
+        <div class="guide-section">
+            <div class="guide-section-title">iPhone Setup</div>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <h3>Install the App</h3>
+                        <p>Open <code class="inline">apps/ios/SolunaReceiver.xcodeproj</code> in Xcode and build, or distribute via TestFlight.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <h3>Auto-Connect (Bonjour)</h3>
+                        <p>If connected to the same Wi-Fi as your Mac, <strong>it auto-discovers on launch</strong>.<br>When the Mac appears in the "Speakers" list, you're good to go.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-body">
+                        <h3>Manual Connection</h3>
+                        <p>Tap the "+" button and enter your Mac's IP address (e.g., <code class="inline">192.168.1.10</code>).</p>
+                        <p>Find your Mac's IP at <strong>System Settings &rarr; Wi-Fi &rarr; Details &rarr; TCP/IP</strong>.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">4</div>
+                    <div class="step-body">
+                        <h3>Automatic Delay Sync</h3>
+                        <p>Latency is automatically measured right after connection, syncing Mac speaker and iPhone audio precisely.<br>If you notice drift, use the "Global Delay" slider for manual adjustment.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RPi setup -->
+        <div class="guide-section">
+            <div class="guide-section-title">Raspberry Pi Setup</div>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <h3>One-Command Install</h3>
+                        <p>Run on your RPi / Linux machine. Handles everything from build to service registration.</p>
+                        <code>curl -fsSL https://soluna-web.fly.dev/install-rx.sh | sudo bash</code>
+                        <p>Automatically installs dependencies, builds, and registers the systemd service.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <h3>Manual Build (Linux)</h3>
+                        <code>cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -- soluna-rx
+sudo cp build/soluna-rx /usr/local/bin/</code>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-body">
+                        <h3>Launch & Verify</h3>
+                        <code># ALSA default output
+soluna-rx --output alsa
+
+# Pipe output to aplay
+soluna-rx --output pipe | aplay -f S16_LE -r 48000 -c 2
+
+# Check service status
+systemctl status soluna-rx</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Browser -->
+        <div class="guide-section">
+            <div class="guide-section-title">Listen in Your Browser</div>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-body">
+                        <h3>Dashboard &rarr; "Browser" Tab</h3>
+                        <p>Select <strong>Browser</strong> from the bottom navigation in the <a href="/dashboard">Dashboard</a>.</p>
+                        <p>Press the &#9654; button to start listening instantly. No installation required.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-body">
+                        <h3>Connect from Another Device</h3>
+                        <p>Open from any browser on the same network using your Mac's IP address.</p>
+                        <code>http://&lt;Mac's IP address&gt;:8400</code>
+                        <div class="note">&#9888; iOS Safari may stop audio in background tabs. Keep the tab visible.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Troubleshooting -->
+        <div class="guide-section">
+            <div class="guide-section-title">Troubleshooting</div>
+            <div class="trouble-list">
+                <details class="trouble">
+                    <summary>"Soluna" doesn't appear in Sound settings</summary>
+                    <div class="trouble-body">
+                        Re-running the .pkg installer and restarting CoreAudio usually fixes this.
+                        <code># After clicking "Allow" in System Settings &rarr; Privacy &amp; Security
+sudo killall coreaudiod</code>
+                    </div>
+                </details>
+                <details class="trouble">
+                    <summary>No sound (even with Soluna.app running)</summary>
+                    <div class="trouble-body">
+                        Make sure Audio TX is turned ON in Soluna.app. If shared memory doesn't exist, the driver will retry connection every 2-3 seconds.
+                        <code># Check shared memory
+ls -la /private/var/db/soluna/
+
+# Re-download and install the .pkg</code>
+                    </div>
+                </details>
+                <details class="trouble">
+                    <summary>Doesn't auto-start after Mac reboot</summary>
+                    <div class="trouble-body">
+                        Check the launchd registration status.
+                        <code>launchctl print gui/$UID/io.soluna.daemon
+
+# If LaunchAgent is missing, reinstall the .pkg</code>
+                    </div>
+                </details>
+                <details class="trouble">
+                    <summary>Audio stuttering on iPhone</summary>
+                    <div class="trouble-body">
+                        Increasing the buffer size can help. Go to Settings &rarr; Buffer Size in the iPhone app and increase to 60-120ms.<br>
+                        Alternatively, try setting the "Global Delay" slider to 60ms or more.
+                    </div>
+                </details>
+                <details class="trouble">
+                    <summary>Dropouts on Raspberry Pi</summary>
+                    <div class="trouble-body">
+                        Granting real-time scheduling permissions significantly improves performance.
+                        <code>sudo setcap cap_sys_nice=ep /usr/local/bin/soluna-rx
+echo 'kernel.sched_rt_runtime_us=-1' | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p</code>
+                    </div>
+                </details>
+                <details class="trouble">
+                    <summary>Browser audio is delayed or choppy</summary>
+                    <div class="trouble-body">
+                        The browser version uses AudioWorklet for low-latency design, but may stutter under heavy CPU load. If the Buffer value (ms) in Controls is stable, everything is working normally. "Underruns: 0" means no issues.
+                    </div>
+                </details>
+                <details class="trouble">
+                    <summary>Mac and iPhone audio are out of sync</summary>
+                    <div class="trouble-body">
+                        The iPhone app automatically measures RTT on connection to align delay. If there's significant drift, adjust manually with the "Global Delay" slider. Typical values: 30-60ms on same Wi-Fi, 80-150ms across routers.
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <!-- launchctl cheatsheet -->
+        <div class="guide-section">
+            <div class="guide-section-title">launchd Command Cheatsheet</div>
+            <div class="step">
+                <div class="step-body" style="width:100%">
+                    <code>launchctl print gui/$UID/io.soluna.daemon   # Check status
+launchctl stop  gui/$UID/io.soluna.daemon   # Stop
+launchctl start gui/$UID/io.soluna.daemon   # Start
+launchctl bootout gui/$UID/io.soluna.daemon # Uninstall
+
+tail -f /tmp/solunad.log                    # View logs</code>
+                </div>
+            </div>
+        </div>
+
+        <!-- WebSocket API -->
+        <div class="guide-section">
+            <div class="guide-section-title">WebSocket Command Reference</div>
+            <div class="step">
+                <div class="step-body" style="width:100%">
+                    <p>Connect to <code class="inline">ws://localhost:8400/ws</code> and send JSON commands.</p>
+                    <code># Set monitor volume to 80%
+{"id":1,"command":"monitor.set_volume","volume":0.8}
+
+# Set buffer to 40ms
+{"id":2,"command":"monitor.set_buffer","ms":40}
+
+# Set delay to 50ms
+{"id":3,"command":"monitor.set_delay","ms":50}
+
+# Get receiver statistics
+{"id":4,"command":"rx.stats"}
+
+# Start browser audio
+{"id":5,"command":"audio.subscribe"}
+
+# Ping / RTT measurement
+{"id":6,"command":"time.ping"}</code>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="margin-top:48px;text-align:center;font-size:12px;color:var(--text3)">
+            <p>Soluna — MIT License &nbsp;&middot;&nbsp; <a href="https://github.com/yukihamada/opensonic" style="color:var(--text3)">GitHub</a> &nbsp;&middot;&nbsp; <a href="/dashboard" style="color:var(--text3)">&larr; Dashboard</a></p>
+        </div>
+
+    </div>
+</body>
+</html>
