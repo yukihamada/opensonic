@@ -90,6 +90,7 @@ final class PlayerModel: ObservableObject {
     private weak var _daemon: DaemonClient?
     private var player:    AVPlayer?
     private var timeObs:   Any?
+    private var endObs:    NSObjectProtocol?
     private var specTimer: Timer?
     private var specPhase: Float = 0
 
@@ -343,8 +344,9 @@ final class PlayerModel: ObservableObject {
             self?.updateNowPlaying()
         }
 
-        // End of file → auto-advance queue
-        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime,
+        // End of file → auto-advance queue (remove old observer first)
+        if let obs = endObs { NotificationCenter.default.removeObserver(obs) }
+        endObs = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime,
                                                object: item, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -427,6 +429,8 @@ final class PlayerModel: ObservableObject {
         player?.pause()
         if let obs = timeObs { player?.removeTimeObserver(obs) }
         timeObs = nil
+        if let obs = endObs { NotificationCenter.default.removeObserver(obs) }
+        endObs = nil
         player  = nil
         stopSpectrum()
     }

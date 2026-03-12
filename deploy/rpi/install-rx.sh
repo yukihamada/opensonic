@@ -5,7 +5,11 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BINARY="$(dirname "$(dirname "$SCRIPT_DIR")")/build/soluna-rx"
+BINARY="$(dirname "$(dirname "$SCRIPT_DIR")")/build/soluna"
+# Fallback: older builds used "soluna-rx"
+if [[ ! -f "$BINARY" ]]; then
+    BINARY="$(dirname "$(dirname "$SCRIPT_DIR")")/build/soluna-rx"
+fi
 SERVICE_SRC="$SCRIPT_DIR/soluna-rx.service"
 SERVICE_DEST="/etc/systemd/system/soluna-rx.service"
 INSTALL_BIN="/usr/local/bin/soluna-rx"
@@ -75,6 +79,26 @@ sed \
     "$SERVICE_SRC" > "$SERVICE_DEST"
 echo "Installed: $SERVICE_DEST"
 
+# ── Install Avahi mDNS advertisement ──────────────────────────────────────────
+
+AVAHI_SRC="$SCRIPT_DIR/soluna-rx.service.avahi"
+AVAHI_DEST="/etc/avahi/services/soluna-rx.service"
+
+if command -v avahi-daemon &>/dev/null; then
+    echo "Avahi already installed"
+elif command -v apt-get &>/dev/null; then
+    apt-get install -y avahi-daemon avahi-utils 2>/dev/null || true
+elif command -v pacman &>/dev/null; then
+    pacman -S --noconfirm avahi 2>/dev/null || true
+fi
+
+if [ -d "/etc/avahi/services" ] && [ -f "$AVAHI_SRC" ]; then
+    cp "$AVAHI_SRC" "$AVAHI_DEST"
+    systemctl enable avahi-daemon 2>/dev/null || true
+    systemctl restart avahi-daemon 2>/dev/null || true
+    echo "Installed: $AVAHI_DEST (mDNS _soluna._tcp)"
+fi
+
 # ── Enable and start ──────────────────────────────────────────────────────────
 
 systemctl daemon-reload
@@ -85,6 +109,8 @@ echo ""
 echo "Done! soluna-rx auto-starts on boot."
 echo "  Group:    $MC_GROUP:$MC_PORT"
 echo "  ALSA:     $ALSA_DEVICE  (${CHANNELS}ch)"
+echo "  Control:  ws://<this-host>:8400/ws"
+echo "  mDNS:     _soluna._tcp (discoverable by iPhone/Mac)"
 echo ""
 echo "  systemctl status $SERVICE_ID     # status"
 echo "  journalctl -fu $SERVICE_ID       # logs"

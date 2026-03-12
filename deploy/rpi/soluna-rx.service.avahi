@@ -1,0 +1,12 @@
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name replace-wildcards="yes">Soluna %h</name>
+  <service>
+    <type>_soluna._tcp</type>
+    <port>8400</port>
+    <txt-record>platform=linux</txt-record>
+    <txt-record>mode=rx</txt-record>
+    <txt-record>version=0.3.1</txt-record>
+  </service>
+</service-group>

@@ -5,17 +5,52 @@
     
     
       
-      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000267">
+      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000511">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="1: app_store_connect_api_key" time="0.003683">
+      <testcase classname="fastlane.lanes" name="1: app_store_connect_api_key" time="0.004458">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="2: deliver" time="28.693665">
+      <testcase classname="fastlane.lanes" name="2: increment_build_number" time="0.261364">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="3: Switch to ios build_lib lane" time="0.000196">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="4: mkdir -p build-ios" time="0.006132">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="5: cmake .. -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_ARCHITECTURES=arm64" time="7.450508">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="6: xcodebuild -project soluna.xcodeproj -scheme soluna_core -configuration Release -sdk iphoneos build" time="37.02538">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="7: update_code_signing_settings" time="0.124099">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="8: build_app" time="43.558527">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="9: upload_to_testflight" time="150.4243">
         
       </testcase>
     

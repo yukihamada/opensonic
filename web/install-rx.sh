@@ -32,13 +32,13 @@ info "検出: Linux / $ARCH"
 info "依存パッケージをインストール中..."
 if command -v apt-get &>/dev/null; then
     apt-get update -qq
-    apt-get install -y -qq cmake g++ git libasound2-dev > /dev/null 2>&1
+    apt-get install -y -qq cmake g++ git libasound2-dev avahi-daemon avahi-utils > /dev/null 2>&1
 elif command -v dnf &>/dev/null; then
-    dnf install -y -q cmake gcc-c++ git alsa-lib-devel > /dev/null 2>&1
+    dnf install -y -q cmake gcc-c++ git alsa-lib-devel avahi avahi-tools > /dev/null 2>&1
 elif command -v pacman &>/dev/null; then
-    pacman -Sy --noconfirm cmake gcc git alsa-lib > /dev/null 2>&1
+    pacman -Sy --noconfirm cmake gcc git alsa-lib avahi > /dev/null 2>&1
 else
-    warn "パッケージマネージャーを検出できません。cmake, g++, git, libasound2-dev が必要です。"
+    warn "パッケージマネージャーを検出できません。cmake, g++, git, libasound2-dev, avahi-daemon が必要です。"
 fi
 success "依存パッケージ OK"
 
@@ -108,6 +108,25 @@ LimitMEMLOCK=infinity
 WantedBy=multi-user.target
 UNIT
 
+# ── Avahi mDNS advertisement ─────────────────────────────
+cat > /etc/avahi/services/soluna-rx.service << 'AVAHI'
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name replace-wildcards="yes">Soluna %h</name>
+  <service>
+    <type>_soluna._tcp</type>
+    <port>8400</port>
+    <txt-record>platform=linux</txt-record>
+    <txt-record>mode=rx</txt-record>
+    <txt-record>version=0.3.1</txt-record>
+  </service>
+</service-group>
+AVAHI
+systemctl enable avahi-daemon 2>/dev/null || true
+systemctl restart avahi-daemon 2>/dev/null || true
+success "Avahi mDNS 広告を登録 (_soluna._tcp:8400)"
+
 systemctl daemon-reload
 systemctl enable "$SERVICE_ID"
 systemctl restart "$SERVICE_ID"
@@ -123,6 +142,8 @@ echo ""
 echo "  設定:"
 echo "    マルチキャスト: 239.69.0.1:5004 (デフォルト)"
 echo "    ALSA デバイス:  default"
+echo "    制御サーバー:   ws://<this-host>:8400/ws"
+echo "    mDNS:           _soluna._tcp (iPhone/Mac から自動検出)"
 echo ""
 echo "  コマンド:"
 echo "    ステータス: systemctl status $SERVICE_ID"

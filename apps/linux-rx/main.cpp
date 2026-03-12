@@ -41,6 +41,10 @@
 #include <alsa/asoundlib.h>
 #endif
 
+#include <fcntl.h>
+#include <netdb.h>
+#include <poll.h>
+
 // ── RTP / OSTP headers (minimal, self-contained) ─────────────────────────────
 
 struct RtpHeader {
@@ -805,6 +809,333 @@ static int rx_main(int argc, char** argv);
 
 // ── Main entry point ─────────────────────────────────────────────────────────
 
+// ── Minimal SHA-1 (RFC 3174) for WebSocket handshake ──────────────────────────
+
+namespace sha1 {
+static void sha1_transform(uint32_t state[5], const uint8_t buf[64]) {
+    uint32_t a, b, c, d, e, w[80];
+    for (int i = 0; i < 16; i++)
+        w[i] = (uint32_t)buf[i*4]<<24 | (uint32_t)buf[i*4+1]<<16 |
+               (uint32_t)buf[i*4+2]<<8 | buf[i*4+3];
+    for (int i = 16; i < 80; i++) {
+        uint32_t t = w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16];
+        w[i] = (t << 1) | (t >> 31);
+    }
+    a=state[0]; b=state[1]; c=state[2]; d=state[3]; e=state[4];
+    for (int i = 0; i < 80; i++) {
+        uint32_t f, k;
+        if      (i < 20) { f = (b&c) | ((~b)&d);     k = 0x5A827999; }
+        else if (i < 40) { f = b ^ c ^ d;             k = 0x6ED9EBA1; }
+        else if (i < 60) { f = (b&c) | (b&d) | (c&d); k = 0x8F1BBCDC; }
+        else              { f = b ^ c ^ d;             k = 0xCA62C1D6; }
+        uint32_t t2 = ((a<<5)|(a>>27)) + f + e + k + w[i];
+        e=d; d=c; c=(b<<30)|(b>>2); b=a; a=t2;
+    }
+    state[0]+=a; state[1]+=b; state[2]+=c; state[3]+=d; state[4]+=e;
+}
+static void compute(const uint8_t* data, size_t len, uint8_t out[20]) {
+    uint32_t state[5] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
+    uint8_t buf[64]; size_t i = 0;
+    for (; i + 64 <= len; i += 64) sha1_transform(state, data + i);
+    size_t rem = len - i;
+    memcpy(buf, data + i, rem);
+    buf[rem++] = 0x80;
+    if (rem > 56) { memset(buf + rem, 0, 64 - rem); sha1_transform(state, buf); rem = 0; }
+    memset(buf + rem, 0, 56 - rem);
+    uint64_t bits = (uint64_t)len * 8;
+    for (int j = 0; j < 8; j++) buf[56 + j] = (uint8_t)(bits >> (56 - j*8));
+    sha1_transform(state, buf);
+    for (int j = 0; j < 5; j++) {
+        out[j*4] = state[j]>>24; out[j*4+1] = state[j]>>16;
+        out[j*4+2] = state[j]>>8; out[j*4+3] = state[j];
+    }
+}
+} // namespace sha1
+
+static std::string base64_encode(const uint8_t* data, size_t len) {
+    static const char t[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string r; r.reserve((len + 2) / 3 * 4);
+    for (size_t i = 0; i < len; i += 3) {
+        uint32_t n = (uint32_t)data[i] << 16;
+        if (i+1 < len) n |= (uint32_t)data[i+1] << 8;
+        if (i+2 < len) n |= data[i+2];
+        r += t[(n>>18)&63]; r += t[(n>>12)&63];
+        r += (i+1 < len) ? t[(n>>6)&63] : '=';
+        r += (i+2 < len) ? t[n&63] : '=';
+    }
+    return r;
+}
+
+// ── Minimal WebSocket control server (port 8400) ──────────────────────────────
+// Compatible with DaemonClient.swift on iOS/Mac.
+// Runs in a background thread. Supports volume, mute, status queries.
+
+struct WsControlServer {
+    int listen_fd = -1;
+    std::atomic<bool>* running = nullptr;
+    PlaybackState* pstate = nullptr;
+    std::string device_name;
+    uint32_t channels = 2;
+    uint32_t rate = 48000;
+
+    // State shared with main
+    std::atomic<uint64_t>* total_rx = nullptr;
+    std::atomic<uint64_t>* total_drop = nullptr;
+
+    bool start(uint16_t port) {
+        listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd < 0) return false;
+        int opt = 1;
+        setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = INADDR_ANY;
+        addr.sin_port = htons(port);
+        if (bind(listen_fd, (sockaddr*)&addr, sizeof(addr)) < 0) {
+            close(listen_fd); listen_fd = -1; return false;
+        }
+        listen(listen_fd, 4);
+        // Non-blocking for poll
+        fcntl(listen_fd, F_SETFL, O_NONBLOCK);
+        return true;
+    }
+
+    void run() {
+        while (running->load()) {
+            pollfd pfd{listen_fd, POLLIN, 0};
+            int r = poll(&pfd, 1, 500); // 500ms timeout
+            if (r <= 0) continue;
+            sockaddr_in client_addr{};
+            socklen_t clen = sizeof(client_addr);
+            int cfd = accept(listen_fd, (sockaddr*)&client_addr, &clen);
+            if (cfd < 0) continue;
+            handle_client(cfd);
+        }
+        if (listen_fd >= 0) close(listen_fd);
+    }
+
+    void handle_client(int fd) {
+        // Read HTTP upgrade request
+        char buf[4096];
+        int n = recv(fd, buf, sizeof(buf) - 1, 0);
+        if (n <= 0) { close(fd); return; }
+        buf[n] = '\0';
+
+        // Check for WebSocket upgrade
+        std::string req(buf);
+
+        // Handle plain HTTP GET /ws (for health check)
+        if (req.find("Upgrade: websocket") == std::string::npos &&
+            req.find("upgrade: websocket") == std::string::npos) {
+            // Return simple JSON status
+            char body[256];
+            snprintf(body, sizeof(body),
+                "{\"name\":\"%s\",\"platform\":\"linux\",\"mode\":\"rx\","
+                "\"channels\":%u,\"rate\":%u,\"version\":\"0.3.1\"}",
+                device_name.c_str(), channels, rate);
+            char resp[512];
+            snprintf(resp, sizeof(resp),
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                "Content-Length: %zu\r\nAccess-Control-Allow-Origin: *\r\n\r\n%s",
+                strlen(body), body);
+            send(fd, resp, strlen(resp), 0);
+            close(fd);
+            return;
+        }
+
+        // Extract Sec-WebSocket-Key
+        std::string ws_key;
+        auto pos = req.find("Sec-WebSocket-Key:");
+        if (pos == std::string::npos) pos = req.find("sec-websocket-key:");
+        if (pos != std::string::npos) {
+            auto start = pos + 18;
+            while (start < req.size() && req[start] == ' ') start++;
+            auto end = req.find("\r\n", start);
+            if (end != std::string::npos) ws_key = req.substr(start, end - start);
+        }
+        if (ws_key.empty()) { close(fd); return; }
+
+        // Compute accept key
+        std::string concat = ws_key + "258EAFA5-E914-47DA-95CA-5AB5DC085B11";
+        uint8_t hash[20];
+        sha1::compute((const uint8_t*)concat.c_str(), concat.size(), hash);
+        std::string accept = base64_encode(hash, 20);
+
+        // Send upgrade response
+        char upgrade[512];
+        snprintf(upgrade, sizeof(upgrade),
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Accept: %s\r\n\r\n", accept.c_str());
+        send(fd, upgrade, strlen(upgrade), 0);
+
+        fprintf(stderr, "[ws] Client connected\n");
+
+        // Send initial status
+        send_ws_json(fd, "{\"type\":\"status\",\"monitor_supported\":true,"
+            "\"monitor_running\":true,\"monitor_volume\":1.0,\"monitor_muted\":false}");
+
+        // WebSocket message loop
+        ws_loop(fd);
+        close(fd);
+        fprintf(stderr, "[ws] Client disconnected\n");
+    }
+
+    void ws_loop(int fd) {
+        uint8_t buf[4096];
+        while (running->load()) {
+            pollfd pfd{fd, POLLIN, 0};
+            int r = poll(&pfd, 1, 1000);
+            if (r < 0) break;
+            if (r == 0) continue; // timeout — send ping
+            if (pfd.revents & (POLLERR | POLLHUP)) break;
+
+            int n = recv(fd, buf, sizeof(buf), 0);
+            if (n <= 0) break;
+
+            // Parse WebSocket frame
+            if (n < 2) continue;
+            uint8_t opcode = buf[0] & 0x0F;
+            bool masked = buf[1] & 0x80;
+            uint64_t payload_len = buf[1] & 0x7F;
+            size_t offset = 2;
+
+            if (payload_len == 126) {
+                if (n < 4) continue;
+                payload_len = (uint16_t)buf[2] << 8 | buf[3];
+                offset = 4;
+            } else if (payload_len == 127) {
+                if (n < 10) continue;
+                payload_len = 0;
+                for (int i = 0; i < 8; i++)
+                    payload_len = (payload_len << 8) | buf[offset + i];
+                offset = 10;
+            }
+
+            uint8_t mask[4] = {};
+            if (masked) {
+                if ((size_t)n < offset + 4) continue;
+                memcpy(mask, buf + offset, 4);
+                offset += 4;
+            }
+
+            if ((size_t)n < offset + payload_len) continue;
+            // Unmask
+            for (uint64_t i = 0; i < payload_len; i++)
+                buf[offset + i] ^= mask[i % 4];
+
+            if (opcode == 0x08) break; // close
+            if (opcode == 0x09) { // ping → pong
+                send_ws_frame(fd, 0x0A, buf + offset, payload_len);
+                continue;
+            }
+            if (opcode == 0x0A) continue; // pong — ignore
+
+            if (opcode == 0x01) { // text
+                std::string msg((char*)buf + offset, payload_len);
+                handle_ws_message(fd, msg);
+            }
+        }
+    }
+
+    void handle_ws_message(int fd, const std::string& msg) {
+        // Parse simple JSON — look for "method" field
+        auto find_str = [&](const std::string& key) -> std::string {
+            auto pos = msg.find("\"" + key + "\"");
+            if (pos == std::string::npos) return "";
+            pos = msg.find(':', pos + key.size() + 2);
+            if (pos == std::string::npos) return "";
+            pos++;
+            while (pos < msg.size() && (msg[pos] == ' ' || msg[pos] == '"')) pos++;
+            auto end = msg.find_first_of("\",}", pos);
+            if (end == std::string::npos) end = msg.size();
+            return msg.substr(pos, end - pos);
+        };
+        auto find_num = [&](const std::string& key) -> double {
+            std::string s = find_str(key);
+            return s.empty() ? 0 : atof(s.c_str());
+        };
+
+        std::string method = find_str("method");
+        int id = (int)find_num("id");
+
+        char resp[512];
+        if (method == "monitor.status" || method == "status.get") {
+            float vol = pstate ? pstate->volume.load() : 1.0f;
+            bool mute = pstate ? pstate->muted.load() : false;
+            snprintf(resp, sizeof(resp),
+                "{\"id\":%d,\"result\":{\"monitor_supported\":true,"
+                "\"monitor_running\":true,\"monitor_volume\":%.2f,"
+                "\"monitor_muted\":%s,\"monitor_packets\":0}}",
+                id, vol, mute ? "true" : "false");
+            send_ws_json(fd, resp);
+        }
+        else if (method == "monitor.set_volume") {
+            float v = (float)find_num("volume");
+            if (v < 0) v = 0; if (v > 1) v = 1;
+            if (pstate) pstate->volume.store(v);
+            snprintf(resp, sizeof(resp), "{\"id\":%d,\"result\":{\"ok\":true}}", id);
+            send_ws_json(fd, resp);
+        }
+        else if (method == "monitor.set_mute") {
+            std::string ms = find_str("muted");
+            bool m = (ms == "true" || ms == "1");
+            if (pstate) pstate->muted.store(m);
+            snprintf(resp, sizeof(resp), "{\"id\":%d,\"result\":{\"ok\":true}}", id);
+            send_ws_json(fd, resp);
+        }
+        else if (method == "monitor.start" || method == "monitor.stop") {
+            snprintf(resp, sizeof(resp), "{\"id\":%d,\"result\":{\"ok\":true}}", id);
+            send_ws_json(fd, resp);
+        }
+        else if (method == "mode.get") {
+            snprintf(resp, sizeof(resp),
+                "{\"id\":%d,\"result\":{\"mode\":\"sync\"}}", id);
+            send_ws_json(fd, resp);
+        }
+        else if (method == "devices.list") {
+            snprintf(resp, sizeof(resp),
+                "{\"id\":%d,\"result\":{\"devices\":[\"%s\"]}}",
+                id, device_name.c_str());
+            send_ws_json(fd, resp);
+        }
+        else {
+            // Unknown method — return ok to avoid errors
+            snprintf(resp, sizeof(resp), "{\"id\":%d,\"result\":{\"ok\":true}}", id);
+            send_ws_json(fd, resp);
+        }
+    }
+
+    void send_ws_json(int fd, const char* json) {
+        send_ws_frame(fd, 0x01, (const uint8_t*)json, strlen(json));
+    }
+
+    void send_ws_frame(int fd, uint8_t opcode, const uint8_t* data, size_t len) {
+        uint8_t hdr[10];
+        size_t hdr_len;
+        hdr[0] = 0x80 | opcode; // FIN + opcode
+        if (len < 126) {
+            hdr[1] = (uint8_t)len;
+            hdr_len = 2;
+        } else if (len < 65536) {
+            hdr[1] = 126;
+            hdr[2] = (uint8_t)(len >> 8);
+            hdr[3] = (uint8_t)len;
+            hdr_len = 4;
+        } else {
+            hdr[1] = 127;
+            for (int i = 0; i < 8; i++)
+                hdr[2 + i] = (uint8_t)(len >> (56 - i*8));
+            hdr_len = 10;
+        }
+        send(fd, hdr, hdr_len, MSG_NOSIGNAL);
+        if (len > 0) send(fd, data, len, MSG_NOSIGNAL);
+    }
+};
+
+static WsControlServer g_ws_server;
+
 int main(int argc, char** argv) {
     // Check for --dj mode
     bool dj_mode = false;
@@ -1078,6 +1409,24 @@ static int rx_main(int argc, char** argv) {
 
     std::thread playback(playback_thread_func, &pstate);
 
+    // ── Start WebSocket control server (port 8400) ───────────────────────
+    // Get hostname for device name
+    char hostname_buf[256] = "soluna-rx";
+    gethostname(hostname_buf, sizeof(hostname_buf));
+
+    g_ws_server.running = (std::atomic<bool>*)&g_running;
+    g_ws_server.pstate = &pstate;
+    g_ws_server.device_name = hostname_buf;
+    g_ws_server.channels = channels;
+    g_ws_server.rate = rate;
+    std::thread ws_thread;
+    if (g_ws_server.start(8400)) {
+        ws_thread = std::thread([&]{ g_ws_server.run(); });
+        fprintf(stderr, "[rx] WebSocket control server on port 8400\n");
+    } else {
+        fprintf(stderr, "[rx] Warning: could not start WS control server on port 8400\n");
+    }
+
     if (relay_mode) {
         fprintf(stderr, "[rx] Listening (WAN relay)%s\n",
                 metrics_enabled ? " [metrics ON]" : "");
@@ -1244,8 +1593,9 @@ static int rx_main(int argc, char** argv) {
         }
     }
 
-    // Wait for playback thread to finish
+    // Wait for threads to finish
     playback.join();
+    if (ws_thread.joinable()) ws_thread.join();
 
     if (wav.fp) {
         wav.close();
