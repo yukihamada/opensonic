@@ -970,7 +970,7 @@
             <div class="mode-icon">&#128279;</div>
             <h3>P2P モード</h3>
             <div class="mode-latency">2&#8211;4 devices, &lt;50ms</div>
-            <p>STUN/TURNによるNATトラバーサルで、インターネット越しにピア同士を直接接続。少人数のプライベートセッションやリモートDJモニタリングに最適。リレーサーバーを経由しないため帯域コストゼロ。</p>
+            <p>リレーが<code>YOUR_ADDR</code>レスポンスでクライアントの外部IP:ポートを通知し、UDP ホールパンチングでNAT越えを実現。少人数のプライベートセッションやリモートDJモニタリングに最適。リレーサーバーを経由しないため帯域コストゼロ。</p>
         </div>
         <div class="mode-card reveal reveal-delay-2">
             <div class="mode-icon">&#127760;</div>
@@ -1060,6 +1060,20 @@
 
     <div class="economy-note reveal">
         <strong>設計原則:</strong> ビジネスロジック（決済、著作権検出、ユーザー管理）はプロトコル層に含まれません。これらはすべてアプリケーション層のHTTPS APIで実装されます。OSTプロトコルはオーディオパケットの伝送のみに専念し、経済レイヤーとは完全に独立しています。
+    </div>
+
+    <div class="reveal" style="margin-top:24px">
+        <h3 style="font-size:18px;font-weight:700;margin-bottom:12px">HTTP REST API（実稼働確認済み）</h3>
+        <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;font-family:monospace;font-size:13px;color:var(--text2);overflow-x:auto">
+            <div style="color:var(--text3);margin-bottom:8px"># ウォレット残高照会</div>
+            <div style="color:#6ee7b7">GET /api/wallet?device_id=&lt;id&gt;</div>
+            <div style="color:var(--text3);margin-top:12px;margin-bottom:8px"># 入金 (HMAC-SHA256 で認証)</div>
+            <div style="color:#6ee7b7">POST /api/wallet/charge</div>
+            <div style="color:var(--text3);margin-left:16px">{"device_id":"…","amount":0.01,"token":"&lt;ts&gt;:&lt;hmac&gt;"}</div>
+            <div style="color:var(--text3);margin-top:12px;margin-bottom:8px"># NACK再送信 (WebSocket テキストフレーム)</div>
+            <div style="color:#6ee7b7">ws.send("NACK:&lt;seq1&gt;,&lt;seq2&gt;")</div>
+        </div>
+        <p style="font-size:12px;color:var(--text3);margin-top:8px">※ 現在の稼働リレー (soluna-relay.fly.dev) でエンドツーエンド検証済み。</p>
     </div>
 </section>
 

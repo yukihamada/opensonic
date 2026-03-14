@@ -673,6 +673,87 @@ Copyright Notice
    - Packet loss rate > 5% for > 10 seconds → upgrade to better mode
    - Available bandwidth drops below 1.5× stream bitrate → downgrade
 
+### 6.6. NAT Traversal via Server-Reflexive Address Discovery
+
+   OSTP relays implement a lightweight STUN-like mechanism to help
+   receivers discover their public IP:port. Upon JOIN, the relay MUST
+   immediately respond with the client's server-reflexive address:
+
+   ```
+   Client → Relay  UDP:  JOIN:<channel>\n
+   Relay  → Client UDP:  YOUR_ADDR:<public_ip>:<public_port>\n
+   ```
+
+   This allows clients to share their public address with peers for
+   UDP hole-punching without requiring a separate STUN server.
+
+   **WAN P2P Hole-Punching Procedure:**
+
+   ```
+   1. Client A JOINs channel → relay responds YOUR_ADDR:A_ip:A_port
+   2. Client B JOINs channel → relay responds YOUR_ADDR:B_ip:B_port
+   3. Relay sends PEER:B_ip:B_port to A, and PEER:A_ip:A_port to B
+   4. Both clients simultaneously send UDP probes to each other's
+      public address (simultaneous open, RFC 4787 §14)
+   5. Once probes cross, direct UDP path is open
+   6. ROUTE:A_ip:A_port:p2p (sent to relay to indicate preference)
+   ```
+
+   **Limitations:**
+   - Symmetric NAT (common on LTE/5G carrier-grade NAT) prevents
+     hole-punching. Clients behind symmetric NAT MUST use Relay Mode.
+   - IPv6 clients do not require NAT traversal; direct UDP is possible.
+   - The YOUR_ADDR response is NOT available when connecting via
+     WebSocket (wss://) as the relay sees the TCP connection, not UDP.
+
+### 6.7. NACK Retransmission via WebSocket
+
+   WebSocket receivers (browsers, mobile apps) that cannot send raw
+   UDP packets to the relay may request retransmission via a WebSocket
+   text frame:
+
+   ```
+   Client → Relay (WebSocket text):  NACK:<seq1>,<seq2>,...\n
+   Relay  → Client (WebSocket binary): <OSTP packet for seq1>
+   ```
+
+   The relay maintains a replay buffer of recent packets per channel.
+   Sequence numbers are 16-bit RTP seq values. A receiver SHOULD
+   request NACK within 200ms of detecting a gap (before jitter buffer
+   expires the slot). The relay MUST NOT send more than 32 retransmits
+   per NACK request to prevent abuse.
+
+   NACK counters are tracked in Prometheus metrics:
+   - `soluna_relay_nack_requests_total`
+   - `soluna_relay_nack_retransmits_total`
+
+### 6.8. Economic Layer HTTP API
+
+   For environments where UDP is not bidirectional (e.g., clients behind
+   Carrier-Grade NAT, or web browsers), the economic layer is accessible
+   via HTTPS REST:
+
+   **POST /api/wallet/charge**
+   ```json
+   Request:  {"device_id":"<id>", "amount":<float>, "token":"<ts>:<hmac>"}
+   Response: {"ok":true, "balance":<float>, "charged":<float>}
+   ```
+
+   **GET /api/wallet?device_id=<id>**
+   ```json
+   Response: {"device_id":"<id>", "balance":<float>, "found":<bool>}
+   ```
+
+   HMAC computation (CHARGE):
+   ```
+   key     = RELAY_CHARGE_SECRET (shared secret)
+   message = "CHARGE:" + std::to_string(amount) + ":" + device_id + ":" + timestamp
+   token   = timestamp + ":" + HMAC-SHA256-hex(key, message)
+   ```
+   Note: `std::to_string(double)` uses 6 decimal places (e.g., `0.010000`).
+   Replay protection: tokens are valid for 300 seconds; duplicate tokens
+   within the window are rejected with HTTP 409.
+
 ---
 
 ## 7. Swarm Distribution Protocol
