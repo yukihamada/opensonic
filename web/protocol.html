@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <script>if(!sessionStorage.getItem('lang-set')&&/^en/i.test(navigator.language)){location.replace('/en/protocol')}</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="OSTP (Open Sonic Transport Protocol) — RTPベースのリアルタイムオーディオトランスポートプロトコル。パケットフォーマット、接続モード、セキュリティ、経済レイヤーの技術仕様。">
+    <meta name="keywords" content="OSTP, OpenSonic, プロトコル, RTP, P2P, オーディオ, リアルタイム, DTLS-SRTP, スワーム">
+    <meta name="author" content="Soluna Project">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#05060a">
+    <link rel="canonical" href="https://solun.art/protocol">
+
+    <meta property="og:title" content="OSTP Protocol Overview — Soluna">
+    <meta property="og:description" content="RTPベースのリアルタイムオーディオトランスポートプロトコル。パケットフォーマット、接続モード、セキュリティ仕様。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/protocol">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="ja_JP">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="OSTP Protocol Overview — Soluna">
+    <meta name="twitter:description" content="RTPベースのリアルタイムオーディオトランスポートプロトコル仕様。">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+    <title>OSTP Protocol Overview — Soluna</title>
+
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --cyan:   #06b6d4;
+            --green:  #10b981;
+            --purple: #8b5cf6;
+            --amber:  #f59e0b;
+            --pink:   #ec4899;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ── Scroll reveal ────────────────────────────────── */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        /* ── Nav ──────────────────────────────────────── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 max(20px, calc(50% - 580px));
+            height: 60px;
+            background: rgba(5,6,10,0.7);
+            backdrop-filter: blur(24px) saturate(1.8);
+            border-bottom: 1px solid var(--border);
+            transition: background 0.3s;
+        }
+        .nav-logo {
+            font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+            display: flex; align-items: center; gap: 8px;
+            text-decoration: none; color: var(--text);
+        }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 24px; }
+        .nav-links a {
+            color: var(--text2); text-decoration: none; font-size: 14px;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--text); font-weight: 600; }
+        .nav-cta {
+            padding: 8px 18px;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            color: #fff !important;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 13px !important;
+            transition: opacity 0.2s, transform 0.2s !important;
+            box-shadow: 0 2px 12px rgba(59,130,246,0.3);
+        }
+        .nav-cta:hover { opacity: 0.9; transform: translateY(-1px) !important; }
+
+        /* ── Shared ───────────────────────────────────── */
+        .section {
+            padding: 100px max(20px, calc(50% - 580px));
+        }
+        .section-label {
+            font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; margin-bottom: 14px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        h2 {
+            font-size: clamp(28px, 5vw, 44px);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
+            margin-bottom: 16px;
+        }
+        .sub {
+            font-size: 17px; color: var(--text2); line-height: 1.7;
+            max-width: 640px; margin-bottom: 48px;
+        }
+
+        /* ── Hero ─────────────────────────────────────── */
+        .hero {
+            position: relative;
+            padding: 160px max(20px, calc(50% - 580px)) 100px;
+            overflow: hidden;
+        }
+        .hero-bg {
+            position: absolute; inset: 0; z-index: 0;
+            overflow: hidden;
+        }
+        .hero-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: 0.15;
+            animation: orb-float 20s ease-in-out infinite;
+        }
+        .hero-orb-1 {
+            width: 500px; height: 500px;
+            background: var(--cyan);
+            top: -10%; right: 10%;
+            animation-delay: 0s;
+        }
+        .hero-orb-2 {
+            width: 400px; height: 400px;
+            background: var(--blue);
+            bottom: -5%; left: 5%;
+            animation-delay: -7s;
+        }
+        .hero-orb-3 {
+            width: 300px; height: 300px;
+            background: var(--green);
+            top: 30%; left: 40%;
+            animation-delay: -14s;
+        }
+        @keyframes orb-float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -20px) scale(1.05); }
+            66% { transform: translate(-20px, 15px) scale(0.95); }
+        }
+        .hero-content { position: relative; z-index: 1; }
+
+        h1 {
+            font-size: clamp(32px, 6vw, 64px);
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            line-height: 1.1;
+            margin-bottom: 28px;
+        }
+        .h1-grad {
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .h1-accent {
+            background: linear-gradient(135deg, var(--blue), var(--cyan), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            background-size: 200% auto;
+            animation: grad-shift 4s ease-in-out infinite;
+        }
+        @keyframes grad-shift {
+            0%, 100% { background-position: 0% center; }
+            50% { background-position: 100% center; }
+        }
+
+        .hero-sub {
+            font-size: clamp(16px, 2.5vw, 20px);
+            color: var(--text2); max-width: 680px; line-height: 1.7;
+            margin-bottom: 40px;
+        }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            background: rgba(6,182,212,0.08);
+            border: 1px solid rgba(6,182,212,0.2);
+            border-radius: 100px;
+            font-size: 13px;
+            color: var(--cyan);
+            font-weight: 600;
+            margin-bottom: 24px;
+            font-family: "SF Mono", "Fira Code", monospace;
+        }
+
+        /* ── Packet Diagram ──────────────────────────── */
+        .packet-diagram {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px 36px;
+            overflow-x: auto;
+        }
+        .packet-row {
+            display: flex;
+            gap: 0;
+            margin-bottom: 4px;
+        }
+        .packet-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 16px 12px;
+            border-radius: 8px;
+            text-align: center;
+            min-height: 80px;
+            position: relative;
+            transition: transform 0.2s;
+        }
+        .packet-block:hover {
+            transform: translateY(-2px);
+        }
+        .packet-block-name {
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            white-space: nowrap;
+        }
+        .packet-block-detail {
+            font-size: 11px;
+            opacity: 0.7;
+            white-space: nowrap;
+        }
+        .packet-block-size {
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 6px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.3);
+        }
+        .pkt-rtp {
+            background: linear-gradient(135deg, rgba(59,130,246,0.2), rgba(59,130,246,0.08));
+            border: 1px solid rgba(59,130,246,0.3);
+            color: #93bbfc;
+            flex: 3;
+        }
+        .pkt-rtp-ext {
+            background: linear-gradient(135deg, rgba(59,130,246,0.12), rgba(59,130,246,0.04));
+            border: 1px solid rgba(59,130,246,0.2);
+            color: #7dacf8;
+            flex: 1;
+        }
+        .pkt-ostp {
+            background: linear-gradient(135deg, rgba(6,182,212,0.2), rgba(6,182,212,0.08));
+            border: 1px solid rgba(6,182,212,0.3);
+            color: #67e8f9;
+            flex: 2;
+        }
+        .pkt-payload {
+            background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.08));
+            border: 1px solid rgba(16,185,129,0.3);
+            color: #6ee7b7;
+            flex: 6;
+        }
+        .pkt-crc {
+            background: linear-gradient(135deg, rgba(245,158,11,0.2), rgba(245,158,11,0.08));
+            border: 1px solid rgba(245,158,11,0.3);
+            color: #fcd34d;
+            flex: 1;
+        }
+        .packet-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text2);
+        }
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+        .packet-fields {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 16px;
+            margin-top: 24px;
+        }
+        .packet-field {
+            background: var(--s2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+        }
+        .packet-field-name {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--cyan);
+            font-family: "SF Mono", "Fira Code", monospace;
+            margin-bottom: 6px;
+        }
+        .packet-field-desc {
+            font-size: 13px;
+            color: var(--text2);
+            line-height: 1.5;
+        }
+
+        /* ── Mode Cards ──────────────────────────────── */
+        .mode-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+        .mode-card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 36px 28px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .mode-card:hover {
+            border-color: var(--border2);
+            transform: translateY(-4px);
+        }
+        .mode-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .mode-card:hover::before { opacity: 1; }
+        .mode-card:nth-child(1)::before { background: linear-gradient(90deg, var(--green), var(--cyan)); }
+        .mode-card:nth-child(2)::before { background: linear-gradient(90deg, var(--blue), var(--cyan)); }
+        .mode-card:nth-child(3)::before { background: linear-gradient(90deg, var(--purple), var(--pink)); }
+        .mode-card:nth-child(4)::before { background: linear-gradient(90deg, var(--amber), var(--green)); }
+        .mode-icon {
+            width: 56px; height: 56px;
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        .mode-card:nth-child(1) .mode-icon { background: rgba(16,185,129,0.1); }
+        .mode-card:nth-child(2) .mode-icon { background: rgba(59,130,246,0.1); }
+        .mode-card:nth-child(3) .mode-icon { background: rgba(139,92,246,0.1); }
+        .mode-card:nth-child(4) .mode-icon { background: rgba(245,158,11,0.1); }
+        .mode-card h3 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .mode-latency {
+            font-size: 13px;
+            font-weight: 600;
+            font-family: "SF Mono", "Fira Code", monospace;
+            margin-bottom: 16px;
+            padding: 4px 12px;
+            border-radius: 6px;
+            display: inline-block;
+        }
+        .mode-card:nth-child(1) .mode-latency { background: rgba(16,185,129,0.1); color: var(--green); }
+        .mode-card:nth-child(2) .mode-latency { background: rgba(59,130,246,0.1); color: var(--blue); }
+        .mode-card:nth-child(3) .mode-latency { background: rgba(139,92,246,0.1); color: var(--purple); }
+        .mode-card:nth-child(4) .mode-latency { background: rgba(245,158,11,0.1); color: var(--amber); }
+        .mode-card p {
+            font-size: 15px;
+            color: var(--text2);
+            line-height: 1.7;
+        }
+
+        /* ── Security Cards ──────────────────────────── */
+        .security-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+        .security-card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px 24px;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .security-card:hover {
+            border-color: var(--border2);
+            transform: translateY(-4px);
+        }
+        .security-icon {
+            width: 48px; height: 48px;
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px;
+            margin-bottom: 20px;
+        }
+        .security-card:nth-child(1) .security-icon { background: rgba(59,130,246,0.1); }
+        .security-card:nth-child(2) .security-icon { background: rgba(6,182,212,0.1); }
+        .security-card:nth-child(3) .security-icon { background: rgba(16,185,129,0.1); }
+        .security-card h4 {
+            font-size: 17px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+        .security-card p {
+            font-size: 14px;
+            color: var(--text2);
+            line-height: 1.7;
+        }
+        .security-card code {
+            font-size: 12px;
+            background: var(--s2);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: "SF Mono", "Fira Code", monospace;
+            color: var(--cyan);
+        }
+
+        /* ── Economy Layer ───────────────────────────── */
+        .layer-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            margin-bottom: 40px;
+        }
+        .layer-item {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 24px 28px;
+            border: 1px solid var(--border);
+            position: relative;
+        }
+        .layer-item:first-child { border-radius: 16px 16px 0 0; }
+        .layer-item:last-child { border-radius: 0 0 16px 16px; }
+        .layer-item + .layer-item { border-top: none; }
+        .layer-item:nth-child(1) { background: linear-gradient(90deg, rgba(139,92,246,0.06), transparent); }
+        .layer-item:nth-child(2) { background: linear-gradient(90deg, rgba(59,130,246,0.06), transparent); }
+        .layer-item:nth-child(3) { background: linear-gradient(90deg, rgba(6,182,212,0.06), transparent); }
+        .layer-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 4px 12px;
+            border-radius: 6px;
+            min-width: 100px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .layer-item:nth-child(1) .layer-label { background: rgba(139,92,246,0.15); color: var(--purple); }
+        .layer-item:nth-child(2) .layer-label { background: rgba(59,130,246,0.15); color: var(--blue); }
+        .layer-item:nth-child(3) .layer-label { background: rgba(6,182,212,0.15); color: var(--cyan); }
+        .layer-name {
+            font-size: 16px;
+            font-weight: 700;
+            min-width: 160px;
+        }
+        .layer-desc {
+            font-size: 14px;
+            color: var(--text2);
+            line-height: 1.5;
+        }
+        .layer-proto {
+            font-size: 12px;
+            font-family: "SF Mono", "Fira Code", monospace;
+            color: var(--text3);
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+        .economy-note {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--amber);
+            border-radius: 0 12px 12px 0;
+            padding: 20px 24px;
+            font-size: 14px;
+            color: var(--text2);
+            line-height: 1.7;
+            margin-top: 24px;
+        }
+        .economy-note strong {
+            color: var(--amber);
+        }
+
+        /* ── Revenue Split ────────────────────────────── */
+        .split-bar {
+            display: flex;
+            border-radius: 12px;
+            overflow: hidden;
+            height: 48px;
+            margin: 32px 0 16px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .split-bar > div {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            color: #fff;
+        }
+        .split-rights { background: linear-gradient(135deg, var(--green), #059669); flex: 70; }
+        .split-dj { background: linear-gradient(135deg, var(--blue), var(--cyan)); flex: 20; }
+        .split-platform { background: linear-gradient(135deg, var(--purple), var(--pink)); flex: 10; }
+        .split-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: var(--text3);
+        }
+
+        /* ── P2P Swarm ───────────────────────────────── */
+        .swarm-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 32px;
+            align-items: start;
+        }
+        .swarm-visual {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px 32px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .swarm-visual img {
+            width: 100%;
+            border-radius: 12px;
+            opacity: 0.85;
+            margin-bottom: 20px;
+        }
+        .swarm-tree {
+            width: 100%;
+            max-width: 360px;
+        }
+        .swarm-tree-level {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 8px;
+            position: relative;
+        }
+        .swarm-node {
+            width: 44px; height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .swarm-node-source {
+            background: linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.2));
+            border: 2px solid rgba(59,130,246,0.4);
+        }
+        .swarm-node-relay {
+            background: rgba(6,182,212,0.12);
+            border: 1px solid rgba(6,182,212,0.3);
+        }
+        .swarm-node-leaf {
+            background: rgba(16,185,129,0.12);
+            border: 1px solid rgba(16,185,129,0.3);
+        }
+        .swarm-node-mobile {
+            background: rgba(245,158,11,0.12);
+            border: 1px solid rgba(245,158,11,0.3);
+        }
+        .swarm-connector {
+            text-align: center;
+            margin-bottom: 8px;
+            color: var(--text3);
+            font-size: 18px;
+            letter-spacing: 8px;
+        }
+        .swarm-tree-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+        .swarm-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text2);
+        }
+        .swarm-legend-dot {
+            width: 10px; height: 10px;
+            border-radius: 3px;
+        }
+        .swarm-info {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .swarm-info-card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            transition: border-color 0.3s;
+        }
+        .swarm-info-card:hover {
+            border-color: var(--border2);
+        }
+        .swarm-info-card h4 {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .swarm-info-card p {
+            font-size: 14px;
+            color: var(--text2);
+            line-height: 1.7;
+        }
+        .swarm-info-icon {
+            width: 28px; height: 28px;
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        /* ── CTA ─────────────────────────────────────── */
+        .cta-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        .cta-card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px 24px;
+            text-decoration: none;
+            color: var(--text);
+            transition: border-color 0.3s, transform 0.3s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 16px;
+        }
+        .cta-card:hover {
+            border-color: rgba(59,130,246,0.3);
+            transform: translateY(-4px);
+        }
+        .cta-card-icon {
+            width: 56px; height: 56px;
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px;
+        }
+        .cta-card:nth-child(1) .cta-card-icon { background: rgba(6,182,212,0.1); }
+        .cta-card:nth-child(2) .cta-card-icon { background: rgba(59,130,246,0.1); }
+        .cta-card:nth-child(3) .cta-card-icon { background: rgba(139,92,246,0.1); }
+        .cta-card h4 {
+            font-size: 16px;
+            font-weight: 700;
+        }
+        .cta-card p {
+            font-size: 13px;
+            color: var(--text2);
+            line-height: 1.5;
+        }
+        .cta-card .cta-arrow {
+            color: var(--blue);
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: auto;
+        }
+
+        /* ── Footer ───────────────────────────────────── */
+        .footer-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(59,130,246,0.3), var(--border), transparent);
+        }
+        footer {
+            padding: 40px max(20px, calc(50% - 580px));
+            display: flex; flex-wrap: wrap; align-items: center;
+            justify-content: space-between; gap: 16px;
+        }
+        footer .f-logo { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        footer .f-links { display: flex; gap: 24px; }
+        footer .f-links a { font-size: 13px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
+        footer .f-links a:hover { color: var(--text2); }
+        footer .f-copy { font-size: 12px; color: var(--text3); }
+
+        /* ── Responsive ───────────────────────────────── */
+        @media (max-width: 768px) {
+            .nav-links .hide-sm { display: none; }
+            .mode-grid { grid-template-columns: 1fr; }
+            .security-grid { grid-template-columns: 1fr; }
+            .swarm-container { grid-template-columns: 1fr; }
+            .cta-grid { grid-template-columns: 1fr; }
+            .packet-row { flex-wrap: wrap; }
+            .packet-block { flex: auto !important; min-width: calc(50% - 2px); }
+            .layer-item { flex-wrap: wrap; gap: 12px; }
+            .layer-proto { margin-left: 0; }
+            .layer-name { min-width: auto; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/soluna" class="hide-sm">ホーム</a>
+        <a href="/vision" class="hide-sm">ビジョン</a>
+        <a href="/protocol" class="hide-sm active">プロトコル</a>
+        <a href="/api-docs" class="hide-sm">API</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/en/protocol" class="hide-sm" onclick="sessionStorage.removeItem('lang-set')" style="font-size:12px;opacity:0.6">EN</a>
+        <a href="/dashboard" class="nav-cta">ダッシュボード</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+        <div class="hero-orb hero-orb-3"></div>
+    </div>
+    <div class="hero-content">
+        <div class="hero-badge">RFC 3550 Compatible</div>
+        <h1>
+            <span class="h1-grad">OSTP</span><br>
+            <span class="h1-accent">Open Sonic Transport Protocol</span>
+        </h1>
+        <p class="hero-sub">
+            RTPをベースにしたリアルタイムオーディオトランスポートプロトコル。<br>
+            LAN内5ms以下の超低遅延からグローバルP2Pスワーム配信まで、<br>
+            あらゆるスケールのオーディオ伝送を単一プロトコルで実現します。
+        </p>
+    </div>
+</section>
+
+<!-- Why not WebRTC -->
+<section class="section">
+    <div class="section-label reveal">設計の背景</div>
+    <h2 class="reveal" style="margin-bottom:16px">
+        <span class="h1-grad">なぜ WebRTC では</span><span class="h1-accent">ダメなのか</span>
+    </h2>
+    <p class="sub reveal">WebRTC は優れたプロトコルです。しかし「1対多のリアルタイムオーディオ配信」において、OSTPs が解決する問題に正面から向き合っていません。</p>
+
+    <div class="compare-table reveal" style="margin-top:32px;overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:14px;color:var(--text2)">
+            <thead>
+                <tr>
+                    <th style="text-align:left;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.08);color:var(--text3);font-weight:600;font-size:12px;letter-spacing:0.05em">比較項目</th>
+                    <th style="text-align:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.08);color:var(--purple);font-weight:700">OSTP</th>
+                    <th style="text-align:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.08);color:var(--text3);font-weight:600">WebRTC</th>
+                    <th style="text-align:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.08);color:var(--text3);font-weight:600">AES67</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05)">接続モデル</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center;color:var(--green)">チャンネル名で即接続</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center">SDP/ICE ネゴシエーション必須</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center">LAN内マルチキャスト専用</td>
+                </tr>
+                <tr>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05)">1対多配信</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center;color:var(--green)">ネイティブサポート</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center">SFU/MCU サーバーが別途必要</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center;color:var(--red)">WAN不可</td>
+                </tr>
+                <tr>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05)">P2P スウォーム</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center;color:var(--green)">プロトコルレベルで定義</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center">仕様外（アプリ層で実装要）</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center;color:var(--red)">なし</td>
+                </tr>
+                <tr>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05)">経済レイヤー</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center;color:var(--green)">CHARGE/SYNC コマンド内蔵</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center">なし</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center">なし</td>
+                </tr>
+                <tr>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05)">実装複雑度</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center;color:var(--green)">低（UDP + 24バイトヘッダ）</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center">高（DTLS-SRTP, ICE, SDP…）</td>
+                    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center">中（PTP同期が複雑）</td>
+                </tr>
+                <tr>
+                    <td style="padding:12px 16px">モバイル対応</td>
+                    <td style="padding:12px 16px;text-align:center;color:var(--green)">iOS / Android ネイティブ</td>
+                    <td style="padding:12px 16px;text-align:center">ブラウザのみ安定</td>
+                    <td style="padding:12px 16px;text-align:center;color:var(--red)">対応なし</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="cards-3 reveal" style="margin-top:32px">
+        <div class="card">
+            <div class="card-title" style="color:var(--red)">WebRTC の限界</div>
+            <p style="font-size:14px;line-height:1.7;color:var(--text2)">1対多は設計外。SFUを構築すれば可能だが、それはWebRTCではなくSFUアーキテクチャ。P2Pスウォームを組み込むにはシグナリングプロトコル全体の再設計が必要。</p>
+        </div>
+        <div class="card">
+            <div class="card-title" style="color:var(--yellow)">AES67 の限界</div>
+            <p style="font-size:14px;line-height:1.7;color:var(--text2)">放送・スタジオ向け。LAN内マルチキャストのみで、WANルーティング不可。モバイル・ブラウザは考慮外。PTP同期インフラが前提。</p>
+        </div>
+        <div class="card">
+            <div class="card-title" style="color:var(--green)">OSTP の立ち位置</div>
+            <p style="font-size:14px;line-height:1.7;color:var(--text2)">RFCに準拠しつつ、「1人の送信者から世界規模の受信者へ」というユースケースに最適化。チャンネル名1つで繋がるシンプルさとスウォーム拡張を両立。</p>
+        </div>
+    </div>
+</section>
+
+<!-- Packet Format -->
+<section class="section">
+    <div class="section-label reveal">パケットフォーマット</div>
+    <h2 class="reveal" style="margin-bottom:16px">
+        <span class="h1-grad">パケット</span><span class="h1-accent">フォーマット</span>
+    </h2>
+    <p class="sub reveal">OSTPパケットはRTP標準ヘッダーの上にOSTP拡張を乗せ、オーディオペイロードとCRC-32整合性チェックで構成されます。</p>
+
+    <div class="packet-diagram reveal">
+        <div class="packet-row">
+            <div class="packet-block pkt-rtp">
+                <div class="packet-block-name">RTP Header</div>
+                <div class="packet-block-detail">V=2, PT, SSRC, Seq</div>
+                <div class="packet-block-size">12 bytes</div>
+            </div>
+            <div class="packet-block pkt-rtp-ext">
+                <div class="packet-block-name">RTP Extension</div>
+                <div class="packet-block-detail">Profile 0x4F53</div>
+                <div class="packet-block-size">4 bytes</div>
+            </div>
+            <div class="packet-block pkt-ostp">
+                <div class="packet-block-name">OSTP Extension</div>
+                <div class="packet-block-detail">stream_id, seq_ext, ts</div>
+                <div class="packet-block-size">8 bytes</div>
+            </div>
+            <div class="packet-block pkt-payload">
+                <div class="packet-block-name">Audio Payload</div>
+                <div class="packet-block-detail">Opus / PCM / AAC</div>
+                <div class="packet-block-size">max 12,288 bytes</div>
+            </div>
+            <div class="packet-block pkt-crc">
+                <div class="packet-block-name">CRC-32</div>
+                <div class="packet-block-detail">Trailer</div>
+                <div class="packet-block-size">4 bytes</div>
+            </div>
+        </div>
+
+        <div class="packet-legend">
+            <div class="legend-item">
+                <div class="legend-dot" style="background:rgba(59,130,246,0.5)"></div>
+                RTP標準
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background:rgba(6,182,212,0.5)"></div>
+                OSTP拡張
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background:rgba(16,185,129,0.5)"></div>
+                オーディオデータ
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background:rgba(245,158,11,0.5)"></div>
+                整合性チェック
+            </div>
+        </div>
+
+        <div class="packet-fields">
+            <div class="packet-field">
+                <div class="packet-field-name">Profile: 0x4F53 "OS"</div>
+                <div class="packet-field-desc">RTP拡張ヘッダーのプロファイルIDとしてOSTPを識別。ASCII "OS" に対応。</div>
+            </div>
+            <div class="packet-field">
+                <div class="packet-field-name">stream_id (u16)</div>
+                <div class="packet-field-desc">論理ストリーム識別子。複数チャンネルの多重化に使用。</div>
+            </div>
+            <div class="packet-field">
+                <div class="packet-field-name">sequence_ext (u16)</div>
+                <div class="packet-field-desc">RTP 16bitシーケンス番号の上位拡張。ロングランニングストリームでのラップアラウンドを防止。</div>
+            </div>
+            <div class="packet-field">
+                <div class="packet-field-name">media_timestamp (u32)</div>
+                <div class="packet-field-desc">48kHzサンプルクロック基準のメディアタイムスタンプ。マルチデバイス同期に使用。</div>
+            </div>
+            <div class="packet-field">
+                <div class="packet-field-name">CRC-32</div>
+                <div class="packet-field-desc">パケット全体（ヘッダー + ペイロード）の整合性検証。破損パケットの即時破棄を実現。</div>
+            </div>
+            <div class="packet-field">
+                <div class="packet-field-name">Max MTU: 12,316 bytes</div>
+                <div class="packet-field-desc">12 + 4 + 8 + 12,288 + 4 = 12,316。ジャンボフレーム対応LANで最大パフォーマンス。WANではフラグメンテーション制御を適用。</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 4 Connection Modes -->
+<section class="section" style="padding-top:0">
+    <div class="section-label reveal">接続モード</div>
+    <h2 class="reveal" style="margin-bottom:16px">
+        <span class="h1-grad">4つの</span><span class="h1-accent">接続モード</span>
+    </h2>
+    <p class="sub reveal">ネットワーク環境に応じて最適なモードを自動選択。LANの超低遅延からグローバル配信まで、シームレスに切り替わります。</p>
+
+    <div class="mode-grid">
+        <div class="mode-card reveal">
+            <div class="mode-icon">&#9889;</div>
+            <h3>LAN モード</h3>
+            <div class="mode-latency">&lt; 5ms</div>
+            <p>同一ネットワーク内のデバイス間で、mDNS/Bonjourによる自動ディスカバリー。マルチキャストUDPで直接パケット送信し、ルーティングオーバーヘッドなしの最低遅延を実現。ホームオーディオの複数スピーカー完全同期に最適。</p>
+        </div>
+        <div class="mode-card reveal reveal-delay-1">
+            <div class="mode-icon">&#128279;</div>
+            <h3>P2P モード</h3>
+            <div class="mode-latency">2&#8211;4 devices, &lt;50ms</div>
+            <p>STUN/TURNによるNATトラバーサルで、インターネット越しにピア同士を直接接続。少人数のプライベートセッションやリモートDJモニタリングに最適。リレーサーバーを経由しないため帯域コストゼロ。</p>
+        </div>
+        <div class="mode-card reveal reveal-delay-2">
+            <div class="mode-icon">&#127760;</div>
+            <h3>Relay モード</h3>
+            <div class="mode-latency">5+ devices, ~100ms</div>
+            <p>Fly.ioにデプロイされた地理分散リレーサーバー経由で配信。5台以上のデバイスやNAT越えが困難な環境で自動的に選択。リレーサーバーはパケットをフォワードするだけで、デコードや再エンコードは行いません。</p>
+        </div>
+        <div class="mode-card reveal reveal-delay-3">
+            <div class="mode-icon">&#9878;</div>
+            <h3>Hybrid モード</h3>
+            <div class="mode-latency">Auto-select</div>
+            <p>ネットワーク状況をリアルタイムで計測し、最適なモードを自動選択。LANデバイスにはマルチキャスト、WANリスナーにはP2PまたはRelay。モード遷移はシームレスで、リスナーに途切れを感じさせません。</p>
+        </div>
+    </div>
+</section>
+
+<!-- Security -->
+<section class="section" style="padding-top:0">
+    <div class="section-label reveal">セキュリティ</div>
+    <h2 class="reveal" style="margin-bottom:16px">
+        <span class="h1-grad">セキュリティ</span>
+    </h2>
+    <p class="sub reveal">トランスポート層からアプリケーション層まで、多層的なセキュリティを実装。プロトコルレベルで安全性を担保します。</p>
+
+    <div class="security-grid">
+        <div class="security-card reveal">
+            <div class="security-icon">&#128273;</div>
+            <h4>HMAC-SHA256</h4>
+            <p>入金操作（<code>CHARGE</code>コマンド）に<code>HMAC-SHA256</code>署名を付与。改ざんされた入金リクエストはリレーが即座に拒否し、不正な残高操作を防止します。</p>
+        </div>
+        <div class="security-card reveal reveal-delay-1">
+            <div class="security-icon">&#128272;</div>
+            <h4>DTLS-SRTP</h4>
+            <p>音声データの暗号化に<code>DTLS-SRTP</code>をサポート（オプション機能）。リレー起動時に証明書を設定した場合のみ有効化されます。P2Pおよびリレー経路上の盗聴を防止し、鍵交換はDTLSハンドシェイクで自動的に行われます。</p>
+        </div>
+        <div class="security-card reveal reveal-delay-2">
+            <div class="security-icon">&#128274;</div>
+            <h4>TLS (金融操作)</h4>
+            <p>ウォレットAPI、決済処理、ロイヤリティ分配などの金融操作はすべて<code>TLS 1.3</code>で暗号化されたHTTPS経由で実行。UDPトランスポートには一切の金融データを載せません。</p>
+        </div>
+    </div>
+</section>
+
+<!-- Economy Layer -->
+<section class="section" style="padding-top:0">
+    <div class="section-label reveal">経済レイヤー</div>
+    <h2 class="reveal" style="margin-bottom:16px">
+        <span class="h1-grad">経済</span><span class="h1-accent">レイヤー</span>
+    </h2>
+    <p class="sub reveal">トランスポートと経済ロジックを明確に分離。プロトコルはオーディオ伝送に専念し、ビジネスロジックはアプリケーション層で処理します。</p>
+
+    <div class="layer-stack reveal">
+        <div class="layer-item">
+            <div class="layer-label">Economy</div>
+            <div class="layer-name">Wallet API</div>
+            <div class="layer-desc">ロイヤリティ分配、マイクロペイメント、チップ、サブスクリプション</div>
+            <div class="layer-proto">HTTPS REST</div>
+        </div>
+        <div class="layer-item">
+            <div class="layer-label">Control</div>
+            <div class="layer-name">HTTPS API</div>
+            <div class="layer-desc">チャンネル管理、認証、著作権検出、メタデータ配信</div>
+            <div class="layer-proto">HTTPS + WSS</div>
+        </div>
+        <div class="layer-item">
+            <div class="layer-label">Transport</div>
+            <div class="layer-name">OSTP / RTP</div>
+            <div class="layer-desc">リアルタイムオーディオパケット伝送、P2Pスワーム、リレー</div>
+            <div class="layer-proto">UDP</div>
+        </div>
+    </div>
+
+    <div class="reveal">
+        <h3 style="font-size:20px;font-weight:700;margin-bottom:8px">収益分配モデル</h3>
+        <p style="font-size:15px;color:var(--text2);margin-bottom:8px">再生ごとにリアルタイムでマイクロペイメントが自動実行されます。</p>
+        <div class="split-bar">
+            <div class="split-rights">権利者 70%</div>
+            <div class="split-dj">DJ 20%</div>
+            <div class="split-platform">PF 10%</div>
+        </div>
+        <div class="split-labels">
+            <span>アーティスト・レーベル</span>
+            <span>DJキャッシュバック</span>
+            <span>プラットフォーム</span>
+        </div>
+    </div>
+
+    <div class="economy-note reveal">
+        <strong>設計原則:</strong> ビジネスロジック（決済、著作権検出、ユーザー管理）はプロトコル層に含まれません。これらはすべてアプリケーション層のHTTPS APIで実装されます。OSTプロトコルはオーディオパケットの伝送のみに専念し、経済レイヤーとは完全に独立しています。
+    </div>
+</section>
+
+<!-- Distributed Fingerprint Detection -->
+<section class="section" style="padding-top:0">
+    <div class="section-label reveal">分散フィンガープリント検出</div>
+    <h2 class="reveal" style="margin-bottom:16px">
+        <span class="h1-grad">リスナー側</span><span class="h1-accent">分散フィンガープリント検出</span>
+    </h2>
+    <p class="sub reveal">送信者の負荷ゼロ。リスナーのデバイスが受信中の音声からフィンガープリントを生成し、リレーサーバーが合意アルゴリズムで楽曲を特定。リスナーが増えるほど精度が上がるP2P型の著作権検出システム。</p>
+
+    <div class="mode-grid" style="margin-top:32px">
+        <div class="mode-card reveal">
+            <div class="mode-icon" style="background:rgba(59,130,246,0.1)">&#127925;</div>
+            <h3>1. フィンガープリント生成</h3>
+            <div class="mode-latency" style="background:rgba(59,130,246,0.1);color:var(--blue)">30秒ごと / 64bit</div>
+            <p>リスナーのiPhone/ブラウザが受信中の音声を解析。5秒の音声から8周波数帯 x 32時間窓で64bitハッシュを生成。Accelerate (iOS) / Web Audio API (ブラウザ) で処理し、バッテリー消費はほぼゼロ。</p>
+        </div>
+        <div class="mode-card reveal reveal-delay-1">
+            <div class="mode-icon" style="background:rgba(6,182,212,0.1)">&#128225;</div>
+            <h3>2. リレーへ送信</h3>
+            <div class="mode-latency" style="background:rgba(6,182,212,0.1);color:var(--cyan)">~200バイト</div>
+            <p>生成されたハッシュをリレーサーバーに送信。データ量はわずか約200バイトで通信負荷はほぼゼロ。音声データ自体は一切送信されないためプライバシーも保護。</p>
+        </div>
+        <div class="mode-card reveal reveal-delay-2">
+            <div class="mode-icon" style="background:rgba(139,92,246,0.1)">&#129309;</div>
+            <h3>3. 合意アルゴリズム</h3>
+            <div class="mode-latency" style="background:rgba(139,92,246,0.1);color:var(--purple)">2人以上で確定</div>
+            <p>リレーが複数リスナーのレポートを集計。2人以上が同じハッシュを報告した場合に楽曲を確定。ハミング距離 8bit 以内で同一楽曲と判定。多数決により不正レポートを自動排除。</p>
+        </div>
+        <div class="mode-card reveal reveal-delay-3">
+            <div class="mode-icon" style="background:rgba(16,185,129,0.1)">&#128176;</div>
+            <h3>4. マッチング & 自動分配</h3>
+            <div class="mode-latency" style="background:rgba(16,185,129,0.1);color:var(--green)">リアルタイム</div>
+            <p>確定したハッシュを楽曲データベースとマッチング。一致した楽曲の権利者に自動でロイヤリティを分配。権利者70%、DJキャッシュバック20%、プラットフォーム10%。</p>
+        </div>
+    </div>
+
+    <div class="security-grid" style="margin-top:32px">
+        <div class="security-card reveal">
+            <div class="security-icon" style="background:rgba(59,130,246,0.1)">&#128290;</div>
+            <h4>ハッシュ仕様</h4>
+            <p>5秒の音声窓 → FFTで8周波数帯 (200Hz〜25.6kHz) を抽出 → 32時間窓でエネルギー比較 → 64bitハッシュを生成。レポート保持期間は60秒で自動クリーンアップ。</p>
+        </div>
+        <div class="security-card reveal reveal-delay-1">
+            <div class="security-icon" style="background:rgba(6,182,212,0.1)">&#128267;</div>
+            <h4>バッテリー影響ゼロ</h4>
+            <p>音声は再生のために既にデコード済み。追加処理はFFTのみ。iOS Accelerateフレームワーク / Web Audio APIのAnalyserNodeで超低負荷で処理。</p>
+        </div>
+        <div class="security-card reveal reveal-delay-2">
+            <div class="security-icon" style="background:rgba(16,185,129,0.1)">&#128737;</div>
+            <h4>改ざん防止</h4>
+            <p>複数リスナーの多数決で不正レポートを排除。中央集権的な監視ではなく、リスナーネットワーク全体で著作権を保護する分散型の仕組み。</p>
+        </div>
+    </div>
+</section>
+
+<!-- P2P Swarm -->
+<section class="section" style="padding-top:0">
+    <div class="section-label reveal">P2Pスウォーム</div>
+    <h2 class="reveal" style="margin-bottom:16px">
+        <span class="h1-grad">P2P</span><span class="h1-accent">スワーム</span>
+    </h2>
+    <p class="sub reveal">Fanout-4ツリー構造でリスナーが増えるほどネットワークは強くなります。モバイル検出と冗長親フェイルオーバーにより、途切れゼロを実現。</p>
+
+    <div class="swarm-container">
+        <div class="swarm-visual reveal">
+            <img src="/images/vision-p2p.png" alt="P2Pスワーム配信">
+
+            <!-- Fanout-4 Tree Diagram -->
+            <div class="swarm-tree">
+                <div class="swarm-tree-level">
+                    <div class="swarm-node swarm-node-source" title="Source (DJ)">&#127911;</div>
+                </div>
+                <div class="swarm-connector">&#9475;</div>
+                <div class="swarm-tree-level">
+                    <div class="swarm-node swarm-node-relay" title="Relay Node">&#128279;</div>
+                    <div class="swarm-node swarm-node-relay" title="Relay Node">&#128279;</div>
+                    <div class="swarm-node swarm-node-relay" title="Relay Node">&#128279;</div>
+                    <div class="swarm-node swarm-node-relay" title="Relay Node">&#128279;</div>
+                </div>
+                <div class="swarm-connector">&#9475; &#9475; &#9475; &#9475;</div>
+                <div class="swarm-tree-level">
+                    <div class="swarm-node swarm-node-leaf" title="Listener (WiFi)">&#127911;</div>
+                    <div class="swarm-node swarm-node-leaf" title="Listener (WiFi)">&#127911;</div>
+                    <div class="swarm-node swarm-node-mobile" title="Listener (Mobile)">&#128241;</div>
+                    <div class="swarm-node swarm-node-leaf" title="Listener (WiFi)">&#127911;</div>
+                    <div class="swarm-node swarm-node-mobile" title="Listener (Mobile)">&#128241;</div>
+                    <div class="swarm-node swarm-node-leaf" title="Listener (WiFi)">&#127911;</div>
+                    <div class="swarm-node swarm-node-leaf" title="Listener (WiFi)">&#127911;</div>
+                    <div class="swarm-node swarm-node-mobile" title="Listener (Mobile)">&#128241;</div>
+                </div>
+            </div>
+
+            <div class="swarm-tree-legend">
+                <div class="swarm-legend-item">
+                    <div class="swarm-legend-dot" style="background:rgba(59,130,246,0.5)"></div>
+                    Source
+                </div>
+                <div class="swarm-legend-item">
+                    <div class="swarm-legend-dot" style="background:rgba(6,182,212,0.5)"></div>
+                    Relay
+                </div>
+                <div class="swarm-legend-item">
+                    <div class="swarm-legend-dot" style="background:rgba(16,185,129,0.5)"></div>
+                    WiFi Listener
+                </div>
+                <div class="swarm-legend-item">
+                    <div class="swarm-legend-dot" style="background:rgba(245,158,11,0.5)"></div>
+                    Mobile (Leaf)
+                </div>
+            </div>
+        </div>
+
+        <div class="swarm-info reveal reveal-delay-1">
+            <div class="swarm-info-card">
+                <h4>
+                    <div class="swarm-info-icon" style="background:rgba(6,182,212,0.1);color:var(--cyan)">&#9734;</div>
+                    Fanout-4 ツリー構造
+                </h4>
+                <p>各ノードは最大4つの子ノードにパケットを転送。ツリーの深さが増すごとに指数関数的にリスナー数がスケールします。16ノード (深さ2) で64リスナー、深さ3で256リスナーに到達可能。</p>
+            </div>
+            <div class="swarm-info-card">
+                <h4>
+                    <div class="swarm-info-icon" style="background:rgba(245,158,11,0.1);color:var(--amber)">&#128241;</div>
+                    モバイル自動検出
+                </h4>
+                <p>セルラー回線（4G/5G）のリスナーは自動的にリーフノードとして配置されます。不安定なモバイル回線がリレーになることを防ぎ、下流リスナーへの連鎖的な接続断を回避します。</p>
+            </div>
+            <div class="swarm-info-card">
+                <h4>
+                    <div class="swarm-info-icon" style="background:rgba(16,185,129,0.1);color:var(--green)">&#128737;</div>
+                    冗長親フェイルオーバー
+                </h4>
+                <p>各ノードはプライマリ親に加えてセカンダリ親への接続を維持。親ノードが離脱した場合、50ms以内にセカンダリ親へ自動切り替え。リスナーは途切れを感じることなく聴取を継続できます。</p>
+            </div>
+            <div class="swarm-info-card">
+                <h4>
+                    <div class="swarm-info-icon" style="background:rgba(139,92,246,0.1);color:var(--purple)">&#128202;</div>
+                    リレーフォールバック
+                </h4>
+                <p>P2Pツリーの構築に失敗した場合や、NATタイプがSymmetricでピア接続が不可能な場合、自動的にリレーモードへフォールバック。接続性を常に保証します。</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="section" style="padding-top:0">
+    <div class="section-label reveal">ドキュメント</div>
+    <h2 class="reveal" style="margin-bottom:40px">
+        <span class="h1-grad">詳細仕様を</span><span class="h1-accent">読む</span>
+    </h2>
+    <div class="cta-grid">
+        <a href="https://github.com/yukihamada/opensonic/blob/main/OSTP-SPEC.md" target="_blank" class="cta-card reveal">
+            <div class="cta-card-icon">&#128214;</div>
+            <h4>RFC形式 仕様書 (OSTP-SPEC.md)</h4>
+            <p>OSTプロトコルの完全なRFC形式仕様書。Abstract、動機、バイト図付きパケットフォーマット、ステートマシン、経済レイヤーまで網羅。</p>
+            <div class="cta-arrow">
+                OSTP-SPEC.md
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+            </div>
+        </a>
+        <a href="https://github.com/yukihamada/opensonic/blob/main/web/soluna.js" target="_blank" class="cta-card reveal reveal-delay-1">
+            <div class="cta-card-icon">&#128187;</div>
+            <h4>JavaScript SDK (soluna.js)</h4>
+            <p>ブラウザで動くOSTP第2独立実装。Web Codecs + Web Audio API で Opus デコード・再生。ES module、依存ゼロ。</p>
+            <div class="cta-arrow">
+                soluna.js
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+            </div>
+        </a>
+        <a href="https://github.com/yukihamada/opensonic" target="_blank" class="cta-card reveal reveal-delay-2">
+            <div class="cta-card-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="color:var(--purple)"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            </div>
+            <h4>GitHub</h4>
+            <p>ソースコード、Issue、Pull Request。MIT Licenseで完全オープンソース。</p>
+            <div class="cta-arrow">
+                yukihamada/opensonic
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+            </div>
+        </a>
+    </div>
+</section>
+
+<div class="footer-divider"></div>
+
+<!-- Footer -->
+<footer style="flex-direction:column;align-items:stretch;gap:32px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:32px">
+        <div>
+            <div class="f-logo" style="margin-bottom:12px">&#9670; Soluna</div>
+            <p style="font-size:13px;color:var(--text3);line-height:1.6;max-width:240px">
+                オープンソースのネットワークオーディオ。あなたの音楽を、世界中のスピーカーへ。
+            </p>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">プロダクト</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg">Mac ダウンロード</a>
+                <a href="https://testflight.apple.com/join/PYbefDSE">iOS TestFlight</a>
+                <a href="/dashboard">Dashboard</a>
+                <a href="/guide">セットアップガイド</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">ユースケース</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="/for-djs">DJ向け</a>
+                <a href="/for-venues">店舗・飲食店向け</a>
+                <a href="/for-events">イベント・フェス向け</a>
+                <a href="/for-developers">開発者向け</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">リソース</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+                <a href="https://github.com/yukihamada/opensonic/releases" target="_blank">リリースノート</a>
+                <a href="https://github.com/yukihamada/opensonic/blob/main/docs/protocol-ja.md" target="_blank">プロトコル仕様 (OSTP)</a>
+                <a href="https://github.com/yukihamada/opensonic/blob/main/LICENSE" target="_blank">MIT ライセンス</a>
+            </div>
+        </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-top:1px solid var(--border);padding-top:24px">
+        <div class="f-copy">&copy; 2024-2026 Soluna Project &middot; MIT License &middot; Open Source</div>
+        <div style="display:flex;gap:16px;align-items:center">
+            <a href="https://github.com/yukihamada/opensonic" target="_blank" style="color:var(--text3);transition:color 0.2s" title="GitHub">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            </a>
+        </div>
+    </div>
+</footer>
+
+<script>
+/* ── Scroll reveal ──────────────────────────────────── */
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+        if (e.isIntersecting) {
+            e.target.classList.add('visible');
+            observer.unobserve(e.target);
+        }
+    });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+/* ── Nav scroll effect ──────────────────────────────── */
+window.addEventListener('scroll', () => {
+    const nav = document.querySelector('nav');
+    if (window.scrollY > 80) {
+        nav.style.background = 'rgba(5,6,10,0.92)';
+    } else {
+        nav.style.background = 'rgba(5,6,10,0.7)';
+    }
+}, { passive: true });
+</script>
+</body>
+</html>
