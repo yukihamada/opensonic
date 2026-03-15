@@ -1,0 +1,3262 @@
+<!DOCTYPE html>
+<html lang="en" class="Internet-Draft">
+<head>
+<meta charset="utf-8">
+<meta content="Common,Latin" name="scripts">
+<meta content="initial-scale=1.0" name="viewport">
+<title>Open Sonic Transport Protocol (OSTP)</title>
+<meta content="Yuki Hamada" name="author">
+<meta content="
+       
+        This document specifies the Open Sonic Transport Protocol (OSTP),
+        a UDP/RTP-based protocol for real-time, multi-room audio distribution
+        over both local area networks and the wide-area Internet.  OSTP
+        extends the Real-time Transport Protocol (RTP, RFC 3550) with an
+        8-byte header extension that carries a stream identifier, an extended
+        sequence number, and a high-resolution media timestamp.  The protocol
+        defines payload types for uncompressed PCM, 32-bit floating-point
+        PCM, and Opus-coded audio; a relay signalling protocol carried over
+        UDP text datagrams; a WebSocket-based daemon control interface; a
+        binary file-transfer sub-protocol; congestion control using RTCP
+        Receiver Reports and a bitrate ladder; Forward Error Correction (FEC)
+        via XOR parity packets; Negative Acknowledgement (NACK) based
+        retransmission; and an optional DTLS-SRTP security layer.  OSTP also
+        defines an economic layer that enables per-listen charging, tipping,
+        and royalty distribution anchored to on-chain wallets.
+       
+       
+        This document is an independent submission describing the OSTP 1.0
+        wire format as implemented in the OpenSonic/Soluna open-source
+        codebase.  It is not the product of an IETF working group.
+       
+    " name="description">
+<meta content="xml2rfc 3.32.0" name="generator">
+<meta content="RTP" name="keyword">
+<meta content="audio streaming" name="keyword">
+<meta content="multi-room audio" name="keyword">
+<meta content="low latency" name="keyword">
+<meta content="P2P" name="keyword">
+<meta content="relay" name="keyword">
+<meta content="FEC" name="keyword">
+<meta content="draft-hamada-opensonic-ostp-00" name="ietf.draft">
+<!-- Generator version information:
+  xml2rfc 3.32.0
+    Python 3.11.6
+    ConfigArgParse 1.7.1
+    google-i18n-address 3.1.1
+    intervaltree 3.2.1
+    Jinja2 3.1.6
+    lxml 5.3.1
+    platformdirs 4.3.7
+    pycountry 26.2.16
+    pypdf 5.6.0
+    PyYAML 6.0.2
+    requests 2.32.3
+    wcwidth 0.2.13
+-->
+<link href="draft-hamada-opensonic-ostp-00.xml" rel="alternate" type="application/rfc+xml">
+<link href="#copyright" rel="license">
+<style type="text/css">/*
+
+  NOTE: Changes at the bottom of this file overrides some earlier settings.
+
+  Once the style has stabilized and has been adopted as an official RFC style,
+  this can be consolidated so that style settings occur only in one place, but
+  for now the contents of this file consists first of the initial CSS work as
+  provided to the RFC Formatter (xml2rfc) work, followed by itemized and
+  commented changes found necessary during the development of the v3
+  formatters.
+
+*/
+
+/* fonts */
+@import url('https://static.ietf.org/fonts/noto-sans/import.css'); /* Sans-serif */
+@import url('https://static.ietf.org/fonts/noto-serif/import.css'); /* Serif (print) */
+@import url('https://static.ietf.org/fonts/roboto-mono/import.css'); /* Monospace */
+
+:root {
+  --font-sans: 'Noto Sans', Arial, Helvetica, sans-serif;
+  --font-serif: 'Noto Serif', 'Times', 'Times New Roman', serif;
+  --font-mono: 'Roboto Mono', Courier, 'Courier New', monospace;
+}
+
+@viewport {
+  zoom: 1.0;
+}
+@-ms-viewport {
+  width: extend-to-zoom;
+  zoom: 1.0;
+}
+/* general and mobile first */
+html {
+}
+body {
+  max-width: 90%;
+  margin: 1.5em auto;
+  color: #222;
+  background-color: #fff;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  scroll-behavior: smooth;
+  overflow-wrap: break-word;
+}
+.ears {
+  display: none;
+}
+
+/* headings */
+#title, h1, h2, h3, h4, h5, h6 {
+  margin: 1em 0 0.5em;
+  font-weight: bold;
+  line-height: 1.3;
+}
+#title {
+  clear: both;
+  border-bottom: 1px solid #ddd;
+  margin: 0 0 0.5em 0;
+  padding: 1em 0 0.5em;
+}
+.author {
+  padding-bottom: 4px;
+}
+h1 {
+  font-size: 26px;
+  margin: 1em 0;
+}
+h2 {
+  font-size: 22px;
+  margin-top: -20px;  /* provide offset for in-page anchors */
+  padding-top: 33px;
+}
+h3 {
+  font-size: 18px;
+  margin-top: -36px;  /* provide offset for in-page anchors */
+  padding-top: 42px;
+}
+h4 {
+  font-size: 16px;
+  margin-top: -36px;  /* provide offset for in-page anchors */
+  padding-top: 42px;
+}
+h5, h6 {
+  font-size: 14px;
+}
+#n-copyright-notice {
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 1em;
+  margin-bottom: 1em;
+}
+/* general structure */
+p {
+  padding: 0;
+  margin: 0 0 1em 0;
+  text-align: left;
+}
+div, span {
+  position: relative;
+}
+div {
+  margin: 0;
+}
+.alignRight.art-text {
+  background-color: #f9f9f9;
+  border: 1px solid #eee;
+  border-radius: 3px;
+  padding: 1em 1em 0;
+  margin-bottom: 1.5em;
+}
+.alignRight.art-text pre {
+  padding: 0;
+}
+.alignRight {
+  margin: 1em 0;
+}
+.alignRight > *:first-child {
+  border: none;
+  margin: 0;
+  float: right;
+  clear: both;
+}
+.alignRight > *:nth-child(2) {
+  clear: both;
+  display: block;
+  border: none;
+}
+svg {
+  display: block;
+}
+@media print {
+  svg {
+    max-height: 850px;
+    max-width: 660px;
+  }
+}
+svg[font-family~="serif" i], svg [font-family~="serif" i] {
+  font-family: var(--font-serif);
+}
+svg[font-family~="sans-serif" i], svg [font-family~="sans-serif" i] {
+  font-family: var(--font-sans);
+}
+svg[font-family~="monospace" i], svg [font-family~="monospace" i] {
+  font-family: var(--font-mono);
+}
+.alignCenter.art-text {
+  background-color: #f9f9f9;
+  border: 1px solid #eee;
+  border-radius: 3px;
+  padding: 1em 1em 0;
+  margin-bottom: 1.5em;
+}
+.alignCenter.art-text pre {
+  padding: 0;
+}
+.alignCenter {
+  margin: 1em 0;
+}
+.alignCenter > *:first-child {
+  display: table;
+  border: none;
+  margin: 0 auto;
+}
+
+/* lists */
+ol, ul {
+  padding: 0;
+  margin: 0 0 1em 2em;
+}
+ol ol, ul ul, ol ul, ul ol {
+  margin-left: 1em;
+}
+li {
+  margin: 0 0 0.25em 0;
+}
+.ulCompact li {
+  margin: 0;
+}
+ul.empty, .ulEmpty {
+  list-style-type: none;
+}
+ul.empty li, .ulEmpty li {
+  margin-top: 0.5em;
+}
+ul.ulBare, li.ulBare {
+  margin-left: 0em !important;
+}
+ul.compact, .ulCompact,
+ol.compact, .olCompact {
+  line-height: 100%;
+  margin: 0 0 0 2em;
+}
+
+/* definition lists */
+dl {
+}
+dl > dt {
+  float: left;
+  margin-right: 1em;
+}
+/* 
+dl.nohang > dt {
+  float: none;
+}
+*/
+dl > dd {
+  margin-bottom: .8em;
+  min-height: 1.3em;
+}
+dl.compact > dd, .dlCompact > dd {
+  margin-bottom: 0em;
+}
+dl > dd > dl {
+  margin-top: 0.5em;
+  margin-bottom: 0em;
+}
+
+/* links */
+a {
+  text-decoration: none;
+}
+a[href] {
+  color: #22e; /* Arlen: WCAG 2019 */
+}
+a[href]:hover {
+  background-color: #f2f2f2;
+}
+figcaption a[href],
+a[href].selfRef {
+  color: #222;
+}
+/* XXX probably not this:
+a.selfRef:hover {
+  background-color: transparent;
+  cursor: default;
+} */
+
+/* Figures */
+tt, code, pre {
+  background-color: #f9f9f9;
+  font-family: var(--font-mono);
+}
+pre {
+  border: 1px solid #eee;
+  margin: 0;
+  padding: 1em;
+}
+img {
+  max-width: 100%;
+}
+figure {
+  margin: 0;
+}
+figure blockquote {
+  margin: 0.8em 0.4em 0.4em;
+}
+figcaption {
+  font-style: italic;
+  margin: 0 0 1em 0;
+}
+@media screen {
+  pre {
+    overflow-x: auto;
+    max-width: 100%;
+    max-width: calc(100% - 22px);
+  }
+}
+
+/* aside, blockquote */
+aside, blockquote {
+  margin-left: 0;
+  padding: 1.2em 2em;
+}
+blockquote {
+  background-color: #f9f9f9;
+  color: #111; /* Arlen: WCAG 2019 */
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  margin: 1em 0;
+}
+blockquote > *:last-child {
+  margin-bottom: 0;
+}
+cite {
+  display: block;
+  text-align: right;
+  font-style: italic;
+}
+.xref {
+  overflow-wrap: normal;
+}
+
+/* tables */
+table {
+  width: 100%;
+  margin: 0 0 1em;
+  border-collapse: collapse;
+  border: 1px solid #eee;
+}
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5em 0.75em;
+}
+th {
+  text-align: left;
+  background-color: #e9e9e9;
+}
+tr:nth-child(2n+1) > td {
+  background-color: #f5f5f5;
+}
+table caption {
+  font-style: italic;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+table p {
+  /* XXX to avoid bottom margin on table row signifiers. If paragraphs should
+     be allowed within tables more generally, it would be far better to select on a class. */
+  margin: 0;
+}
+
+/* pilcrow */
+a.pilcrow {
+  color: #666; /* Arlen: AHDJ 2019 */
+  text-decoration: none;
+  visibility: hidden;
+  user-select: none;
+  -ms-user-select: none;
+  -o-user-select:none;
+  -moz-user-select: none;
+  -khtml-user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+@media screen {
+  aside:hover > a.pilcrow,
+  p:hover > a.pilcrow,
+  blockquote:hover > a.pilcrow,
+  div:hover > a.pilcrow,
+  li:hover > a.pilcrow,
+  pre:hover > a.pilcrow {
+    visibility: visible;
+  }
+  a.pilcrow:hover {
+    background-color: transparent;
+  }
+}
+
+/* misc */
+hr {
+  border: 0;
+  border-top: 1px solid #eee;
+}
+.bcp14 {
+  font-variant: small-caps;
+}
+
+.role {
+  font-variant: all-small-caps;
+}
+
+/* info block */
+#identifiers {
+  margin: 0;
+  font-size: 0.9em;
+}
+#identifiers dt {
+  width: 3em;
+  clear: left;
+}
+#identifiers dd {
+  float: left;
+  margin-bottom: 0;
+}
+/* Fix PDF info block run off issue */
+@media print {
+  #identifiers dd {
+    max-width: 100%;
+  }
+}
+#identifiers .authors .author {
+  display: inline-block;
+  margin-right: 1.5em;
+}
+#identifiers .authors .org {
+  font-style: italic;
+}
+
+/* The prepared/rendered info at the very bottom of the page */
+.docInfo {
+  color: #666; /* Arlen: WCAG 2019 */
+  font-size: 0.9em;
+  font-style: italic;
+  margin-top: 2em;
+}
+.docInfo .prepared {
+  float: left;
+}
+.docInfo .prepared {
+  float: right;
+}
+
+/* table of contents */
+#toc  {
+  padding: 0.75em 0 2em 0;
+  margin-bottom: 1em;
+}
+nav.toc ul {
+  margin: 0 0.5em 0 0;
+  padding: 0;
+  list-style: none;
+}
+nav.toc li {
+  line-height: 1.3em;
+  margin: 0.75em 0;
+  padding-left: 1.2em;
+  text-indent: -1.2em;
+}
+/* references */
+.references dt {
+  text-align: right;
+  font-weight: bold;
+  min-width: 7em;
+}
+.references dd {
+  margin-left: 8em;
+  overflow: auto;
+}
+
+.refInstance {
+  margin-bottom: 1.25em;
+}
+
+.refSubseries {
+  margin-bottom: 1.25em;
+}
+
+.references .ascii {
+  margin-bottom: 0.25em;
+}
+
+/* index */
+.index ul {
+  margin: 0 0 0 1em;
+  padding: 0;
+  list-style: none;
+}
+.index ul ul {
+  margin: 0;
+}
+.index li {
+  margin: 0;
+  text-indent: -2em;
+  padding-left: 2em;
+  padding-bottom: 5px;
+}
+.indexIndex {
+  margin: 0.5em 0 1em;
+}
+.index a {
+  font-weight: 700;
+}
+/* make the index two-column on all but the smallest screens */
+@media (min-width: 600px) {
+  .index ul {
+    -moz-column-count: 2;
+    -moz-column-gap: 20px;
+  }
+  .index ul ul {
+    -moz-column-count: 1;
+    -moz-column-gap: 0;
+  }
+}
+
+/* authors */
+address.vcard {
+  font-style: normal;
+  margin: 1em 0;
+}
+
+address.vcard .nameRole {
+  font-weight: 700;
+  margin-left: 0;
+}
+address.vcard .label {
+  font-family: var(--font-sans);
+  margin: 0.5em 0;
+}
+address.vcard .type {
+  display: none;
+}
+.alternative-contact {
+  margin: 1.5em 0 1em;
+}
+hr.addr {
+  border-top: 1px dashed;
+  margin: 0;
+  color: #ddd;
+  max-width: calc(100% - 16px);
+}
+
+/* temporary notes */
+.rfcEditorRemove::before {
+  position: absolute;
+  top: 0.2em;
+  right: 0.2em;
+  padding: 0.2em;
+  content: "The RFC Editor will remove this note";
+  color: #9e2a00; /* Arlen: WCAG 2019 */
+  background-color: #ffd; /* Arlen: WCAG 2019 */
+}
+.rfcEditorRemove {
+  position: relative;
+  padding-top: 1.8em;
+  background-color: #ffd; /* Arlen: WCAG 2019 */
+  border-radius: 3px;
+}
+.cref {
+  background-color: #ffd; /* Arlen: WCAG 2019 */
+  padding: 2px 4px;
+}
+.crefSource {
+  font-style: italic;
+}
+/* alternative layout for smaller screens */
+@media screen and (max-width: 1023px) {
+  body {
+    padding-top: 2em;
+  }
+  #title {
+    padding: 1em 0;
+  }
+  h1 {
+    font-size: 24px;
+  }
+  h2 {
+    font-size: 20px;
+    margin-top: -18px;  /* provide offset for in-page anchors */
+    padding-top: 38px;
+  }
+  #identifiers dd {
+    max-width: 60%;
+  }
+  #toc {
+    position: fixed;
+    z-index: 2;
+    top: 0;
+    right: 0;
+    padding: 0;
+    margin: 0;
+    background-color: inherit;
+    border-bottom: 1px solid #ccc;
+  }
+  #toc h2 {
+    margin: -1px 0 0 0;
+    padding: 4px 0 4px 6px;
+    padding-right: 1em;
+    min-width: 190px;
+    font-size: 1.1em;
+    text-align: right;
+    background-color: #444;
+    color: white;
+    cursor: pointer;
+  }
+  #toc h2::before { /* css hamburger */
+    float: right;
+    position: relative;
+    width: 1em;
+    height: 1px;
+    left: -164px;
+    margin: 6px 0 0 0;
+    background: white none repeat scroll 0 0;
+    box-shadow: 0 4px 0 0 white, 0 8px 0 0 white;
+    content: "";
+  }
+  #toc nav {
+    display: none;
+    padding: 0.5em 1em 1em;
+    overflow: auto;
+    height: calc(100vh - 48px);
+    border-left: 1px solid #ddd;
+  }
+}
+
+/* alternative layout for wide screens */
+@media screen and (min-width: 1024px) {
+  body {
+    max-width: 724px;
+    margin: 42px auto;
+    padding-left: 1.5em;
+    padding-right: 29em;
+  }
+  #toc {
+    position: fixed;
+    top: 42px;
+    right: 42px;
+    width: 25%;
+    margin: 0;
+    padding: 0 1em;
+    z-index: 1;
+  }
+  #toc h2 {
+    border-top: none;
+    border-bottom: 1px solid #ddd;
+    font-size: 1em;
+    font-weight: normal;
+    margin: 0;
+    padding: 0.25em 1em 1em 0;
+  }
+  #toc nav {
+    display: block;
+    height: calc(90vh - 84px);
+    bottom: 0;
+    padding: 0.5em 0 0;
+    overflow: auto;
+  }
+  img { /* future proofing */
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* pagination */
+@media print {
+  body {
+    width: 100%;
+  }
+  p {
+    orphans: 3;
+    widows: 3;
+  }
+  #n-copyright-notice {
+    border-bottom: none;
+  }
+  #toc, #n-introduction {
+    page-break-before: always;
+  }
+  #toc {
+    border-top: none;
+    padding-top: 0;
+  }
+  figure, pre {
+    page-break-inside: avoid;
+  }
+  figure {
+    overflow: scroll;
+  }
+  .breakable pre {
+    break-inside: auto;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+  }
+  h2+*, h3+*, h4+*, h5+*, h6+* {
+    page-break-before: avoid;
+  }
+  pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 10pt;
+  }
+  table {
+    border: 1px solid #ddd;
+  }
+  td {
+    border-top: 1px solid #ddd;
+  }
+}
+
+/* This is commented out here, as the string-set: doesn't
+   pass W3C validation currently */
+/*
+.ears thead .left {
+  string-set: ears-top-left content();
+}
+
+.ears thead .center {
+  string-set: ears-top-center content();
+}
+
+.ears thead .right {
+  string-set: ears-top-right content();
+}
+
+.ears tfoot .left {
+  string-set: ears-bottom-left content();
+}
+
+.ears tfoot .center {
+  string-set: ears-bottom-center content();
+}
+
+.ears tfoot .right {
+  string-set: ears-bottom-right content();
+}
+*/
+
+@page :first {
+  padding-top: 0;
+  @top-left {
+    content: normal;
+    border: none;
+  }
+  @top-center {
+    content: normal;
+    border: none;
+  }
+  @top-right {
+    content: normal;
+    border: none;
+  }
+}
+
+@page {
+  size: A4;
+  margin-bottom: 45mm;
+  padding-top: 20px;
+  /* The following is commented out here, but set appropriately by in code, as
+     the content depends on the document */
+  /*
+  @top-left {
+    content: 'Internet-Draft';
+    vertical-align: bottom;
+    border-bottom: solid 1px #ccc;
+  }
+  @top-left {
+    content: string(ears-top-left);
+    vertical-align: bottom;
+    border-bottom: solid 1px #ccc;
+  }
+  @top-center {
+    content: string(ears-top-center);
+    vertical-align: bottom;
+    border-bottom: solid 1px #ccc;
+  }
+  @top-right {
+    content: string(ears-top-right);
+    vertical-align: bottom;
+    border-bottom: solid 1px #ccc;
+  }
+  @bottom-left {
+    content: string(ears-bottom-left);
+    vertical-align: top;
+    border-top: solid 1px #ccc;
+  }
+  @bottom-center {
+    content: string(ears-bottom-center);
+    vertical-align: top;
+    border-top: solid 1px #ccc;
+  }
+  @bottom-right {
+      content: '[Page ' counter(page) ']';
+      vertical-align: top;
+      border-top: solid 1px #ccc;
+  }
+  */
+
+}
+
+/* Changes introduced to fix issues found during implementation */
+/* Make sure links are clickable even if overlapped by following H* */
+a {
+  z-index: 2;
+}
+/* Separate body from document info even without intervening H1 */
+section {
+  clear: both;
+}
+
+
+/* Top align author divs, to avoid names without organization dropping level with org names */
+.author {
+  vertical-align: top;
+}
+
+/* Leave room in document info to show Internet-Draft on one line */
+#identifiers dt {
+  width: 8em;
+}
+
+/* Don't waste quite as much whitespace between label and value in doc info */
+#identifiers dd {
+  margin-left: 1em;
+}
+
+/* Give floating toc a background color (needed when it's a div inside section */
+#toc {
+  background-color: white;
+}
+
+/* Make the collapsed ToC header render white on gray also when it's a link */
+@media screen and (max-width: 1023px) {
+  #toc h2 a,
+  #toc h2 a:link,
+  #toc h2 a:focus,
+  #toc h2 a:hover,
+  #toc a.toplink,
+  #toc a.toplink:hover {
+    color: white;
+    background-color: #444;
+    text-decoration: none;
+  }
+}
+
+/* Give the bottom of the ToC some whitespace */
+@media screen and (min-width: 1024px) {
+  #toc {
+    padding: 0 0 1em 1em;
+  }
+}
+
+/* Style section numbers with more space between number and title */
+.section-number {
+  padding-right: 0.5em;
+}
+
+/* prevent monospace from becoming overly large */
+tt, code, pre {
+  font-size: 95%;
+}
+
+/* Fix the height/width aspect for ascii art*/
+.sourcecode pre,
+.art-text pre {
+  line-height: 1.12;
+}
+
+
+/* Add styling for a link in the ToC that points to the top of the document */
+a.toplink {
+  float: right;
+  margin-right: 0.5em;
+}
+
+/* Fix the dl styling to match the RFC 7992 attributes */
+dl > dt,
+dl.dlParallel > dt {
+  float: left;
+  margin-right: 1em;
+}
+dl.dlNewline > dt {
+  float: none;
+}
+
+/* Provide styling for table cell text alignment */
+table td.text-left,
+table th.text-left {
+  text-align: left;
+}
+table td.text-center,
+table th.text-center {
+  text-align: center;
+}
+table td.text-right,
+table th.text-right {
+  text-align: right;
+}
+
+/* Make the alternative author contact information look less like just another
+   author, and group it closer with the primary author contact information */
+.alternative-contact {
+  margin: 0.5em 0 0.25em 0;
+}
+address .non-ascii {
+  margin: 0 0 0 2em;
+}
+
+/* With it being possible to set tables with alignment
+  left, center, and right, { width: 100%; } does not make sense */
+table {
+  width: auto;
+}
+
+/* Avoid reference text that sits in a block with very wide left margin,
+   because of a long floating dt label.*/
+.references dd {
+  overflow: visible;
+}
+
+/* Control caption placement */
+caption {
+  caption-side: bottom;
+}
+
+/* Limit the width of the author address vcard, so names in right-to-left
+   script don't end up on the other side of the page. */
+
+address.vcard {
+  max-width: 30em;
+  margin-right: auto;
+}
+
+/* For address alignment dependent on LTR or RTL scripts */
+address div.left {
+  text-align: left;
+}
+address div.right {
+  text-align: right;
+}
+
+/* Provide table alignment support.  We can't use the alignX classes above
+   since they do unwanted things with caption and other styling. */
+table.right {
+ margin-left: auto;
+ margin-right: 0;
+}
+table.center {
+ margin-left: auto;
+ margin-right: auto;
+}
+table.left {
+ margin-left: 0;
+ margin-right: auto;
+}
+
+/* Give the table caption label the same styling as the figcaption */
+caption a[href] {
+  color: #222;
+}
+
+@media print {
+  .toplink {
+    display: none;
+  }
+
+  /* avoid overwriting the top border line with the ToC header */
+  #toc {
+    padding-top: 1px;
+  }
+
+  /* Avoid page breaks inside dl and author address entries */
+  .vcard {
+    page-break-inside: avoid;
+  }
+
+}
+/* Tweak the bcp14 keyword presentation */
+.bcp14 {
+  font-variant: small-caps;
+  font-weight: bold;
+  font-size: 0.9em;
+}
+/* Tweak the invisible space above H* in order not to overlay links in text above */
+ h2 {
+  margin-top: -18px;  /* provide offset for in-page anchors */
+  padding-top: 31px;
+ }
+ h3 {
+  margin-top: -18px;  /* provide offset for in-page anchors */
+  padding-top: 24px;
+ }
+ h4 {
+  margin-top: -18px;  /* provide offset for in-page anchors */
+  padding-top: 24px;
+ }
+/* Float artwork pilcrow to the right */
+@media screen {
+  .artwork a.pilcrow {
+    display: block;
+    line-height: 0.7;
+    margin-top: 0.15em;
+  }
+}
+/* Make pilcrows on dd visible */
+@media screen {
+  dd:hover > a.pilcrow {
+    visibility: visible;
+  }
+}
+/* Make the placement of figcaption match that of a table's caption
+   by removing the figure's added bottom margin */
+.alignLeft.art-text,
+.alignCenter.art-text,
+.alignRight.art-text {
+   margin-bottom: 0;
+}
+.alignLeft,
+.alignCenter,
+.alignRight {
+  margin: 1em 0 0 0;
+}
+/* In print, the pilcrow won't show on hover, so prevent it from taking up space,
+   possibly even requiring a new line */
+@media print {
+  a.pilcrow {
+    display: none;
+  }
+}
+/* Styling for the external metadata */
+div#external-metadata {
+  background-color: #eee;
+  padding: 0.5em;
+  margin-bottom: 0.5em;
+  display: none;
+}
+div#internal-metadata {
+  padding: 0.5em;                       /* to match the external-metadata padding */
+}
+/* Styling for title RFC Number */
+h1#rfcnum {
+  clear: both;
+  margin: 0 0 -1em;
+  padding: 1em 0 0 0;
+}
+/* Make .olPercent look the same as <ol><li> */
+dl.olPercent > dd {
+  margin-bottom: 0.25em;
+  min-height: initial;
+}
+/* Give aside some styling to set it apart */
+aside {
+  border-left: 1px solid #ddd;
+  margin: 1em 0 1em 2em;
+  padding: 0.2em 2em;
+}
+aside > dl,
+aside > ol,
+aside > ul,
+aside > table,
+aside > p {
+  margin-bottom: 0.5em;
+}
+/* Additional page break settings */
+@media print {
+  figcaption, table caption {
+    page-break-before: avoid;
+  }
+}
+/* Font size adjustments for print */
+@media print {
+  body  { font-size: 10pt;      line-height: normal; max-width: 96%; }
+  h1    { font-size: 1.72em;    padding-top: 1.5em; } /* 1*1.2*1.2*1.2 */
+  h2    { font-size: 1.44em;    padding-top: 1.5em; } /* 1*1.2*1.2 */
+  h3    { font-size: 1.2em;     padding-top: 1.5em; } /* 1*1.2 */
+  h4    { font-size: 1em;       padding-top: 1.5em; }
+  h5, h6 { font-size: 1em;      margin: initial; padding: 0.5em 0 0.3em; }
+}
+/* Sourcecode margin in print, when there's no pilcrow */
+@media print {
+  .artwork,
+  .artwork > pre,
+  .sourcecode {
+    margin-bottom: 1em;
+  }
+}
+/* Avoid narrow tables forcing too narrow table captions, which may render badly */
+table {
+  min-width: 20em;
+}
+/* ol type a */
+ol.type-a { list-style-type: lower-alpha; }
+ol.type-A { list-style-type: upper-alpha; }
+ol.type-i { list-style-type: lower-roman; }
+ol.type-I { list-style-type: upper-roman; }
+/* Apply the print table and row borders in general, on request from the RPC,
+and increase the contrast between border and odd row background slightly */
+table {
+  border: 1px solid #ddd;
+}
+td {
+  border-top: 1px solid #ddd;
+}
+tr {
+  break-inside: avoid;
+}
+tr:nth-child(2n+1) > td {
+  background-color: #f8f8f8;
+}
+/* Use style rules to govern display of the TOC. */
+@media screen and (max-width: 1023px) {
+  #toc nav { display: none; }
+  #toc.active nav { display: block; }
+}
+/* Add support for keepWithNext */
+.keepWithNext {
+  break-after: avoid-page;
+  break-after: avoid-page;
+}
+/* Add support for keepWithPrevious */
+.keepWithPrevious {
+  break-before: avoid-page;
+}
+/* Change the approach to avoiding breaks inside artwork etc. */
+figure, pre, table, .artwork, .sourcecode  {
+  break-before: auto;
+  break-after: auto;
+}
+/* Avoid breaks between <dt> and <dd> */
+dl {
+  break-before: auto;
+  break-inside: auto;
+}
+dt {
+  break-before: auto;
+  break-after: avoid-page;
+}
+dd {
+  break-before: avoid-page;
+  break-after: auto;
+  orphans: 3;
+  widows: 3
+}
+span.break, dd.break {
+  margin-bottom: 0;
+  min-height: 0;
+  break-before: auto;
+  break-inside: auto;
+  break-after: auto;
+}
+/* Undo break-before ToC */
+@media print {
+  #toc {
+    break-before: auto;
+  }
+}
+/* Text in compact lists should not get extra bottom margin space,
+   since that would makes the list not compact */
+ul.compact p, .ulCompact p,
+ol.compact p, .olCompact p {
+ margin: 0;
+}
+/* But the list as a whole needs the extra space at the end */
+section ul.compact,
+section .ulCompact,
+section ol.compact,
+section .olCompact {
+  margin-bottom: 1em;                    /* same as p not within ul.compact etc. */
+}
+/* The tt and code background above interferes with for instance table cell
+   backgrounds.  Changed to something a bit more selective. */
+tt, code {
+  background-color: transparent;
+}
+p tt, p code, li tt, li code, dt tt, dt code {
+  background-color: #f8f8f8;
+}
+/* Tweak the pre margin -- 0px doesn't come out well */
+pre {
+   margin-top: 0.5px;
+}
+/* Tweak the compact list text */
+ul.compact, .ulCompact,
+ol.compact, .olCompact,
+dl.compact, .dlCompact {
+  line-height: normal;
+}
+/* Don't add top margin for nested lists */
+li > ul, li > ol, li > dl,
+dd > ul, dd > ol, dd > dl,
+dl > dd > dl {
+  margin-top: initial;
+}
+/* Elements that should not be rendered on the same line as a <dt> */
+/* This should match the element list in writer.text.TextWriter.render_dl() */
+dd > div.artwork:first-child,
+dd > aside:first-child,
+dd > blockquote:first-child,
+dd > figure:first-child,
+dd > ol:first-child,
+dd > div.sourcecode:first-child,
+dd > table:first-child,
+dd > ul:first-child {
+  clear: left;
+}
+/* fix for weird browser behaviour when <dd/> is empty */
+dt+dd:empty::before{
+  content: "\00a0";
+}
+/* Make paragraph spacing inside <li> smaller than in body text, to fit better within the list */
+li > p {
+  margin-bottom: 0.5em
+}
+/* Don't let p margin spill out from inside list items */
+li > p:last-of-type:only-child {
+  margin-bottom: 0;
+}
+</style>
+<link href="rfc-local.css" rel="stylesheet" type="text/css">
+<script type="application/javascript">async function addMetadata(){try{const e=document.styleSheets[0].cssRules;for(let t=0;t<e.length;t++)if(/#identifiers/.exec(e[t].selectorText)){const a=e[t].cssText.replace("#identifiers","#external-updates");document.styleSheets[0].insertRule(a,document.styleSheets[0].cssRules.length)}}catch(e){console.log(e)}const e=document.getElementById("external-metadata");if(e)try{var t,a="",o=function(e){const t=document.getElementsByTagName("meta");for(let a=0;a<t.length;a++)if(t[a].getAttribute("name")===e)return t[a].getAttribute("content");return""}("rfc.number");if(o){t="https://www.rfc-editor.org/rfc/rfc"+o+".json";try{const e=await fetch(t);a=await e.json()}catch(e){t=document.URL.indexOf("html")>=0?document.URL.replace(/html$/,"json"):document.URL+".json";const o=await fetch(t);a=await o.json()}}if(!a)return;e.style.display="block";const s="",d="https://datatracker.ietf.org/doc",n="https://datatracker.ietf.org/ipr/search",c="https://www.rfc-editor.org/info",l=a.doc_id.toLowerCase(),i=a.doc_id.slice(0,3).toLowerCase(),f=a.doc_id.slice(3).replace(/^0+/,""),u={status:"Status",obsoletes:"Obsoletes",obsoleted_by:"Obsoleted By",updates:"Updates",updated_by:"Updated By",see_also:"See Also",errata_url:"Errata"};let h="<dl style='overflow:hidden' id='external-updates'>";["status","obsoletes","obsoleted_by","updates","updated_by","see_also","errata_url"].forEach(e=>{if("status"==e){a[e]=a[e].toLowerCase();var t=a[e].split(" "),o=t.length,w="",p=1;for(let e=0;e<o;e++)p<o?w=w+r(t[e])+" ":w+=r(t[e]),p++;a[e]=w}else if("obsoletes"==e||"obsoleted_by"==e||"updates"==e||"updated_by"==e){var g,m="",b=1;g=a[e].length;for(let t=0;t<g;t++)a[e][t]&&(a[e][t]=String(a[e][t]).toLowerCase(),m=b<g?m+"<a href='"+s+"/rfc/".concat(a[e][t])+"'>"+a[e][t].slice(3)+"</a>, ":m+"<a href='"+s+"/rfc/".concat(a[e][t])+"'>"+a[e][t].slice(3)+"</a>",b++);a[e]=m}else if("see_also"==e){var y,L="",C=1;y=a[e].length;for(let t=0;t<y;t++)if(a[e][t]){a[e][t]=String(a[e][t]);var _=a[e][t].slice(0,3),v=a[e][t].slice(3).replace(/^0+/,"");L=C<y?"RFC"!=_?L+"<a href='"+s+"/info/"+_.toLowerCase().concat(v.toLowerCase())+"'>"+_+" "+v+"</a>, ":L+"<a href='"+s+"/info/"+_.toLowerCase().concat(v.toLowerCase())+"'>"+v+"</a>, ":"RFC"!=_?L+"<a href='"+s+"/info/"+_.toLowerCase().concat(v.toLowerCase())+"'>"+_+" "+v+"</a>":L+"<a href='"+s+"/info/"+_.toLowerCase().concat(v.toLowerCase())+"'>"+v+"</a>",C++}a[e]=L}else if("errata_url"==e){var R="";R=a[e]?R+"<a href='"+a[e]+"'>Errata exist</a> | <a href='"+d+"/"+l+"'>Datatracker</a>| <a href='"+n+"/?"+i+"="+f+"&submit="+i+"'>IPR</a> | <a href='"+c+"/"+l+"'>Info page</a>":"<a href='"+d+"/"+l+"'>Datatracker</a> | <a href='"+n+"/?"+i+"="+f+"&submit="+i+"'>IPR</a> | <a href='"+c+"/"+l+"'>Info page</a>",a[e]=R}""!=a[e]?"Errata"==u[e]?h+=`<dt>More info:</dt><dd>${a[e]}</dd>`:h+=`<dt>${u[e]}:</dt><dd>${a[e]}</dd>`:"Errata"==u[e]&&(h+=`<dt>More info:</dt><dd>${a[e]}</dd>`)}),h+="</dl>",e.innerHTML=h}catch(e){console.log(e)}else console.log("Could not locate metadata <div> element");function r(e){return e.charAt(0).toUpperCase()+e.slice(1)}}window.removeEventListener("load",addMetadata),window.addEventListener("load",addMetadata);</script>
+</head>
+<body class="xml2rfc">
+<table class="ears">
+<thead><tr>
+<td class="left">Internet-Draft</td>
+<td class="center">OSTP</td>
+<td class="right">March 2026</td>
+</tr></thead>
+<tfoot><tr>
+<td class="left">Hamada</td>
+<td class="center">Expires 17 September 2026</td>
+<td class="right">[Page]</td>
+</tr></tfoot>
+</table>
+<div id="external-metadata" class="document-information"></div>
+<div id="internal-metadata" class="document-information">
+<dl id="identifiers">
+<dt class="label-workgroup">Workgroup:</dt>
+<dd class="workgroup">Individual Submission</dd>
+<dt class="label-internet-draft">Internet-Draft:</dt>
+<dd class="internet-draft">draft-hamada-opensonic-ostp-00</dd>
+<dt class="label-published">Published:</dt>
+<dd class="published">
+<time datetime="2026-03-16" class="published">16 March 2026</time>
+    </dd>
+<dt class="label-intended-status">Intended Status:</dt>
+<dd class="intended-status">Experimental</dd>
+<dt class="label-expires">Expires:</dt>
+<dd class="expires"><time datetime="2026-09-17">17 September 2026</time></dd>
+<dt class="label-authors">Author:</dt>
+<dd class="authors">
+<div class="author">
+      <div class="author-name">Y. Hamada</div>
+<div class="org">EnablerDAO</div>
+</div>
+</dd>
+</dl>
+</div>
+<h1 id="title">Open Sonic Transport Protocol (OSTP)</h1>
+<section id="section-abstract">
+      <h2 id="abstract"><a href="#abstract" class="selfRef">Abstract</a></h2>
+<p id="section-abstract-1">
+        This document specifies the Open Sonic Transport Protocol (OSTP),
+        a UDP/RTP-based protocol for real-time, multi-room audio distribution
+        over both local area networks and the wide-area Internet.  OSTP
+        extends the Real-time Transport Protocol (RTP, RFC 3550) with an
+        8-byte header extension that carries a stream identifier, an extended
+        sequence number, and a high-resolution media timestamp.  The protocol
+        defines payload types for uncompressed PCM, 32-bit floating-point
+        PCM, and Opus-coded audio; a relay signalling protocol carried over
+        UDP text datagrams; a WebSocket-based daemon control interface; a
+        binary file-transfer sub-protocol; congestion control using RTCP
+        Receiver Reports and a bitrate ladder; Forward Error Correction (FEC)
+        via XOR parity packets; Negative Acknowledgement (NACK) based
+        retransmission; and an optional DTLS-SRTP security layer.  OSTP also
+        defines an economic layer that enables per-listen charging, tipping,
+        and royalty distribution anchored to on-chain wallets.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
+<p id="section-abstract-2">
+        This document is an independent submission describing the OSTP 1.0
+        wire format as implemented in the OpenSonic/Soluna open-source
+        codebase.  It is not the product of an IETF working group.<a href="#section-abstract-2" class="pilcrow">¶</a></p>
+</section>
+<div id="status-of-memo">
+<section id="section-boilerplate.1">
+        <h2 id="name-status-of-this-memo">
+<a href="#name-status-of-this-memo" class="section-name selfRef">Status of This Memo</a>
+        </h2>
+<p id="section-boilerplate.1-1">
+        This Internet-Draft is submitted in full conformance with the
+        provisions of BCP 78 and BCP 79.<a href="#section-boilerplate.1-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-2">
+        Internet-Drafts are working documents of the Internet Engineering Task
+        Force (IETF). Note that other groups may also distribute working
+        documents as Internet-Drafts. The list of current Internet-Drafts is
+        at <span><a href="https://datatracker.ietf.org/drafts/current/">https://datatracker.ietf.org/drafts/current/</a></span>.<a href="#section-boilerplate.1-2" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-3">
+        Internet-Drafts are draft documents valid for a maximum of six months
+        and may be updated, replaced, or obsoleted by other documents at any
+        time. It is inappropriate to use Internet-Drafts as reference
+        material or to cite them other than as "work in progress."<a href="#section-boilerplate.1-3" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-4">
+        This Internet-Draft will expire on 17 September 2026.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="copyright">
+<section id="section-boilerplate.2">
+        <h2 id="name-copyright-notice">
+<a href="#name-copyright-notice" class="section-name selfRef">Copyright Notice</a>
+        </h2>
+<p id="section-boilerplate.2-1">
+            Copyright (c) 2026 IETF Trust and the persons identified as the
+            document authors. All rights reserved.<a href="#section-boilerplate.2-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.2-2">
+            This document is subject to BCP 78 and the IETF Trust's Legal
+            Provisions Relating to IETF Documents
+            (<span><a href="https://trustee.ietf.org/license-info">https://trustee.ietf.org/license-info</a></span>) in effect on the date of
+            publication of this document. Please review these documents
+            carefully, as they describe your rights and restrictions with
+            respect to this document.<a href="#section-boilerplate.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="toc">
+<section id="section-toc.1">
+        <a href="#" onclick="scroll(0,0)" class="toplink">▲</a><h2 id="name-table-of-contents">
+<a href="#name-table-of-contents" class="section-name selfRef">Table of Contents</a>
+        </h2>
+<nav class="toc"><ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1">
+            <p id="section-toc.1-1.1.1" class="keepWithNext"><a href="#section-1" class="auto internal xref">1</a>.  <a href="#name-introduction" class="internal xref">Introduction</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.1">
+                <p id="section-toc.1-1.1.2.1.1" class="keepWithNext"><a href="#section-1.1" class="auto internal xref">1.1</a>.  <a href="#name-design-goals-and-non-goals" class="internal xref">Design Goals and Non-Goals</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.2">
+            <p id="section-toc.1-1.2.1" class="keepWithNext"><a href="#section-2" class="auto internal xref">2</a>.  <a href="#name-terminology" class="internal xref">Terminology</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3">
+            <p id="section-toc.1-1.3.1"><a href="#section-3" class="auto internal xref">3</a>.  <a href="#name-protocol-architecture" class="internal xref">Protocol Architecture</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.1">
+                <p id="section-toc.1-1.3.2.1.1"><a href="#section-3.1" class="auto internal xref">3.1</a>.  <a href="#name-media-plane" class="internal xref">Media Plane</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.2">
+                <p id="section-toc.1-1.3.2.2.1"><a href="#section-3.2" class="auto internal xref">3.2</a>.  <a href="#name-control-plane" class="internal xref">Control Plane</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.3">
+                <p id="section-toc.1-1.3.2.3.1"><a href="#section-3.3" class="auto internal xref">3.3</a>.  <a href="#name-swarm-distribution-tree" class="internal xref">Swarm Distribution Tree</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4">
+            <p id="section-toc.1-1.4.1"><a href="#section-4" class="auto internal xref">4</a>.  <a href="#name-ostp-packet-format" class="internal xref">OSTP Packet Format</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.1">
+                <p id="section-toc.1-1.4.2.1.1"><a href="#section-4.1" class="auto internal xref">4.1</a>.  <a href="#name-rtp-fixed-header" class="internal xref">RTP Fixed Header</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.2">
+                <p id="section-toc.1-1.4.2.2.1"><a href="#section-4.2" class="auto internal xref">4.2</a>.  <a href="#name-rtp-extension-header" class="internal xref">RTP Extension Header</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.3">
+                <p id="section-toc.1-1.4.2.3.1"><a href="#section-4.3" class="auto internal xref">4.3</a>.  <a href="#name-ostp-extension-data" class="internal xref">OSTP Extension Data</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.4">
+                <p id="section-toc.1-1.4.2.4.1"><a href="#section-4.4" class="auto internal xref">4.4</a>.  <a href="#name-payload-types" class="internal xref">Payload Types</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.5">
+                <p id="section-toc.1-1.4.2.5.1"><a href="#section-4.5" class="auto internal xref">4.5</a>.  <a href="#name-optional-crc-32-trailer" class="internal xref">Optional CRC-32 Trailer</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5">
+            <p id="section-toc.1-1.5.1"><a href="#section-5" class="auto internal xref">5</a>.  <a href="#name-channel-addressing" class="internal xref">Channel Addressing</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6">
+            <p id="section-toc.1-1.6.1"><a href="#section-6" class="auto internal xref">6</a>.  <a href="#name-relay-signalling-protocol" class="internal xref">Relay Signalling Protocol</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.1">
+                <p id="section-toc.1-1.6.2.1.1"><a href="#section-6.1" class="auto internal xref">6.1</a>.  <a href="#name-rsp-message-definitions" class="internal xref">RSP Message Definitions</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.2">
+                <p id="section-toc.1-1.6.2.2.1"><a href="#section-6.2" class="auto internal xref">6.2</a>.  <a href="#name-relay-state-machine" class="internal xref">Relay State Machine</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7">
+            <p id="section-toc.1-1.7.1"><a href="#section-7" class="auto internal xref">7</a>.  <a href="#name-congestion-control" class="internal xref">Congestion Control</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.1">
+                <p id="section-toc.1-1.7.2.1.1"><a href="#section-7.1" class="auto internal xref">7.1</a>.  <a href="#name-rtcp-receiver-reports" class="internal xref">RTCP Receiver Reports</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.2">
+                <p id="section-toc.1-1.7.2.2.1"><a href="#section-7.2" class="auto internal xref">7.2</a>.  <a href="#name-opus-bitrate-ladder" class="internal xref">Opus Bitrate Ladder</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.3">
+                <p id="section-toc.1-1.7.2.3.1"><a href="#section-7.3" class="auto internal xref">7.3</a>.  <a href="#name-forward-error-correction-fe" class="internal xref">Forward Error Correction (FEC)</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.4">
+                <p id="section-toc.1-1.7.2.4.1"><a href="#section-7.4" class="auto internal xref">7.4</a>.  <a href="#name-negative-acknowledgement-na" class="internal xref">Negative Acknowledgement (NACK)</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8">
+            <p id="section-toc.1-1.8.1"><a href="#section-8" class="auto internal xref">8</a>.  <a href="#name-file-distribution-protocol" class="internal xref">File Distribution Protocol</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.1">
+                <p id="section-toc.1-1.8.2.1.1"><a href="#section-8.1" class="auto internal xref">8.1</a>.  <a href="#name-file_begin-frame-header" class="internal xref">FILE_BEGIN Frame Header</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.2">
+                <p id="section-toc.1-1.8.2.2.1"><a href="#section-8.2" class="auto internal xref">8.2</a>.  <a href="#name-pre-buffer-and-playback-swi" class="internal xref">Pre-Buffer and Playback Switching</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9">
+            <p id="section-toc.1-1.9.1"><a href="#section-9" class="auto internal xref">9</a>.  <a href="#name-daemon-control-protocol-dcp" class="internal xref">Daemon Control Protocol (DCP)</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.1">
+                <p id="section-toc.1-1.9.2.1.1"><a href="#section-9.1" class="auto internal xref">9.1</a>.  <a href="#name-dcp-command-reference" class="internal xref">DCP Command Reference</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.2">
+                <p id="section-toc.1-1.9.2.2.1"><a href="#section-9.2" class="auto internal xref">9.2</a>.  <a href="#name-dcp-asynchronous-events" class="internal xref">DCP Asynchronous Events</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10">
+            <p id="section-toc.1-1.10.1"><a href="#section-10" class="auto internal xref">10</a>. <a href="#name-security-considerations" class="internal xref">Security Considerations</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.1">
+                <p id="section-toc.1-1.10.2.1.1"><a href="#section-10.1" class="auto internal xref">10.1</a>.  <a href="#name-dtls-srtp" class="internal xref">DTLS-SRTP</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.2">
+                <p id="section-toc.1-1.10.2.2.1"><a href="#section-10.2" class="auto internal xref">10.2</a>.  <a href="#name-session-tokens-and-access-c" class="internal xref">Session Tokens and Access Control</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.3">
+                <p id="section-toc.1-1.10.2.3.1"><a href="#section-10.3" class="auto internal xref">10.3</a>.  <a href="#name-rate-limiting-and-amplifica" class="internal xref">Rate Limiting and Amplification</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.4">
+                <p id="section-toc.1-1.10.2.4.1"><a href="#section-10.4" class="auto internal xref">10.4</a>.  <a href="#name-economic-layer-security" class="internal xref">Economic Layer Security</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.5">
+                <p id="section-toc.1-1.10.2.5.1"><a href="#section-10.5" class="auto internal xref">10.5</a>.  <a href="#name-privacy-considerations" class="internal xref">Privacy Considerations</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11">
+            <p id="section-toc.1-1.11.1"><a href="#section-11" class="auto internal xref">11</a>. <a href="#name-iana-considerations" class="internal xref">IANA Considerations</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.1">
+                <p id="section-toc.1-1.11.2.1.1"><a href="#section-11.1" class="auto internal xref">11.1</a>.  <a href="#name-port-numbers" class="internal xref">Port Numbers</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.2">
+                <p id="section-toc.1-1.11.2.2.1"><a href="#section-11.2" class="auto internal xref">11.2</a>.  <a href="#name-rtp-extension-profile" class="internal xref">RTP Extension Profile</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.3">
+                <p id="section-toc.1-1.11.2.3.1"><a href="#section-11.3" class="auto internal xref">11.3</a>.  <a href="#name-rtp-payload-types" class="internal xref">RTP Payload Types</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11.2.4">
+                <p id="section-toc.1-1.11.2.4.1"><a href="#section-11.4" class="auto internal xref">11.4</a>.  <a href="#name-ipv4-multicast-address" class="internal xref">IPv4 Multicast Address</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12">
+            <p id="section-toc.1-1.12.1"><a href="#section-12" class="auto internal xref">12</a>. <a href="#name-references" class="internal xref">References</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12.2.1">
+                <p id="section-toc.1-1.12.2.1.1"><a href="#section-12.1" class="auto internal xref">12.1</a>.  <a href="#name-normative-references" class="internal xref">Normative References</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12.2.2">
+                <p id="section-toc.1-1.12.2.2.1"><a href="#section-12.2" class="auto internal xref">12.2</a>.  <a href="#name-informative-references" class="internal xref">Informative References</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13">
+            <p id="section-toc.1-1.13.1"><a href="#appendix-A" class="auto internal xref"></a><a href="#name-appendix-a-implementation-n" class="internal xref">Appendix A: Implementation Notes</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13.2.1">
+                <p id="section-toc.1-1.13.2.1.1"><a href="#appendix-A.1" class="auto internal xref"></a><a href="#name-clock-synchronisation" class="internal xref">Clock Synchronisation</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13.2.2">
+                <p id="section-toc.1-1.13.2.2.1"><a href="#appendix-A.2" class="auto internal xref"></a><a href="#name-playout-buffer-design" class="internal xref">Playout Buffer Design</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.13.2.3">
+                <p id="section-toc.1-1.13.2.3.1"><a href="#appendix-A.3" class="auto internal xref"></a><a href="#name-embedded-receiver-considera" class="internal xref">Embedded Receiver Considerations</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.14">
+            <p id="section-toc.1-1.14.1"><a href="#appendix-B" class="auto internal xref"></a><a href="#name-authors-address" class="internal xref">Author's Address</a></p>
+</li>
+        </ul>
+</nav>
+</section>
+</div>
+<div id="intro">
+<section id="section-1">
+      <h2 id="name-introduction">
+<a href="#section-1" class="section-number selfRef">1. </a><a href="#name-introduction" class="section-name selfRef">Introduction</a>
+      </h2>
+<p id="section-1-1">
+        Distributing high-quality audio to multiple rooms or devices over a
+        general-purpose IP network is a well-studied problem, yet existing
+        solutions present significant deployment friction.  AES67
+        <span>[<a href="#AES67" class="cite xref">AES67</a>]</span> requires IEEE 1588 PTP grand-master
+        infrastructure and IGMP-aware switching, making it unsuitable for
+        consumer environments.  WebRTC <span>[<a href="#RFC8835" class="cite xref">RFC8835</a>]</span> provides
+        peer-to-peer audio but is engineered for bi-directional voice calls
+        and carries heavyweight browser-oriented signalling that is
+        inappropriate for high-fidelity one-to-many streaming.  RTSP
+        <span>[<a href="#RFC7826" class="cite xref">RFC7826</a>]</span> is a session-control protocol that relies
+        on a separate transport layer and lacks integrated relay topologies.<a href="#section-1-1" class="pilcrow">¶</a></p>
+<p id="section-1-2">
+        OSTP is designed around three primary goals:<a href="#section-1-2" class="pilcrow">¶</a></p>
+<ol start="1" type="1" class="normal type-1" id="section-1-3">
+        <li id="section-1-3.1">
+          <strong>Minimal latency on LAN.</strong>  When all participants
+          share a subnet, OSTP uses UDP multicast and achieves end-to-end
+          audio latency below 5 ms.<a href="#section-1-3.1" class="pilcrow">¶</a>
+</li>
+        <li id="section-1-3.2">
+          <strong>Transparent WAN relay.</strong>  For participants separated
+          by NAT or the wide-area Internet, OSTP defines a lightweight relay
+          protocol that routes audio datagrams through one or more relay
+          nodes.  The wire format seen by the receiver is identical whether
+          the audio arrived via multicast or relay.<a href="#section-1-3.2" class="pilcrow">¶</a>
+</li>
+        <li id="section-1-3.3">
+          <strong>Open economics.</strong>  OSTP embeds optional wallet
+          addressing and micro-payment signalling to enable creators to
+          monetise live audio without a proprietary platform intermediary.<a href="#section-1-3.3" class="pilcrow">¶</a>
+</li>
+      </ol>
+<p id="section-1-4">
+        OSTP packets are standard RTP packets (<span>[<a href="#RFC3550" class="cite xref">RFC3550</a>]</span>)
+        with the RTP header extension bit set and the extension profile
+        word set to 0x4F53 (ASCII "OS").  Implementations that do not
+        recognise the profile will discard the extension and may attempt
+        to render the payload according to the payload type field, which
+        provides a limited but graceful degradation path.<a href="#section-1-4" class="pilcrow">¶</a></p>
+<div id="design-goals">
+<section id="section-1.1">
+        <h3 id="name-design-goals-and-non-goals">
+<a href="#section-1.1" class="section-number selfRef">1.1. </a><a href="#name-design-goals-and-non-goals" class="section-name selfRef">Design Goals and Non-Goals</a>
+        </h3>
+<p id="section-1.1-1">OSTP is explicitly designed to:<a href="#section-1.1-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-1.1-2.1">Support lossless 24-bit PCM at 44.1 kHz / 48 kHz / 96 kHz
+              stereo and multichannel (up to 8 channels) on LAN.<a href="#section-1.1-2.1" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-1.1-2.2">Gracefully fall back to Opus at configurable bitrates
+              (32–320 kbps) when bandwidth is limited.<a href="#section-1.1-2.2" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-1.1-2.3">Operate without infrastructure beyond a single relay process
+              for WAN deployments.<a href="#section-1.1-2.3" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-1.1-2.4">Be implementable on resource-constrained embedded targets
+              (e.g., ESP32, Raspberry Pi).<a href="#section-1.1-2.4" class="pilcrow">¶</a>
+</li>
+        </ul>
+<p id="section-1.1-3">OSTP does not attempt to:<a href="#section-1.1-3" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-1.1-4.1">Replace AES67 in professional broadcast facilities requiring
+              sample-accurate synchronisation across hundreds of endpoints.<a href="#section-1.1-4.1" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-1.1-4.2">Provide a general-purpose media signalling framework.<a href="#section-1.1-4.2" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-1.1-4.3">Mandate specific codec quality beyond the defined payload
+              type values.<a href="#section-1.1-4.3" class="pilcrow">¶</a>
+</li>
+        </ul>
+</section>
+</div>
+</section>
+</div>
+<div id="terminology">
+<section id="section-2">
+      <h2 id="name-terminology">
+<a href="#section-2" class="section-number selfRef">2. </a><a href="#name-terminology" class="section-name selfRef">Terminology</a>
+      </h2>
+<p id="section-2-1">
+        The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+        "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+        "OPTIONAL" in this document are to be interpreted as described in
+        BCP 14 <span>[<a href="#RFC2119" class="cite xref">RFC2119</a>]</span> <span>[<a href="#RFC8174" class="cite xref">RFC8174</a>]</span> when, and
+        only when, they appear in all capitals, as shown here.<a href="#section-2-1" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-2-2">
+        <dt id="section-2-2.1">Source Node</dt>
+        <dd style="margin-left: 1.5em" id="section-2-2.2">
+          A node that captures audio (e.g., from a sound card or system
+          audio capture interface) and transmits OSTP packets.  There is
+          exactly one active source per OSTP channel at any time.<a href="#section-2-2.2" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-2.3">Relay Node</dt>
+        <dd style="margin-left: 1.5em" id="section-2-2.4">
+          A server that receives OSTP packets from an upstream source or
+          relay and re-transmits them to subscribed downstream receivers.
+          A relay node participates in the relay signalling protocol
+          (Section <a href="#relay-protocol" class="auto internal xref">6</a>).<a href="#section-2-2.4" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-2.5">Leaf Node</dt>
+        <dd style="margin-left: 1.5em" id="section-2-2.6">
+          An end-user receiver that consumes audio packets and renders them
+          to an audio output device.  A leaf node does not forward audio
+          packets.<a href="#section-2-2.6" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-2.7">Channel</dt>
+        <dd style="margin-left: 1.5em" id="section-2-2.8">
+          A named audio stream, identified by a UTF-8 string of up to 64
+          bytes.  Multiple streams (e.g., stereo + surround) MAY share a
+          channel name but MUST use distinct stream_id values.<a href="#section-2-2.8" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-2.9">Stream ID</dt>
+        <dd style="margin-left: 1.5em" id="section-2-2.10">
+          A 16-bit value in the OSTP extension header that identifies a
+          logical audio stream within a channel.  The upper 4 bits encode
+          the transmitter channel count; the lower 12 bits are a locally
+          assigned identifier.<a href="#section-2-2.10" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-2.11">Swarm</dt>
+        <dd style="margin-left: 1.5em" id="section-2-2.12">
+          A directed acyclic graph of relay nodes that distribute audio
+          packets from a single source to leaf nodes using a branching
+          factor (fanout) of up to 4.<a href="#section-2-2.12" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-2.13">SSRC</dt>
+        <dd style="margin-left: 1.5em" id="section-2-2.14">
+          Synchronisation Source, as defined in <span>[<a href="#RFC3550" class="cite xref">RFC3550</a>]</span>.
+          Each source node selects a random 32-bit SSRC.<a href="#section-2-2.14" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-2.15">Daemon</dt>
+        <dd style="margin-left: 1.5em" id="section-2-2.16">
+          The <code>solunad</code> process that runs on the transmitting host.
+          It exposes a WebSocket control interface on port 8400 and drives
+          the RTP transmit pipeline.<a href="#section-2-2.16" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-2.17">Media Timestamp</dt>
+        <dd style="margin-left: 1.5em" id="section-2-2.18">
+          A 32-bit monotonically increasing counter in the OSTP extension
+          header, expressed in the RTP clock-rate units of the payload
+          type, providing extended temporal precision beyond the standard
+          RTP timestamp field.<a href="#section-2-2.18" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-2.19">Pre-buffer Level</dt>
+        <dd style="margin-left: 1.5em" id="section-2-2.20">
+          The fraction of a receiver's playback buffer that must be filled
+          before audio playout begins, expressed as a percentage of the
+          target buffer depth.<a href="#section-2-2.20" class="pilcrow">¶</a>
+</dd>
+      <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="architecture">
+<section id="section-3">
+      <h2 id="name-protocol-architecture">
+<a href="#section-3" class="section-number selfRef">3. </a><a href="#name-protocol-architecture" class="section-name selfRef">Protocol Architecture</a>
+      </h2>
+<p id="section-3-1">
+        OSTP separates its functions into two planes: a <em>media plane</em>
+        carried over UDP datagrams, and a <em>control plane</em> carried over
+        WebSocket connections.<a href="#section-3-1" class="pilcrow">¶</a></p>
+<div id="arch-media">
+<section id="section-3.1">
+        <h3 id="name-media-plane">
+<a href="#section-3.1" class="section-number selfRef">3.1. </a><a href="#name-media-plane" class="section-name selfRef">Media Plane</a>
+        </h3>
+<p id="section-3.1-1">
+          All audio data is transported as RTP packets over UDP.  OSTP does
+          not define its own framing; the RTP packet structure defined in
+          <span>[<a href="#RFC3550" class="cite xref">RFC3550</a>]</span> is used verbatim, with the addition of the
+          OSTP extension header (see Section
+          <a href="#packet-format" class="auto internal xref">4</a>).<a href="#section-3.1-1" class="pilcrow">¶</a></p>
+<p id="section-3.1-2">
+          Three network topologies are supported:<a href="#section-3.1-2" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-3.1-3">
+          <dt id="section-3.1-3.1">LAN Multicast</dt>
+          <dd style="margin-left: 1.5em" id="section-3.1-3.2">
+            Source nodes transmit to the IPv4 multicast group
+            239.69.0.1 on UDP port 5004.  Leaf nodes join that group.
+            This topology provides the lowest latency (typically below 5 ms)
+            and requires no server infrastructure, but is limited to a single
+            IP subnet.<a href="#section-3.1-3.2" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-3.1-3.3">P2P Direct</dt>
+          <dd style="margin-left: 1.5em" id="section-3.1-3.4">
+            For two to four peers across different subnets, a relay node
+            provides PEER hints that enable UDP hole-punching.  Once a direct
+            path is established, audio flows peer-to-peer without relay
+            involvement.<a href="#section-3.1-3.4" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-3.1-3.5">WAN Relay</dt>
+          <dd style="margin-left: 1.5em" id="section-3.1-3.6">
+            All audio datagrams are forwarded by one or more relay nodes.
+            The relay listens on UDP port 5100.  This topology supports
+            arbitrary numbers of receivers and symmetric NAT environments,
+            at the cost of additional latency proportional to the relay
+            path length.<a href="#section-3.1-3.6" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+</dl>
+<p id="section-3.1-4">
+          The three topologies are not mutually exclusive.  A hybrid
+          deployment may use LAN multicast for devices on the source subnet
+          while using WAN relay for remote listeners.<a href="#section-3.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="arch-control">
+<section id="section-3.2">
+        <h3 id="name-control-plane">
+<a href="#section-3.2" class="section-number selfRef">3.2. </a><a href="#name-control-plane" class="section-name selfRef">Control Plane</a>
+        </h3>
+<p id="section-3.2-1">
+          The control plane is divided into two sub-protocols:<a href="#section-3.2-1" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-3.2-2">
+          <dt id="section-3.2-2.1">Daemon Control Protocol (DCP)</dt>
+          <dd style="margin-left: 1.5em" id="section-3.2-2.2">
+            A WebSocket sub-protocol exposed by the <code>solunad</code>
+            transmitter daemon on TCP port 8400.  DCP allows local
+            applications to start and stop transmission, adjust channel
+            parameters, and perform file transfers.  See Section
+            <a href="#daemon-control" class="auto internal xref">9</a>.<a href="#section-3.2-2.2" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-3.2-2.3">Relay Signalling Protocol (RSP)</dt>
+          <dd style="margin-left: 1.5em" id="section-3.2-2.4">
+            A line-oriented text protocol exchanged over UDP datagrams
+            between the source node and the relay node, and between the relay
+            node and leaf nodes.  RSP handles channel joining, membership
+            management, and wallet address advertisement.  See Section
+            <a href="#relay-protocol" class="auto internal xref">6</a>.<a href="#section-3.2-2.4" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+</dl>
+<p id="section-3.2-3">
+          RTCP packets as defined in <span>[<a href="#RFC3550" class="cite xref">RFC3550</a>]</span> are used for
+          congestion feedback.  Receiver Reports (RR) carry loss fraction,
+          cumulative loss, inter-arrival jitter, and delay statistics that
+          the source node uses for bitrate adaptation (Section
+          <a href="#congestion" class="auto internal xref">7</a>).<a href="#section-3.2-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="arch-topology">
+<section id="section-3.3">
+        <h3 id="name-swarm-distribution-tree">
+<a href="#section-3.3" class="section-number selfRef">3.3. </a><a href="#name-swarm-distribution-tree" class="section-name selfRef">Swarm Distribution Tree</a>
+        </h3>
+<p id="section-3.3-1">
+          For large deployments, relay nodes form a distribution tree rooted
+          at the source node.  Each relay node forwards incoming audio
+          packets to at most four downstream subscribers (fanout-4).
+          Downstream subscribers may themselves be relay nodes, creating a
+          tree of depth proportional to log4(N) for N total leaf nodes.<a href="#section-3.3-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-ascii-art art-text artwork" id="section-3.3-2">
+<pre>
+
+            Source Node
+                 |
+           [Relay Node 0]
+          /    |    \    \
+        [R1]  [R2]  [R3]  [R4]    &lt;- relay level 1
+       / | \  / \    |    /|\
+      L  L  L L  L   L   L L L   &lt;- leaf nodes
+
+</pre><a href="#section-3.3-2" class="pilcrow">¶</a>
+</div>
+<p id="section-3.3-3">
+          Tree construction is driven by the relay; individual relay nodes
+          are unaware of the full tree topology and need only track their
+          direct upstream and up to four direct downstream peers.<a href="#section-3.3-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="packet-format">
+<section id="section-4">
+      <h2 id="name-ostp-packet-format">
+<a href="#section-4" class="section-number selfRef">4. </a><a href="#name-ostp-packet-format" class="section-name selfRef">OSTP Packet Format</a>
+      </h2>
+<p id="section-4-1">
+        An OSTP packet consists of four consecutive regions in a single UDP
+        payload:<a href="#section-4-1" class="pilcrow">¶</a></p>
+<ol start="1" type="1" class="normal type-1" id="section-4-2">
+        <li id="section-4-2.1">RTP Fixed Header (12 bytes)<a href="#section-4-2.1" class="pilcrow">¶</a>
+</li>
+        <li id="section-4-2.2">RTP Extension Header (4 bytes) — profile 0x4F53<a href="#section-4-2.2" class="pilcrow">¶</a>
+</li>
+        <li id="section-4-2.3">OSTP Extension Data (8 bytes)<a href="#section-4-2.3" class="pilcrow">¶</a>
+</li>
+        <li id="section-4-2.4">Audio Payload (variable length)<a href="#section-4-2.4" class="pilcrow">¶</a>
+</li>
+      </ol>
+<p id="section-4-3">
+        An optional CRC-32 trailer (4 bytes, IEEE 802.3 polynomial) MAY
+        follow the audio payload when the sender sets the RTP padding (P)
+        bit.  Receivers SHOULD verify the CRC when present and MUST discard
+        packets that fail CRC verification.<a href="#section-4-3" class="pilcrow">¶</a></p>
+<p id="section-4-4">
+        All multi-byte fields are in network (big-endian) byte order unless
+        otherwise noted.<a href="#section-4-4" class="pilcrow">¶</a></p>
+<div id="rtp-header">
+<section id="section-4.1">
+        <h3 id="name-rtp-fixed-header">
+<a href="#section-4.1" class="section-number selfRef">4.1. </a><a href="#name-rtp-fixed-header" class="section-name selfRef">RTP Fixed Header</a>
+        </h3>
+<div class="alignLeft art-ascii-art art-text artwork" id="section-4.1-1">
+<pre>
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |V=2|P|X|  CC   |M|     PT      |       Sequence Number         |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                           Timestamp                           |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |           Synchronization Source (SSRC) Identifier            |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |            Contributing Source (CSRC) list (optional)         |
+   |                            . . .                              |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+</pre><a href="#section-4.1-1" class="pilcrow">¶</a>
+</div>
+<span class="break"></span><dl class="dlParallel" id="section-4.1-2">
+          <dt id="section-4.1-2.1">V (2 bits)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.1-2.2">RTP version.  MUST be 2.<a href="#section-4.1-2.2" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-4.1-2.3">P (1 bit)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.1-2.4">
+            Padding.  When set to 1, indicates that a 4-byte CRC-32 trailer
+            is appended after the audio payload.<a href="#section-4.1-2.4" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-4.1-2.5">X (1 bit)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.1-2.6">
+            Extension.  MUST be 1 in all OSTP packets; indicates that an
+            RTP extension header follows the CSRC list.<a href="#section-4.1-2.6" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-4.1-2.7">CC (4 bits)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.1-2.8">
+            CSRC count.  Number of CSRC identifiers that follow the fixed
+            header.  Typically 0 for OSTP.<a href="#section-4.1-2.8" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-4.1-2.9">M (1 bit)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.1-2.10">
+            Marker.  Set to 1 on the last packet of a talkspurt or file
+            transfer segment.<a href="#section-4.1-2.10" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-4.1-2.11">PT (7 bits)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.1-2.12">
+            Payload Type.  See Section
+            <a href="#payload-types" class="auto internal xref">4.4</a>.<a href="#section-4.1-2.12" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-4.1-2.13">Sequence Number (16 bits)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.1-2.14">
+            Increments by one for each RTP data packet sent.  Used for
+            loss detection and reordering.<a href="#section-4.1-2.14" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-4.1-2.15">Timestamp (32 bits)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.1-2.16">
+            Reflects the sampling instant of the first sample in the packet.
+            The clock rate depends on the payload type (48000 Hz for Opus;
+            44100 or 48000 Hz for PCM).<a href="#section-4.1-2.16" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-4.1-2.17">SSRC (32 bits)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.1-2.18">
+            Identifies the synchronisation source.  Chosen randomly at
+            session start; MUST be unique within the session.<a href="#section-4.1-2.18" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="rtp-ext-header">
+<section id="section-4.2">
+        <h3 id="name-rtp-extension-header">
+<a href="#section-4.2" class="section-number selfRef">4.2. </a><a href="#name-rtp-extension-header" class="section-name selfRef">RTP Extension Header</a>
+        </h3>
+<p id="section-4.2-1">
+          The four-byte RTP extension header immediately follows the CSRC
+          list and precedes the OSTP extension data:<a href="#section-4.2-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-ascii-art art-text artwork" id="section-4.2-2">
+<pre>
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |       Profile = 0x4F53        |      Length = 0x0002          |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+</pre><a href="#section-4.2-2" class="pilcrow">¶</a>
+</div>
+<span class="break"></span><dl class="dlParallel" id="section-4.2-3">
+          <dt id="section-4.2-3.1">Profile (16 bits)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.2-3.2">
+            MUST be 0x4F53 (ASCII "OS").  This value identifies the
+            extension as an OSTP extension and is used by receivers to
+            distinguish OSTP packets from other RTP streams sharing the
+            same port.<a href="#section-4.2-3.2" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-4.2-3.3">Length (16 bits)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.2-3.4">
+            Number of 32-bit words in the extension data that follows,
+            not including the four-byte extension header.  MUST be 0x0002
+            (indicating 8 bytes of OSTP extension data).<a href="#section-4.2-3.4" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="ostp-ext">
+<section id="section-4.3">
+        <h3 id="name-ostp-extension-data">
+<a href="#section-4.3" class="section-number selfRef">4.3. </a><a href="#name-ostp-extension-data" class="section-name selfRef">OSTP Extension Data</a>
+        </h3>
+<p id="section-4.3-1">
+          The OSTP extension data is 8 bytes and immediately follows the
+          RTP extension header:<a href="#section-4.3-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-ascii-art art-text artwork" id="section-4.3-2">
+<pre>
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |C C C C|        Stream ID (12 bits)            | SeqExt (high) |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |    SeqExt (low 8 bits)        |                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+   |                  Media Timestamp (32 bits)                    |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+</pre><a href="#section-4.3-2" class="pilcrow">¶</a>
+</div>
+<p id="section-4.3-3">
+          More precisely, the 16-bit <code>stream_id</code> field carries both
+          the channel count and stream identifier:<a href="#section-4.3-3" class="pilcrow">¶</a></p>
+<div class="alignLeft art-ascii-art art-text artwork" id="section-4.3-4">
+<pre>
+
+   Bits 15-12: TX Channel Count code (CCCC)
+   Bits 11-0:  Stream Identifier (12 bits)
+
+</pre><a href="#section-4.3-4" class="pilcrow">¶</a>
+</div>
+<span class="break"></span><dl class="dlParallel" id="section-4.3-5">
+          <dt id="section-4.3-5.1">TX Channel Count Code (CCCC, 4 bits)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.3-5.2">
+            Encodes the number of audio channels produced by the transmitter.
+            A value of 0 is legacy and indicates 2 channels (stereo).
+            Values 1 through 8 indicate the corresponding channel count
+            directly.  Values 9 through 15 are reserved.<a href="#section-4.3-5.2" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-4.3-5.3">Stream Identifier (12 bits)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.3-5.4">
+            A locally assigned identifier distinguishing concurrent streams
+            within a single channel.  The value 0x000 is reserved for
+            the primary stream.<a href="#section-4.3-5.4" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-4.3-5.5">Sequence Extension (SeqExt, 16 bits)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.3-5.6">
+            Extends the RTP 16-bit sequence number to 32 bits.  SeqExt
+            carries the upper 16 bits; the RTP Sequence Number field carries
+            the lower 16 bits.  Receivers MUST use the combined 32-bit value
+            when ordering packets and computing loss.<a href="#section-4.3-5.6" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-4.3-5.7">Media Timestamp (32 bits)</dt>
+          <dd style="margin-left: 1.5em" id="section-4.3-5.8">
+            A media-time counter in the same clock units as the RTP
+            Timestamp field but starting from zero at session inception
+            rather than a random offset.  This field enables receivers to
+            compute absolute session-relative playback positions without
+            tracking the initial RTP timestamp offset.<a href="#section-4.3-5.8" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="payload-types">
+<section id="section-4.4">
+        <h3 id="name-payload-types">
+<a href="#section-4.4" class="section-number selfRef">4.4. </a><a href="#name-payload-types" class="section-name selfRef">Payload Types</a>
+        </h3>
+<p id="section-4.4-1">
+          OSTP defines the following dynamic payload types.  All are in the
+          dynamic range (96–127) as defined by <span>[<a href="#RFC3550" class="cite xref">RFC3550</a>]</span>.<a href="#section-4.4-1" class="pilcrow">¶</a></p>
+<span id="name-ostp-payload-type-assignmen"></span><table class="left" id="table-1">
+          <caption>
+<a href="#table-1" class="selfRef">Table 1</a>:
+<a href="#name-ostp-payload-type-assignmen" class="selfRef">OSTP Payload Type Assignments</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-right" rowspan="1" colspan="1">PT</th>
+              <th class="text-left" rowspan="1" colspan="1">Name</th>
+              <th class="text-left" rowspan="1" colspan="1">Description</th>
+              <th class="text-left" rowspan="1" colspan="1">Clock Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">96</td>
+              <td class="text-left" rowspan="1" colspan="1">PCM24</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                Interleaved signed 24-bit integer PCM, big-endian, packed
+                3 bytes per sample.  Sample rate is signalled in the RTP
+                Timestamp clock rate (44100 or 48000 Hz).
+              </td>
+              <td class="text-left" rowspan="1" colspan="1">44100 or 48000 Hz</td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">97</td>
+              <td class="text-left" rowspan="1" colspan="1">F32</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                Interleaved 32-bit IEEE 754 single-precision floating-point
+                PCM, big-endian, normalised to [-1.0, +1.0].
+              </td>
+              <td class="text-left" rowspan="1" colspan="1">44100 or 48000 Hz</td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">98</td>
+              <td class="text-left" rowspan="1" colspan="1">OPUS</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                Opus-encoded audio as defined in <span>[<a href="#RFC6716" class="cite xref">RFC6716</a>]</span>.
+                Each RTP packet carries exactly one Opus frame.
+              </td>
+              <td class="text-left" rowspan="1" colspan="1">48000 Hz</td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">126</td>
+              <td class="text-left" rowspan="1" colspan="1">NACK</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                Negative Acknowledgement control packet.  Payload is a
+                list of 16-bit RTP sequence numbers for which retransmission
+                is requested.  See Section
+                <a href="#nack" class="auto internal xref">7.4</a>.
+              </td>
+              <td class="text-left" rowspan="1" colspan="1">N/A</td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">127</td>
+              <td class="text-left" rowspan="1" colspan="1">FEC/XOR</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                XOR-based Forward Error Correction parity packet covering
+                the preceding group of N audio packets.  See Section
+                <a href="#fec" class="auto internal xref">7.3</a>.
+              </td>
+              <td class="text-left" rowspan="1" colspan="1">same as protected stream</td>
+            </tr>
+          </tbody>
+        </table>
+<p id="section-4.4-3">
+          Implementations MUST support PT=98 (Opus) and PT=127 (FEC/XOR).
+          Support for PT=96 (PCM24), PT=97 (F32), and PT=126 (NACK) is
+          RECOMMENDED.<a href="#section-4.4-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="crc-trailer">
+<section id="section-4.5">
+        <h3 id="name-optional-crc-32-trailer">
+<a href="#section-4.5" class="section-number selfRef">4.5. </a><a href="#name-optional-crc-32-trailer" class="section-name selfRef">Optional CRC-32 Trailer</a>
+        </h3>
+<p id="section-4.5-1">
+          When the RTP padding (P) bit is set, the last 4 bytes of the UDP
+          payload are a CRC-32 checksum computed over the audio payload
+          only (i.e., excluding all RTP and OSTP headers, and excluding
+          the CRC field itself).  The polynomial is the IEEE 802.3 CRC-32
+          (0xEDB88320 reflected, initial value 0xFFFFFFFF, final XOR
+          0xFFFFFFFF).  The value is stored in big-endian byte order.<a href="#section-4.5-1" class="pilcrow">¶</a></p>
+<p id="section-4.5-2">
+          Receivers SHOULD verify the CRC.  A receiver that encounters a
+          CRC mismatch MUST discard the packet and MAY issue a NACK (Section
+          <a href="#nack" class="auto internal xref">7.4</a>) for retransmission.<a href="#section-4.5-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="channel-addressing">
+<section id="section-5">
+      <h2 id="name-channel-addressing">
+<a href="#section-5" class="section-number selfRef">5. </a><a href="#name-channel-addressing" class="section-name selfRef">Channel Addressing</a>
+      </h2>
+<p id="section-5-1">
+        An OSTP channel is identified by a human-readable name — a UTF-8
+        string of 1 to 64 bytes.  Channel names MUST NOT contain ASCII
+        control characters (U+0000–U+001F) or the characters '/' and '#'.
+        Channel names are case-sensitive.<a href="#section-5-1" class="pilcrow">¶</a></p>
+<p id="section-5-2">
+        The mapping from channel name to transport endpoints is:<a href="#section-5-2" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-5-3">
+        <dt id="section-5-3.1">LAN Multicast</dt>
+        <dd style="margin-left: 1.5em" id="section-5-3.2">
+          The fixed multicast group address 239.69.0.1 and port 5004 are
+          used for all channels.  Receivers distinguish streams by SSRC
+          and stream_id.  When multiple channels are active on the same LAN,
+          receivers MUST filter by SSRC.<a href="#section-5-3.2" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-5-3.3">WAN Relay</dt>
+        <dd style="margin-left: 1.5em" id="section-5-3.4">
+          The channel name is used as the subscription key in the relay
+          signalling protocol (Section
+          <a href="#relay-protocol" class="auto internal xref">6</a>).  The relay
+          node multiplexes all channels over a single UDP port (5100) and
+          routes audio datagrams to subscribed leaf nodes by channel name.<a href="#section-5-3.4" class="pilcrow">¶</a>
+</dd>
+      <dd class="break"></dd>
+</dl>
+<p id="section-5-4">
+        The stream_id field in the OSTP extension header provides a second
+        level of addressing within a channel, allowing concurrent
+        transmission of multiple bitrate variants or codec alternatives
+        from a single source.  Receivers select the stream_id appropriate
+        for their capabilities and network conditions.<a href="#section-5-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="relay-protocol">
+<section id="section-6">
+      <h2 id="name-relay-signalling-protocol">
+<a href="#section-6" class="section-number selfRef">6. </a><a href="#name-relay-signalling-protocol" class="section-name selfRef">Relay Signalling Protocol</a>
+      </h2>
+<p id="section-6-1">
+        The Relay Signalling Protocol (RSP) is a line-oriented text protocol
+        carried in UDP datagrams.  Each message is a single line terminated
+        by a newline (LF, 0x0A) character.  Fields within a message are
+        separated by a single space.  All messages MUST be no longer than
+        1024 bytes including the terminating newline.<a href="#section-6-1" class="pilcrow">¶</a></p>
+<p id="section-6-2">
+        Unless otherwise noted, RSP messages are exchanged on the same UDP
+        port as OSTP audio datagrams (port 5100 for the relay node).
+        RSP messages and OSTP audio datagrams are distinguished by inspecting
+        the first byte: RSP messages begin with an ASCII uppercase letter
+        (0x41–0x5A); OSTP packets begin with the byte 0x80 (RTP V=2, P=0,
+        X=0, CC=0) or similar values with the two high bits set to 10.<a href="#section-6-2" class="pilcrow">¶</a></p>
+<div id="rsp-messages">
+<section id="section-6.1">
+        <h3 id="name-rsp-message-definitions">
+<a href="#section-6.1" class="section-number selfRef">6.1. </a><a href="#name-rsp-message-definitions" class="section-name selfRef">RSP Message Definitions</a>
+        </h3>
+<span class="break"></span><dl class="dlNewline" id="section-6.1-1">
+          <dt id="section-6.1-1.1"><code>JOIN &lt;channel&gt; [&lt;wallet&gt;]</code></dt>
+          <dd style="margin-left: 1.5em" id="section-6.1-1.2">
+            <p id="section-6.1-1.2.1">
+              Sent by a leaf node or relay node to the relay server to
+              subscribe to a channel.  <code>&lt;channel&gt;</code> is the
+              channel name.  The optional <code>&lt;wallet&gt;</code> field is
+              a base58-encoded public key (e.g., a Solana address) used for
+              micropayment routing.<a href="#section-6.1-1.2.1" class="pilcrow">¶</a></p>
+<p id="section-6.1-1.2.2">
+              Upon receiving a valid JOIN, the relay MUST respond with a
+              HELLO message and begin forwarding OSTP packets for the
+              requested channel to the sender's source address.<a href="#section-6.1-1.2.2" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-6.1-1.3"><code>HELLO &lt;channel&gt; &lt;relay_id&gt; &lt;server_ts&gt;</code></dt>
+          <dd style="margin-left: 1.5em" id="section-6.1-1.4">
+            Sent by the relay server in response to a JOIN.
+            <code>&lt;relay_id&gt;</code> is an opaque identifier for the relay
+            node (MAY be its public IP address and port in the form
+            <code>addr:port</code>).  <code>&lt;server_ts&gt;</code> is the relay
+            server's current UNIX timestamp in milliseconds, used by
+            receivers for initial clock offset estimation.<a href="#section-6.1-1.4" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-6.1-1.5"><code>MEMBERS &lt;channel&gt; &lt;count&gt; [&lt;wallet1&gt; ...]</code></dt>
+          <dd style="margin-left: 1.5em" id="section-6.1-1.6">
+            Broadcast by the relay to all subscribers of a channel
+            whenever the membership list changes.  <code>&lt;count&gt;</code>
+            is the current number of active subscribers.  The optional
+            wallet addresses allow the source node to compute royalty
+            splits for micropayment distribution.<a href="#section-6.1-1.6" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-6.1-1.7"><code>LEAVE &lt;channel&gt;</code></dt>
+          <dd style="margin-left: 1.5em" id="section-6.1-1.8">
+            Sent by a subscriber to unsubscribe from a channel.  The relay
+            MUST stop forwarding audio to that subscriber within one RTT.<a href="#section-6.1-1.8" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-6.1-1.9"><code>WALLET &lt;channel&gt; &lt;wallet&gt;</code></dt>
+          <dd style="margin-left: 1.5em" id="section-6.1-1.10">
+            Sent by a source node to associate a wallet address with a
+            channel for payment collection.  The relay MUST include this
+            wallet in MEMBERS notifications to allow tipping.<a href="#section-6.1-1.10" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-6.1-1.11"><code>PEER &lt;channel&gt; &lt;addr&gt; &lt;port&gt;</code></dt>
+          <dd style="margin-left: 1.5em" id="section-6.1-1.12">
+            Sent by the relay to a leaf node to hint a peer's address for
+            UDP hole-punching.  After receiving a PEER hint, both nodes
+            SHOULD send a probe packet to each other's indicated address
+            to establish a direct path.<a href="#section-6.1-1.12" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-6.1-1.13"><code>CHARGE &lt;channel&gt; &lt;amount_usat&gt; &lt;wallet&gt;</code></dt>
+          <dd style="margin-left: 1.5em" id="section-6.1-1.14">
+            Informational message sent by the relay to the source node to
+            report a micropayment event.  <code>&lt;amount_usat&gt;</code> is
+            the payment amount in micro-satoshis (or equivalent base units
+            for the configured payment rail).<a href="#section-6.1-1.14" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-6.1-1.15"><code>TIP &lt;channel&gt; &lt;amount_usat&gt; &lt;from_wallet&gt;</code></dt>
+          <dd style="margin-left: 1.5em" id="section-6.1-1.16">
+            Sent by a leaf node to the relay to initiate a voluntary tip
+            payment to the channel's source wallet.  The relay SHOULD
+            forward a corresponding CHARGE notification to the source node.<a href="#section-6.1-1.16" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-6.1-1.17"><code>PING</code></dt>
+          <dd style="margin-left: 1.5em" id="section-6.1-1.18">
+            Sent by either party to verify connectivity.  The recipient
+            MUST respond with a <code>PONG</code> message.  Implementations
+            SHOULD send PING messages at intervals no longer than 25 seconds
+            when no other traffic has been exchanged, in order to maintain
+            NAT bindings.<a href="#section-6.1-1.18" class="pilcrow">¶</a>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-6.1-1.19"><code>PONG</code></dt>
+          <dd style="margin-left: 1.5em" id="section-6.1-1.20">Response to a PING message.<a href="#section-6.1-1.20" class="pilcrow">¶</a>
+</dd>
+        <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="rsp-state">
+<section id="section-6.2">
+        <h3 id="name-relay-state-machine">
+<a href="#section-6.2" class="section-number selfRef">6.2. </a><a href="#name-relay-state-machine" class="section-name selfRef">Relay State Machine</a>
+        </h3>
+<p id="section-6.2-1">
+          A relay node MUST maintain the following state per subscribed
+          (channel, client-address) pair:<a href="#section-6.2-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-6.2-2.1">Channel name<a href="#section-6.2-2.1" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-6.2-2.2">Client UDP address and port<a href="#section-6.2-2.2" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-6.2-2.3">Optional wallet address<a href="#section-6.2-2.3" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-6.2-2.4">Timestamp of last received RSP message (for keepalive expiry)<a href="#section-6.2-2.4" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-6.2-2.5">Packet forwarding statistics (packets forwarded, bytes forwarded)<a href="#section-6.2-2.5" class="pilcrow">¶</a>
+</li>
+        </ul>
+<p id="section-6.2-3">
+          A subscription entry MUST be removed if no RSP or OSTP traffic
+          has been received from the client for more than 60 seconds.<a href="#section-6.2-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="congestion">
+<section id="section-7">
+      <h2 id="name-congestion-control">
+<a href="#section-7" class="section-number selfRef">7. </a><a href="#name-congestion-control" class="section-name selfRef">Congestion Control</a>
+      </h2>
+<p id="section-7-1">
+        OSTP implements congestion control in accordance with the guidelines
+        in <span>[<a href="#RFC8085" class="cite xref">RFC8085</a>]</span>.  The control loop combines RTCP
+        Receiver Reports with an application-layer bitrate ladder.<a href="#section-7-1" class="pilcrow">¶</a></p>
+<div id="rtcp">
+<section id="section-7.1">
+        <h3 id="name-rtcp-receiver-reports">
+<a href="#section-7.1" class="section-number selfRef">7.1. </a><a href="#name-rtcp-receiver-reports" class="section-name selfRef">RTCP Receiver Reports</a>
+        </h3>
+<p id="section-7.1-1">
+          Leaf nodes MUST send RTCP Receiver Reports as defined in
+          <span>[<a href="#RFC3550" class="cite xref">RFC3550</a>]</span>, Section 6.4.  The reporting interval
+          SHOULD be between 1 and 5 seconds, computed using the RTCP timing
+          algorithm.  Each Receiver Report block carries:<a href="#section-7.1-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-7.1-2.1">Fraction lost over the most recent reporting interval<a href="#section-7.1-2.1" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-7.1-2.2">Cumulative number of packets lost<a href="#section-7.1-2.2" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-7.1-2.3">Extended highest sequence number received<a href="#section-7.1-2.3" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-7.1-2.4">Inter-arrival jitter<a href="#section-7.1-2.4" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-7.1-2.5">Last SR timestamp and delay since last SR (for RTT estimation)<a href="#section-7.1-2.5" class="pilcrow">¶</a>
+</li>
+        </ul>
+<p id="section-7.1-3">
+          The source node uses the fraction-lost and jitter fields as the
+          primary inputs to the bitrate adaptation algorithm described in
+          Section <a href="#bitrate-ladder" class="auto internal xref">7.2</a>.<a href="#section-7.1-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="bitrate-ladder">
+<section id="section-7.2">
+        <h3 id="name-opus-bitrate-ladder">
+<a href="#section-7.2" class="section-number selfRef">7.2. </a><a href="#name-opus-bitrate-ladder" class="section-name selfRef">Opus Bitrate Ladder</a>
+        </h3>
+<p id="section-7.2-1">
+          When the active payload type is PT=98 (Opus), the source node
+          selects an encoding bitrate from the following ladder:<a href="#section-7.2-1" class="pilcrow">¶</a></p>
+<span id="name-ostp-opus-bitrate-ladder"></span><table class="left" id="table-2">
+          <caption>
+<a href="#table-2" class="selfRef">Table 2</a>:
+<a href="#name-ostp-opus-bitrate-ladder" class="selfRef">OSTP Opus Bitrate Ladder</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-right" rowspan="1" colspan="1">Bitrate (kbps)</th>
+              <th class="text-left" rowspan="1" colspan="1">Use case</th>
+              <th class="text-left" rowspan="1" colspan="1">Approximate bandwidth per packet (20 ms)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">32</td>
+              <td class="text-left" rowspan="1" colspan="1">Minimum quality / severe loss</td>
+              <td class="text-left" rowspan="1" colspan="1">~80 bytes</td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">64</td>
+              <td class="text-left" rowspan="1" colspan="1">Low-bandwidth / mobile</td>
+              <td class="text-left" rowspan="1" colspan="1">~160 bytes</td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">128</td>
+              <td class="text-left" rowspan="1" colspan="1">Near-CD quality</td>
+              <td class="text-left" rowspan="1" colspan="1">~320 bytes</td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">192</td>
+              <td class="text-left" rowspan="1" colspan="1">High quality</td>
+              <td class="text-left" rowspan="1" colspan="1">~480 bytes</td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">320</td>
+              <td class="text-left" rowspan="1" colspan="1">Maximum quality / LAN</td>
+              <td class="text-left" rowspan="1" colspan="1">~800 bytes</td>
+            </tr>
+          </tbody>
+        </table>
+<p id="section-7.2-3">
+          Bitrate upgrade (step up the ladder) is permitted at most once
+          every 10 seconds, and only when the fraction-lost value in the
+          most recent RTCP RR is below 0.5% and inter-arrival jitter is
+          below 20 ms.<a href="#section-7.2-3" class="pilcrow">¶</a></p>
+<p id="section-7.2-4">
+          Bitrate downgrade (step down the ladder) MUST be triggered
+          immediately when either:<a href="#section-7.2-4" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-7.2-5.1">The fraction-lost value exceeds 5% in any single reporting
+              interval, or<a href="#section-7.2-5.1" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-7.2-5.2">Three consecutive reporting intervals show fraction-lost above
+              1%.<a href="#section-7.2-5.2" class="pilcrow">¶</a>
+</li>
+        </ul>
+<p id="section-7.2-6">
+          When operating over LAN multicast or at PCM payload types (PT=96,
+          PT=97), the source node does not apply bitrate adaptation; it
+          transmits at the full sample rate and relies on FEC (Section
+          <a href="#fec" class="auto internal xref">7.3</a>) and NACK (Section
+          <a href="#nack" class="auto internal xref">7.4</a>) for loss recovery.<a href="#section-7.2-6" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="fec">
+<section id="section-7.3">
+        <h3 id="name-forward-error-correction-fe">
+<a href="#section-7.3" class="section-number selfRef">7.3. </a><a href="#name-forward-error-correction-fe" class="section-name selfRef">Forward Error Correction (FEC)</a>
+        </h3>
+<p id="section-7.3-1">
+          OSTP uses a simple XOR-parity FEC scheme to recover from single
+          packet losses within a protection group.  The scheme is similar
+          to the one described in RFC 5109 but is not wire-compatible with
+          it.<a href="#section-7.3-1" class="pilcrow">¶</a></p>
+<p id="section-7.3-2">
+          The source node groups consecutive audio packets into blocks of
+          N packets (default N=5).  After each block, the source MUST
+          transmit one FEC parity packet (PT=127) whose payload is the
+          byte-wise XOR of all N audio payloads in the block, zero-padded
+          to the length of the longest payload.<a href="#section-7.3-2" class="pilcrow">¶</a></p>
+<p id="section-7.3-3">
+          The FEC packet carries in its RTP Timestamp field the RTP
+          Timestamp of the first packet in the block.  The OSTP
+          stream_id and sequence_ext fields mirror those of the first
+          packet in the block.  The RTP Sequence Number of the FEC packet
+          is N+1 higher than the first packet in the block, i.e., it
+          immediately follows the block in sequence-number space.<a href="#section-7.3-3" class="pilcrow">¶</a></p>
+<div class="alignLeft art-ascii-art art-text artwork" id="section-7.3-4">
+<pre>
+
+   Audio packets: [seq=100] [seq=101] [seq=102] [seq=103] [seq=104]
+   FEC packet:    [seq=105, PT=127, payload = XOR(100..104)]
+
+   If seq=102 is lost, the receiver can recover it:
+   payload[102] = XOR(payload[100], payload[101],
+                      payload[103], payload[104], FEC_payload)
+
+</pre><a href="#section-7.3-4" class="pilcrow">¶</a>
+</div>
+<p id="section-7.3-5">
+          A receiver that detects a single loss within a protection block
+          (via sequence number gap) SHOULD wait up to one inter-packet
+          interval (the packet period) for the FEC packet before
+          concealing the loss.  If the FEC packet arrives in time, the
+          receiver MUST attempt recovery.  Recovery is not possible if
+          two or more packets in the same block are lost; in that case the
+          receiver SHOULD apply packet loss concealment.<a href="#section-7.3-5" class="pilcrow">¶</a></p>
+<p id="section-7.3-6">
+          The protection block size N MAY be negotiated as part of session
+          setup via the Daemon Control Protocol.  Senders SHOULD NOT use
+          values of N below 3 or above 10.<a href="#section-7.3-6" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="nack">
+<section id="section-7.4">
+        <h3 id="name-negative-acknowledgement-na">
+<a href="#section-7.4" class="section-number selfRef">7.4. </a><a href="#name-negative-acknowledgement-na" class="section-name selfRef">Negative Acknowledgement (NACK)</a>
+        </h3>
+<p id="section-7.4-1">
+          For relay-connected streams where RTT is low enough to make
+          retransmission practical (RTT &lt; 50 ms), receivers MAY request
+          retransmission of lost packets using NACK packets (PT=126).<a href="#section-7.4-1" class="pilcrow">¶</a></p>
+<p id="section-7.4-2">
+          A NACK packet payload consists of one or more 16-bit unsigned
+          integers in network byte order, each representing the RTP
+          Sequence Number of a lost audio packet.  A single NACK packet
+          MUST NOT carry more than 32 sequence numbers.<a href="#section-7.4-2" class="pilcrow">¶</a></p>
+<div class="alignLeft art-ascii-art art-text artwork" id="section-7.4-3">
+<pre>
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |         Lost Seq #1           |         Lost Seq #2           |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |         Lost Seq #3           |            ...                |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+</pre><a href="#section-7.4-3" class="pilcrow">¶</a>
+</div>
+<p id="section-7.4-4">
+          Upon receipt of a NACK, the source node or relay node SHOULD
+          retransmit the requested packets from its transmit buffer.  The
+          retransmit buffer at the source SHOULD hold at least 200 ms of
+          audio.  Retransmitted packets are sent as normal OSTP audio
+          packets with the original sequence numbers and timestamps; the
+          RTP Marker (M) bit is set to indicate that the packet is a
+          retransmission.<a href="#section-7.4-4" class="pilcrow">¶</a></p>
+<p id="section-7.4-5">
+          Receivers SHOULD limit NACK transmission to at most one NACK
+          per lost sequence number, and SHOULD NOT send NACKs for packets
+          that are more than 500 ms old.<a href="#section-7.4-5" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="file-distribution">
+<section id="section-8">
+      <h2 id="name-file-distribution-protocol">
+<a href="#section-8" class="section-number selfRef">8. </a><a href="#name-file-distribution-protocol" class="section-name selfRef">File Distribution Protocol</a>
+      </h2>
+<p id="section-8-1">
+        OSTP includes a binary file distribution sub-protocol for delivering
+        audio files, playlist metadata, and artwork to receivers.  File
+        transfers are carried over the WebSocket connection between the
+        daemon and a connected client (Section
+        <a href="#daemon-control" class="auto internal xref">9</a>), using binary
+        WebSocket frames.<a href="#section-8-1" class="pilcrow">¶</a></p>
+<p id="section-8-2">
+        Each binary frame begins with a 1-byte opcode that identifies the
+        frame type:<a href="#section-8-2" class="pilcrow">¶</a></p>
+<span id="name-file-distribution-frame-opc"></span><table class="left" id="table-3">
+        <caption>
+<a href="#table-3" class="selfRef">Table 3</a>:
+<a href="#name-file-distribution-frame-opc" class="selfRef">File Distribution Frame Opcodes</a>
+        </caption>
+<thead>
+          <tr>
+            <th class="text-center" rowspan="1" colspan="1">Opcode</th>
+            <th class="text-left" rowspan="1" colspan="1">Name</th>
+            <th class="text-left" rowspan="1" colspan="1">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="text-center" rowspan="1" colspan="1">0xFA</td>
+            <td class="text-left" rowspan="1" colspan="1">FILE_BEGIN (current)</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              Begins transfer of the currently playing file.  The frame
+              body contains a fixed 32-byte header followed by the first
+              chunk of file data.
+            </td>
+          </tr>
+          <tr>
+            <td class="text-center" rowspan="1" colspan="1">0xFB</td>
+            <td class="text-left" rowspan="1" colspan="1">FILE_DATA (current)</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              A continuation chunk for the currently playing file.  The
+              frame body is raw file data.
+            </td>
+          </tr>
+          <tr>
+            <td class="text-center" rowspan="1" colspan="1">0xFC</td>
+            <td class="text-left" rowspan="1" colspan="1">FILE_BEGIN (next)</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              Pre-fetches the next track while the current track is still
+              playing.  Frame structure is identical to 0xFA.
+            </td>
+          </tr>
+          <tr>
+            <td class="text-center" rowspan="1" colspan="1">0xFD</td>
+            <td class="text-left" rowspan="1" colspan="1">FILE_DATA (next)</td>
+            <td class="text-left" rowspan="1" colspan="1">
+              Continuation chunk for the next track pre-fetch.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+<div id="file-frame-header">
+<section id="section-8.1">
+        <h3 id="name-file_begin-frame-header">
+<a href="#section-8.1" class="section-number selfRef">8.1. </a><a href="#name-file_begin-frame-header" class="section-name selfRef">FILE_BEGIN Frame Header</a>
+        </h3>
+<p id="section-8.1-1">
+          The 32-byte header in a FILE_BEGIN (0xFA or 0xFC) frame has the
+          following layout:<a href="#section-8.1-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-ascii-art art-text artwork" id="section-8.1-2">
+<pre>
+
+   Offset  Length  Field
+   ------  ------  -----------------------------------------
+     0       1     Opcode (0xFA or 0xFC)
+     1       4     Total file size in bytes (uint32, big-endian)
+     5       1     MIME type length (N)
+     6       N     MIME type string (UTF-8, not null-terminated)
+     6+N     4     CRC-32 of complete file (uint32, big-endian)
+    10+N    (pad)  Zero-padded to 32 bytes total header length
+
+</pre><a href="#section-8.1-2" class="pilcrow">¶</a>
+</div>
+<p id="section-8.1-3">
+          After the 32-byte header, the remainder of the frame contains
+          the first chunk of file data.  Subsequent FILE_DATA frames
+          contain additional chunks.  The transfer is complete when the
+          cumulative byte count of all chunks equals the total file size
+          declared in the FILE_BEGIN header.<a href="#section-8.1-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="prebuffer">
+<section id="section-8.2">
+        <h3 id="name-pre-buffer-and-playback-swi">
+<a href="#section-8.2" class="section-number selfRef">8.2. </a><a href="#name-pre-buffer-and-playback-swi" class="section-name selfRef">Pre-Buffer and Playback Switching</a>
+        </h3>
+<p id="section-8.2-1">
+          Receivers implement a dual-buffer scheme to eliminate audible gaps
+          between tracks:<a href="#section-8.2-1" class="pilcrow">¶</a></p>
+<ol start="1" type="1" class="normal type-1" id="section-8.2-2">
+          <li id="section-8.2-2.1">
+            While the current track is playing, the receiver begins
+            accumulating data for the next track into a second buffer
+            as soon as 0xFC/0xFD frames are received.<a href="#section-8.2-2.1" class="pilcrow">¶</a>
+</li>
+          <li id="section-8.2-2.2">
+            When the next-track buffer reaches 75% of its target depth
+            (the pre-buffer threshold), the receiver marks the next track
+            as "ready".<a href="#section-8.2-2.2" class="pilcrow">¶</a>
+</li>
+          <li id="section-8.2-2.3">
+            At the natural track boundary (indicated by the M bit in the
+            last audio packet of the current track, or by explicit
+            transition signalling via the DCP), the receiver switches to
+            the pre-buffered next track.<a href="#section-8.2-2.3" class="pilcrow">¶</a>
+</li>
+          <li id="section-8.2-2.4">
+            The switch delay from ready-to-play to actual audio output
+            MUST be less than 50 ms.<a href="#section-8.2-2.4" class="pilcrow">¶</a>
+</li>
+        </ol>
+<p id="section-8.2-3">
+          If the next-track buffer has not reached the pre-buffer threshold
+          at the track boundary, the receiver MAY introduce a short silence
+          rather than underrunning the audio pipeline.<a href="#section-8.2-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="daemon-control">
+<section id="section-9">
+      <h2 id="name-daemon-control-protocol-dcp">
+<a href="#section-9" class="section-number selfRef">9. </a><a href="#name-daemon-control-protocol-dcp" class="section-name selfRef">Daemon Control Protocol (DCP)</a>
+      </h2>
+<p id="section-9-1">
+        The Daemon Control Protocol is a JSON-over-WebSocket protocol
+        exposed by the <code>solunad</code> transmitter daemon on TCP port 8400
+        (plain WebSocket; no TLS required for loopback connections).
+        Remote connections MUST use WSS (WebSocket over TLS).<a href="#section-9-1" class="pilcrow">¶</a></p>
+<p id="section-9-2">
+        All DCP messages are JSON objects with a mandatory <code>"cmd"</code>
+        string field.  Responses include a <code>"result"</code> field set to
+        either <code>"ok"</code> or <code>"error"</code>, and an optional
+        <code>"msg"</code> string field for error descriptions.<a href="#section-9-2" class="pilcrow">¶</a></p>
+<div id="dcp-commands">
+<section id="section-9.1">
+        <h3 id="name-dcp-command-reference">
+<a href="#section-9.1" class="section-number selfRef">9.1. </a><a href="#name-dcp-command-reference" class="section-name selfRef">DCP Command Reference</a>
+        </h3>
+<span id="name-dcp-commands"></span><table class="left" id="table-4">
+          <caption>
+<a href="#table-4" class="selfRef">Table 4</a>:
+<a href="#name-dcp-commands" class="selfRef">DCP Commands</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-left" rowspan="1" colspan="1">Command (<code>"cmd"</code>)</th>
+              <th class="text-left" rowspan="1" colspan="1">Parameters</th>
+              <th class="text-left" rowspan="1" colspan="1">Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>start</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>channel</code> (string),
+                <code>codec</code> ("pcm24"|"f32"|"opus"),
+                <code>bitrate</code> (int, kbps),
+                <code>sample_rate</code> (int),
+                <code>channels</code> (int, 1–8)
+              </td>
+              <td class="text-left" rowspan="1" colspan="1">
+                Start transmitting on the specified channel.  If already
+                transmitting, the existing session is stopped and restarted
+                with the new parameters.
+              </td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>stop</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">—</td>
+              <td class="text-left" rowspan="1" colspan="1">Stop the active transmission session.</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>status</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">—</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                Returns current session state including channel name,
+                active payload type, bitrate, packets sent, bytes sent,
+                and connected relay nodes.
+              </td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>set_bitrate</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>bitrate</code> (int, kbps)</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                Dynamically change the Opus encoding bitrate without
+                interrupting the session.
+              </td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>set_fec</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>enabled</code> (bool),
+                <code>group_size</code> (int, 3–10)
+              </td>
+              <td class="text-left" rowspan="1" colspan="1">Enable or disable FEC and set the protection block size.</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>relay_add</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>host</code> (string),
+                <code>port</code> (int)
+              </td>
+              <td class="text-left" rowspan="1" colspan="1">Add a relay node to the active session.</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>relay_remove</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>host</code> (string),
+                <code>port</code> (int)
+              </td>
+              <td class="text-left" rowspan="1" colspan="1">Remove a relay node from the active session.</td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>file_send</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>path</code> (string),
+                <code>slot</code> ("current"|"next")
+              </td>
+              <td class="text-left" rowspan="1" colspan="1">
+                Initiate file transfer of the specified local file path.
+                <code>slot</code> determines whether 0xFA/0xFB or 0xFC/0xFD
+                opcodes are used.
+              </td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>wallet_set</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>address</code> (string)</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                Associate a wallet address with the active channel for
+                micropayment collection.  Sends a WALLET RSP message to
+                all connected relay nodes.
+              </td>
+            </tr>
+            <tr>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>subscribe</code>
+</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                <code>events</code> (array of strings)
+              </td>
+              <td class="text-left" rowspan="1" colspan="1">
+                Subscribe to asynchronous event notifications.  Supported
+                event types: <code>"packet_stats"</code>, <code>"member_update"</code>,
+                <code>"payment"</code>, <code>"rtcp"</code>.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+</section>
+</div>
+<div id="dcp-events">
+<section id="section-9.2">
+        <h3 id="name-dcp-asynchronous-events">
+<a href="#section-9.2" class="section-number selfRef">9.2. </a><a href="#name-dcp-asynchronous-events" class="section-name selfRef">DCP Asynchronous Events</a>
+        </h3>
+<p id="section-9.2-1">
+          After a <code>subscribe</code> command, the daemon emits unsolicited
+          JSON event objects.  Each event object carries an <code>"event"</code>
+          field instead of a <code>"cmd"</code> field.  Examples:<a href="#section-9.2-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-ascii-art art-text artwork" id="section-9.2-2">
+<pre>
+
+  Packet statistics event (every 1 second):
+  {
+    "event": "packet_stats",
+    "packets_sent": 2400,
+    "bytes_sent": 1920000,
+    "packets_lost_reported": 3,
+    "bitrate_kbps": 128
+  }
+
+  Member update event:
+  {
+    "event": "member_update",
+    "channel": "mystream",
+    "count": 7,
+    "wallets": ["4Zf3...", "9xKL..."]
+  }
+
+  Payment event:
+  {
+    "event": "payment",
+    "type": "tip",
+    "amount_usat": 1000000,
+    "from_wallet": "4Zf3..."
+  }
+
+</pre><a href="#section-9.2-2" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+</section>
+</div>
+<div id="security">
+<section id="section-10">
+      <h2 id="name-security-considerations">
+<a href="#section-10" class="section-number selfRef">10. </a><a href="#name-security-considerations" class="section-name selfRef">Security Considerations</a>
+      </h2>
+<div id="sec-dtls">
+<section id="section-10.1">
+        <h3 id="name-dtls-srtp">
+<a href="#section-10.1" class="section-number selfRef">10.1. </a><a href="#name-dtls-srtp" class="section-name selfRef">DTLS-SRTP</a>
+        </h3>
+<p id="section-10.1-1">
+          OSTP SHOULD be protected with DTLS-SRTP <span>[<a href="#RFC5764" class="cite xref">RFC5764</a>]</span>
+          when operating over the public Internet and MUST use DTLS-SRTP
+          when the stream carries paid content (i.e., when a non-zero
+          charge rate is configured via the economic layer).<a href="#section-10.1-1" class="pilcrow">¶</a></p>
+<p id="section-10.1-2">
+          When DTLS-SRTP is enabled, the DTLS handshake is performed on
+          the same UDP socket used for OSTP audio and RSP signalling.
+          Implementations MUST support the cipher suite
+          TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 and SHOULD support
+          TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256.  SRTP protection profile
+          AES_128_CM_HMAC_SHA1_80 is REQUIRED.<a href="#section-10.1-2" class="pilcrow">¶</a></p>
+<p id="section-10.1-3">
+          RSP text messages sent before the DTLS handshake completes are
+          transmitted in clear text.  Implementations MUST limit pre-DTLS
+          RSP to JOIN and HELLO messages only; WALLET, CHARGE, and TIP
+          messages MUST NOT be sent before DTLS-SRTP is established.<a href="#section-10.1-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="sec-session-tokens">
+<section id="section-10.2">
+        <h3 id="name-session-tokens-and-access-c">
+<a href="#section-10.2" class="section-number selfRef">10.2. </a><a href="#name-session-tokens-and-access-c" class="section-name selfRef">Session Tokens and Access Control</a>
+        </h3>
+<p id="section-10.2-1">
+          Relay nodes MAY require a session token in the JOIN message to
+          restrict channel access.  The token is appended as an additional
+          field:<a href="#section-10.2-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-ascii-art art-text artwork" id="section-10.2-2">
+<pre>
+
+  JOIN &lt;channel&gt; [&lt;wallet&gt;] [token=&lt;base64url-token&gt;]
+
+</pre><a href="#section-10.2-2" class="pilcrow">¶</a>
+</div>
+<p id="section-10.2-3">
+          Session tokens are opaque to the relay protocol and are validated
+          by the relay using implementation-specific means (e.g., HMAC-SHA256
+          signed by the channel owner's key).  A relay that requires tokens
+          MUST respond with a new <code>DENIED</code> RSP message and MUST NOT
+          forward any audio to unauthenticated subscribers.<a href="#section-10.2-3" class="pilcrow">¶</a></p>
+<p id="section-10.2-4">
+          Token issuance and revocation are out of scope for this
+          specification.<a href="#section-10.2-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="sec-rate-limiting">
+<section id="section-10.3">
+        <h3 id="name-rate-limiting-and-amplifica">
+<a href="#section-10.3" class="section-number selfRef">10.3. </a><a href="#name-rate-limiting-and-amplifica" class="section-name selfRef">Rate Limiting and Amplification</a>
+        </h3>
+<p id="section-10.3-1">
+          Because OSTP is UDP-based, relay nodes are potential amplification
+          vectors in reflection attacks.  Relay implementations MUST enforce
+          the following mitigations:<a href="#section-10.3-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-10.3-2.1">
+            The relay MUST NOT forward audio to any address that has not
+            sent at least one RSP JOIN message from that address within the
+            last 60 seconds.<a href="#section-10.3-2.1" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-10.3-2.2">
+            The relay MUST rate-limit RSP JOIN processing to at most 10
+            new subscriptions per second per source IP address.<a href="#section-10.3-2.2" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-10.3-2.3">
+            The relay SHOULD implement a UDP reflection check: upon
+            receiving a JOIN, the relay SHOULD send a small challenge
+            packet to the claimed source address before adding the
+            subscriber to the forwarding table.<a href="#section-10.3-2.3" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-10.3-2.4">
+            The relay MUST limit the total number of simultaneous
+            subscribers per channel to a configurable maximum (default 1000).<a href="#section-10.3-2.4" class="pilcrow">¶</a>
+</li>
+        </ul>
+</section>
+</div>
+<div id="sec-wallet">
+<section id="section-10.4">
+        <h3 id="name-economic-layer-security">
+<a href="#section-10.4" class="section-number selfRef">10.4. </a><a href="#name-economic-layer-security" class="section-name selfRef">Economic Layer Security</a>
+        </h3>
+<p id="section-10.4-1">
+          Wallet addresses carried in RSP messages are public keys and do
+          not constitute sensitive information.  However, implementations
+          MUST NOT process CHARGE or TIP messages from untrusted sources.
+          Specifically:<a href="#section-10.4-1" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-10.4-2.1">
+            Source nodes MUST only process CHARGE notifications from relay
+            nodes they explicitly connected to.<a href="#section-10.4-2.1" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-10.4-2.2">
+            Leaf nodes MUST cryptographically verify on-chain payment
+            receipts before crediting tipping confirmations.<a href="#section-10.4-2.2" class="pilcrow">¶</a>
+</li>
+          <li class="normal" id="section-10.4-2.3">
+            Relay nodes MUST NOT relay TIP messages without verifying
+            that the claimed from_wallet address controls the funds.<a href="#section-10.4-2.3" class="pilcrow">¶</a>
+</li>
+        </ul>
+</section>
+</div>
+<div id="sec-privacy">
+<section id="section-10.5">
+        <h3 id="name-privacy-considerations">
+<a href="#section-10.5" class="section-number selfRef">10.5. </a><a href="#name-privacy-considerations" class="section-name selfRef">Privacy Considerations</a>
+        </h3>
+<p id="section-10.5-1">
+          OSTP relay nodes learn the IP addresses of all subscribers to a
+          channel.  When DTLS-SRTP is not in use, the relay also has
+          access to the full audio content of the stream.  Deployments
+          that require listener privacy MUST use DTLS-SRTP and SHOULD
+          use a relay node operated by or on behalf of the channel owner.<a href="#section-10.5-1" class="pilcrow">¶</a></p>
+<p id="section-10.5-2">
+          Wallet addresses in RSP messages are permanently linkable to
+          IP addresses as observed by the relay.  Participants concerned
+          about payment privacy SHOULD use stealth addresses or zero-knowledge
+          payment schemes, which are outside the scope of this specification.<a href="#section-10.5-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="iana">
+<section id="section-11">
+      <h2 id="name-iana-considerations">
+<a href="#section-11" class="section-number selfRef">11. </a><a href="#name-iana-considerations" class="section-name selfRef">IANA Considerations</a>
+      </h2>
+<div id="iana-ports">
+<section id="section-11.1">
+        <h3 id="name-port-numbers">
+<a href="#section-11.1" class="section-number selfRef">11.1. </a><a href="#name-port-numbers" class="section-name selfRef">Port Numbers</a>
+        </h3>
+<p id="section-11.1-1">
+          This document uses the following UDP ports.  These ports are
+          not currently registered with IANA; the authors intend to
+          request registration if this protocol advances beyond experimental
+          status.<a href="#section-11.1-1" class="pilcrow">¶</a></p>
+<span id="name-ostp-udp-port-assignments"></span><table class="left" id="table-5">
+          <caption>
+<a href="#table-5" class="selfRef">Table 5</a>:
+<a href="#name-ostp-udp-port-assignments" class="selfRef">OSTP UDP Port Assignments</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-right" rowspan="1" colspan="1">Port</th>
+              <th class="text-left" rowspan="1" colspan="1">Usage</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">5004</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                OSTP audio (LAN multicast and unicast).  Note: Port 5004
+                is already registered with IANA for "rtp" (RTP media);
+                OSTP is intended to be compatible with this registration.
+              </td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">5100</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                OSTP relay node (RSP and forwarded audio datagrams).
+              </td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">8400</td>
+              <td class="text-left" rowspan="1" colspan="1">
+                OSTP Daemon Control Protocol (WebSocket, TCP).
+              </td>
+            </tr>
+          </tbody>
+        </table>
+</section>
+</div>
+<div id="iana-rtp-profile">
+<section id="section-11.2">
+        <h3 id="name-rtp-extension-profile">
+<a href="#section-11.2" class="section-number selfRef">11.2. </a><a href="#name-rtp-extension-profile" class="section-name selfRef">RTP Extension Profile</a>
+        </h3>
+<p id="section-11.2-1">
+          This document defines the RTP header extension profile value
+          0x4F53 (the ASCII string "OS") to identify OSTP extension data.
+          RTP extension profile values are allocated from the IANA registry
+          "RTP Payload Format media types" (currently unregistered; this
+          document requests registration of 0x4F53 for the "Open Sonic
+          Transport Protocol extension").<a href="#section-11.2-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="iana-payload-types">
+<section id="section-11.3">
+        <h3 id="name-rtp-payload-types">
+<a href="#section-11.3" class="section-number selfRef">11.3. </a><a href="#name-rtp-payload-types" class="section-name selfRef">RTP Payload Types</a>
+        </h3>
+<p id="section-11.3-1">
+          The following dynamic payload type values are used by OSTP.
+          Dynamic payload types (96–127) do not require IANA registration
+          per <span>[<a href="#RFC3550" class="cite xref">RFC3550</a>]</span> but are listed here for
+          informational purposes.  SDP mapping for these payload types
+          follows the procedures of <span>[<a href="#RFC4566" class="cite xref">RFC4566</a>]</span>.<a href="#section-11.3-1" class="pilcrow">¶</a></p>
+<span id="name-ostp-rtp-payload-type-summa"></span><table class="left" id="table-6">
+          <caption>
+<a href="#table-6" class="selfRef">Table 6</a>:
+<a href="#name-ostp-rtp-payload-type-summa" class="selfRef">OSTP RTP Payload Type Summary</a>
+          </caption>
+<thead>
+            <tr>
+              <th class="text-right" rowspan="1" colspan="1">PT</th>
+              <th class="text-left" rowspan="1" colspan="1">Name</th>
+              <th class="text-left" rowspan="1" colspan="1">Clock Rate</th>
+              <th class="text-left" rowspan="1" colspan="1">Channels</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">96</td>
+              <td class="text-left" rowspan="1" colspan="1">OSTP/PCM24</td>
+              <td class="text-left" rowspan="1" colspan="1">44100 or 48000</td>
+              <td class="text-left" rowspan="1" colspan="1">1–8</td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">97</td>
+              <td class="text-left" rowspan="1" colspan="1">OSTP/F32</td>
+              <td class="text-left" rowspan="1" colspan="1">44100 or 48000</td>
+              <td class="text-left" rowspan="1" colspan="1">1–8</td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">98</td>
+              <td class="text-left" rowspan="1" colspan="1">OSTP/OPUS</td>
+              <td class="text-left" rowspan="1" colspan="1">48000</td>
+              <td class="text-left" rowspan="1" colspan="1">1–2</td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">126</td>
+              <td class="text-left" rowspan="1" colspan="1">OSTP/NACK</td>
+              <td class="text-left" rowspan="1" colspan="1">—</td>
+              <td class="text-left" rowspan="1" colspan="1">—</td>
+            </tr>
+            <tr>
+              <td class="text-right" rowspan="1" colspan="1">127</td>
+              <td class="text-left" rowspan="1" colspan="1">OSTP/FEC-XOR</td>
+              <td class="text-left" rowspan="1" colspan="1">(same as protected stream)</td>
+              <td class="text-left" rowspan="1" colspan="1">—</td>
+            </tr>
+          </tbody>
+        </table>
+</section>
+</div>
+<div id="iana-multicast">
+<section id="section-11.4">
+        <h3 id="name-ipv4-multicast-address">
+<a href="#section-11.4" class="section-number selfRef">11.4. </a><a href="#name-ipv4-multicast-address" class="section-name selfRef">IPv4 Multicast Address</a>
+        </h3>
+<p id="section-11.4-1">
+          This document uses the IPv4 multicast address 239.69.0.1 in the
+          organisation-local scope range (239.0.0.0/8).  This address is
+          not registered with IANA and is intended for local-network use
+          only.  Deployments that require a globally routable multicast
+          address should use the procedures described in
+          <span>[<a href="#RFC6838" class="cite xref">RFC6838</a>]</span>.<a href="#section-11.4-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<section id="section-12">
+      <h2 id="name-references">
+<a href="#section-12" class="section-number selfRef">12. </a><a href="#name-references" class="section-name selfRef">References</a>
+      </h2>
+<section id="section-12.1">
+        <h3 id="name-normative-references">
+<a href="#section-12.1" class="section-number selfRef">12.1. </a><a href="#name-normative-references" class="section-name selfRef">Normative References</a>
+        </h3>
+<dl class="references">
+<dt id="RFC2119">[RFC2119]</dt>
+        <dd>
+<span class="refAuthor">Bradner, S.</span>, <span class="refTitle">"Key words for use in RFCs to Indicate Requirement Levels"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 2119</span>, <span class="seriesInfo">DOI 10.17487/RFC2119</span>, <time datetime="1997-03" class="refDate">March 1997</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc2119">https://www.rfc-editor.org/info/rfc2119</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC3550">[RFC3550]</dt>
+        <dd>
+<span class="refAuthor">Schulzrinne, H.</span>, <span class="refAuthor">Casner, S.</span>, <span class="refAuthor">Frederick, R.</span>, and <span class="refAuthor">V. Jacobson</span>, <span class="refTitle">"RTP: A Transport Protocol for Real-Time Applications"</span>, <span class="seriesInfo">STD 64</span>, <span class="seriesInfo">RFC 3550</span>, <span class="seriesInfo">DOI 10.17487/RFC3550</span>, <time datetime="2003-07" class="refDate">July 2003</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc3550">https://www.rfc-editor.org/info/rfc3550</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC3711">[RFC3711]</dt>
+        <dd>
+<span class="refAuthor">Baugher, M.</span>, <span class="refAuthor">McGrew, D.</span>, <span class="refAuthor">Naslund, M.</span>, <span class="refAuthor">Carrara, E.</span>, and <span class="refAuthor">K. Norrman</span>, <span class="refTitle">"The Secure Real-time Transport Protocol (SRTP)"</span>, <span class="seriesInfo">RFC 3711</span>, <span class="seriesInfo">DOI 10.17487/RFC3711</span>, <time datetime="2004-03" class="refDate">March 2004</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc3711">https://www.rfc-editor.org/info/rfc3711</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC4566">[RFC4566]</dt>
+        <dd>
+<span class="refAuthor">Handley, M.</span>, <span class="refAuthor">Jacobson, V.</span>, and <span class="refAuthor">C. Perkins</span>, <span class="refTitle">"SDP: Session Description Protocol"</span>, <span class="seriesInfo">RFC 4566</span>, <span class="seriesInfo">DOI 10.17487/RFC4566</span>, <time datetime="2006-07" class="refDate">July 2006</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc4566">https://www.rfc-editor.org/info/rfc4566</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC5764">[RFC5764]</dt>
+        <dd>
+<span class="refAuthor">McGrew, D.</span> and <span class="refAuthor">E. Rescorla</span>, <span class="refTitle">"Datagram Transport Layer Security (DTLS) Extension to Establish Keys for the Secure Real-time Transport Protocol (SRTP)"</span>, <span class="seriesInfo">RFC 5764</span>, <span class="seriesInfo">DOI 10.17487/RFC5764</span>, <time datetime="2010-05" class="refDate">May 2010</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc5764">https://www.rfc-editor.org/info/rfc5764</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC6716">[RFC6716]</dt>
+        <dd>
+<span class="refAuthor">Valin, JM.</span>, <span class="refAuthor">Vos, K.</span>, and <span class="refAuthor">T. Terriberry</span>, <span class="refTitle">"Definition of the Opus Audio Codec"</span>, <span class="seriesInfo">RFC 6716</span>, <span class="seriesInfo">DOI 10.17487/RFC6716</span>, <time datetime="2012-09" class="refDate">September 2012</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc6716">https://www.rfc-editor.org/info/rfc6716</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8085">[RFC8085]</dt>
+        <dd>
+<span class="refAuthor">Eggert, L.</span>, <span class="refAuthor">Fairhurst, G.</span>, and <span class="refAuthor">G. Shepherd</span>, <span class="refTitle">"UDP Usage Guidelines"</span>, <span class="seriesInfo">BCP 145</span>, <span class="seriesInfo">RFC 8085</span>, <span class="seriesInfo">DOI 10.17487/RFC8085</span>, <time datetime="2017-03" class="refDate">March 2017</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc8085">https://www.rfc-editor.org/info/rfc8085</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8174">[RFC8174]</dt>
+      <dd>
+<span class="refAuthor">Leiba, B.</span>, <span class="refTitle">"Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 8174</span>, <span class="seriesInfo">DOI 10.17487/RFC8174</span>, <time datetime="2017-05" class="refDate">May 2017</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc8174">https://www.rfc-editor.org/info/rfc8174</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+</dl>
+</section>
+<section id="section-12.2">
+        <h3 id="name-informative-references">
+<a href="#section-12.2" class="section-number selfRef">12.2. </a><a href="#name-informative-references" class="section-name selfRef">Informative References</a>
+        </h3>
+<dl class="references">
+<dt id="RFC7826">[RFC7826]</dt>
+        <dd>
+<span class="refAuthor">Schulzrinne, H.</span>, <span class="refAuthor">Rao, A.</span>, <span class="refAuthor">Lanphier, R.</span>, <span class="refAuthor">Westerlund, M.</span>, and <span class="refAuthor">M. Stiemerling, Ed.</span>, <span class="refTitle">"Real-Time Streaming Protocol Version 2.0"</span>, <span class="seriesInfo">RFC 7826</span>, <span class="seriesInfo">DOI 10.17487/RFC7826</span>, <time datetime="2016-12" class="refDate">December 2016</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc7826">https://www.rfc-editor.org/info/rfc7826</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8835">[RFC8835]</dt>
+        <dd>
+<span class="refAuthor">Alvestrand, H.</span>, <span class="refTitle">"Transports for WebRTC"</span>, <span class="seriesInfo">RFC 8835</span>, <span class="seriesInfo">DOI 10.17487/RFC8835</span>, <time datetime="2021-01" class="refDate">January 2021</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc8835">https://www.rfc-editor.org/info/rfc8835</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9000">[RFC9000]</dt>
+        <dd>
+<span class="refAuthor">Iyengar, J., Ed.</span> and <span class="refAuthor">M. Thomson, Ed.</span>, <span class="refTitle">"QUIC: A UDP-Based Multiplexed and Secure Transport"</span>, <span class="seriesInfo">RFC 9000</span>, <span class="seriesInfo">DOI 10.17487/RFC9000</span>, <time datetime="2021-05" class="refDate">May 2021</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc9000">https://www.rfc-editor.org/info/rfc9000</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC6838">[RFC6838]</dt>
+        <dd>
+<span class="refAuthor">Freed, N.</span>, <span class="refAuthor">Klensin, J.</span>, and <span class="refAuthor">T. Hansen</span>, <span class="refTitle">"Media Type Specifications and Registration Procedures"</span>, <span class="seriesInfo">BCP 13</span>, <span class="seriesInfo">RFC 6838</span>, <span class="seriesInfo">DOI 10.17487/RFC6838</span>, <time datetime="2013-01" class="refDate">January 2013</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc6838">https://www.rfc-editor.org/info/rfc6838</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="AES67">[AES67]</dt>
+        <dd>
+<span class="refAuthor">Audio Engineering Society</span>, <span class="refTitle">"AES67-2018: AES standard for audio applications of networks — High-performance streaming audio-over-IP interoperability"</span>, <span class="seriesInfo">AES AES67-2018</span>, <time datetime="2018" class="refDate">2018</time>, <span>&lt;<a href="https://www.aes.org/publications/standards/search.cfm?docID=96">https://www.aes.org/publications/standards/search.cfm?docID=96</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="OpenSonic">[OpenSonic]</dt>
+        <dd>
+<span class="refAuthor">Hamada, Y.</span>, <span class="refTitle">"OpenSonic: Open-source multi-room audio distribution system"</span>, <time datetime="2026" class="refDate">2026</time>, <span>&lt;<a href="https://github.com/yukihamada/opensonic">https://github.com/yukihamada/opensonic</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC5109">[RFC5109]</dt>
+      <dd>
+<span class="refAuthor">Li, A.</span>, <span class="refTitle">"RTP Payload Format for Generic Forward Error Correction"</span>, <span class="seriesInfo">RFC 5109</span>, <span class="seriesInfo">DOI 10.17487/RFC5109</span>, <time datetime="2007-12" class="refDate">December 2007</time>, <span>&lt;<a href="https://www.rfc-editor.org/info/rfc5109">https://www.rfc-editor.org/info/rfc5109</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+</dl>
+</section>
+</section>
+<div id="impl-notes">
+<section id="appendix-A">
+      <h2 id="name-appendix-a-implementation-n">
+<a href="#name-appendix-a-implementation-n" class="section-name selfRef">Appendix A: Implementation Notes</a>
+      </h2>
+<div id="impl-clock">
+<section id="appendix-A.1">
+        <h3 id="name-clock-synchronisation">
+<a href="#name-clock-synchronisation" class="section-name selfRef">Clock Synchronisation</a>
+        </h3>
+<p id="appendix-A.1-1">
+          OSTP does not mandate PTP or NTP for clock synchronisation.
+          Instead, receivers estimate the source clock offset from the
+          relationship between the RTP Timestamp and the Media Timestamp
+          in the OSTP extension.  The HELLO RSP message provides an
+          initial wall-clock anchor from the relay node, which receivers
+          use for coarse clock alignment.  Fine-grained per-packet
+          jitter compensation is performed by the receiver's playout buffer.<a href="#appendix-A.1-1" class="pilcrow">¶</a></p>
+<p id="appendix-A.1-2">
+          Implementations targeting sample-accurate multi-room
+          synchronisation on a LAN MAY use PTP (IEEE 1588) as a separate
+          out-of-band mechanism; the OSTP timestamps are then interpreted
+          in the PTP time domain.<a href="#appendix-A.1-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="impl-buffer">
+<section id="appendix-A.2">
+        <h3 id="name-playout-buffer-design">
+<a href="#name-playout-buffer-design" class="section-name selfRef">Playout Buffer Design</a>
+        </h3>
+<p id="appendix-A.2-1">
+          The reference implementation uses an adaptive playout buffer
+          with a target depth of 50 ms for LAN multicast and 150 ms for
+          WAN relay.  The buffer depth is adjusted based on measured
+          inter-arrival jitter: when jitter exceeds 20% of the current
+          target depth, the target is doubled (up to a maximum of 500 ms).
+          When jitter has been below 10% of the current target depth for
+          more than 10 seconds, the target is halved (down to a minimum
+          of 20 ms for LAN, 50 ms for WAN).<a href="#appendix-A.2-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="impl-esp32">
+<section id="appendix-A.3">
+        <h3 id="name-embedded-receiver-considera">
+<a href="#name-embedded-receiver-considera" class="section-name selfRef">Embedded Receiver Considerations</a>
+        </h3>
+<p id="appendix-A.3-1">
+          The OSTP packet parser requires only the following operations:
+          byte-order conversion, 32-bit integer arithmetic, and CRC-32
+          computation.  The minimum receive buffer to process a single
+          OSTP packet without dynamic allocation is 1500 bytes (one
+          Ethernet MTU).  Implementations on microcontrollers with less
+          than 64 KB of RAM are feasible using PT=98 (Opus) and a shallow
+          playout buffer (20–40 ms).<a href="#appendix-A.3-1" class="pilcrow">¶</a></p>
+<p id="appendix-A.3-2">
+          The reference ESP32 implementation receives Opus-coded OSTP
+          packets from the WAN relay and decodes them using the Opus codec
+          library compiled for Xtensa LX6, achieving end-to-end latency of
+          approximately 200 ms over a Wi-Fi link.<a href="#appendix-A.3-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="authors-addresses">
+<section id="appendix-B">
+      <h2 id="name-authors-address">
+<a href="#name-authors-address" class="section-name selfRef">Author's Address</a>
+      </h2>
+<address class="vcard">
+        <div dir="auto" class="left"><span class="fn nameRole">Yuki Hamada</span></div>
+<div dir="auto" class="left"><span class="org">EnablerDAO</span></div>
+<div class="email">
+<span>Email:</span>
+<a href="mailto:mail@yukihamada.jp" class="email">mail@yukihamada.jp</a>
+</div>
+<div class="url">
+<span>URI:</span>
+<a href="https://github.com/yukihamada/opensonic" class="url">https://github.com/yukihamada/opensonic</a>
+</div>
+</address>
+</section>
+</div>
+<script>const toc = document.getElementById("toc");
+toc.querySelector("h2").addEventListener("click", e => {
+  toc.classList.toggle("active");
+});
+toc.querySelector("nav").addEventListener("click", e => {
+  toc.classList.remove("active");
+});
+</script>
+</body>
+</html>
