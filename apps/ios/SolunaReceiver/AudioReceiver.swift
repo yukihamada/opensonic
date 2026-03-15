@@ -125,6 +125,9 @@ final class AudioReceiver: ObservableObject {
     /// Error message if any
     @Published private(set) var errorMessage: String?
 
+    /// Debug log from C++ bridge (on-screen diagnostics)
+    @Published private(set) var debugLog: String = ""
+
     // ── WAN Relay ────────────────────────────────────────────────────────
     enum RelayState: String {
         case disconnected = "Disconnected"
@@ -146,6 +149,24 @@ final class AudioReceiver: ObservableObject {
     @Published private(set) var relayState: RelayState = .disconnected
     @Published private(set) var relayGroup: String?
     @Published private(set) var relayError: String?
+
+    /// Unique device ID (UUID v4), persisted across launches
+    var deviceId: String {
+        let key = "soluna_device_id"
+        if let existing = UserDefaults.standard.string(forKey: key), !existing.isEmpty {
+            return existing
+        }
+        let newId = UUID().uuidString.lowercased()
+        UserDefaults.standard.set(newId, forKey: key)
+        return newId
+    }
+
+    /// Reset device ID (re-generate)
+    func resetDeviceId() -> String {
+        let newId = UUID().uuidString.lowercased()
+        UserDefaults.standard.set(newId, forKey: "soluna_device_id")
+        return newId
+    }
 
     /// Multicast group address
     var multicastGroup: String {
@@ -206,7 +227,7 @@ final class AudioReceiver: ObservableObject {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default, options: [.duckOthers])
-            try session.setPreferredIOBufferDuration(0.005) // 5ms — aggressive, adaptive buffer handles the rest
+            try session.setPreferredIOBufferDuration(0.005) // 5ms — low latency with 1ch mono
             try session.setActive(true)
         } catch {
             print("[AudioReceiver] AVAudioSession error: \(error)")
@@ -215,33 +236,48 @@ final class AudioReceiver: ObservableObject {
         // Prevent screen lock during playback
         UIApplication.shared.isIdleTimerDisabled = true
 
+        // Apply preferStereo setting: if enabled, ensure at least 2 output channels
+        let preferStereo = UserDefaults.standard.bool(forKey: "preferStereo")
+        if preferStereo && receiver.channels < 2 {
+            receiver.channels = 2
+        }
+
         // Start audio output immediately — no waiting for peer scan
         let ok = receiver.start()
         if !ok { return }
 
         let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
 
-        // Start watchdog, stats, and meta callback right away
+        // Start watchdog, stats, meta callback, and audio fingerprinting
         startWatchdog()
         startStatsPolling()
         setupMetaCallback()
+        setupFingerprintTap(channel: ch)
 
-        // Connect to WAN relay immediately — channel name is all you need.
-        // No local server (solunad) required. Audio flows via relay.
-        connectRelay(group: ch)
+        // Connect to relay — use manual host if set, else auto-discover
+        let manualHost = UserDefaults.standard.string(forKey: "relayHost") ?? ""
+        if !manualHost.isEmpty {
+            connectRelay(group: ch, host: manualHost, port: 5099)
+        } else {
+            connectRelay(group: ch)
+            // WAN relay: just stay connected. Don't disconnect/retry —
+            // the relay is the source of truth for remote channels.
+            // The watchdog (30s no-packet timeout) handles real failures.
+        }
 
-        Task {
-            // Peer scan runs in parallel — audio is already playing
-            let foundPeer = await PeerRelayManager.shared.scanForPeers(channel: ch)
-
-            if foundPeer {
-                // Switch to P2P mode — PeerRelayManager disables multicast.
-                print("[AudioReceiver] Switched to P2P relay from peer")
-            } else {
-                // No peer — become relay for others after brief stabilization
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                guard state == .receiving else { return }
-                PeerRelayManager.shared.becomeDirectRelay()
+        // P2P peer scan only when using manual/LAN host.
+        // When connected to WAN relay, stay on relay — don't let LAN
+        // peer discovery override the remote stream.
+        if !manualHost.isEmpty {
+            Task {
+                let foundPeer = await PeerRelayManager.shared.scanForPeers(channel: ch)
+                if foundPeer {
+                    print("[AudioReceiver] Switched to P2P relay from peer")
+                } else {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    guard state == .receiving else { return }
+                    PeerRelayManager.shared.becomeDirectRelay()
+                }
             }
         }
     }
@@ -261,12 +297,19 @@ final class AudioReceiver: ObservableObject {
         // FILE: callback — download music file for file-sync mode
         receiver.setFileCallback { [weak self] filename in
             guard let self else { return }
+            let enabled = UserDefaults.standard.bool(forKey: "fileSyncEnabled")
+            // fileSyncEnabled defaults to true (key absent → false, so check registration)
+            let isOn = UserDefaults.standard.object(forKey: "fileSyncEnabled") == nil ? true : enabled
+            if !isOn { return }
             self.downloadAndPrepare(filename: filename)
         }
 
         // SYNC: callback — play/pause/seek in file-sync mode
         receiver.setSyncCallback { [weak self] syncCmd in
             guard let self else { return }
+            let enabled = UserDefaults.standard.bool(forKey: "fileSyncEnabled")
+            let isOn = UserDefaults.standard.object(forKey: "fileSyncEnabled") == nil ? true : enabled
+            if !isOn { return }
             self.handleSyncCommand(syncCmd)
         }
     }
@@ -285,7 +328,7 @@ final class AudioReceiver: ObservableObject {
 
     private func downloadAndPrepare(filename: String) {
         let encoded = filename.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? filename
-        guard let url = URL(string: "http://46.225.77.119:5102/api/music/\(encoded)") else { return }
+        guard let url = URL(string: "http://relay.solun.art:5102/api/music/\(encoded)") else { return }
 
         // New track: stop current file-sync pump
         stopFileSyncPump()
@@ -512,6 +555,7 @@ final class AudioReceiver: ObservableObject {
             isMicTransmitting = false
         }
 
+        teardownFingerprintTap()
         disconnectRelay()
         stopWatchdog()
         stopStatsPolling()
@@ -523,6 +567,7 @@ final class AudioReceiver: ObservableObject {
         currentSyncFile = nil
         pendingSyncCmd = nil
         receiver.filesyncNetworkDisabled = false
+        if isDJActive { stopDJBroadcast() }
         nowPlayingTitle = nil
         nowPlayingArtist = nil
         nowPlayingArtwork = nil
@@ -577,15 +622,110 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
+    // MARK: - Talk Mode
+
+    func setTalkMode(_ enabled: Bool) {
+        receiver.setTalkMode(enabled)
+    }
+
+    // MARK: - DJ Broadcast
+
+    /// Whether DJ broadcast is currently active
+    @Published private(set) var isDJActive: Bool = false
+
+    /// Current track filename (nil when not broadcasting)
+    @Published private(set) var djCurrentTrack: String?
+
+    /// Playback progress (0.0 – 1.0)
+    @Published private(set) var djProgress: Float = 0.0
+
+    /// Enable mic mixing while DJ is broadcasting
+    @Published var djMicMixEnabled: Bool = false {
+        didSet { receiver.djMicMixEnabled = djMicMixEnabled }
+    }
+
+    private var djPollTimer: Timer?
+
+    /// Start DJ broadcast from a file URL (security-scoped resource).
+    func startDJBroadcast(url: URL) {
+        guard url.startAccessingSecurityScopedResource() else { return }
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("soluna-dj-\(url.lastPathComponent)")
+        do {
+            if FileManager.default.fileExists(atPath: tmpURL.path) {
+                try FileManager.default.removeItem(at: tmpURL)
+            }
+            try FileManager.default.copyItem(at: url, to: tmpURL)
+        } catch {
+            url.stopAccessingSecurityScopedResource()
+            return
+        }
+        url.stopAccessingSecurityScopedResource()
+
+        guard receiver.startDJBroadcast(tmpURL.path) else { return }
+        isDJActive = true
+        djCurrentTrack = url.lastPathComponent
+        startDJPollTimer()
+    }
+
+    /// Stop DJ broadcast.
+    func stopDJBroadcast() {
+        receiver.stopDJ()
+        isDJActive = false
+        djCurrentTrack = nil
+        djProgress = 0
+        stopDJPollTimer()
+    }
+
+    private func startDJPollTimer() {
+        stopDJPollTimer()
+        djPollTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.isDJActive = self.receiver.isDJActive
+                self.djCurrentTrack = self.receiver.djCurrentTrack
+                self.djProgress = self.receiver.djProgress
+                if !self.isDJActive { self.stopDJPollTimer() }
+            }
+        }
+    }
+
+    private func stopDJPollTimer() {
+        djPollTimer?.invalidate()
+        djPollTimer = nil
+    }
+
+    /// Allow a specific device to use microphone (owner/DJ only)
+    func allowMic(deviceId: String) {
+        receiver.sendMicAllow(deviceId)
+    }
+
+    /// Deny a specific device from using microphone (owner/DJ only)
+    func denyMic(deviceId: String) {
+        receiver.sendMicDeny(deviceId)
+    }
+
+    /// Request mic list from relay
+    func requestMicList() {
+        receiver.requestMicList()
+    }
+
+    /// Request members list from relay
+    func requestMembers() {
+        receiver.requestMembers()
+    }
+
     // MARK: - WAN Relay
 
     func connectRelay(group: String, password: String = "",
-                      host: String = "soluna-relay.fly.dev", port: UInt16 = 5100) {
+                      host: String = "relay.solun.art", port: UInt16 = 5100) {
         guard state == .connecting || state == .receiving else { return }
+        let devId = deviceId
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             let ok = self.receiver.connect(toRelay: host, port: port,
-                                            group: group, password: password)
+                                            group: group, password: password,
+                                            deviceId: devId)
             Task { @MainActor in
                 self.updateRelayState()
                 if !ok {
@@ -595,7 +735,63 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
+    /// Discover LAN solunad via Bonjour, connect there; else WAN relay
+    private var lanBrowser: NWBrowser?
+    private var lanResolver: ServiceResolver?
+
+    func discoverAndConnectRelay(group: String) {
+        // Use NWBrowser to find _soluna._tcp on LAN
+        let browser = NWBrowser(for: .bonjour(type: "_soluna._tcp.", domain: "local."), using: .udp)
+        lanBrowser = browser
+        var done = false
+
+        browser.browseResultsChangedHandler = { [weak self] results, _ in
+            guard let self, !done else { return }
+            for result in results {
+                if case .service(let name, _, _, _) = result.endpoint {
+                    print("[AudioReceiver] Bonjour found: \(name)")
+                    done = true
+                    browser.cancel()
+                    // Resolve to IP via NetService
+                    let svc = NetService(domain: "local.", type: "_soluna._tcp.", name: name)
+                    let resolver = ServiceResolver(service: svc) { [weak self] host in
+                        Task { @MainActor in
+                            guard let self else { return }
+                            if let host = host {
+                                print("[AudioReceiver] LAN solunad IP: \(host)")
+                                self.connectRelay(group: group, host: host, port: 5099)
+                            } else {
+                                print("[AudioReceiver] Resolve failed, WAN fallback")
+                                self.connectRelay(group: group)
+                            }
+                        }
+                    }
+                    Task { @MainActor in self.lanResolver = resolver }
+                    resolver.resolve()
+                    return
+                }
+            }
+        }
+
+        browser.stateUpdateHandler = { state in
+            print("[AudioReceiver] NWBrowser state: \(state)")
+        }
+
+        browser.start(queue: .main)
+
+        // 2s timeout → WAN fallback
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self, !done else { return }
+            done = true
+            browser.cancel()
+            print("[AudioReceiver] Bonjour timeout, WAN fallback")
+            self.connectRelay(group: group)
+        }
+    }
+
     func disconnectRelay() {
+        lanBrowser?.cancel()
+        lanBrowser = nil
         receiver.disconnectRelay()
         updateRelayState()
     }
@@ -677,8 +873,8 @@ final class AudioReceiver: ObservableObject {
 
         if packetsReceived == lastPacketCount {
             staleTicks += 1
-            // 3 ticks × 3s = 9 seconds with no new packets → reconnect
-            if staleTicks >= 3 && state == .receiving {
+            // 10 ticks × 3s = 30 seconds with no new packets → reconnect
+            if staleTicks >= 10 && state == .receiving {
                 print("[AudioReceiver] Watchdog: no packets for \(staleTicks * 3)s — reconnecting")
                 reconnect()
             }
@@ -777,6 +973,44 @@ final class AudioReceiver: ObservableObject {
         print("[AudioReceiver] Output route: \(routeName), latency: \(String(format: "%.1f", latencyMs)) ms")
     }
 
+    // MARK: - Audio Fingerprinting
+
+    /// Install a sample tap on the audio output and start fingerprint reporting.
+    private func setupFingerprintTap(channel: String) {
+        let fingerprinter = AudioFingerprint.shared
+        fingerprinter.start(channel: channel)
+
+        // Tap rendered audio — callback runs on the audio thread.
+        // Down-mix to mono before feeding to the fingerprinter.
+        receiver.setSampleTapCallback { samples, sampleCount, channels in
+            if channels <= 1 {
+                // Already mono
+                fingerprinter.addSamples(samples, count: Int(sampleCount))
+            } else {
+                // Down-mix interleaved multi-channel to mono
+                let ch = Int(channels)
+                let frames = Int(sampleCount) / ch
+                // Stack-allocate via withUnsafeTemporaryAllocation for audio-thread safety
+                withUnsafeTemporaryAllocation(of: Float.self, capacity: frames) { mono in
+                    for i in 0..<frames {
+                        var sum: Float = 0
+                        for c in 0..<ch {
+                            sum += samples[i * ch + c]
+                        }
+                        mono[i] = sum / Float(ch)
+                    }
+                    fingerprinter.addSamples(mono.baseAddress!, count: frames)
+                }
+            }
+        }
+    }
+
+    /// Remove the sample tap and stop fingerprint reporting.
+    private func teardownFingerprintTap() {
+        receiver.setSampleTapCallback(nil)
+        AudioFingerprint.shared.stop()
+    }
+
     // MARK: - Internal delegate handling
 
     fileprivate func handleStateChange(_ newState: SolunaReceiverState) {
@@ -799,6 +1033,8 @@ final class AudioReceiver: ObservableObject {
         // Don't overwrite from bridge — it can cause false negatives
         // during session transitions.
         updateRelayState()
+        // Poll debug log from C++ bridge
+        debugLog = receiver.debugLog ?? ""
     }
 
     fileprivate func handleError(_ error: Error) {
@@ -828,5 +1064,49 @@ private final class DelegateHandler: NSObject, SolunaReceiverDelegate {
         Task { @MainActor in
             audioReceiver?.handleError(error)
         }
+    }
+}
+
+// MARK: - Bonjour service resolver
+
+private class ServiceResolver: NSObject, NetServiceDelegate {
+    private let service: NetService
+    private let completion: (String?) -> Void
+    private var done = false
+
+    init(service: NetService, completion: @escaping (String?) -> Void) {
+        self.service = service
+        self.completion = completion
+        super.init()
+    }
+
+    func resolve() {
+        service.delegate = self
+        service.resolve(withTimeout: 2.0)
+    }
+
+    func netServiceDidResolveAddress(_ sender: NetService) {
+        guard !done else { return }
+        if let addresses = sender.addresses {
+            for data in addresses {
+                data.withUnsafeBytes { ptr in
+                    let sa = ptr.baseAddress!.assumingMemoryBound(to: sockaddr.self)
+                    if sa.pointee.sa_family == UInt8(AF_INET) {
+                        let sin = ptr.baseAddress!.assumingMemoryBound(to: sockaddr_in.self)
+                        var addr = sin.pointee.sin_addr
+                        var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+                        inet_ntop(AF_INET, &addr, &buf, socklen_t(INET_ADDRSTRLEN))
+                        done = true
+                        completion(String(cString: buf))
+                    }
+                }
+            }
+        }
+    }
+
+    func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
+        guard !done else { return }
+        done = true
+        completion(nil)
     }
 }

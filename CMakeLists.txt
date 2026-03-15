@@ -64,6 +64,7 @@ add_library(soluna_core STATIC
     $<$<BOOL:${OS_IOS}>:src/pal/audio/coreaudio.mm>
     $<$<BOOL:${OS_ANDROID}>:src/pal/audio/aaudio.cpp>
     $<$<BOOL:${OS_WINDOWS}>:src/pal/audio/wasapi.cpp>
+    $<$<BOOL:${SOLUNA_ENABLE_PIPEWIRE}>:src/pal/audio/pipewire.cpp>
     # PAL - Net (POSIX for Linux, macOS, iOS, Android)
     $<$<OR:$<BOOL:${OS_LINUX}>,$<BOOL:${OS_MACOS}>,$<BOOL:${OS_IOS}>,$<BOOL:${OS_ANDROID}>>:src/pal/net/socket_posix.cpp>
     $<$<BOOL:${OS_WINDOWS}>:src/pal/net/socket_win32.cpp>
@@ -134,6 +135,14 @@ add_library(soluna_core STATIC
     src/util/wav_writer.cpp
     # AES67 (conditional)
     $<$<BOOL:${SOLUNA_ENABLE_AES67}>:src/transport/aes67.cpp>
+    # Ravenna (conditional, requires AES67)
+    $<$<BOOL:${SOLUNA_ENABLE_RAVENNA}>:src/transport/ravenna.cpp>
+    # DLNA/UPnP Media Renderer (conditional)
+    $<$<BOOL:${SOLUNA_ENABLE_DLNA}>:src/transport/dlna_renderer.cpp>
+    # AirPlay 2 receiver + sender (conditional)
+    $<$<BOOL:${SOLUNA_ENABLE_AIRPLAY}>:src/transport/airplay_receiver.cpp>
+    $<$<BOOL:${SOLUNA_ENABLE_AIRPLAY}>:src/transport/airplay_alac.cpp>
+    $<$<BOOL:${SOLUNA_ENABLE_AIRPLAY}>:src/transport/airplay_sender.cpp>
     # DTLS (always compiled — has internal #ifdef guards for stub)
     src/transport/dtls.cpp
     # Transport Manager
@@ -168,6 +177,13 @@ if(OS_LINUX)
     if(ALSA_LIB)
         target_link_libraries(soluna_core PUBLIC ${ALSA_LIB})
         target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_ALSA=1)
+    endif()
+    if(SOLUNA_ENABLE_PIPEWIRE)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
+        target_include_directories(soluna_core PUBLIC ${PIPEWIRE_INCLUDE_DIRS})
+        target_link_libraries(soluna_core PUBLIC ${PIPEWIRE_LIBRARIES})
+        target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_PIPEWIRE=1)
     endif()
 elseif(OS_MACOS)
     find_library(COREAUDIO_FW CoreAudio)
@@ -216,6 +232,33 @@ endif()
 
 if(SOLUNA_ENABLE_AES67)
     target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_AES67=1)
+endif()
+
+if(SOLUNA_ENABLE_RAVENNA)
+    if(NOT SOLUNA_ENABLE_AES67)
+        message(FATAL_ERROR "SOLUNA_ENABLE_RAVENNA requires SOLUNA_ENABLE_AES67")
+    endif()
+    target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_RAVENNA=1)
+endif()
+
+if(SOLUNA_ENABLE_DLNA)
+    target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_DLNA=1)
+endif()
+
+if(SOLUNA_ENABLE_AIRPLAY)
+    target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_AIRPLAY=1)
+    if(OS_LINUX)
+        # On Linux, try to find Avahi for mDNS advertisement
+        find_library(AVAHI_CLIENT_LIB avahi-client)
+        find_library(AVAHI_COMMON_LIB avahi-common)
+        if(AVAHI_CLIENT_LIB AND AVAHI_COMMON_LIB)
+            target_link_libraries(soluna_core PUBLIC ${AVAHI_CLIENT_LIB} ${AVAHI_COMMON_LIB})
+            target_compile_definitions(soluna_core PUBLIC SOLUNA_HAS_AVAHI=1)
+        else()
+            message(WARNING "libavahi-client not found, AirPlay mDNS on Linux will be disabled")
+        endif()
+    endif()
+    # On macOS, dns_sd.h is available system-wide (no extra linking needed)
 endif()
 
 if(SOLUNA_ENABLE_DTLS OR SOLUNA_ENABLE_TLS)
@@ -275,22 +318,58 @@ if(OS_LINUX)
     add_executable(soluna apps/linux-rx/main.cpp)
     target_link_libraries(soluna PRIVATE asound pthread)
     target_compile_options(soluna PRIVATE -Wall -Wextra $<$<CONFIG:Release>:-O2>)
+    if(SOLUNA_ENABLE_PIPEWIRE)
+        target_include_directories(soluna PRIVATE ${PIPEWIRE_INCLUDE_DIRS})
+        target_link_libraries(soluna PRIVATE ${PIPEWIRE_LIBRARIES})
+        target_compile_definitions(soluna PRIVATE SOLUNA_HAS_PIPEWIRE=1)
+    endif()
+    if(SOLUNA_ENABLE_DLNA)
+        target_sources(soluna PRIVATE src/transport/dlna_renderer.cpp)
+        target_include_directories(soluna PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        target_compile_definitions(soluna PRIVATE SOLUNA_HAS_DLNA=1)
+        if(SOLUNA_HAS_MINIMP3 AND minimp3_SOURCE_DIR)
+            target_include_directories(soluna PRIVATE ${minimp3_SOURCE_DIR})
+            target_compile_definitions(soluna PRIVATE SOLUNA_HAS_MINIMP3 SOLUNA_DLNA_MINIMP3_IMPL)
+        endif()
+    endif()
+    if(SOLUNA_ENABLE_AIRPLAY)
+        target_sources(soluna PRIVATE
+            src/transport/airplay_receiver.cpp
+            src/transport/airplay_alac.cpp
+            src/transport/airplay_sender.cpp)
+        target_include_directories(soluna PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        target_compile_definitions(soluna PRIVATE SOLUNA_HAS_AIRPLAY=1)
+        if(AVAHI_CLIENT_LIB AND AVAHI_COMMON_LIB)
+            target_link_libraries(soluna PRIVATE ${AVAHI_CLIENT_LIB} ${AVAHI_COMMON_LIB})
+            target_compile_definitions(soluna PRIVATE SOLUNA_HAS_AVAHI=1)
+        endif()
+    endif()
     install(TARGETS soluna RUNTIME DESTINATION bin)
 endif()
 
-# Windows standalone receiver (WASAPI, no soluna_core dependency)
+# Windows all-in-one client (RX + TX, WASAPI loopback, no soluna_core dependency)
 if(OS_WINDOWS)
-    add_executable(soluna-rx-win apps/win-rx/main.cpp)
-    target_link_libraries(soluna-rx-win PRIVATE ws2_32 ole32 avrt)
-    target_compile_options(soluna-rx-win PRIVATE
+    add_executable(soluna-win WIN32 apps/win/main.cpp)
+    target_link_libraries(soluna-win PRIVATE ws2_32 ole32 avrt dwmapi comctl32)
+    target_compile_options(soluna-win PRIVATE
         $<$<CXX_COMPILER_ID:MSVC>:/W4>
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic>
         $<$<CONFIG:Release>:$<IF:$<CXX_COMPILER_ID:MSVC>,/O2,-O2>>
     )
-    target_compile_definitions(soluna-rx-win PRIVATE
+    target_compile_definitions(soluna-win PRIVATE
         WIN32_LEAN_AND_MEAN NOMINMAX
     )
-    install(TARGETS soluna-rx-win RUNTIME DESTINATION bin)
+    install(TARGETS soluna-win RUNTIME DESTINATION bin)
+
+    # Legacy standalone RX (kept for compatibility)
+    add_executable(soluna-rx-win apps/win-rx/main.cpp)
+    target_link_libraries(soluna-rx-win PRIVATE ws2_32 ole32 avrt)
+    target_compile_definitions(soluna-rx-win PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_compile_options(soluna-rx-win PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/W4>
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra>
+        $<$<CONFIG:Release>:$<IF:$<CXX_COMPILER_ID:MSVC>,/O2,-O2>>
+    )
 endif()
 
 # WAN relay server (standalone, no soluna_core dependency)
@@ -300,6 +379,28 @@ if(NOT OS_IOS AND NOT OS_ANDROID)
         target_link_libraries(soluna-relay PRIVATE pthread)
     endif()
     target_compile_options(soluna-relay PRIVATE -Wall -Wextra $<$<CONFIG:Release>:-O2>)
+
+    # Relay requires OpenSSL, libcurl, and SQLite3
+    find_package(OpenSSL REQUIRED)
+    target_link_libraries(soluna-relay PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+
+    find_package(CURL REQUIRED)
+    target_link_libraries(soluna-relay PRIVATE CURL::libcurl)
+
+    find_package(SQLite3)
+    if(SQLite3_FOUND)
+        target_link_libraries(soluna-relay PRIVATE SQLite::SQLite3)
+    else()
+        find_library(SQLITE3_LIB sqlite3)
+        find_path(SQLITE3_INCLUDE_DIR sqlite3.h)
+        if(SQLITE3_LIB AND SQLITE3_INCLUDE_DIR)
+            target_link_libraries(soluna-relay PRIVATE ${SQLITE3_LIB})
+            target_include_directories(soluna-relay PRIVATE ${SQLITE3_INCLUDE_DIR})
+        else()
+            message(FATAL_ERROR "SQLite3 not found, required by soluna-relay")
+        endif()
+    endif()
+
     install(TARGETS soluna-relay RUNTIME DESTINATION bin)
 endif()
 

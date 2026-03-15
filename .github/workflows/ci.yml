@@ -91,11 +91,18 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
             -DSOLUNA_BUILD_TESTS=ON
 
-      - name: Build
-        run: cmake --build build --config ${{ matrix.build_type }} --parallel
+      - name: Build all targets (including soluna-win GUI)
+        run: |
+          cmake --build build --config ${{ matrix.build_type }} --parallel
+          cmake --build build --config ${{ matrix.build_type }} --target soluna-win --parallel
 
       - name: Run tests
         run: ctest --test-dir build --build-config ${{ matrix.build_type }} --output-on-failure --parallel 4
+
+      - name: Smoke test — soluna-rx-win --help
+        if: matrix.build_type == 'Release'
+        run: build\Release\soluna-rx-win.exe --help
+        continue-on-error: true
 
       - name: Upload build artifacts
         if: matrix.build_type == 'Release'
@@ -103,8 +110,8 @@ jobs:
         with:
           name: soluna-windows-x64
           path: |
-            build/Release/solunad.exe
-            build/Release/solctl.exe
+            build/Release/soluna-win.exe
+            build/Release/soluna-rx-win.exe
 
   build-linux-arm64:
     runs-on: ubuntu-latest
