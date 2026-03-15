@@ -5,7 +5,7 @@
 
 Network Working Group                                         Open Sonic
 Request for Comments: OSTP-1                                  Workgroup
-Category: Experimental                                     Version: 0.9
+Category: Experimental                                   Version: 0.9.3
                                                            2026-03-14
 
               Open Sonic Transport Protocol (OSTP)
@@ -44,6 +44,30 @@ Copyright Notice
    professional LAN studio routing. OSTP targets the specific problem
    of distributing high-quality audio to thousands of simultaneous
    listeners over the public Internet with economic accountability.
+
+---
+
+## Changelog
+
+### v0.9.3 (2026-03-16)
+- Fix: media_timestamp changed from μs to ms precision (32-bit ms = ~49 days)
+         with rollover detection algorithm (was: ~71min before corruption)
+- Fix: Mandatory Control/Data plane separation to prevent HOL blocking
+         on player.switch/deck.set_param during file transfers
+- Fix: Swarm churn resistance — dual-parent reception + relay fallback
+         + Gossip peer discovery for <80ms recovery on node dropout
+- Fix: TIP command authentication — blockchain tx_signature verification
+         required; unsigned tips disabled by default
+- Fix: TURN fallback (Phase 3) for Symmetric NAT environments;
+         P2P hole punch alone fails ~20-30% of connections
+
+### v0.9.2 (2026-03-16)
+- Fix: RTCP-based jitter buffer (replaced TCP time.ping)
+- Fix: player.switch → RTCP APP in-band signaling
+- Fix: Multicast collision avoidance (24-bit effective space)
+- Fix: Dynamic FEC group size
+- Fix: Control Plane TLS REQUIRED
+- Fix: CHARGE replay window 300s → 30s
 
 ---
 
@@ -258,8 +282,10 @@ Copyright Notice
       allowing up to 2^32 packets without wraparound ambiguity.
 
    media_timestamp
-      A 32-bit media clock timestamp relative to session start,
-      in units of 1/48000 seconds (for 48 kHz Opus).
+      A 32-bit wall-clock timestamp relative to session start, in
+      milliseconds. Changed from microsecond to millisecond precision
+      in OSTP v0.9.3. 32-bit ms provides ~49.7 days of continuous
+      operation before rollover. See §4.4 for rollover handling.
 
    Fingerprint Hash
       A 64-bit hash derived from a 30-second audio window, used for
@@ -399,11 +425,23 @@ Copyright Notice
      The extended sequence number increments monotonically from 0.
      Relay Nodes MUST NOT modify seq_ext.
 
-   - media_timestamp (32 bits, unsigned, network byte order):
-     Absolute media clock timestamp relative to the session epoch, in
-     1/48000 second units. This provides a 32-bit receiver clock
-     independent of the RTP timestamp (which wraps). For a 48 kHz Opus
-     stream with 20ms frames: media_timestamp = frame_index * 960.
+   - media_timestamp (32 bits, milliseconds since stream start):
+     Changed from microsecond to millisecond precision in OSTP v0.9.3.
+     32-bit ms provides ~49.7 days of continuous operation before rollover.
+
+     Rollover MUST be handled: receivers MUST use RFC 3550 §A.1 sequence
+     number + timestamp correlation to detect rollover:
+       if (ts_new < ts_prev && (ts_prev - ts_new) > 0x80000000):
+           rollover_count++
+       media_time_ms = ts_new + rollover_count * 2^32
+
+     RTP timestamp (48kHz clock, 32-bit) already wraps at ~24.8 hours.
+     media_timestamp tracks wall-clock ms independently; its rollover
+     MUST be handled separately from the RTP timestamp rollover.
+
+     At 48kHz, each 960-sample (20ms) frame increments media_timestamp by 20.
+     At 44100Hz, each 882-sample frame increments by ~20 (floored to integer ms).
+
      Receivers SHOULD use media_timestamp for jitter buffer alignment
      rather than wall clock.
 
@@ -827,6 +865,48 @@ Copyright Notice
    - Gaps 3–32 SHOULD trigger NACK immediately
    - Gaps > 32 are treated as stream discontinuity (no NACK)
 
+### 6.10. NAT Traversal and TURN Fallback (REQUIRED for production)
+
+   OSTP relay servers MUST implement a 4-phase NAT traversal protocol:
+
+   Phase 1 — STUN reflexive address discovery
+     Client sends: STUN_REQ\n  to relay:5100
+     Relay replies: STUN_RES:<reflexive_ip>:<reflexive_port>\n
+     This reveals the client's NAT-mapped address.
+
+   Phase 2 — Hole punch attempt
+     Relay sends PEER:<reflexive_ip_A>:<port_A>\n to client B, and vice versa.
+     Both clients send 3 UDP packets to each other's reflexive address.
+     If a response is received within 500ms, hole punch succeeded (§6 P2P).
+
+   Phase 3 — TURN relay allocation (on hole punch failure)
+     If no response in 500ms, client sends: TURN_ALLOC\n to relay
+     Relay allocates a UDP relay slot and responds:
+       TURN_OK:<relay_ip>:<relay_port_A>:<relay_port_B>\n
+     Both clients send audio to their assigned relay port.
+     Relay cross-forwards between the two ports.
+
+     TURN relay adds ~0ms latency vs direct UDP (same machine) to
+     ~5-10ms (separate relay machine in same datacenter).
+
+   Phase 4 — WAN cascade fallback
+     If TURN fails (relay overloaded), fall back to §6.4 WAN relay stream.
+
+   NAT type detection (informational):
+     After Phase 1, compare reflexive IP with local IP:
+       Same IP              → No NAT or Full Cone → Phase 2 likely succeeds
+       Different IP, 1 port  → Address-Restricted   → Phase 2 likely succeeds
+       Different IP, N ports → Port-Restricted       → Phase 2 may fail
+       Different port/peer  → Symmetric NAT          → Phase 2 will fail → Phase 3
+
+   Expected P2P success rates by NAT type:
+     Full Cone + Full Cone        : 100%
+     Full Cone + Symmetric        : ~60%
+     Symmetric + Symmetric        : ~15% (Phase 3 TURN is the reliable path)
+
+   Implementations MUST implement Phase 3 (TURN). Phase 2 alone is
+   insufficient for commercial-grade connectivity.
+
 ---
 
 ## 7. Swarm Distribution Protocol
@@ -1162,6 +1242,50 @@ Copyright Notice
    2. SC sends SWARM_TEARDOWN with `reason: "source_timeout"` and
       `reconnect_delay_s: 60` to all nodes.
 
+### 7.11. Swarm Churn Resistance
+
+   P2P swarm nodes MUST implement the following to maintain <500ms recovery:
+
+   1. Dual-parent reception (REQUIRED for Swarm Nodes)
+      Every Swarm Node MUST receive from exactly 2 independent parents
+      simultaneously. The two streams MUST originate from different relay
+      edge nodes (not siblings in the same tree branch) to ensure path
+      independence. FEC (§10.3) applied across the two streams provides
+      single-parent-failure recovery with zero additional latency.
+
+      Packet selection: when both parents deliver the same sequence number,
+      the first-arriving packet wins; the duplicate is silently discarded.
+
+   2. Relay fallback (REQUIRED)
+      Every Swarm Node MUST maintain an open (but throttled / keep-alive-only)
+      WebSocket connection to the nearest relay edge node at all times.
+
+      On parent failure detection (gap > 3 consecutive packets OR RTCP BYE
+      received), the node MUST:
+        T+0ms   : activate relay fallback (resume stream from relay WS)
+        T+200ms : attempt to find 2 new P2P parents via Gossip (§7.11.3)
+        T+2000ms: if 2 parents found, switch back to P2P; else stay on relay
+
+      This bounds audio interruption to <3 frames (60ms at 20ms/frame).
+
+   3. Gossip-based peer discovery (REQUIRED for Swarm Nodes)
+      Each Swarm Node MUST maintain a peer table of ≥8 candidate parents
+      (received via relay PEER: hints and direct HELLO exchange). On churn,
+      the node selects the 2 lowest-latency candidates from this table.
+
+      Peer table refresh: send GOSSIP:<own_ip>:<port>:<latency_ms>\n to
+      the relay every 30 seconds. The relay distributes PEER: hints in
+      response. Peers are evicted after 90 seconds of silence.
+
+   4. Leaf Nodes (mobile / browser)
+      Leaf Nodes need not implement dual-parent reception. They MUST
+      maintain the relay fallback connection (item 2 above).
+
+   Recovery time budget:
+     Parent failure detection : <60ms  (3 × 20ms frames)
+     Relay fallback activation: <20ms  (pre-connected keep-alive)
+     Total audio gap          : <80ms  (within one jitter buffer fill)
+
 ---
 
 ## 8. Economic Layer
@@ -1244,9 +1368,12 @@ Copyright Notice
      "session_token": "st-listener-222",
      "amount_cents": 100,
      "message": "Amazing set!",
-     "recipient": "source"
+     "recipient": "source",
+     "tx_signature": "<Base58-encoded Solana tx signature, 88 chars>",
+     "wallet_pubkey": "<Base58-encoded sender wallet pubkey, 44 chars>"
    }
    ```
+   See §8.2a for TIP command authentication requirements (REQUIRED as of OSTP v0.9.3).
 
    **SUPPORT** (Listener → SC → Relay Node)
    ```json
@@ -1276,6 +1403,43 @@ Copyright Notice
      "currency": "USD"
    }
    ```
+
+### 8.2a. TIP Command Authentication (REQUIRED as of OSTP v0.9.3)
+
+   Syntax (v0.9.3+):
+     TIP:<amount>:<tx_signature>:<wallet_pubkey>\n
+
+     amount        : decimal integer, in ENAI token base units (lamports)
+     tx_signature  : Base58-encoded Solana transaction signature (88 chars)
+                     OR Ethereum tx hash (0x-prefixed, 66 chars) for EVM chains
+     wallet_pubkey : Base58-encoded sender wallet public key (44 chars)
+
+   Relay verification procedure (REQUIRED):
+     1. Parse tx_signature and wallet_pubkey from the TIP command
+     2. Query Solana RPC (or cached validator):
+          getTransaction(tx_signature, {commitment: "confirmed"})
+     3. Verify ALL of the following:
+        a. Transaction is confirmed (not pending/failed)
+        b. Transaction block_time is within 300 seconds of current time
+        c. Transfer destination matches the channel owner's wallet
+           (stored in WALLET: registration, see §8.2b)
+        d. Transfer amount ≥ declared <amount>
+        e. Sender matches wallet_pubkey
+     4. Only if all checks pass: broadcast TIP_CONFIRMED:<amount>:<wallet_pubkey_short>\n
+        to all channel listeners
+     5. On failure: send ERR:tip_invalid:<reason>\n to the sending client only
+
+   Relay MAY cache verified transactions (keyed on tx_signature) for 600
+   seconds to avoid re-querying the same transaction. Duplicate TIP commands
+   with the same tx_signature MUST be silently rejected after first processing.
+
+   Backward compatibility: TIP:<amount> (without signature) is accepted ONLY
+   on channels where the owner has explicitly enabled insecure tips via
+   SET_CHANNEL:allow_unsigned_tips:true. Default is DENY.
+
+   Legacy clients that do not support on-chain verification SHOULD direct
+   users to a hosted tip page (e.g. solun.art/tip/<channel>) that handles
+   the on-chain transaction and then sends the authenticated TIP command.
 
 ### 8.3. CHARGE Command Security
 
@@ -1830,6 +1994,33 @@ Copyright Notice
 
 ## 14. Daemon Control Protocol (DCP)
 
+### 14.0. Connection Multiplexing (REQUIRED as of OSTP v0.9.3)
+
+   Control Plane and Data Plane MUST use separate TCP connections:
+
+     Control Plane  ws://daemon:8400/ws           (port 8400)
+       — All commands: player.*, deck.*, mode.*, etc.
+       — Maximum message size: 4096 bytes
+       — MUST NOT carry binary audio or file data
+
+     Data Plane     ws://daemon:8400/ws/data       (port 8400, separate socket)
+     — OR —         http://daemon:8400/upload       (HTTP multipart POST)
+       — File chunks: 0xFA/FB (current), 0xFC/FD (next-file prefetch)
+       — Maximum chunk size: 65535 bytes
+       — MUST NOT carry control commands
+
+     Rationale: TCP Head-of-Line Blocking on a single connection means a
+     32KB file chunk can delay a `player.switch` command by:
+       RTT * (chunk_size / MSS) = 20ms * (32KB / 1460B) ≈ 440ms
+     This violates the 50ms synchronization requirement.
+
+     Implementations using HTTP/3 (QUIC) for the Data Plane are ENCOURAGED
+     as QUIC eliminates HOL blocking at the transport layer. The URI for
+     HTTP/3 upload is the same as HTTP/1.1 (/upload) with Alt-Svc negotiation.
+
+     Legacy clients (OSTP < v0.9.3) that use a single WebSocket connection
+     MUST limit file chunk size to 1400 bytes to bound HOL delay to ~20ms.
+
 ### 14.1. Overview
 
    The Daemon Control Protocol (DCP) operates over WebSocket at port
@@ -2304,4 +2495,4 @@ Copyright Notice
 ---
 
 *End of OSTP-SPEC.md*
-*Revision: 0.9 DRAFT — Not for production deployment without review*
+*Revision: 0.9.3 DRAFT — Not for production deployment without review*

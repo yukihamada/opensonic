@@ -11,6 +11,18 @@ Expires: 17 September 2026
                   Open Sonic Transport Protocol (OSTP)
                      draft-hamada-opensonic-ostp-00
 
+   OSTP v0.9.3: 5 critical protocol fixes applied.
+   (1) media_timestamp: 32-bit μs → ms precision (~71min rollover →
+   ~49-day capacity) with RFC 3550 §A.1 rollover detection.
+   (2) Mandatory Control/Data plane separation (ws:8400/ws vs
+   ws:8400/ws/data) to prevent TCP HOL blocking on file transfers.
+   (3) Swarm churn resistance: dual-parent reception, relay fallback
+   pre-connection, Gossip peer table (8 candidates), <80ms recovery.
+   (4) TIP fraud prevention: TIP:<amount>:<tx_sig>:<pubkey> with relay
+   Solana RPC getTransaction verification; unsigned tips denied by default.
+   (5) Symmetric NAT TURN fallback: 4-phase traversal (STUN→hole-punch
+   →TURN→cascade), ~100% connectivity guarantee.
+
    Rev 00a: Fixed TCP/UDP sync (RTCP-based), in-band track switch
    (RTCP APP), dynamic FEC, multicast collision avoidance, mandatory
    TLS for Control Plane, 30s CHARGE replay window.
