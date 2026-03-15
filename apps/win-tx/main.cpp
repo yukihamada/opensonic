@@ -61,6 +61,10 @@
 #include <vector>
 #include <atomic>
 #include <thread>
+#include <mutex>
+#include <array>
+
+#include "../../../include/soluna/wifi/fec.h"
 
 // ── OSTP packet structures (matched with win-rx / iOS / Mac) ─────────────────
 
@@ -358,6 +362,119 @@ static size_t build_ostp_packet(
     return pkt_size;
 }
 
+// ── TX Packet Cache (circular buffer for retransmission) ─────────────────────
+// Stores the last 64 sent packets for NACK-triggered retransmission.
+
+static constexpr int kCacheSize = 64;
+
+struct CachedPacket {
+    uint16_t seq = 0;
+    uint8_t  data[65536] = {};
+    size_t   len = 0;
+};
+
+struct TxPacketCache {
+    std::array<CachedPacket, kCacheSize> slots;
+    std::mutex mtx;
+    int write_idx = 0;  // next slot to write (wraps around)
+
+    void store(uint16_t seq, const uint8_t* pkt, size_t len) {
+        std::lock_guard<std::mutex> lk(mtx);
+        auto& slot = slots[write_idx % kCacheSize];
+        slot.seq = seq;
+        size_t copy = len < sizeof(slot.data) ? len : sizeof(slot.data);
+        memcpy(slot.data, pkt, copy);
+        slot.len = copy;
+        write_idx++;
+    }
+
+    // Find a cached packet by sequence number. Fills out/outlen if found.
+    bool find(uint16_t seq, uint8_t* out, size_t* outlen) {
+        std::lock_guard<std::mutex> lk(mtx);
+        for (auto& slot : slots) {
+            if (slot.len > 0 && slot.seq == seq) {
+                size_t copy = slot.len < *outlen ? slot.len : *outlen;
+                memcpy(out, slot.data, copy);
+                *outlen = copy;
+                return true;
+            }
+        }
+        return false;
+    }
+};
+
+// ── NACK listener thread ──────────────────────────────────────────────────────
+// Listens on local_port+1 for NACK packets (format: 0x4E 0x41 + uint32 seqs).
+// On receipt, looks up each requested sequence in the cache and retransmits.
+
+struct NackListenerState {
+    uint16_t      listen_port = 0;
+    SOCKET        tx_sock     = INVALID_SOCKET;
+    sockaddr_in   dest_addr   = {};
+    TxPacketCache* cache      = nullptr;
+};
+
+static void nack_listener_thread(NackListenerState* st) {
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+
+    SOCKET lsock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (lsock == INVALID_SOCKET) {
+        fprintf(stderr, "[tx-nack] socket() failed: %d\n", WSAGetLastError());
+        return;
+    }
+
+    BOOL reuse = TRUE;
+    setsockopt(lsock, SOL_SOCKET, SO_REUSEADDR,
+               reinterpret_cast<const char*>(&reuse), sizeof(reuse));
+
+    sockaddr_in bind_addr{};
+    bind_addr.sin_family      = AF_INET;
+    bind_addr.sin_addr.s_addr = INADDR_ANY;
+    bind_addr.sin_port        = htons(st->listen_port);
+    if (bind(lsock, reinterpret_cast<sockaddr*>(&bind_addr), sizeof(bind_addr)) == SOCKET_ERROR) {
+        fprintf(stderr, "[tx-nack] bind(port=%u) failed: %d\n",
+                st->listen_port, WSAGetLastError());
+        closesocket(lsock);
+        return;
+    }
+
+    // 200ms receive timeout so we can check g_running
+    DWORD tv = 200;
+    setsockopt(lsock, SOL_SOCKET, SO_RCVTIMEO,
+               reinterpret_cast<const char*>(&tv), sizeof(tv));
+
+    fprintf(stderr, "[tx-nack] NACK listener on port %u\n", st->listen_port);
+
+    static uint8_t nack_buf[1024];
+    static uint8_t retx_buf[65536];
+
+    while (g_running) {
+        int n = recv(lsock, reinterpret_cast<char*>(nack_buf), sizeof(nack_buf), 0);
+        if (n < 2) continue;
+        // Validate magic "NA"
+        if (nack_buf[0] != 0x4E || nack_buf[1] != 0x41) continue;
+        // Each seq is a big-endian uint32 (6 bytes per seq: 2 magic + 4 seq)
+        int num_seqs = (n - 2) / 4;
+        for (int i = 0; i < num_seqs; i++) {
+            const uint8_t* sp = nack_buf + 2 + i * 4;
+            uint32_t seq32 = ((uint32_t)sp[0] << 24) | ((uint32_t)sp[1] << 16)
+                           | ((uint32_t)sp[2] << 8)  |  (uint32_t)sp[3];
+            uint16_t seq = (uint16_t)(seq32 & 0xFFFF);
+            size_t len = sizeof(retx_buf);
+            if (st->cache->find(seq, retx_buf, &len)) {
+                sendto(st->tx_sock, reinterpret_cast<const char*>(retx_buf), (int)len, 0,
+                       reinterpret_cast<sockaddr*>(&st->dest_addr), sizeof(st->dest_addr));
+                fprintf(stderr, "[tx-nack] Retransmitted seq=%u (%zu bytes)\n", seq, len);
+            } else {
+                fprintf(stderr, "[tx-nack] Seq=%u not in cache, cannot retransmit\n", seq);
+            }
+        }
+    }
+
+    closesocket(lsock);
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 int main(int argc, char** argv) {
@@ -372,6 +489,7 @@ int main(int argc, char** argv) {
     bool        use_mic        = false;
     std::string device_id;
     uint32_t    channels       = 2;
+    uint16_t    local_nack_port = 0; // 0 = auto (relay_port+1 or mcast_port+1)
 
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
@@ -397,6 +515,7 @@ int main(int argc, char** argv) {
         else if (a == "--channels") channels   = (uint32_t)atoi(next());
         else if (a == "--device")   device_id  = next();
         else if (a == "--mic")      use_mic    = true;
+        else if (a == "--nack-port") local_nack_port = (uint16_t)atoi(next());
         else if (a == "--help") {
             fprintf(stdout,
                 "soluna-tx-win — Soluna Windows system audio transmitter\n\n"
@@ -408,6 +527,7 @@ int main(int argc, char** argv) {
                 "  --mic                     Capture microphone instead of system audio\n"
                 "  --device <id>             Capture device ID\n"
                 "  --channels <n>            Output channels: 1=mono, 2=stereo (default: 2)\n"
+                "  --nack-port <n>           NACK listener port (default: relay_port+1)\n"
             );
             return 0;
         }
@@ -515,6 +635,28 @@ int main(int argc, char** argv) {
     DWORD task_index = 0;
     HANDLE mmcss = AvSetMmThreadCharacteristicsA("Pro Audio", &task_index);
 
+    // ── TX Packet Cache (retransmission on NACK) ─────────────────────────
+    TxPacketCache tx_cache;
+
+    // ── NACK listener thread ─────────────────────────────────────────────
+    if (local_nack_port == 0) {
+        local_nack_port = relay_mode ? (relay_port + 1) : (mcast_port + 1);
+    }
+    NackListenerState nack_state;
+    nack_state.listen_port = local_nack_port;
+    nack_state.tx_sock     = sock;
+    nack_state.dest_addr   = dest_addr;
+    nack_state.cache       = &tx_cache;
+    std::thread nack_thread(nack_listener_thread, &nack_state);
+
+    // ── FEC encoder (XOR parity, group_size=5) ────────────────────────────
+    soluna::wifi::FecConfig fec_cfg;
+    fec_cfg.mode         = soluna::wifi::FecMode::XorParity;
+    fec_cfg.group_size   = 5;
+    fec_cfg.parity_count = 1;
+    fec_cfg.max_packet_size = 65536;
+    soluna::wifi::FecEncoder fec_enc(fec_cfg);
+
     // ── TX loop ─────────────────────────────────────────────────────────
     uint16_t  seq          = (uint16_t)(now_ns() & 0xFFFF); // random start
     uint32_t  rtp_ts       = (uint32_t)(now_ns() & 0xFFFFFFFF);
@@ -567,6 +709,31 @@ int main(int argc, char** argv) {
             if (pkt_len > 0) {
                 sendto(sock, reinterpret_cast<const char*>(pkt_buf), (int)pkt_len, 0,
                        reinterpret_cast<sockaddr*>(&dest_addr), sizeof(dest_addr));
+
+                // Cache for retransmission on NACK
+                tx_cache.store(seq, pkt_buf, pkt_len);
+
+                // Feed into FEC encoder; send parity when a group completes
+                if (fec_enc.feed(pkt_buf, pkt_len)) {
+                    for (const auto& parity : fec_enc.get_parity()) {
+                        // Build a minimal RTP wrapper for the parity packet (PT=127)
+                        if (parity.data.size() + sizeof(RtpHeader) <= sizeof(pkt_buf)) {
+                            RtpHeader* ph = reinterpret_cast<RtpHeader*>(pkt_buf);
+                            ph->cc_x_p_v = 0x80;
+                            ph->m_pt     = 127; // FEC parity payload type
+                            ph->sequence = htons(seq); // same seq as last data pkt
+                            ph->timestamp = htonl(rtp_ts);
+                            ph->ssrc      = htonl(ssrc);
+                            size_t fec_pkt_len = sizeof(RtpHeader) + parity.data.size();
+                            memcpy(pkt_buf + sizeof(RtpHeader),
+                                   parity.data.data(), parity.data.size());
+                            sendto(sock, reinterpret_cast<const char*>(pkt_buf),
+                                   (int)fec_pkt_len, 0,
+                                   reinterpret_cast<sockaddr*>(&dest_addr), sizeof(dest_addr));
+                        }
+                    }
+                }
+
                 pkts_sent++;
                 seq++;
                 rtp_ts += kFramesPerPkt; // advance by 48kHz nominal frames
@@ -589,6 +756,7 @@ int main(int argc, char** argv) {
 
     fprintf(stderr, "\n[tx] Stopping.\n");
 
+    if (nack_thread.joinable()) nack_thread.join();
     if (mmcss) AvRevertMmThreadCharacteristics(mmcss);
     cap.close();
     closesocket(sock);

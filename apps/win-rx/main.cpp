@@ -67,6 +67,7 @@
 #include <algorithm>
 #include <atomic>
 #include <thread>
+#include <set>
 
 // ── RTP / OSTP headers (minimal, self-contained) ─────────────────────────────
 
@@ -342,6 +343,81 @@ static double now_sec() {
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&ctr);
     return (double)ctr.QuadPart / (double)freq.QuadPart;
+}
+
+// ── NACK sender ──────────────────────────────────────────────────────────────
+// Sends Negative Acknowledgements for missing sequences.
+// Packet format: "NA" (0x4E, 0x41) + big-endian uint32 per sequence.
+// Sent to relay_addr with port+1.
+
+static std::set<uint16_t> g_nack_sent;
+
+static void send_nack(SOCKET sock, sockaddr_in relay_addr, uint16_t missing_seq) {
+    if (g_nack_sent.count(missing_seq)) return;
+    g_nack_sent.insert(missing_seq);
+
+    // Build 6-byte NACK: 2-byte magic + 4-byte big-endian uint32 sequence
+    uint8_t buf[6];
+    buf[0] = 0x4E; // 'N'
+    buf[1] = 0x41; // 'A'
+    buf[2] = 0;    // upper 16 bits of uint32 are 0 (seq is 16-bit)
+    buf[3] = 0;
+    buf[4] = (uint8_t)(missing_seq >> 8);
+    buf[5] = (uint8_t)(missing_seq & 0xFF);
+
+    sockaddr_in nack_addr = relay_addr;
+    nack_addr.sin_port = htons(ntohs(relay_addr.sin_port) + 1);
+    sendto(sock, reinterpret_cast<const char*>(buf), sizeof(buf), 0,
+           reinterpret_cast<sockaddr*>(&nack_addr), sizeof(nack_addr));
+}
+
+// ── RTCP text-format reporter ─────────────────────────────────────────────────
+// Sends a text REPORT line to the relay every 5 seconds.
+// Format: REPORT:<ssrc>:<pkts_rx>:<pkts_lost>:<loss_pct>:<jitter_ms>:<last_seq>\n
+
+struct RtcpReporterState {
+    SOCKET              sock       = INVALID_SOCKET;
+    sockaddr_in         relay_addr = {};
+    std::atomic<uint32_t> ssrc     {0};
+    std::atomic<uint64_t> pkts_rx  {0};
+    std::atomic<uint64_t> pkts_lost{0};
+    std::atomic<uint16_t> last_seq {0};
+    // jitter: simple inter-arrival estimate updated by receive loop
+    std::atomic<uint32_t> jitter_ms{0};
+    uint32_t interval_sec = 5;
+};
+
+static void rtcp_reporter_thread(RtcpReporterState* st) {
+    while (g_running) {
+        // Sleep in 1-second increments so we notice g_running going false
+        for (uint32_t i = 0; i < st->interval_sec && g_running; i++) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        if (!g_running) break;
+
+        uint64_t rx   = st->pkts_rx.load(std::memory_order_relaxed);
+        uint64_t lost = st->pkts_lost.load(std::memory_order_relaxed);
+        uint32_t ssrc = st->ssrc.load(std::memory_order_relaxed);
+        uint16_t lseq = st->last_seq.load(std::memory_order_relaxed);
+        uint32_t jit  = st->jitter_ms.load(std::memory_order_relaxed);
+        double loss_pct = (rx + lost) > 0 ? 100.0 * lost / (rx + lost) : 0.0;
+
+        char report[256];
+        int  n = snprintf(report, sizeof(report),
+            "REPORT:%u:%llu:%llu:%.2f:%u:%u\n",
+            ssrc,
+            (unsigned long long)rx,
+            (unsigned long long)lost,
+            loss_pct,
+            jit,
+            (unsigned)lseq);
+
+        if (n > 0 && st->sock != INVALID_SOCKET) {
+            sendto(st->sock, report, n, 0,
+                   reinterpret_cast<const sockaddr*>(&st->relay_addr),
+                   sizeof(st->relay_addr));
+        }
+    }
 }
 
 // ── WASAPI output ─────────────────────────────────────────────────────────────
@@ -984,6 +1060,27 @@ int main(int argc, char** argv) {
 
     std::thread playback(playback_thread_func, &pstate);
 
+    // ── RTCP reporter thread ──────────────────────────────────────────────
+    RtcpReporterState rtcp_state;
+    rtcp_state.sock = sock;
+    if (relay_mode) {
+        rtcp_state.relay_addr = relay_addr;
+    } else if (peer_mode) {
+        rtcp_state.relay_addr = peer_addr;
+    }
+    // SSRC: derive from local time for uniqueness
+    {
+        LARGE_INTEGER freq, ctr;
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&ctr);
+        rtcp_state.ssrc.store((uint32_t)(ctr.QuadPart & 0xFFFFFFFF), std::memory_order_relaxed);
+    }
+    std::thread rtcp_thread;
+    if (relay_mode || peer_mode) {
+        rtcp_thread = std::thread(rtcp_reporter_thread, &rtcp_state);
+        fprintf(stderr, "[rx] RTCP reporter: every 5s to relay\n");
+    }
+
     if (relay_mode) {
         fprintf(stderr, "[rx] Listening (WAN relay)%s\n",
                 metrics_enabled ? " [metrics ON]" : "");
@@ -1107,11 +1204,22 @@ int main(int argc, char** argv) {
                 uint64_t lost = (uint64_t)(diff - 1);
                 total_drop += lost;
                 metrics.pkts_drop += lost;
+                // ── NACK: request retransmit of missing sequences ─────────
+                if (relay_mode) {
+                    for (int gap = 1; gap < diff; gap++) {
+                        uint16_t missing = (uint16_t)last_seq + (uint16_t)gap;
+                        send_nack(sock, relay_addr, missing);
+                    }
+                }
             }
         }
         last_seq = seq;
         total_rx++;
         metrics.pkts_rx++;
+        // Update RTCP reporter counters
+        rtcp_state.pkts_rx.store(total_rx, std::memory_order_relaxed);
+        rtcp_state.pkts_lost.store(total_drop, std::memory_order_relaxed);
+        rtcp_state.last_seq.store(seq, std::memory_order_relaxed);
 
         // ── Decode samples into int32 (ring buffer native format — matched with iOS/Mac) ──
         size_t frames;
@@ -1164,8 +1272,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Wait for playback thread to finish
+    // Wait for playback thread and RTCP reporter to finish
     playback.join();
+    if (rtcp_thread.joinable()) rtcp_thread.join();
 
     if (wav.fp) {
         wav.close();

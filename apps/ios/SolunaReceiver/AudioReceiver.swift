@@ -10,6 +10,7 @@ import Combine
 import AVFoundation
 import UIKit
 import Network
+import Darwin
 
 /// Observable wrapper for SolunaAudioReceiver
 @MainActor
@@ -191,6 +192,10 @@ final class AudioReceiver: ObservableObject {
         state == .receiving || state == .connecting
     }
 
+    /// Optional reference to DaemonClient for sending RTCP receiver reports.
+    /// Set this from the view layer after both objects are created.
+    weak var daemonClient: DaemonClient?
+
     private let receiver: SolunaAudioReceiver
     private let delegateHandler: DelegateHandler
     private let networkMonitor = NWPathMonitor()
@@ -201,8 +206,26 @@ final class AudioReceiver: ObservableObject {
     private var watchdogTimer: Timer?
     private var statsTimer: Timer?
     private var levelTimer: Timer?
+    private var rtcpTimer: Timer?
     private var lastPacketCount: UInt64 = 0
     private var staleTicks: Int = 0
+    private var rtcpSeq: Int = 0
+
+    // MARK: - NACK state
+    /// Sequences for which a NACK has already been sent (deduplicate)
+    private var nackSent: Set<UInt32> = []
+    /// UDP socket for sending NACK packets (relay host, relay_port+1)
+    private var nackSocket: Int32 = -1
+    /// Relay host tracked for NACK target
+    private var nackRelayHost: String = ""
+    /// Relay port tracked for NACK target (actual audio port; NACKs go to port+1)
+    private var nackRelayPort: UInt16 = 0
+    /// Last observed dropped-packet count for gap reconstruction
+    private var nackLastDropped: UInt64 = 0
+    /// Last observed received-packet count for sequence estimation
+    private var nackLastReceived: UInt64 = 0
+    /// Running estimated next expected sequence number (16-bit wrapping)
+    private var nackExpectedSeq: UInt32 = 0
 
     init() {
         receiver = SolunaAudioReceiver.sharedInstance()
@@ -559,6 +582,7 @@ final class AudioReceiver: ObservableObject {
         disconnectRelay()
         stopWatchdog()
         stopStatsPolling()
+        closeNackSocket()
         receiver.setMetaCallback(nil)
         receiver.setFileCallback(nil)
         receiver.setSyncCallback(nil)
@@ -721,6 +745,8 @@ final class AudioReceiver: ObservableObject {
                       host: String = "relay.solun.art", port: UInt16 = 5100) {
         guard state == .connecting || state == .receiving else { return }
         let devId = deviceId
+        // Track relay target for NACK sending
+        setNackTarget(host: host, port: port)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             let ok = self.receiver.connect(toRelay: host, port: port,
@@ -827,6 +853,8 @@ final class AudioReceiver: ObservableObject {
                 self.networkLatencyMs = self.receiver.networkLatencyMs
                 self.jitterMs = self.receiver.jitterMs
                 self.packetLossPercent = self.receiver.packetLossPercent
+                // Send NACKs for any newly detected gaps
+                self.checkAndSendNack()
             }
         }
         // Level meter at ~30fps for smooth visualization
@@ -836,6 +864,7 @@ final class AudioReceiver: ObservableObject {
                 self.outputLevel = self.receiver.outputPeakLevel
             }
         }
+        startRTCPReporting()
     }
 
     func stopStatsPolling() {
@@ -843,6 +872,139 @@ final class AudioReceiver: ObservableObject {
         statsTimer = nil
         levelTimer?.invalidate()
         levelTimer = nil
+        stopRTCPReporting()
+    }
+
+    // MARK: - RTCP Receiver Reports (RFC 3550 §6.4.2 / OSTP congestion control)
+
+    private func startRTCPReporting() {
+        stopRTCPReporting()
+        rtcpTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.sendRTCPReceiverReport()
+            }
+        }
+    }
+
+    private func stopRTCPReporting() {
+        rtcpTimer?.invalidate()
+        rtcpTimer = nil
+    }
+
+    private func sendRTCPReceiverReport() {
+        guard let daemon = daemonClient, daemon.isConnected else { return }
+        rtcpSeq += 1
+        let lost = UInt32(packetsDropped)
+        let total = packetsReceived + UInt64(packetsDropped)
+        let lastSeq = total > 0 ? UInt32(total & 0xFFFF_FFFF) : 0
+        // Use SSRC = lower 32 bits of device UUID hash for stable identification
+        let ssrc = UInt32(truncatingIfNeeded: deviceId.hashValue)
+        daemon.sendReceiverReport(
+            ssrc: ssrc,
+            packetsReceived: packetsReceived,
+            packetsLost: lost,
+            lossRatePct: packetLossPercent,
+            jitterMs: jitterMs,
+            lastSeq: lastSeq,
+            rttMs: networkLatencyMs
+        )
+    }
+
+    // MARK: - NACK (Negative Acknowledgement)
+
+    /// Open (or reuse) a UDP socket for sending NACK packets.
+    private func ensureNackSocket() {
+        if nackSocket >= 0 { return }
+        nackSocket = Darwin.socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+    }
+
+    /// Tear down the NACK socket (called on stop).
+    private func closeNackSocket() {
+        if nackSocket >= 0 {
+            Darwin.close(nackSocket)
+            nackSocket = -1
+        }
+        nackSent.removeAll()
+        nackExpectedSeq = 0
+        nackLastDropped = 0
+        nackLastReceived = 0
+    }
+
+    /// Track the relay host/port so NACK packets know where to go.
+    private func setNackTarget(host: String, port: UInt16) {
+        nackRelayHost = host
+        nackRelayPort = port
+    }
+
+    /// Send NACK for a list of missing sequence numbers.
+    /// Format: 0x4E 0x41 ("NA") + big-endian UInt32 per sequence.
+    /// Sends to relayHost:(relayPort+1) via UDP.
+    /// Deduplicates: each sequence is NACKed at most once.
+    func sendNack(missingSeqs: [UInt32]) {
+        guard !missingSeqs.isEmpty, !nackRelayHost.isEmpty, nackRelayPort > 0 else { return }
+        ensureNackSocket()
+        guard nackSocket >= 0 else { return }
+
+        // Filter already-NACKed sequences
+        let toNack = missingSeqs.filter { !nackSent.contains($0) }
+        guard !toNack.isEmpty else { return }
+        toNack.forEach { nackSent.insert($0) }
+
+        // Build packet: 2-byte magic + 4 bytes per seq
+        var pkt = Data([0x4E, 0x41]) // "NA"
+        for seq in toNack {
+            var beSeq = seq.bigEndian
+            withUnsafeBytes(of: &beSeq) { pkt.append(contentsOf: $0) }
+        }
+
+        // Destination: relay host, port+1
+        let destPort = nackRelayPort + 1
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = destPort.bigEndian
+        nackRelayHost.withCString { cstr in
+            Darwin.inet_pton(AF_INET, cstr, &addr.sin_addr)
+        }
+
+        pkt.withUnsafeBytes { buf in
+            withUnsafePointer(to: &addr) { addrPtr in
+                addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                    _ = Darwin.sendto(nackSocket, buf.baseAddress!, pkt.count, 0,
+                                      sa, socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
+            }
+        }
+    }
+
+    /// Called from stats polling: detect newly dropped packets, estimate their
+    /// sequence numbers, and send NACKs if within the sendable window.
+    private func checkAndSendNack() {
+        let dropped = packetsDropped
+        let received = packetsReceived
+        guard dropped > nackLastDropped else {
+            nackLastDropped = dropped
+            nackLastReceived = received
+            nackExpectedSeq = UInt32((received + dropped) & 0xFFFF)
+            return
+        }
+
+        let newDrops = dropped - nackLastDropped
+        // Only NACK if the gap is small (≤ 32) — larger gaps are likely stream restart
+        if newDrops > 0 && newDrops <= 32 {
+            // Estimate the missing sequences: they fall just before the current expected seq
+            let currentSeq = UInt32((received + dropped) & 0xFFFF)
+            var missing: [UInt32] = []
+            for i in 0..<newDrops {
+                // Walk back from currentSeq by the number of missing pkts
+                let missingSeq = (currentSeq &- UInt32(newDrops) &+ UInt32(i)) & 0xFFFF
+                missing.append(missingSeq)
+            }
+            sendNack(missingSeqs: missing)
+        }
+
+        nackLastDropped = dropped
+        nackLastReceived = received
+        nackExpectedSeq = UInt32((received + dropped) & 0xFFFF)
     }
 
     // MARK: - Watchdog (auto-reconnect on stream loss)
