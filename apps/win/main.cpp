@@ -632,9 +632,12 @@ static LRESULT CALLBACK edit_subclass(HWND h,UINT msg,WPARAM wp,LPARAM lp){
     return CallWindowProcA(g_orig_edit_proc,h,msg,wp,lp);
 }
 
-static HWND make_edit(HWND parent,int x,int y,int w,int h,int id,const char*hint="") {
+static HWND make_edit(HWND parent,int x,int y,int w,int h,int id,const wchar_t*hint=L"") {
     HWND e = CreateWindowA("EDIT","",WS_CHILD|WS_VISIBLE|ES_AUTOHSCROLL,x,y,w,h,parent,(HMENU)(UINT_PTR)id,GetModuleHandleA(nullptr),nullptr);
-    SendMessageA(e,EM_SETCUEBANNERA,0,(LPARAM)hint);
+#ifndef EM_SETCUEBANNER
+#define EM_SETCUEBANNER 0x1501
+#endif
+    SendMessageW(e,EM_SETCUEBANNER,0,(LPARAM)hint);
     SendMessageA(e,WM_SETFONT,(WPARAM)hFontSm,TRUE);
     if(!g_orig_edit_proc)g_orig_edit_proc=(WNDPROC)GetWindowLongPtrA(e,GWLP_WNDPROC);
     SetWindowLongPtrA(e,GWLP_WNDPROC,(LONG_PTR)edit_subclass);
@@ -653,9 +656,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_CREATE: {
         int W = 480;
-        hEdtRelay   = make_edit(hwnd,20,88,  W-130,26,ID_EDT_RELAY,   "relay.solun.art:5100");
-        hEdtChannel = make_edit(hwnd,20,133, W-130,26,ID_EDT_CHANNEL, "soluna");
-        hEdtPassword= make_edit(hwnd,20,178, W-130,26,ID_EDT_PASSWORD,"(optional)");
+        hEdtRelay   = make_edit(hwnd,20,88,  W-130,26,ID_EDT_RELAY,   L"relay.solun.art:5100");
+        hEdtChannel = make_edit(hwnd,20,133, W-130,26,ID_EDT_CHANNEL, L"soluna");
+        hEdtPassword= make_edit(hwnd,20,178, W-130,26,ID_EDT_PASSWORD,L"(optional)");
         hBtnConnect = make_btn(hwnd,"Connect",W-105,88,90,65,ID_BTN_CONNECT);
         // Volume slider
         hSldVolume = CreateWindowA(TRACKBAR_CLASSA,"",WS_CHILD|WS_VISIBLE|TBS_HORZ|TBS_NOTICKS,20,375,W-130,28,hwnd,(HMENU)ID_SLD_VOLUME,GetModuleHandleA(nullptr),nullptr);
