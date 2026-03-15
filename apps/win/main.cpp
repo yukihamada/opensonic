@@ -14,6 +14,14 @@
 #error "Windows only."
 #endif
 
+// Target Windows Vista+ for EM_SETCUEBANNER and DWM dark mode
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
+#ifndef WINVER
+#define WINVER 0x0600
+#endif
+
 // Enable modern visual styles
 #pragma comment(linker,"/manifestdependency:\"type='win32' "\
     "name='Microsoft.Windows.Common-Controls' version='6.0.0.0' "\
@@ -495,7 +503,7 @@ static void draw_rounded_rect(HDC hdc, RECT r, int rad, COLORREF fill, COLORREF 
 static void draw_level_bar(HDC hdc, RECT r, float level, COLORREF color) {
     draw_rounded_rect(hdc, r, 3, RGB(35,35,45), 0);
     RECT filled = r;
-    filled.right = r.left + (LONG)((r.right-r.left)*min(1.f,level));
+    filled.right = r.left + (LONG)((r.right-r.left)*(std::min)(1.f,level));
     if (filled.right > filled.left) draw_rounded_rect(hdc,filled,3,color,0);
 }
 
@@ -504,7 +512,7 @@ static void draw_bars(HDC hdc, RECT r, float* bars, int count, COLORREF color) {
     int bar_w = (w - (count-1)*2) / count;
     for (int i = 0; i < count; i++) {
         int x = r.left + i*(bar_w+2);
-        int bar_h = (int)(h * min(1.f, bars[i]));
+        int bar_h = (int)(h * (std::min)(1.f, bars[i]));
         RECT bg = {x, r.top, x+bar_w, r.bottom};
         draw_rounded_rect(hdc, bg, 2, RGB(35,35,45), 0);
         if (bar_h > 0) {
