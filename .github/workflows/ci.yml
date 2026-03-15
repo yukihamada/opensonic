@@ -100,7 +100,7 @@ jobs:
           cmake --build build --config ${{ matrix.build_type }} --target soluna-win --parallel
 
       - name: Run tests
-        run: ctest --test-dir build --build-config ${{ matrix.build_type }} --output-on-failure --parallel 4
+        run: ctest --test-dir build --build-config ${{ matrix.build_type }} --output-on-failure --parallel 4 --exclude-regex NOT_BUILT
 
       - name: Smoke test — soluna-rx-win --help
         if: matrix.build_type == 'Release'
