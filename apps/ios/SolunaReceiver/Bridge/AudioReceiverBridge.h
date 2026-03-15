@@ -129,6 +129,22 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 - (BOOL)connectToRelay:(NSString *)host port:(uint16_t)port
                  group:(NSString *)group password:(NSString *)password;
 
+- (BOOL)connectToRelay:(NSString *)host port:(uint16_t)port
+                 group:(NSString *)group password:(NSString *)password
+              deviceId:(NSString *)deviceId;
+
+/// Send MIC_ALLOW command for a specific device (owner/DJ only)
+- (void)sendMicAllow:(NSString *)deviceId;
+
+/// Send MIC_DENY command for a specific device (owner/DJ only)
+- (void)sendMicDeny:(NSString *)deviceId;
+
+/// Request mic list from relay
+- (void)requestMicList;
+
+/// Request members list from relay
+- (void)requestMembers;
+
 /// Disconnect from WAN relay.
 - (void)disconnectRelay;
 
@@ -144,6 +160,10 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 
 /// Relay error message (nil if no error).
 @property (nonatomic, readonly, copy, nullable) NSString *relayError;
+
+/// External IP:port as reported by relay YOUR_ADDR response (§6.6).
+/// Non-nil once the relay has responded to JOIN. Useful for P2P diagnostics.
+@property (nonatomic, readonly, copy, nullable) NSString *relayExternalAddr;
 
 // ── Sync Mode ─────────────────────────────────────────────────────────────
 
@@ -218,6 +238,13 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 /// AirPods head tracking via CMHeadphoneMotionManager. Toggleable at runtime.
 @property (nonatomic, assign) BOOL spatialAudioEnabled;
 
+// ── Sample Tap (for fingerprinting) ──────────────────────────────────────
+
+/// Set a callback that receives rendered float samples (interleaved, channels_ ch).
+/// Called from the audio render callback — keep work minimal.
+/// Pass nil to disable. Thread-safe.
+- (void)setSampleTapCallback:(nullable void(^)(const float * _Nonnull samples, uint32_t sampleCount, uint32_t channels))callback;
+
 // ── 3-Band EQ ─────────────────────────────────────────────────────────────
 
 /// Set 3-band parametric EQ gain (band: 0=low 200Hz, 1=mid 1kHz, 2=high 5kHz; gain in dB, -12..+12)
@@ -239,6 +266,15 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 
 /// Whether currently recording
 @property (nonatomic, readonly) BOOL isRecording;
+
+/// Debug log string for on-screen diagnostics (LAN discovery, relay, recv stats)
+@property (nonatomic, readonly, copy) NSString *debugLog;
+
+// ── Talk Mode (multi-speaker) ─────────────────────────────────────────────
+
+/// Enable/disable talk mode (multiple simultaneous speakers).
+/// Sends TALK:on/off to relay and enables multi-source audio mixing.
+- (void)setTalkMode:(BOOL)enabled;
 
 // ── DJ Mode ──────────────────────────────────────────────────────────────
 
@@ -268,6 +304,38 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 
 /// Music gain when mic mixing (0.0 - 1.0, default 0.7 = auto-duck)
 @property (nonatomic, assign) float djMusicGain;
+
+// ── DJ Dual-Deck Mode ─────────────────────────────────────────────────────
+
+/// Load and start Deck A (track A)
+- (BOOL)startDeckA:(NSString *)filePath;
+/// Load and start Deck B (track B)
+- (BOOL)startDeckB:(NSString *)filePath;
+/// Pause/resume Deck A
+- (void)toggleDeckA;
+/// Pause/resume Deck B
+- (void)toggleDeckB;
+/// Stop both decks and reset DJ controller
+- (void)stopDualDeck;
+
+/// Crossfader position: 0.0 = Deck A only, 0.5 = equal mix, 1.0 = Deck B only
+/// Equal-power law: gain_A = cos(cf * π/2), gain_B = sin(cf * π/2)
+@property (nonatomic, assign) float djCrossfader;  // 0.0–1.0, default 0.5
+
+/// Whether dual-deck mode is active
+@property (nonatomic, readonly) BOOL isDualDeckActive;
+
+/// Track names
+@property (nonatomic, readonly, copy, nullable) NSString *deckATrack;
+@property (nonatomic, readonly, copy, nullable) NSString *deckBTrack;
+
+/// Progress 0.0–1.0
+@property (nonatomic, readonly) float deckAProgress;
+@property (nonatomic, readonly) float deckBProgress;
+
+/// Playing state
+@property (nonatomic, readonly) BOOL deckAPlaying;
+@property (nonatomic, readonly) BOOL deckBPlaying;
 
 @end
 

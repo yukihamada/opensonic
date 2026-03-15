@@ -719,6 +719,94 @@ final class AudioReceiver: ObservableObject {
         djPollTimer = nil
     }
 
+    // MARK: - DJ Dual-Deck
+
+    @Published private(set) var deckATrack: String?
+    @Published private(set) var deckBTrack: String?
+    @Published private(set) var deckAProgress: Float = 0.0
+    @Published private(set) var deckBProgress: Float = 0.0
+    @Published private(set) var deckAPlaying: Bool = false
+    @Published private(set) var deckBPlaying: Bool = false
+    @Published private(set) var isDualDeckActive: Bool = false
+
+    private var dualDeckPollTimer: Timer?
+
+    func startDeckA(url: URL) {
+        guard url.startAccessingSecurityScopedResource() else { return }
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("soluna-decka-\(url.lastPathComponent)")
+        do {
+            if FileManager.default.fileExists(atPath: tmpURL.path) {
+                try FileManager.default.removeItem(at: tmpURL)
+            }
+            try FileManager.default.copyItem(at: url, to: tmpURL)
+        } catch {
+            url.stopAccessingSecurityScopedResource()
+            return
+        }
+        url.stopAccessingSecurityScopedResource()
+        if receiver.startDeckA(tmpURL.path) {
+            startDualDeckPollTimer()
+        }
+    }
+
+    func startDeckB(url: URL) {
+        guard url.startAccessingSecurityScopedResource() else { return }
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("soluna-deckb-\(url.lastPathComponent)")
+        do {
+            if FileManager.default.fileExists(atPath: tmpURL.path) {
+                try FileManager.default.removeItem(at: tmpURL)
+            }
+            try FileManager.default.copyItem(at: url, to: tmpURL)
+        } catch {
+            url.stopAccessingSecurityScopedResource()
+            return
+        }
+        url.stopAccessingSecurityScopedResource()
+        if receiver.startDeckB(tmpURL.path) {
+            startDualDeckPollTimer()
+        }
+    }
+
+    func toggleDeckA() { receiver.toggleDeckA() }
+    func toggleDeckB() { receiver.toggleDeckB() }
+
+    func setCrossfader(_ v: Float) { receiver.djCrossfader = v }
+
+    func stopDualDeck() {
+        receiver.stopDualDeck()
+        stopDualDeckPollTimer()
+        deckATrack = nil
+        deckBTrack = nil
+        deckAProgress = 0
+        deckBProgress = 0
+        deckAPlaying = false
+        deckBPlaying = false
+        isDualDeckActive = false
+    }
+
+    private func startDualDeckPollTimer() {
+        guard dualDeckPollTimer == nil else { return }
+        dualDeckPollTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.deckATrack = self.receiver.deckATrack
+                self.deckBTrack = self.receiver.deckBTrack
+                self.deckAProgress = self.receiver.deckAProgress
+                self.deckBProgress = self.receiver.deckBProgress
+                self.deckAPlaying = self.receiver.deckAPlaying
+                self.deckBPlaying = self.receiver.deckBPlaying
+                self.isDualDeckActive = self.receiver.isDualDeckActive
+            }
+        }
+    }
+
+    private func stopDualDeckPollTimer() {
+        dualDeckPollTimer?.invalidate()
+        dualDeckPollTimer = nil
+    }
+
     /// Allow a specific device to use microphone (owner/DJ only)
     func allowMic(deviceId: String) {
         receiver.sendMicAllow(deviceId)

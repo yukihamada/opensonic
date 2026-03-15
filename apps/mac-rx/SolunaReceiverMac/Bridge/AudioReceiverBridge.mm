@@ -104,6 +104,10 @@ public:
     /// Last received OSTP media_timestamp (wall-clock nanoseconds, lower 32 bits)
     std::atomic<uint32_t> last_media_timestamp{0};
 
+    /// NTP-based sync: pointer to ReceiverImpl's target_fill_frames_ (set externally)
+    std::atomic<uint32_t>* sync_target_frames_ = nullptr;
+    double sync_playout_delay_ms_ = 80.0;  // default playout delay
+
     bool init() {
         socket_ = pal::UdpSocket::create();
         if (!socket_) return false;
@@ -186,15 +190,19 @@ private:
         // Discard duplicate packets (gap <= 0 means same or older sequence)
         if (gap < 0) return true;  // duplicate — already received
 
-        // OSTP payload is int32_t (4 bytes/sample, native byte order) — not S24_LE 3-byte
-        size_t frames = payload_size / (sizeof(int32_t) * config_.channels);
+        // Auto-detect TX channel count from stream_id upper 4 bits
+        uint32_t tx_channels = (ostp.stream_id >> 12) & 0xF;
+        if (tx_channels == 0) tx_channels = 2;  // backward compat
+
+        // OSTP payload is int32_t (4 bytes/sample, native byte order)
+        size_t frames = payload_size / (sizeof(int32_t) * tx_channels);
+        const uint32_t ring_ch = config_.channels;  // ring buffer channel width
 
         // PLC: conceal gaps of ≤2 packets by repeating the last known frame
         if (gap > 0 && gap <= 2 && frames > 0 && !last_frame_.empty()) {
-            size_t plc_frames = last_frame_.size() / config_.channels;
+            size_t plc_frames = last_frame_.size() / ring_ch;
             for (int32_t i = 0; i < gap; i++) {
                 ring.write(last_frame_.data(), plc_frames);
-                // Fan-out PLC frames to extra sinks
                 if (on_audio_written) {
                     on_audio_written(last_frame_.data(), plc_frames);
                 }
@@ -202,18 +210,53 @@ private:
             stats_.packets_concealed += static_cast<uint64_t>(gap);
         }
 
-        ring.write(payload, frames);
-
-        // Fan-out to extra sinks
-        if (on_audio_written && frames > 0) {
-            on_audio_written(payload, frames);
+        // Expand tx_channels → ring_ch (duplicate mono to all channels, zero-pad surround)
+        const int32_t* src_samples = reinterpret_cast<const int32_t*>(payload);
+        if (tx_channels == ring_ch) {
+            ring.write(payload, frames);
+        } else {
+            for (size_t f = 0; f < frames; f++) {
+                for (uint32_t c = 0; c < tx_channels && c < ring_ch; c++)
+                    audio_buf_[f * ring_ch + c] = src_samples[f * tx_channels + c];
+                // When mono, duplicate to all channels for proper stereo output
+                if (tx_channels == 1) {
+                    for (uint32_t c = 1; c < ring_ch; c++)
+                        audio_buf_[f * ring_ch + c] = src_samples[f * tx_channels];
+                } else {
+                    for (uint32_t c = tx_channels; c < ring_ch; c++)
+                        audio_buf_[f * ring_ch + c] = 0;
+                }
+            }
+            ring.write(audio_buf_.data(), frames);
         }
 
-        // Save last frame for PLC
+        // Fan-out to extra sinks (in ring_ch-wide format)
+        if (on_audio_written && frames > 0) {
+            if (tx_channels == ring_ch) {
+                on_audio_written(payload, frames);
+            } else {
+                on_audio_written(audio_buf_.data(), frames);
+            }
+        }
+
+        // Save last frame for PLC (in ring_ch-wide format)
         if (frames > 0) {
-            last_frame_.assign(
-                reinterpret_cast<const int32_t*>(payload),
-                reinterpret_cast<const int32_t*>(payload) + frames * config_.channels);
+            if (tx_channels == ring_ch) {
+                last_frame_.assign(src_samples, src_samples + frames * ring_ch);
+            } else {
+                last_frame_.resize(frames * ring_ch);
+                for (size_t f = 0; f < frames; f++) {
+                    for (uint32_t c = 0; c < tx_channels && c < ring_ch; c++)
+                        last_frame_[f * ring_ch + c] = src_samples[f * tx_channels + c];
+                    if (tx_channels == 1) {
+                        for (uint32_t c = 1; c < ring_ch; c++)
+                            last_frame_[f * ring_ch + c] = src_samples[f * tx_channels];
+                    } else {
+                        for (uint32_t c = tx_channels; c < ring_ch; c++)
+                            last_frame_[f * ring_ch + c] = 0;
+                    }
+                }
+            }
         }
 
         return true;
@@ -1048,10 +1091,12 @@ public:
 
     bool connect(const std::string& host, uint16_t port,
                  const std::string& group, const std::string& password,
-                 const std::string& device_name) {
+                 const std::string& device_name,
+                 const std::string& device_id = "") {
         if (state_.load() == State::Connected || state_.load() == State::Connecting)
             return false;
 
+        device_id_ = device_id;
         state_.store(State::Connecting, std::memory_order_relaxed);
         group_ = group;
         error_.clear();
@@ -1084,10 +1129,11 @@ public:
         struct timeval tv{1, 0};
         setsockopt(udp_sock_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-        // Send JOIN:<group>:<password>:<device_name>\n
+        // Send JOIN:<group>:<password>:<device_name>:<device_id>\n
         std::string join_msg = "JOIN:" + group;
         join_msg += ":" + password;
         join_msg += ":" + device_name;
+        if (!device_id_.empty()) join_msg += ":" + device_id_;
         join_msg += "\n";
         sendto(udp_sock_, join_msg.c_str(), join_msg.size(), 0,
                reinterpret_cast<const sockaddr*>(&relay_addr_), sizeof(relay_addr_));
@@ -1238,6 +1284,23 @@ public:
     State state() const { return state_.load(std::memory_order_relaxed); }
     const std::string& group() const { return group_; }
     const std::string& error() const { return error_; }
+    const std::string& device_id() const { return device_id_; }
+
+    void send_mic_allow(const std::string& target_device_id) {
+        send_command(std::string("MIC_ALLOW:") + target_device_id + "\n");
+    }
+
+    void send_mic_deny(const std::string& target_device_id) {
+        send_command(std::string("MIC_DENY:") + target_device_id + "\n");
+    }
+
+    void send_mic_list() {
+        send_command("MIC_LIST\n");
+    }
+
+    void send_members() {
+        send_command("MEMBERS\n");
+    }
 
 private:
     void recv_loop() {
@@ -1336,6 +1399,7 @@ private:
     sockaddr_in relay_addr_{};
     std::string group_;
     std::string error_;
+    std::string device_id_;
     std::thread recv_thread_;
     std::mutex cb_mutex_;
     RxCallback rx_callback_;
@@ -2106,6 +2170,227 @@ private:
     uint32_t rtp_ts_ = 0;
 };
 
+// ── DJController — dual-deck with equal-power crossfader ──────────────────
+class DJController {
+public:
+    explicit DJController(WanRelayClient* relay)
+        : relay_(relay), crossfader_(0.5f), running_(false)
+        , ssrc_(arc4random())
+        , seq_(0), timestamp_(0)
+    {}
+    ~DJController() { stop(); }
+
+    struct Deck {
+        std::string filepath;
+        std::string track_name;
+        std::atomic<float> progress{0.0f};
+        std::atomic<bool> playing{false};
+        std::atomic<bool> pause{false};
+
+        ExtAudioFileRef ext_file = nullptr;
+        int64_t total_frames = 0;
+        int64_t played_frames = 0;
+
+        bool open(const std::string& path) {
+            CFURLRef url = CFURLCreateFromFileSystemRepresentation(
+                nullptr, (const UInt8*)path.c_str(), path.size(), false);
+            OSStatus err = ExtAudioFileOpenURL(url, &ext_file);
+            CFRelease(url);
+            if (err != noErr || !ext_file) return false;
+
+            AudioStreamBasicDescription out_fmt{};
+            out_fmt.mSampleRate = 48000;
+            out_fmt.mFormatID = kAudioFormatLinearPCM;
+            out_fmt.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
+            out_fmt.mBytesPerPacket = 8;
+            out_fmt.mFramesPerPacket = 1;
+            out_fmt.mBytesPerFrame = 8;
+            out_fmt.mChannelsPerFrame = 2;
+            out_fmt.mBitsPerChannel = 32;
+            ExtAudioFileSetProperty(ext_file, kExtAudioFileProperty_ClientDataFormat,
+                                    sizeof(out_fmt), &out_fmt);
+
+            int64_t file_frames = 0;
+            UInt32 prop_size = sizeof(file_frames);
+            ExtAudioFileGetProperty(ext_file, kExtAudioFileProperty_FileLengthFrames,
+                                    &prop_size, &file_frames);
+            total_frames = file_frames;
+            played_frames = 0;
+            return true;
+        }
+
+        int64_t read_frames(float* buf, int64_t frame_count) {
+            if (!ext_file || pause.load()) return 0;
+            AudioBufferList abl{};
+            abl.mNumberBuffers = 1;
+            abl.mBuffers[0].mNumberChannels = 2;
+            abl.mBuffers[0].mDataByteSize = (UInt32)(frame_count * 8);
+            abl.mBuffers[0].mData = buf;
+            UInt32 frames = (UInt32)frame_count;
+            ExtAudioFileRead(ext_file, &frames, &abl);
+            played_frames += frames;
+            if (total_frames > 0) {
+                progress.store((float)played_frames / (float)total_frames,
+                               std::memory_order_relaxed);
+            }
+            return frames;
+        }
+
+        bool is_done() const {
+            return total_frames > 0 && played_frames >= total_frames;
+        }
+
+        void close() {
+            if (ext_file) { ExtAudioFileDispose(ext_file); ext_file = nullptr; }
+            playing.store(false);
+        }
+    };
+
+    bool start_deck_a(const std::string& path) {
+        deck_a_.close();
+        if (!deck_a_.open(path)) return false;
+        auto slash = path.rfind('/');
+        deck_a_.track_name = (slash != std::string::npos) ? path.substr(slash+1) : path;
+        deck_a_.playing.store(true);
+        deck_a_.pause.store(false);
+        if (!running_.load()) start_mix_thread();
+        return true;
+    }
+
+    bool start_deck_b(const std::string& path) {
+        deck_b_.close();
+        if (!deck_b_.open(path)) return false;
+        auto slash = path.rfind('/');
+        deck_b_.track_name = (slash != std::string::npos) ? path.substr(slash+1) : path;
+        deck_b_.playing.store(true);
+        deck_b_.pause.store(false);
+        if (!running_.load()) start_mix_thread();
+        return true;
+    }
+
+    void toggle_deck_a() { deck_a_.pause.store(!deck_a_.pause.load()); }
+    void toggle_deck_b() { deck_b_.pause.store(!deck_b_.pause.load()); }
+
+    void set_crossfader(float v) { crossfader_.store(std::max(0.f, std::min(1.f, v))); }
+    float get_crossfader() const { return crossfader_.load(); }
+
+    float deck_a_progress() const { return deck_a_.progress.load(); }
+    float deck_b_progress() const { return deck_b_.progress.load(); }
+    bool deck_a_playing() const { return deck_a_.playing.load() && !deck_a_.pause.load(); }
+    bool deck_b_playing() const { return deck_b_.playing.load() && !deck_b_.pause.load(); }
+    std::string deck_a_track() const { return deck_a_.track_name; }
+    std::string deck_b_track() const { return deck_b_.track_name; }
+    bool is_active() const { return running_.load(); }
+
+    void stop() {
+        running_.store(false);
+        if (mix_thread_.joinable()) mix_thread_.join();
+        deck_a_.close();
+        deck_b_.close();
+    }
+
+private:
+    WanRelayClient* relay_;
+    std::atomic<float> crossfader_;
+    std::atomic<bool> running_;
+    uint32_t ssrc_, seq_;
+    uint32_t timestamp_;
+    Deck deck_a_, deck_b_;
+    std::thread mix_thread_;
+
+    void start_mix_thread() {
+        running_.store(true);
+        mix_thread_ = std::thread([this]() { mix_loop(); });
+    }
+
+    void mix_loop() {
+        static constexpr int kFrames = 960;
+        static constexpr int kCh = 2;
+        static constexpr double kInterval = (double)kFrames / 48000.0;
+
+        std::vector<float> buf_a(kFrames * kCh, 0.f);
+        std::vector<float> buf_b(kFrames * kCh, 0.f);
+        std::vector<int16_t> mix_out(kFrames * kCh, 0);
+
+        auto next_time = std::chrono::steady_clock::now();
+
+        while (running_.load()) {
+            next_time += std::chrono::duration<double>(kInterval);
+
+            std::fill(buf_a.begin(), buf_a.end(), 0.f);
+            std::fill(buf_b.begin(), buf_b.end(), 0.f);
+
+            if (deck_a_.playing.load()) {
+                deck_a_.read_frames(buf_a.data(), kFrames);
+                if (deck_a_.is_done()) { deck_a_.close(); }
+            }
+            if (deck_b_.playing.load()) {
+                deck_b_.read_frames(buf_b.data(), kFrames);
+                if (deck_b_.is_done()) { deck_b_.close(); }
+            }
+
+            float cf = crossfader_.load();
+            float gain_a = cosf(cf * (float)M_PI_2);
+            float gain_b = sinf(cf * (float)M_PI_2);
+
+            for (int i = 0; i < kFrames * kCh; i++) {
+                float s = buf_a[i] * gain_a + buf_b[i] * gain_b;
+                s = std::max(-1.f, std::min(1.f, s));
+                mix_out[i] = (int16_t)(s * 32767.f);
+            }
+
+            if (deck_a_.playing.load() || deck_b_.playing.load()) {
+                send_ostp(mix_out.data(), kFrames * kCh);
+            }
+
+            std::this_thread::sleep_until(next_time);
+        }
+    }
+
+    void send_ostp(const int16_t* pcm, int sample_count) {
+        if (!relay_) return;
+
+        const int kHeaderSize = 24;
+        const int payload_bytes = sample_count * (int)sizeof(int16_t);
+        const int total = kHeaderSize + payload_bytes + 4;
+
+        std::vector<uint8_t> pkt(total, 0);
+
+        pkt[0] = 0x90; pkt[1] = 96;
+        pkt[2] = (seq_ >> 8) & 0xFF; pkt[3] = seq_ & 0xFF;
+        pkt[4] = (timestamp_ >> 24) & 0xFF; pkt[5] = (timestamp_ >> 16) & 0xFF;
+        pkt[6] = (timestamp_ >> 8)  & 0xFF; pkt[7] =  timestamp_ & 0xFF;
+        pkt[8]  = (ssrc_ >> 24) & 0xFF; pkt[9]  = (ssrc_ >> 16) & 0xFF;
+        pkt[10] = (ssrc_ >> 8)  & 0xFF; pkt[11] =  ssrc_ & 0xFF;
+
+        pkt[12] = 0x4F; pkt[13] = 0x53;
+        pkt[14] = 0x00; pkt[15] = 0x02;
+
+        pkt[16] = 0x02; pkt[17] = 0x00;
+        pkt[18] = 0x00; pkt[19] = 0x00;
+        pkt[20] = (timestamp_ >> 24) & 0xFF; pkt[21] = (timestamp_ >> 16) & 0xFF;
+        pkt[22] = (timestamp_ >> 8)  & 0xFF; pkt[23] =  timestamp_ & 0xFF;
+
+        memcpy(pkt.data() + 24, pcm, payload_bytes);
+
+        uint32_t crc = 0xFFFFFFFF;
+        for (int i = 0; i < 24 + payload_bytes; i++) {
+            crc ^= pkt[i];
+            for (int j = 0; j < 8; j++) crc = (crc >> 1) ^ (crc & 1 ? 0xEDB88320u : 0u);
+        }
+        crc = ~crc;
+        pkt[24 + payload_bytes + 0] = (crc >> 24) & 0xFF;
+        pkt[24 + payload_bytes + 1] = (crc >> 16) & 0xFF;
+        pkt[24 + payload_bytes + 2] = (crc >> 8)  & 0xFF;
+        pkt[24 + payload_bytes + 3] =  crc & 0xFF;
+
+        seq_++;
+        timestamp_ += 960;
+
+        relay_->send_audio(pkt.data(), pkt.size());
+    }
+};
+
 /// Internal receiver implementation
 class ReceiverImpl {
 public:
@@ -2143,6 +2428,10 @@ public:
         if (!rtp_receiver_->init()) {
             return false;
         }
+
+        // Wire up NTP sync: receiver adjusts target_fill_frames_ based on media_timestamp
+        rtp_receiver_->sync_target_frames_ = &target_fill_frames_;
+        rtp_receiver_->sync_playout_delay_ms_ = 80.0;  // match iOS for cross-device sync
 
         // Wire fan-out: replicate audio data to all extra output sinks
         rtp_receiver_->on_audio_written = [this](const void* data, size_t frames) {
@@ -2334,6 +2623,10 @@ public:
     }
     bool is_sync_mode() const { return sync_mode_.load(); }
 
+    // ── Talk mode (multi-speaker) ──────────────────────────────────────────
+    void set_talk_mode(bool enabled) { talk_mode_active_.store(enabled, std::memory_order_relaxed); }
+    bool is_talk_mode() const { return talk_mode_active_.load(std::memory_order_relaxed); }
+
     // ── Loudness normalization (EBU R128) ─────────────────────────────────
     void set_loudness_norm(bool enabled) { loudness_norm_enabled_.store(enabled); }
     bool is_loudness_norm() const { return loudness_norm_enabled_.load(); }
@@ -2518,7 +2811,8 @@ public:
 
     bool wan_relay_connect(const std::string& host, uint16_t port,
                            const std::string& group, const std::string& password,
-                           const std::string& device_name) {
+                           const std::string& device_name,
+                           const std::string& device_id = "") {
         if (!wan_relay_) wan_relay_ = std::make_unique<WanRelayClient>();
         // Set RX callback: inject received audio into ring buffer
         wan_relay_->set_rx_callback([this](const uint8_t* data, size_t len) {
@@ -2531,7 +2825,7 @@ public:
         if (stored_meta_cb_) wan_relay_->set_meta_callback(stored_meta_cb_);
         if (stored_file_cb_) wan_relay_->set_file_callback(stored_file_cb_);
         if (stored_sync_cb_) wan_relay_->set_sync_callback(stored_sync_cb_);
-        bool ok = wan_relay_->connect(host, port, group, password, device_name);
+        bool ok = wan_relay_->connect(host, port, group, password, device_name, device_id);
         if (ok) {
             // Switch to relay-only mode: multicast is LAN-only, relay carries WAN audio
             set_relay_network_disabled(true);
@@ -2580,6 +2874,22 @@ public:
 
     void wan_relay_send_ready(const std::string& filename) {
         if (wan_relay_) wan_relay_->send_ready(filename);
+    }
+
+    void wan_relay_mic_allow(const std::string& device_id) {
+        if (wan_relay_) wan_relay_->send_mic_allow(device_id);
+    }
+
+    void wan_relay_mic_deny(const std::string& device_id) {
+        if (wan_relay_) wan_relay_->send_mic_deny(device_id);
+    }
+
+    void wan_relay_mic_list() {
+        if (wan_relay_) wan_relay_->send_mic_list();
+    }
+
+    void wan_relay_members() {
+        if (wan_relay_) wan_relay_->send_members();
     }
 
     /// Send a raw text command via WAN relay (for DJ mode FILE:/META:/SYNC: commands)
@@ -2946,7 +3256,7 @@ private:
 
         // ── Initial prefill (only at startup, NOT reset on underrun) ───────
         if (!prefilled_) {
-            if (avail < min_target) {
+            if (avail < target) {
                 std::memset(buffer, 0, total_samples * sizeof(float));
                 return;
             }
@@ -3105,9 +3415,10 @@ private:
     std::atomic<bool>     running_;
     std::atomic<uint32_t> target_fill_frames_;
     std::atomic<bool>     sync_mode_{true};
-    std::atomic<uint32_t> sync_delay_ms_{200};     // target end-to-end delay (ms)
+    std::atomic<uint32_t> sync_delay_ms_{80};      // 80ms — matched with iOS for cross-device sync
     std::atomic<bool>     relay_network_disabled_{false};
     std::atomic<bool>     filesync_network_disabled_{false};
+    std::atomic<bool>     talk_mode_active_{false};  // multi-speaker mode
     std::atomic<bool>     flush_requested_{false};
     std::atomic<uint64_t> audio_cb_count_{0};   ///< audio callback invocation counter (debug)
     // Loudness normalization (EBU R128):
@@ -3312,6 +3623,7 @@ private:
     std::unique_ptr<TransmitterImpl> _txImpl;
     std::unique_ptr<ShmTransmitter> _shmTxImpl;
     std::unique_ptr<DJBroadcaster> _djImpl;
+    std::unique_ptr<DJController> _djCtrlImpl;
     NSTimer *_statsTimer;
     uint32_t _bufferTargetMs;
     ExtAudioFileRef _recordFile;
@@ -3855,6 +4167,14 @@ private:
     return _impl ? _impl->is_loudness_norm() : NO;
 }
 
+// ── Talk Mode (multi-speaker) ────────────────────────────────────────────────
+
+- (void)setTalkMode:(BOOL)enabled {
+    if (_impl) {
+        _impl->set_talk_mode(enabled);
+    }
+}
+
 // ── Mic Transmit (TX) ───────────────────────────────────────────────────────
 
 - (BOOL)isMicTransmitting {
@@ -3910,6 +4230,14 @@ private:
                   port:(uint16_t)port
                  group:(NSString *)group
               password:(NSString *)password {
+    return [self connectToRelay:host port:port group:group password:password deviceId:@""];
+}
+
+- (BOOL)connectToRelay:(NSString *)host
+                  port:(uint16_t)port
+                 group:(NSString *)group
+              password:(NSString *)password
+              deviceId:(NSString *)deviceId {
     if (!_impl) return NO;
 
     // Get device name (Mac hostname)
@@ -3920,7 +4248,8 @@ private:
         port,
         std::string([group UTF8String]),
         std::string([password UTF8String]),
-        std::string([deviceName UTF8String])
+        std::string([deviceName UTF8String]),
+        std::string([deviceId UTF8String])
     );
 
     // Wire TX relay callbacks if transmitters are active
@@ -3947,6 +4276,22 @@ private:
     }
 
     return ok ? YES : NO;
+}
+
+- (void)sendMicAllow:(NSString *)deviceId {
+    if (_impl) _impl->wan_relay_mic_allow(std::string([deviceId UTF8String]));
+}
+
+- (void)sendMicDeny:(NSString *)deviceId {
+    if (_impl) _impl->wan_relay_mic_deny(std::string([deviceId UTF8String]));
+}
+
+- (void)requestMicList {
+    if (_impl) _impl->wan_relay_mic_list();
+}
+
+- (void)requestMembers {
+    if (_impl) _impl->wan_relay_members();
 }
 
 - (void)disconnectRelay {
@@ -4174,6 +4519,82 @@ private:
 
 - (float)djMusicGain {
     return _djImpl ? _djImpl->music_gain_.load(std::memory_order_relaxed) : 0.7f;
+}
+
+// ── DJ Dual-Deck Mode ────────────────────────────────────────────────────────
+
+- (BOOL)startDeckA:(NSString *)filePath {
+    if (!_impl) return NO;
+    WanRelayClient* relay = _impl->wan_relay_.get();
+    if (!relay || relay->state() != WanRelayClient::State::Connected) {
+        fprintf(stderr, "[DJCtrl] Cannot start deck A: relay not connected\n");
+        return NO;
+    }
+    if (!_djCtrlImpl) _djCtrlImpl = std::make_unique<DJController>(relay);
+    return _djCtrlImpl->start_deck_a(filePath.UTF8String) ? YES : NO;
+}
+
+- (BOOL)startDeckB:(NSString *)filePath {
+    if (!_impl) return NO;
+    WanRelayClient* relay = _impl->wan_relay_.get();
+    if (!relay || relay->state() != WanRelayClient::State::Connected) {
+        fprintf(stderr, "[DJCtrl] Cannot start deck B: relay not connected\n");
+        return NO;
+    }
+    if (!_djCtrlImpl) _djCtrlImpl = std::make_unique<DJController>(relay);
+    return _djCtrlImpl->start_deck_b(filePath.UTF8String) ? YES : NO;
+}
+
+- (void)toggleDeckA {
+    if (_djCtrlImpl) _djCtrlImpl->toggle_deck_a();
+}
+
+- (void)toggleDeckB {
+    if (_djCtrlImpl) _djCtrlImpl->toggle_deck_b();
+}
+
+- (void)stopDualDeck {
+    _djCtrlImpl.reset();
+}
+
+- (void)setDjCrossfader:(float)v {
+    if (_djCtrlImpl) _djCtrlImpl->set_crossfader(v);
+}
+
+- (float)djCrossfader {
+    return _djCtrlImpl ? _djCtrlImpl->get_crossfader() : 0.5f;
+}
+
+- (BOOL)isDualDeckActive {
+    return _djCtrlImpl && _djCtrlImpl->is_active() ? YES : NO;
+}
+
+- (NSString *)deckATrack {
+    if (!_djCtrlImpl) return nil;
+    auto name = _djCtrlImpl->deck_a_track();
+    return name.empty() ? nil : @(name.c_str());
+}
+
+- (NSString *)deckBTrack {
+    if (!_djCtrlImpl) return nil;
+    auto name = _djCtrlImpl->deck_b_track();
+    return name.empty() ? nil : @(name.c_str());
+}
+
+- (float)deckAProgress {
+    return _djCtrlImpl ? _djCtrlImpl->deck_a_progress() : 0.0f;
+}
+
+- (float)deckBProgress {
+    return _djCtrlImpl ? _djCtrlImpl->deck_b_progress() : 0.0f;
+}
+
+- (BOOL)deckAPlaying {
+    return _djCtrlImpl && _djCtrlImpl->deck_a_playing() ? YES : NO;
+}
+
+- (BOOL)deckBPlaying {
+    return _djCtrlImpl && _djCtrlImpl->deck_b_playing() ? YES : NO;
 }
 
 @end

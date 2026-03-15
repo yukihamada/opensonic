@@ -2,88 +2,167 @@
 //  DJModeView.swift
 //  SolunaReceiverMac
 //
-//  UI for multi-channel DJ mode — route different audio sources
-//  to different Soluna channels simultaneously.
+//  Dual-deck DJ mode: Deck A | Crossfader | Deck B with equal-power mixing.
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct DJModeView: View {
-    @StateObject private var config = MultiChannelConfig()
-    @State private var newChannel: String = ""
-    @State private var newSource: String = "system"
+    @ObservedObject var receiver: AudioReceiver
+
+    @State private var showPickerA = false
+    @State private var showPickerB = false
+    @State private var crossfader: Float = 0.5
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label("DJ Mode — Multi-Channel Routing", systemImage: "music.mic")
-                .font(.headline)
+        HStack(alignment: .top, spacing: 24) {
+            // Deck A
+            MacDeckPanel(
+                label: "DECK A",
+                color: .blue,
+                trackName: receiver.deckATrack,
+                progress: receiver.deckAProgress,
+                isPlaying: receiver.deckAPlaying,
+                onLoad: { showPickerA = true },
+                onToggle: { receiver.toggleDeckA() }
+            )
 
-            Text("Route different audio sources to separate Soluna channels.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            // Existing routes
-            if config.routes.isEmpty {
-                Text("No routes configured. Add one below.")
-                    .font(.caption)
+            // Crossfader (vertical, center)
+            VStack(spacing: 12) {
+                Spacer()
+                Text("XFADER")
+                    .font(.caption2.bold())
                     .foregroundColor(.secondary)
-                    .padding(.vertical, 8)
-            } else {
-                List {
-                    ForEach(config.routes) { route in
-                        HStack {
-                            Image(systemName: route.isEnabled ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
-                                .foregroundColor(route.isEnabled ? .green : .gray)
 
-                            VStack(alignment: .leading) {
-                                Text(route.channelName)
-                                    .font(.body.weight(.medium))
-                                Text(route.audioSource == "system" ? "System Audio" : route.audioSource)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-
-                            Spacer()
-
-                            Toggle("", isOn: Binding(
-                                get: { route.isEnabled },
-                                set: { newValue in
-                                    if let idx = config.routes.firstIndex(where: { $0.id == route.id }) {
-                                        config.routes[idx].isEnabled = newValue
-                                        config.save()
-                                    }
-                                }
-                            ))
-                            .labelsHidden()
-                        }
+                Slider(value: Binding(
+                    get: { Double(crossfader) },
+                    set: { v in
+                        crossfader = Float(v)
+                        receiver.setCrossfader(crossfader)
                     }
-                    .onDelete { config.removeRoute(at: $0) }
+                ), in: 0...1)
+                .rotationEffect(.degrees(-90))
+                .frame(width: 120, height: 40)
+
+                HStack {
+                    Text("A").font(.caption.bold()).foregroundColor(.blue)
+                    Spacer()
+                    Text("B").font(.caption.bold()).foregroundColor(.purple)
                 }
-                .frame(minHeight: 100, maxHeight: 250)
+                .frame(width: 120)
+
+                Spacer()
+
+                Button(role: .destructive) {
+                    receiver.stopDualDeck()
+                } label: {
+                    Label("Stop", systemImage: "stop.fill")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red.opacity(0.8))
             }
+            .frame(width: 130)
 
-            Divider()
-
-            // Add new route
-            HStack {
-                TextField("Channel name", text: $newChannel)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 150)
-
-                Picker("Source", selection: $newSource) {
-                    Text("System Audio").tag("system")
-                    Text("BlackHole 2ch").tag("BlackHole2ch_UID")
-                }
-                .frame(maxWidth: 180)
-
-                Button("Add") {
-                    guard !newChannel.isEmpty else { return }
-                    config.addRoute(channel: newChannel, source: newSource)
-                    newChannel = ""
-                }
-                .disabled(newChannel.isEmpty)
-            }
+            // Deck B
+            MacDeckPanel(
+                label: "DECK B",
+                color: .purple,
+                trackName: receiver.deckBTrack,
+                progress: receiver.deckBProgress,
+                isPlaying: receiver.deckBPlaying,
+                onLoad: { showPickerB = true },
+                onToggle: { receiver.toggleDeckB() }
+            )
         }
         .padding()
+        .fileImporter(isPresented: $showPickerA,
+                      allowedContentTypes: [.audio],
+                      allowsMultipleSelection: false) { result in
+            if let url = try? result.get().first {
+                receiver.startDeckA(url: url)
+            }
+        }
+        .fileImporter(isPresented: $showPickerB,
+                      allowedContentTypes: [.audio],
+                      allowsMultipleSelection: false) { result in
+            if let url = try? result.get().first {
+                receiver.startDeckB(url: url)
+            }
+        }
+    }
+}
+
+// MARK: - MacDeckPanel
+
+struct MacDeckPanel: View {
+    let label: String
+    let color: Color
+    let trackName: String?
+    let progress: Float
+    let isPlaying: Bool
+    let onLoad: () -> Void
+    let onToggle: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(label)
+                .font(.headline.bold())
+                .foregroundColor(color)
+
+            // Progress ring
+            ZStack {
+                Circle()
+                    .stroke(color.opacity(0.15), lineWidth: 8)
+                Circle()
+                    .trim(from: 0, to: CGFloat(progress))
+                    .stroke(color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear(duration: 0.4), value: progress)
+
+                Button(action: onToggle) {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .font(.largeTitle)
+                        .foregroundColor(isPlaying ? color : .secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(width: 140, height: 140)
+
+            // Track name
+            Text(trackName.map {
+                URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent
+            } ?? "No Track Loaded")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 180)
+
+            // Progress percentage
+            Text("\(Int(progress * 100))%")
+                .font(.caption.monospacedDigit())
+                .foregroundColor(color.opacity(0.8))
+
+            ProgressView(value: Double(progress))
+                .tint(color)
+                .frame(maxWidth: 180)
+                .animation(.linear(duration: 0.4), value: progress)
+
+            Button(action: onLoad) {
+                Label("Load Track", systemImage: "folder.badge.plus")
+                    .font(.caption)
+            }
+            .buttonStyle(.bordered)
+            .tint(color)
+        }
+        .padding(16)
+        .background(color.opacity(0.05))
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(color.opacity(0.2), lineWidth: 1)
+        )
     }
 }

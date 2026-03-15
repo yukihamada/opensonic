@@ -21,7 +21,9 @@
 #include <soluna/transport/packet_scheduler.h>
 #include <soluna/control/websocket_server.h>
 
+#include <array>
 #include <atomic>
+#include <chrono>
 #include <thread>
 #include <memory>
 #include <mutex>
@@ -31,6 +33,8 @@
 #include <cmath>
 #include <vector>
 #include <string>
+#include <set>
+#include <map>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -39,6 +43,8 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 #endif
 
 using namespace soluna;
@@ -288,6 +294,7 @@ private:
 
         stats_.packets_received++;
         stats_.ostp_packets++;
+        last_ssrc.store(rtp.ssrc, std::memory_order_relaxed);
 
         // Discard duplicate packets (gap <= 0 means same or older sequence)
         if (gap < 0) return true;  // duplicate — already received
@@ -297,25 +304,62 @@ private:
             last_media_timestamp.store(ostp.media_timestamp, std::memory_order_relaxed);
         }
 
-        // OSTP payload is int32_t (4 bytes/sample, native byte order) — not S24_LE 3-byte
-        size_t frames = payload_size / (sizeof(int32_t) * config_.channels);
+        // Auto-detect TX channel count from stream_id upper 4 bits
+        // [4bit channels][12bit stream] — 0 = legacy (assume 2ch)
+        uint32_t tx_channels = (ostp.stream_id >> 12) & 0xF;
+        if (tx_channels == 0) tx_channels = 2;  // backward compat
+        detected_tx_channels_.store(tx_channels, std::memory_order_relaxed);
+
+        // OSTP payload is int32_t (4 bytes/sample, native byte order)
+        size_t frames = payload_size / (sizeof(int32_t) * tx_channels);
+
+        // Ring buffer frame_size = config_.channels * sizeof(int32_t).
+        // When tx_channels < config_.channels, we must pad each frame with
+        // zeros so the data matches the ring buffer's frame layout.
+        const uint32_t ring_ch = config_.channels;  // kMaxRxChannels (8)
 
         // PLC: conceal gaps of ≤2 packets by repeating the last known frame
         if (gap > 0 && gap <= 2 && frames > 0 && !last_frame_.empty()) {
-            size_t plc_frames = last_frame_.size() / config_.channels;
+            size_t plc_frames = last_frame_.size() / ring_ch;
             for (int32_t i = 0; i < gap; i++) {
                 ring.write(last_frame_.data(), plc_frames);
             }
             stats_.packets_concealed += static_cast<uint64_t>(gap);
         }
 
-        ring.write(payload, frames);
+        if (on_decoded) {
+            on_decoded(rtp.ssrc, reinterpret_cast<const int32_t*>(payload), frames, tx_channels);
+        }
 
-        // Save last frame for PLC
+        // Expand tx_channels → ring_ch (zero-pad unused channels)
+        const int32_t* src_samples = reinterpret_cast<const int32_t*>(payload);
+        if (tx_channels == ring_ch) {
+            ring.write(payload, frames);
+        } else {
+            // Pad each frame: copy tx_channels samples, zero the rest
+            // Use audio_buf_ as scratch space (already sized for max payload)
+            for (size_t f = 0; f < frames; f++) {
+                for (uint32_t c = 0; c < tx_channels; c++)
+                    audio_buf_[f * ring_ch + c] = src_samples[f * tx_channels + c];
+                for (uint32_t c = tx_channels; c < ring_ch; c++)
+                    audio_buf_[f * ring_ch + c] = 0;
+            }
+            ring.write(audio_buf_.data(), frames);
+        }
+
+        // Save last frame for PLC (in ring_ch-wide format)
         if (frames > 0) {
-            last_frame_.assign(
-                reinterpret_cast<const int32_t*>(payload),
-                reinterpret_cast<const int32_t*>(payload) + frames * config_.channels);
+            if (tx_channels == ring_ch) {
+                last_frame_.assign(src_samples, src_samples + frames * ring_ch);
+            } else {
+                last_frame_.resize(frames * ring_ch);
+                for (size_t f = 0; f < frames; f++) {
+                    for (uint32_t c = 0; c < tx_channels; c++)
+                        last_frame_[f * ring_ch + c] = src_samples[f * tx_channels + c];
+                    for (uint32_t c = tx_channels; c < ring_ch; c++)
+                        last_frame_[f * ring_ch + c] = 0;
+                }
+            }
         }
 
         return true;
@@ -417,6 +461,15 @@ public:
 
     // Last received OSTP media timestamp (wall-clock NS, 32-bit truncated)
     std::atomic<uint32_t> last_media_timestamp{0};
+
+    // Auto-detected TX channel count from OSTP stream_id upper 4 bits
+    std::atomic<uint32_t> detected_tx_channels_{1};  // default mono until detected
+
+    // Last received RTP SSRC (for multi-source identification)
+    std::atomic<uint32_t> last_ssrc{0};
+
+    // Callback invoked with decoded PCM + SSRC for multi-source mixing
+    std::function<void(uint32_t ssrc, const int32_t* data, size_t frames, uint32_t channels)> on_decoded;
 };
 
 /// WAN relay client — connects to soluna-relay server via UDP
@@ -428,22 +481,168 @@ public:
     using FileCallback = std::function<void(const std::string&)>;
     using SyncCallback = std::function<void(const std::string&)>;
 
+    // Try to find solunad on LAN by probing subnet:5099
+    // Sends HELLO to broadcast + common IPs, returns first responder's IP
+    std::string discover_lan_solunad() {
+        append_debug("LAN scan start port=5099");
+        send_debug_to_mac("LAN scan start");
+        int sock = ::socket(AF_INET, SOCK_DGRAM, 0);
+        if (sock < 0) { append_debug("LAN scan: socket() failed"); return ""; }
+
+        int yes = 1;
+        setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes));
+        struct timeval tv{0, 500000};  // 500ms timeout per recv (was 200ms)
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+        // Get our own IP — prefer en0 (WiFi) over cellular
+        struct ifaddrs *ifas = nullptr;
+        getifaddrs(&ifas);
+        uint32_t my_ip = 0;
+        uint32_t my_mask = 0;
+
+        // First pass: prefer en0 (WiFi)
+        for (struct ifaddrs *ifa = ifas; ifa; ifa = ifa->ifa_next) {
+            if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+            if (!(ifa->ifa_flags & IFF_UP) || (ifa->ifa_flags & IFF_LOOPBACK)) continue;
+            std::string ifname(ifa->ifa_name);
+            if (ifname != "en0") continue;
+            auto *sin = (sockaddr_in*)ifa->ifa_addr;
+            auto *mask = (sockaddr_in*)ifa->ifa_netmask;
+            if (!mask) continue;
+            my_ip = ntohl(sin->sin_addr.s_addr);
+            my_mask = ntohl(mask->sin_addr.s_addr);
+            char ip_str[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &sin->sin_addr, ip_str, sizeof(ip_str));
+            NSLog(@"[lan-discover] My IP: %s iface=en0", ip_str);
+            append_debug(std::string("MyIP=") + ip_str + " iface=en0");
+            send_debug_to_mac(std::string("LAN MyIP=") + ip_str);
+            break;
+        }
+        // Second pass: any en* interface
+        if (my_ip == 0) {
+            for (struct ifaddrs *ifa = ifas; ifa; ifa = ifa->ifa_next) {
+                if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+                if (!(ifa->ifa_flags & IFF_UP) || (ifa->ifa_flags & IFF_LOOPBACK)) continue;
+                std::string ifname(ifa->ifa_name);
+                if (ifname.find("en") != 0) continue;
+                auto *sin = (sockaddr_in*)ifa->ifa_addr;
+                auto *mask = (sockaddr_in*)ifa->ifa_netmask;
+                if (!mask) continue;
+                my_ip = ntohl(sin->sin_addr.s_addr);
+                my_mask = ntohl(mask->sin_addr.s_addr);
+                char ip_str[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &sin->sin_addr, ip_str, sizeof(ip_str));
+                append_debug(std::string("MyIP=") + ip_str + " iface=" + ifname);
+                send_debug_to_mac(std::string("LAN MyIP=") + ip_str + " " + ifname);
+                break;
+            }
+        }
+        if (ifas) freeifaddrs(ifas);
+
+        if (my_ip == 0) {
+            append_debug("LAN: no WiFi IP found");
+            send_debug_to_mac("LAN: no WiFi IP");
+            ::close(sock);
+            return "";
+        }
+
+        uint32_t network = my_ip & my_mask;
+        uint32_t bcast_ip = network | ~my_mask;
+
+        // Send HELLO to broadcast + ALL /24 IPs for thorough scan
+        sockaddr_in dest{};
+        dest.sin_family = AF_INET;
+        dest.sin_port = htons(5099);
+
+        // Broadcast
+        dest.sin_addr.s_addr = htonl(bcast_ip);
+        ::sendto(sock, "HELLO\n", 6, 0, (sockaddr*)&dest, sizeof(dest));
+
+        // Scan ALL IPs in /24 subnet (only 254 UDP packets, very fast)
+        uint32_t host_part = my_ip & ~my_mask;
+        int sent_count = 0;
+        for (uint32_t h = 1; h <= 254; ++h) {
+            if (h == host_part) continue;
+            dest.sin_addr.s_addr = htonl(network | h);
+            ::sendto(sock, "HELLO\n", 6, 0, (sockaddr*)&dest, sizeof(dest));
+            sent_count++;
+        }
+        char scan_msg[128];
+        snprintf(scan_msg, sizeof(scan_msg), "LAN sent HELLO to %d IPs + bcast", sent_count);
+        append_debug(scan_msg);
+        send_debug_to_mac(scan_msg);
+
+        // Wait for response — up to 3 seconds (6 x 500ms)
+        std::string found_ip;
+        for (int i = 0; i < 6 && found_ip.empty(); ++i) {
+            uint8_t buf[2048];
+            sockaddr_in sender{};
+            socklen_t slen = sizeof(sender);
+            ssize_t n = ::recvfrom(sock, buf, sizeof(buf), 0, (sockaddr*)&sender, &slen);
+            if (n > 0) {
+                uint32_t sender_ip = ntohl(sender.sin_addr.s_addr);
+                if (sender_ip != my_ip) {
+                    // Check if it looks like an OSTP/RTP packet (first byte 0x80-0xBF)
+                    bool is_audio = (n >= 12 && (buf[0] & 0xC0) == 0x80);
+                    char ip[INET_ADDRSTRLEN];
+                    inet_ntop(AF_INET, &sender.sin_addr, ip, sizeof(ip));
+                    char msg[256];
+                    snprintf(msg, sizeof(msg), "LAN resp from %s %zdB audio=%d", ip, n, is_audio);
+                    append_debug(msg);
+                    send_debug_to_mac(msg);
+                    if (is_audio) {
+                        NSLog(@"[lan-discover] Found solunad at %s (%zd bytes)", ip, n);
+                        found_ip = ip;
+                    }
+                }
+            }
+        }
+        ::close(sock);
+        if (found_ip.empty()) {
+            append_debug("LAN: no solunad found");
+            send_debug_to_mac("LAN: no solunad found");
+        }
+        return found_ip;
+    }
+
     bool connect(const std::string& host, uint16_t port,
                  const std::string& group, const std::string& password,
-                 const std::string& device_name) {
+                 const std::string& device_name,
+                 const std::string& device_id = "") {
+        device_id_ = device_id;
         if (state_.load() == State::Connected) disconnect();
         state_.store(State::Connecting);
         group_ = group;
         error_.clear();
+
+        // Step 1: Try LAN discovery — broadcast on port 5099
+        // Skip if caller already specified a direct LAN host (port 5099)
+        std::string lan_host;
+        if (port != 5099) {
+            lan_host = discover_lan_solunad();
+        } else {
+            append_debug("SKIP LAN scan (direct host)");
+        }
+        std::string actual_host = host;
+        uint16_t actual_port = port;
+        if (!lan_host.empty()) {
+            NSLog(@"[wan-relay] Using LAN solunad at %s:5099", lan_host.c_str());
+            append_debug("RELAY: LAN " + lan_host + ":5099");
+            actual_host = lan_host;
+            actual_port = 5099;
+        } else {
+            NSLog(@"[wan-relay] No LAN found, using WAN %s:%u", host.c_str(), port);
+            append_debug("RELAY: WAN " + host + ":" + std::to_string(port));
+        }
 
         // DNS resolve
         struct addrinfo hints{}, *res = nullptr;
         hints.ai_family = AF_INET;
         hints.ai_socktype = SOCK_DGRAM;
         char port_str[16];
-        snprintf(port_str, sizeof(port_str), "%u", port);
-        if (getaddrinfo(host.c_str(), port_str, &hints, &res) != 0 || !res) {
-            error_ = "DNS resolution failed: " + host;
+        snprintf(port_str, sizeof(port_str), "%u", actual_port);
+        if (getaddrinfo(actual_host.c_str(), port_str, &hints, &res) != 0 || !res) {
+            error_ = "DNS resolution failed: " + actual_host;
             state_.store(State::Error);
             return false;
         }
@@ -453,73 +652,42 @@ public:
         udp_sock_ = ::socket(AF_INET, SOCK_DGRAM, 0);
         if (udp_sock_ < 0) {
             error_ = "socket() failed";
+            append_debug("socket() FAILED");
             state_.store(State::Error);
             return false;
         }
 
-        // Send JOIN
-        std::string join_msg = "JOIN:" + group + ":" + password + ":" + device_name + "\n";
+        // Log resolved address
+        char resolved_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &((sockaddr_in*)&relay_addr_)->sin_addr, resolved_ip, sizeof(resolved_ip));
+        uint16_t resolved_port = ntohs(((sockaddr_in*)&relay_addr_)->sin_port);
+        append_debug(std::string("CONNECT ") + resolved_ip + ":" + std::to_string(resolved_port) + " fd=" + std::to_string(udp_sock_));
+
+        // Send HELLO to start receiving audio (Mac relay doesn't need JOIN)
+        const char* hello = "HELLO\n";
+        for (int i = 0; i < 3; ++i) {
+            ssize_t sent = ::sendto(udp_sock_, hello, 6, 0,
+                     (struct sockaddr*)&relay_addr_, sizeof(relay_addr_));
+            append_debug("HELLO sent=" + std::to_string(sent));
+            if (i < 2) usleep(100000);
+        }
+        // Also send JOIN for WAN relay compatibility
+        std::string join_msg = "JOIN:" + group + ":" + password + ":" + device_name;
+        if (!device_id_.empty()) join_msg += ":" + device_id_;
+        join_msg += "\n";
         ::sendto(udp_sock_, join_msg.c_str(), join_msg.size(), 0,
                  (struct sockaddr*)&relay_addr_, sizeof(relay_addr_));
 
-        // Wait for OK:joined (3s timeout), also collect PEER messages
-        struct timeval tv{3, 0};
-        setsockopt(udp_sock_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-        bool joined = false;
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
-        while (std::chrono::steady_clock::now() < deadline) {
-            char buf[256];
-            ssize_t n = ::recvfrom(udp_sock_, buf, sizeof(buf)-1, 0, nullptr, nullptr);
-            if (n <= 0) break;
-            std::string msg(buf, n);
-            if (msg.find("OK:joined") != std::string::npos) { joined = true; break; }
-            // Collect PEER messages that arrive before OK
-            if (n >= 6 && memcmp(buf, "PEER:", 5) == 0) {
-                while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r'))
-                    msg.pop_back();
-                auto colon = msg.rfind(':');
-                if (colon != std::string::npos && colon > 5) {
-                    std::string ip = msg.substr(5, colon - 5);
-                    uint16_t pport = (uint16_t)atoi(msg.substr(colon + 1).c_str());
-                    sockaddr_in peer{};
-                    peer.sin_family = AF_INET;
-                    peer.sin_port = htons(pport);
-                    inet_pton(AF_INET, ip.c_str(), &peer.sin_addr);
-                    add_peer(peer);
-                    fprintf(stderr, "[wan-p2p] Peer discovered (during join): %s:%u\n", ip.c_str(), pport);
-                }
-            }
-            // Handle FILE/SYNC/META that arrive during join handshake
-            else if (n >= 5 && memcmp(buf, "FILE:", 5) == 0) {
-                std::string fname(buf + 5, n - 5);
-                while (!fname.empty() && (fname.back() == '\n' || fname.back() == '\r')) fname.pop_back();
-                std::lock_guard<std::mutex> lk(cb_mutex_);
-                if (file_callback_) file_callback_(fname);
-            }
-            else if (n >= 5 && memcmp(buf, "SYNC:", 5) == 0) {
-                std::string sync(buf + 5, n - 5);
-                while (!sync.empty() && (sync.back() == '\n' || sync.back() == '\r')) sync.pop_back();
-                std::lock_guard<std::mutex> lk(cb_mutex_);
-                if (sync_callback_) sync_callback_(sync);
-            }
-            else if (n >= 5 && memcmp(buf, "META:", 5) == 0) {
-                std::string meta(buf + 5, n - 5);
-                while (!meta.empty() && (meta.back() == '\n' || meta.back() == '\r')) meta.pop_back();
-                std::lock_guard<std::mutex> lk(cb_mutex_);
-                if (meta_callback_) meta_callback_(meta);
-            }
-        }
-        if (!joined) {
-            error_ = "Failed to join relay group";
-            ::close(udp_sock_); udp_sock_ = -1;
-            state_.store(State::Error);
-            return false;
-        }
-
+        nack_last_seq_ = -1;
+        rx_pkt_count_  = 0;
+        fec_pending_seqs_.clear();
+        nack_fire_at_.clear();
+        fec_rx_buf_.clear();
+        external_addr_.clear();
         running_.store(true);
         state_.store(State::Connected);
+        append_debug("recv_loop starting...");
         recv_thread_ = std::thread([this]() { recv_loop(); });
-        fprintf(stderr, "[wan-relay] Connected to relay, group='%s'\n", group_.c_str());
         return true;
     }
 
@@ -571,6 +739,21 @@ public:
         sync_callback_ = std::move(cb);
     }
 
+    using MaxDelayCallback = std::function<void(uint32_t)>;
+    void set_maxdelay_callback(MaxDelayCallback cb) {
+        std::lock_guard<std::mutex> lk(cb_mutex_);
+        maxdelay_callback_ = std::move(cb);
+    }
+
+    /// Send DELAY report to relay (for sync mode coordination)
+    void send_delay(uint32_t net_delay_ms) {
+        if (udp_sock_ < 0 || state_.load() != State::Connected) return;
+        char buf[64];
+        snprintf(buf, sizeof(buf), "DELAY:%u\n", net_delay_ms);
+        ::sendto(udp_sock_, buf, strlen(buf), 0,
+                 (struct sockaddr*)&relay_addr_, sizeof(relay_addr_));
+    }
+
     /// Send READY notification to relay
     void send_ready(const std::string& filename) {
         if (udp_sock_ < 0 || state_.load() != State::Connected) return;
@@ -582,14 +765,89 @@ public:
     State state() const { return state_.load(); }
     const std::string& group() const { return group_; }
     const std::string& error() const { return error_; }
+    const std::string& device_id() const { return device_id_; }
+
+    /// Send MIC_ALLOW command (owner/DJ only)
+    void send_mic_allow(const std::string& target_device_id) {
+        send_command("MIC_ALLOW:" + target_device_id);
+    }
+
+    /// Send MIC_DENY command (owner/DJ only)
+    void send_mic_deny(const std::string& target_device_id) {
+        send_command("MIC_DENY:" + target_device_id);
+    }
+
+    /// Request mic list from relay
+    void send_mic_list() {
+        send_command("MIC_LIST");
+    }
+
+    /// Request member list from relay
+    void send_members() {
+        send_command("MEMBERS");
+    }
 
 private:
+    void send_command(const std::string& cmd) {
+        if (udp_sock_ < 0 || state_.load() != State::Connected) return;
+        std::string msg = cmd + "\n";
+        ::sendto(udp_sock_, msg.c_str(), msg.size(), 0,
+                 (struct sockaddr*)&relay_addr_, sizeof(relay_addr_));
+    }
+
+public:
+
+    /// Get current clock offset in nanoseconds (relay_time - local_time).
+    /// Positive = local clock is behind relay, negative = local clock is ahead.
+    int64_t clock_offset_ns() const { return clock_offset_ns_.load(std::memory_order_relaxed); }
+
+    /// Thread-safe debug log for on-screen display
+    std::string get_debug_log() const {
+        std::lock_guard<std::mutex> lk(debug_mutex_);
+        return debug_log_;
+    }
+
+    void append_debug(const std::string& msg) {
+        std::lock_guard<std::mutex> lk(debug_mutex_);
+        // Keep last 10 lines
+        debug_log_ += msg + "\n";
+        size_t lines = 0;
+        for (auto c : debug_log_) if (c == '\n') lines++;
+        while (lines > 10) {
+            auto pos = debug_log_.find('\n');
+            if (pos == std::string::npos) break;
+            debug_log_.erase(0, pos + 1);
+            lines--;
+        }
+    }
+
+private:
+    // Send debug info to Mac via UDP
+    void send_debug_to_mac(const std::string& msg) {
+        static int dbg_sock = -1;
+        static sockaddr_in dbg_addr{};
+        if (dbg_sock < 0) {
+            dbg_sock = ::socket(AF_INET, SOCK_DGRAM, 0);
+            dbg_addr.sin_family = AF_INET;
+            dbg_addr.sin_port = htons(9999);
+            inet_pton(AF_INET, "192.168.0.194", &dbg_addr.sin_addr);
+        }
+        if (dbg_sock >= 0) {
+            ::sendto(dbg_sock, msg.c_str(), msg.size(), 0,
+                     (sockaddr*)&dbg_addr, sizeof(dbg_addr));
+        }
+    }
+
     void recv_loop() {
+        append_debug("recv_loop RUNNING");
+        send_debug_to_mac("recv_loop RUNNING");
         struct timeval tv{1, 0};
         setsockopt(udp_sock_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
         uint8_t buf[16384];  // Must fit OSTP packets (up to ~4KB for 480-frame stereo)
         auto last_hello = std::chrono::steady_clock::now();
+        uint64_t recv_total = 0, recv_rtp = 0, recv_ctrl = 0;
+        auto last_log = std::chrono::steady_clock::now();
 
         while (running_.load()) {
             sockaddr_in sender{};
@@ -642,19 +900,127 @@ private:
                     std::lock_guard<std::mutex> lk(cb_mutex_);
                     if (sync_callback_) sync_callback_(sync);
                 }
-                // RTP packet: from relay or peer
-                else if (n >= 12 && (buf[0] & 0xC0) == 0x80) {
-                    std::lock_guard<std::mutex> lk(cb_mutex_);
-                    if (rx_callback_) rx_callback_(buf, static_cast<size_t>(n));
+                // MAXDELAY: message — sync mode, group-wide max delay from relay
+                else if (n >= 9 && memcmp(buf, "MAXDELAY:", 9) == 0) {
+                    std::string val((const char*)buf + 9, n - 9);
+                    while (!val.empty() && (val.back() == '\n' || val.back() == '\r'))
+                        val.pop_back();
+                    try {
+                        uint32_t max_ms = static_cast<uint32_t>(std::stoul(val));
+                        if (max_ms > 2000) max_ms = 2000;
+                        std::lock_guard<std::mutex> lk(cb_mutex_);
+                        if (maxdelay_callback_) maxdelay_callback_(max_ms);
+                    } catch (...) {}
                 }
-                // OK:joined or other control — ignore
+                // YOUR_ADDR: relay reports our external IP:port (§6.6, NAT traversal)
+                else if (n >= 11 && memcmp(buf, "YOUR_ADDR:", 10) == 0) {
+                    std::string addr((const char*)buf + 10, n - 10);
+                    while (!addr.empty() && (addr.back() == '\n' || addr.back() == '\r'))
+                        addr.pop_back();
+                    external_addr_ = addr;
+                    append_debug("YOUR_ADDR=" + addr);
+                }
+                // Clock sync pong (PT=125, 0x7D marker, 25 bytes)
+                else if (n == 25 && buf[0] == 0x7D) {
+                    handle_sync_pong(buf, static_cast<size_t>(n));
+                }
+                // RTP/OSTP packet: from relay or peer
+                else if (n >= 12 && (buf[0] & 0xC0) == 0x80) {
+                    recv_rtp++;
+                    uint8_t pt = buf[1] & 0x7F;
+
+                    if (n >= 28 && (buf[0] & 0x10) &&
+                        buf[12] == 0x4F && buf[13] == 0x53) {
+
+                        if (pt == 127) {
+                            // PT=127: FEC parity packet — attempt XOR recovery (§8.1)
+                            handle_fec_packet(buf, static_cast<size_t>(n));
+                        } else if (pt != 126) {
+                            // Audio packet: buffer for FEC recovery
+                            uint16_t rtp_seq = (uint16_t)((buf[2] << 8) | buf[3]);
+                            FecRxEntry entry;
+                            entry.seq = rtp_seq;
+                            entry.pkt.assign(buf, buf + n);
+                            fec_rx_buf_.push_back(std::move(entry));
+                            if ((int)fec_rx_buf_.size() > kFecRxBufSize)
+                                fec_rx_buf_.pop_front();
+
+                            // Mark this seq as received (remove from pending if NACK not yet sent)
+                            fec_pending_seqs_.erase(rtp_seq);
+
+                            rx_pkt_count_++;
+
+                            // Fire expired deferred NACKs (seqs still missing after FEC window)
+                            while (!nack_fire_at_.empty() &&
+                                   nack_fire_at_.begin()->first <= rx_pkt_count_) {
+                                for (uint16_t s : nack_fire_at_.begin()->second) {
+                                    if (fec_pending_seqs_.count(s)) {
+                                        send_nack_for_gap(s, 1);
+                                        fec_pending_seqs_.erase(s);
+                                        append_debug("NACK(deferred) seq=" + std::to_string(s));
+                                    }
+                                }
+                                nack_fire_at_.erase(nack_fire_at_.begin());
+                            }
+
+                            // Gap detection: enqueue missing seqs for deferred NACK
+                            // (gap ≤ 2 handled by PLC; gap > 2 deferred by kFecGroupSize packets)
+                            if (nack_last_seq_ >= 0) {
+                                int16_t gap = (int16_t)(rtp_seq - (uint16_t)(nack_last_seq_ + 1));
+                                if (gap > 2 && gap <= 32) {
+                                    int32_t fire_at = rx_pkt_count_ + kFecGroupSize;
+                                    for (int16_t i = 0; i < gap; i++) {
+                                        uint16_t missing = (uint16_t)(nack_last_seq_ + 1 + i);
+                                        fec_pending_seqs_.insert(missing);
+                                        nack_fire_at_[fire_at].push_back(missing);
+                                    }
+                                }
+                            }
+                            // Advance last_seq (signed 16-bit forward comparison)
+                            if (nack_last_seq_ < 0 ||
+                                (int16_t)(rtp_seq - (uint16_t)nack_last_seq_) > 0)
+                                nack_last_seq_ = (int32_t)rtp_seq;
+
+                            std::lock_guard<std::mutex> lk(cb_mutex_);
+                            if (rx_callback_) rx_callback_(buf, static_cast<size_t>(n));
+                        }
+                        // PT=126 (NACK echo) — silently drop
+                    } else {
+                        // Non-OSTP RTP (legacy): pass through unchanged
+                        std::lock_guard<std::mutex> lk(cb_mutex_);
+                        if (rx_callback_) rx_callback_(buf, static_cast<size_t>(n));
+                    }
+                }
+                // OK:joined or other control
+                else {
+                    recv_ctrl++;
+                }
+                recv_total++;
             }
-            // HELLO heartbeat every 5s
+            // Log stats every 5s
             auto now = std::chrono::steady_clock::now();
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - last_log).count() >= 5) {
+                NSLog(@"[wan-relay-rx] total=%llu rtp=%llu ctrl=%llu",
+                        recv_total, recv_rtp, recv_ctrl);
+                std::string rx_msg = "RX: tot=" + std::to_string(recv_total) +
+                             " rtp=" + std::to_string(recv_rtp) +
+                             " ctrl=" + std::to_string(recv_ctrl);
+                append_debug(rx_msg);
+                send_debug_to_mac(rx_msg);
+                last_log = now;
+            }
+            // Heartbeat every 5s: send both HELLO and JOIN to stay registered
             if (std::chrono::duration_cast<std::chrono::seconds>(now - last_hello).count() >= 5) {
                 const char* hello = "HELLO\n";
                 ::sendto(udp_sock_, hello, 6, 0,
                          (struct sockaddr*)&relay_addr_, sizeof(relay_addr_));
+                // Re-send JOIN to ensure relay keeps us registered
+                // (handles Fly.io anycast routing changes)
+                std::string join_msg = "JOIN:" + group_ + "::" + "\n";
+                ::sendto(udp_sock_, join_msg.c_str(), join_msg.size(), 0,
+                         (struct sockaddr*)&relay_addr_, sizeof(relay_addr_));
+                // Send clock sync ping (NTP-like, PT=125)
+                send_sync_ping();
                 last_hello = now;
             }
         }
@@ -669,19 +1035,239 @@ private:
         peers_.push_back(peer);
     }
 
+    // ── Clock sync (NTP-like, PT=125) ──────────────────────────────────────
+    /// Send a clock sync ping to the relay. Called periodically from recv_loop.
+    void send_sync_ping() {
+        if (udp_sock_ < 0 || state_.load() != State::Connected) return;
+
+        uint8_t pkt[25] = {};
+        pkt[0] = 0x7D;  // PT=125 sync marker
+
+        // T1 = local CLOCK_REALTIME nanoseconds (64-bit LE)
+        struct timespec now_ts;
+        clock_gettime(CLOCK_REALTIME, &now_ts);
+        uint64_t t1_ns = (uint64_t)now_ts.tv_sec * 1000000000ULL + (uint64_t)now_ts.tv_nsec;
+        memcpy(pkt + 1, &t1_ns, 8);
+        // T2, T3 zeroed — relay will fill them
+
+        ::sendto(udp_sock_, pkt, 25, 0,
+                 (struct sockaddr*)&relay_addr_, sizeof(relay_addr_));
+    }
+
+    /// Process a sync pong response (called from recv_loop when 0x7D packet arrives).
+    void handle_sync_pong(const uint8_t* data, size_t len) {
+        if (len < 25 || data[0] != 0x7D) return;
+
+        // Extract T1, T2, T3 (all 64-bit LE nanoseconds)
+        uint64_t t1_ns, t2_ns, t3_ns;
+        memcpy(&t1_ns, data + 1, 8);
+        memcpy(&t2_ns, data + 9, 8);
+        memcpy(&t3_ns, data + 17, 8);
+
+        // T4 = local receive time
+        struct timespec now_ts;
+        clock_gettime(CLOCK_REALTIME, &now_ts);
+        uint64_t t4_ns = (uint64_t)now_ts.tv_sec * 1000000000ULL + (uint64_t)now_ts.tv_nsec;
+
+        // Validate: T2 and T3 must be non-zero (relay filled them)
+        if (t2_ns == 0 || t3_ns == 0) return;
+
+        // NTP offset = ((T2-T1) + (T3-T4)) / 2
+        int64_t offset = ((int64_t)(t2_ns - t1_ns) + (int64_t)(t3_ns - t4_ns)) / 2;
+        int64_t rtt = (int64_t)(t4_ns - t1_ns) - (int64_t)(t3_ns - t2_ns);
+
+        // Reject outliers: RTT > 500ms is unreliable
+        if (rtt < 0 || rtt > 500'000'000LL) return;
+
+        // EMA smoothing (α=0.3 for first 5 samples, then 0.1)
+        int64_t prev = clock_offset_ns_.load(std::memory_order_relaxed);
+        if (sync_ping_count_ < 5) {
+            sync_ping_count_++;
+            double alpha = 0.3;
+            int64_t smoothed = (int64_t)(prev * (1.0 - alpha) + offset * alpha);
+            clock_offset_ns_.store(smoothed, std::memory_order_relaxed);
+        } else {
+            double alpha = 0.1;
+            int64_t smoothed = (int64_t)(prev * (1.0 - alpha) + offset * alpha);
+            clock_offset_ns_.store(smoothed, std::memory_order_relaxed);
+        }
+
+        // First measurement: jump directly
+        if (sync_ping_count_ == 1) {
+            clock_offset_ns_.store(offset, std::memory_order_relaxed);
+        }
+
+        if (sync_ping_count_ <= 3) {
+            NSLog(@"[clock-sync] offset=%.2fms rtt=%.2fms (#%u)",
+                  offset / 1e6, rtt / 1e6, sync_ping_count_);
+        }
+    }
+
+    // ── NACK: send retransmit request for missing OSTP sequences (§8.2) ─────
+    // Builds PT=126 OSTP packet listing missing 16-bit seq numbers and sends
+    // to relay. Relay looks up replay buffer and retransmits matching packets.
+    void send_nack_for_gap(int32_t first_missing, int32_t count) {
+        if (udp_sock_ < 0) return;
+        int32_t n = std::min(count, (int32_t)32);
+        // packet layout: RTP(12) + OSTP_ext_hdr(4) + OSTP_ext_data(8) + payload(n*2) + CRC32(4)
+        const size_t body_len = 12 + 4 + 8 + (size_t)n * 2;
+        uint8_t pkt[12 + 4 + 8 + 64 + 4] = {};
+
+        // RTP header: V=2, X=1 (extension present), PT=126 (NACK)
+        pkt[0] = (2 << 6) | (1 << 4);   // V=2, X=1
+        pkt[1] = 126;                     // PT=NACK
+        pkt[2] = 0; pkt[3] = 1;          // sequence=1
+        // timestamp(4B)=0, SSRC(4B)=0 already zeroed
+
+        // OSTP extension header: profile=0x4F53, length=2 (2×32-bit words = 8 bytes)
+        pkt[12] = 0x4F; pkt[13] = 0x53;
+        pkt[14] = 0x00; pkt[15] = 0x02;
+        // extension data: stream_id(2B)=0, seq_ext(2B)=0, media_ts(4B)=0 already zeroed
+
+        // Payload: missing sequence numbers (big-endian u16)
+        for (int32_t i = 0; i < n; i++) {
+            uint16_t seq = (uint16_t)((first_missing + i) & 0xFFFF);
+            pkt[24 + i * 2]     = (seq >> 8) & 0xFF;
+            pkt[24 + i * 2 + 1] = seq & 0xFF;
+        }
+
+        // CRC-32 (IEEE 802.3, little-endian) over entire packet body
+        uint32_t crc = 0xFFFFFFFF;
+        for (size_t i = 0; i < body_len; i++) {
+            crc ^= pkt[i];
+            for (int b = 0; b < 8; b++)
+                crc = (crc >> 1) ^ (0xEDB88320u & -(crc & 1u));
+        }
+        crc = ~crc;
+        std::memcpy(pkt + body_len, &crc, 4);
+
+        ::sendto(udp_sock_, pkt, body_len + 4, 0,
+                 (struct sockaddr*)&relay_addr_, sizeof(relay_addr_));
+    }
+
+    // ── FEC recovery (§8.1): XOR parity over kFecGroupSize data packets ──────
+    // Called when a PT=127 FEC packet arrives. Looks up recent audio packets
+    // for the group [base_seq, base_seq+kFecGroupSize-1]. If exactly one is
+    // missing, reconstructs it via XOR and injects it as a synthetic packet.
+    void handle_fec_packet(const uint8_t* fec_pkt, size_t fec_len) {
+        if (fec_len < 29) return;  // need RTP(12) + OSTP_ext(12) + ≥1 payload byte + CRC(4)
+
+        uint16_t base_seq = (uint16_t)((fec_pkt[2] << 8) | fec_pkt[3]);
+
+        // Locate which seq in the group is missing and collect present payloads
+        // Audio payload in OSTP starts at offset 24 (after 12 RTP + 4 ext_hdr + 8 ext_data)
+        const size_t kHdrLen = 24;
+        const size_t kCrcLen = 4;
+        if (fec_len < kHdrLen + kCrcLen + 1) return;
+        size_t fec_payload_len = fec_len - kHdrLen - kCrcLen;
+
+        const uint8_t* fec_payload = fec_pkt + kHdrLen;
+
+        int missing_idx = -1;
+        std::vector<const uint8_t*> present_payloads;
+        std::vector<size_t> present_lens;
+        const uint8_t* missing_ref_pkt = nullptr;  // copy headers from this packet
+
+        for (int i = 0; i < kFecGroupSize; i++) {
+            uint16_t seq = (uint16_t)(base_seq + i);
+            bool found = false;
+            for (const auto& e : fec_rx_buf_) {
+                if (e.seq == seq && e.pkt.size() > kHdrLen + kCrcLen) {
+                    present_payloads.push_back(e.pkt.data() + kHdrLen);
+                    present_lens.push_back(e.pkt.size() - kHdrLen - kCrcLen);
+                    if (!missing_ref_pkt) missing_ref_pkt = e.pkt.data();
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                if (missing_idx >= 0) return;  // more than one missing, can't recover
+                missing_idx = i;
+            }
+        }
+
+        if (missing_idx < 0 || !missing_ref_pkt) return;  // nothing to recover
+
+        // Recover payload: recovered = FEC_payload XOR all_present_payloads
+        std::vector<uint8_t> recovered(fec_payload_len, 0);
+        for (size_t i = 0; i < fec_payload_len; i++) recovered[i] = fec_payload[i];
+        for (size_t p = 0; p < present_payloads.size(); p++) {
+            size_t len = std::min(present_lens[p], fec_payload_len);
+            for (size_t i = 0; i < len; i++) recovered[i] ^= present_payloads[p][i];
+        }
+
+        // Build synthetic OSTP packet for the missing sequence
+        uint16_t missing_seq = (uint16_t)(base_seq + missing_idx);
+        std::vector<uint8_t> syn_pkt(kHdrLen + recovered.size() + kCrcLen);
+        std::memcpy(syn_pkt.data(), missing_ref_pkt, kHdrLen);  // copy headers
+        syn_pkt[2] = (uint8_t)(missing_seq >> 8);               // fix seq number
+        syn_pkt[3] = (uint8_t)(missing_seq & 0xFF);
+        std::memcpy(syn_pkt.data() + kHdrLen, recovered.data(), recovered.size());
+
+        // CRC-32 over body (excluding CRC itself)
+        uint32_t crc = 0xFFFFFFFF;
+        for (size_t i = 0; i < kHdrLen + recovered.size(); i++) {
+            crc ^= syn_pkt[i];
+            for (int b = 0; b < 8; b++) crc = (crc >> 1) ^ (0xEDB88320u & -(crc & 1u));
+        }
+        crc = ~crc;
+        std::memcpy(syn_pkt.data() + kHdrLen + recovered.size(), &crc, 4);
+
+        // FEC recovery succeeded: remove from deferred NACK queue
+        fec_pending_seqs_.erase(missing_seq);
+
+        // Inject recovered packet into audio pipeline
+        {
+            std::lock_guard<std::mutex> lk(cb_mutex_);
+            if (rx_callback_) rx_callback_(syn_pkt.data(), syn_pkt.size());
+        }
+        append_debug("FEC recovered seq=" + std::to_string(missing_seq));
+    }
+
+public:
+    /// External IP:port as seen by relay (YOUR_ADDR response to JOIN, §6.6).
+    /// Empty until the relay responds. Useful for P2P hole-punching.
+    std::string external_addr() const { return external_addr_; }
+
+private:
+
     std::atomic<State> state_{State::Disconnected};
     std::atomic<bool> running_{false};
     int udp_sock_ = -1;
     sockaddr_in relay_addr_{};
-    std::string group_, error_;
+    std::string group_, error_, device_id_;
     std::thread recv_thread_;
     std::mutex cb_mutex_;
     RxCallback rx_callback_;
     MetaCallback meta_callback_;
     FileCallback file_callback_;
     SyncCallback sync_callback_;
+    MaxDelayCallback maxdelay_callback_;
     std::mutex peers_mutex_;
     std::vector<sockaddr_in> peers_;
+    mutable std::mutex debug_mutex_;
+    std::string debug_log_;
+    // Clock sync state:
+    std::atomic<int64_t> clock_offset_ns_{0};  // relay_time - local_time
+    uint32_t sync_ping_count_{0};
+    // NACK / FEC state:
+    int32_t nack_last_seq_ = -1;  // last received OSTP sequence (-1 = uninitialized)
+    int32_t rx_pkt_count_  = 0;   // total audio packets received (for FEC countdown)
+
+    // Deferred NACK: instead of NACKing immediately on gap detection, wait
+    // kFecGroupSize more packets to give the FEC parity packet time to arrive.
+    // fec_pending_seqs_ = seqs that are missing and awaiting FEC/NACK decision.
+    // nack_fire_at_     = maps (rx_pkt_count threshold) → seqs to NACK at that point.
+    std::set<uint16_t> fec_pending_seqs_;
+    std::map<int32_t, std::vector<uint16_t>> nack_fire_at_;
+
+    // YOUR_ADDR: external IP:port as seen by relay (for P2P hole-punching)
+    std::string external_addr_;   // "ip:port" string, empty until first JOIN response
+    // FEC receive buffer: store recent audio packets for XOR recovery (§8.1)
+    static constexpr int kFecGroupSize = 5;
+    static constexpr int kFecRxBufSize = 16;
+    struct FecRxEntry { uint16_t seq; std::vector<uint8_t> pkt; };
+    std::deque<FecRxEntry> fec_rx_buf_;  // last kFecRxBufSize data packets
 };
 
 /// Internal microphone transmitter implementation
@@ -1176,21 +1762,550 @@ private:
     std::thread broadcast_thread_;
 };
 
+// ── DJController — dual-deck with equal-power crossfader ──────────────────
+class DJController {
+public:
+    explicit DJController(WanRelayClient* relay)
+        : relay_(relay), crossfader_(0.5f), running_(false)
+        , ssrc_(arc4random())
+        , seq_(0), timestamp_(0)
+    {}
+    ~DJController() { stop(); }
+
+    struct Deck {
+        std::string filepath;
+        std::string track_name;
+        std::atomic<float> progress{0.0f};
+        std::atomic<bool> playing{false};
+        std::atomic<bool> pause{false};
+
+        // Audio file reading state (using ExtAudioFile)
+        ExtAudioFileRef ext_file = nullptr;
+        int64_t total_frames = 0;
+        int64_t played_frames = 0;
+
+        bool open(const std::string& path) {
+            CFURLRef url = CFURLCreateFromFileSystemRepresentation(
+                nullptr, (const UInt8*)path.c_str(), path.size(), false);
+            OSStatus err = ExtAudioFileOpenURL(url, &ext_file);
+            CFRelease(url);
+            if (err != noErr || !ext_file) return false;
+
+            // Tell ExtAudioFile to convert to float32 stereo 48kHz
+            AudioStreamBasicDescription out_fmt{};
+            out_fmt.mSampleRate = 48000;
+            out_fmt.mFormatID = kAudioFormatLinearPCM;
+            out_fmt.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
+            out_fmt.mBytesPerPacket = 8;
+            out_fmt.mFramesPerPacket = 1;
+            out_fmt.mBytesPerFrame = 8;
+            out_fmt.mChannelsPerFrame = 2;
+            out_fmt.mBitsPerChannel = 32;
+            ExtAudioFileSetProperty(ext_file, kExtAudioFileProperty_ClientDataFormat,
+                                    sizeof(out_fmt), &out_fmt);
+
+            int64_t file_frames = 0;
+            UInt32 prop_size = sizeof(file_frames);
+            ExtAudioFileGetProperty(ext_file, kExtAudioFileProperty_FileLengthFrames,
+                                    &prop_size, &file_frames);
+            total_frames = file_frames;
+            played_frames = 0;
+            return true;
+        }
+
+        // Read `frame_count` float stereo frames into `buf`. Returns actual frames read.
+        int64_t read_frames(float* buf, int64_t frame_count) {
+            if (!ext_file || pause.load()) return 0;
+            AudioBufferList abl{};
+            abl.mNumberBuffers = 1;
+            abl.mBuffers[0].mNumberChannels = 2;
+            abl.mBuffers[0].mDataByteSize = (UInt32)(frame_count * 8);
+            abl.mBuffers[0].mData = buf;
+            UInt32 frames = (UInt32)frame_count;
+            ExtAudioFileRead(ext_file, &frames, &abl);
+            played_frames += frames;
+            if (total_frames > 0) {
+                progress.store((float)played_frames / (float)total_frames,
+                               std::memory_order_relaxed);
+            }
+            return frames;
+        }
+
+        bool is_done() const {
+            return total_frames > 0 && played_frames >= total_frames;
+        }
+
+        void close() {
+            if (ext_file) { ExtAudioFileDispose(ext_file); ext_file = nullptr; }
+            playing.store(false);
+        }
+    };
+
+    bool start_deck_a(const std::string& path) {
+        deck_a_.close();
+        if (!deck_a_.open(path)) return false;
+        auto slash = path.rfind('/');
+        deck_a_.track_name = (slash != std::string::npos) ? path.substr(slash+1) : path;
+        deck_a_.playing.store(true);
+        deck_a_.pause.store(false);
+        if (!running_.load()) start_mix_thread();
+        return true;
+    }
+
+    bool start_deck_b(const std::string& path) {
+        deck_b_.close();
+        if (!deck_b_.open(path)) return false;
+        auto slash = path.rfind('/');
+        deck_b_.track_name = (slash != std::string::npos) ? path.substr(slash+1) : path;
+        deck_b_.playing.store(true);
+        deck_b_.pause.store(false);
+        if (!running_.load()) start_mix_thread();
+        return true;
+    }
+
+    void toggle_deck_a() { deck_a_.pause.store(!deck_a_.pause.load()); }
+    void toggle_deck_b() { deck_b_.pause.store(!deck_b_.pause.load()); }
+
+    void set_crossfader(float v) { crossfader_.store(std::max(0.f, std::min(1.f, v))); }
+    float get_crossfader() const { return crossfader_.load(); }
+
+    float deck_a_progress() const { return deck_a_.progress.load(); }
+    float deck_b_progress() const { return deck_b_.progress.load(); }
+    bool deck_a_playing() const { return deck_a_.playing.load() && !deck_a_.pause.load(); }
+    bool deck_b_playing() const { return deck_b_.playing.load() && !deck_b_.pause.load(); }
+    std::string deck_a_track() const { return deck_a_.track_name; }
+    std::string deck_b_track() const { return deck_b_.track_name; }
+    bool is_active() const { return running_.load(); }
+
+    void stop() {
+        running_.store(false);
+        if (mix_thread_.joinable()) mix_thread_.join();
+        deck_a_.close();
+        deck_b_.close();
+    }
+
+private:
+    WanRelayClient* relay_;
+    std::atomic<float> crossfader_;
+    std::atomic<bool> running_;
+    uint32_t ssrc_, seq_;
+    uint32_t timestamp_;
+    Deck deck_a_, deck_b_;
+    std::thread mix_thread_;
+
+    void start_mix_thread() {
+        running_.store(true);
+        mix_thread_ = std::thread([this]() { mix_loop(); });
+    }
+
+    void mix_loop() {
+        static constexpr int kFrames = 960; // 20ms at 48kHz
+        static constexpr int kCh = 2;
+        static constexpr double kInterval = (double)kFrames / 48000.0;
+
+        std::vector<float> buf_a(kFrames * kCh, 0.f);
+        std::vector<float> buf_b(kFrames * kCh, 0.f);
+        std::vector<int16_t> mix_out(kFrames * kCh, 0);
+
+        auto next_time = std::chrono::steady_clock::now();
+
+        while (running_.load()) {
+            next_time += std::chrono::duration<double>(kInterval);
+
+            // Read from both decks
+            std::fill(buf_a.begin(), buf_a.end(), 0.f);
+            std::fill(buf_b.begin(), buf_b.end(), 0.f);
+
+            if (deck_a_.playing.load()) {
+                deck_a_.read_frames(buf_a.data(), kFrames);
+                if (deck_a_.is_done()) { deck_a_.close(); }
+            }
+            if (deck_b_.playing.load()) {
+                deck_b_.read_frames(buf_b.data(), kFrames);
+                if (deck_b_.is_done()) { deck_b_.close(); }
+            }
+
+            // Equal-power crossfade
+            float cf = crossfader_.load();
+            float gain_a = cosf(cf * (float)M_PI_2);
+            float gain_b = sinf(cf * (float)M_PI_2);
+
+            // Mix and convert to int16
+            for (int i = 0; i < kFrames * kCh; i++) {
+                float s = buf_a[i] * gain_a + buf_b[i] * gain_b;
+                s = std::max(-1.f, std::min(1.f, s));
+                mix_out[i] = (int16_t)(s * 32767.f);
+            }
+
+            // Build OSTP packet and send
+            if (deck_a_.playing.load() || deck_b_.playing.load()) {
+                send_ostp(mix_out.data(), kFrames * kCh);
+            }
+
+            // Sleep until next frame boundary
+            std::this_thread::sleep_until(next_time);
+        }
+    }
+
+    void send_ostp(const int16_t* pcm, int sample_count) {
+        if (!relay_) return;
+
+        const int kHeaderSize = 24; // RTP(12) + RTP-ext header(4) + OSTP ext(8)
+        const int payload_bytes = sample_count * (int)sizeof(int16_t);
+        const int total = kHeaderSize + payload_bytes + 4; // +4 for CRC
+
+        std::vector<uint8_t> pkt(total, 0);
+
+        // RTP header
+        pkt[0] = 0x90; // V=2, X=1
+        pkt[1] = 96;   // PT=96 (PCM dynamic)
+        pkt[2] = (seq_ >> 8) & 0xFF;
+        pkt[3] = seq_ & 0xFF;
+        pkt[4] = (timestamp_ >> 24) & 0xFF;
+        pkt[5] = (timestamp_ >> 16) & 0xFF;
+        pkt[6] = (timestamp_ >> 8)  & 0xFF;
+        pkt[7] =  timestamp_ & 0xFF;
+        pkt[8]  = (ssrc_ >> 24) & 0xFF;
+        pkt[9]  = (ssrc_ >> 16) & 0xFF;
+        pkt[10] = (ssrc_ >> 8)  & 0xFF;
+        pkt[11] =  ssrc_ & 0xFF;
+
+        // RTP extension: OSTP profile 'OS'
+        pkt[12] = 0x4F; pkt[13] = 0x53; // profile
+        pkt[14] = 0x00; pkt[15] = 0x02; // length=2 (8 bytes)
+
+        // OSTP ext: stream_id=0x0200 (deck=0, ch=2 stereo), seq_ext, media_ts
+        pkt[16] = 0x02; pkt[17] = 0x00; // stream_id
+        pkt[18] = 0x00; pkt[19] = 0x00; // seq_ext
+        pkt[20] = (timestamp_ >> 24) & 0xFF;
+        pkt[21] = (timestamp_ >> 16) & 0xFF;
+        pkt[22] = (timestamp_ >> 8)  & 0xFF;
+        pkt[23] =  timestamp_ & 0xFF;
+
+        // PCM payload
+        memcpy(pkt.data() + 24, pcm, payload_bytes);
+
+        // CRC-32
+        uint32_t crc = 0xFFFFFFFF;
+        for (int i = 0; i < 24 + payload_bytes; i++) {
+            crc ^= pkt[i];
+            for (int j = 0; j < 8; j++) crc = (crc >> 1) ^ (crc & 1 ? 0xEDB88320u : 0u);
+        }
+        crc = ~crc;
+        pkt[24 + payload_bytes + 0] = (crc >> 24) & 0xFF;
+        pkt[24 + payload_bytes + 1] = (crc >> 16) & 0xFF;
+        pkt[24 + payload_bytes + 2] = (crc >> 8)  & 0xFF;
+        pkt[24 + payload_bytes + 3] =  crc & 0xFF;
+
+        seq_++;
+        timestamp_ += 960;
+
+        relay_->send_audio(pkt.data(), pkt.size());
+    }
+};
+
+// ── Multi-source audio mixer ────────────────────────────────────────────────
+// Maintains per-SSRC ring buffers and mixes them into a single output buffer.
+// Used when talk_mode is active to support multiple simultaneous speakers.
+class MultiSourceMixer {
+public:
+    static constexpr size_t kMaxSources = 64;
+    static constexpr size_t kRingFrames = 48000;  // 1 second at 48kHz
+    static constexpr size_t kMaxChannels = 8;
+    static constexpr size_t kTimeoutMs = 5000;    // Remove inactive sources after 5s
+    static constexpr size_t kTopN = 8;            // Mix only the loudest N speakers
+    static constexpr float  kVadThreshold = 200.0f;  // RMS threshold for voice activity (int32 scale)
+    static constexpr float  kAgcTarget = 0.25f;   // Target RMS level (normalized to INT32_MAX)
+    static constexpr float  kAgcAttack = 0.01f;   // AGC gain smoothing (fast attack)
+    static constexpr float  kAgcRelease = 0.001f; // AGC gain smoothing (slow release)
+    static constexpr float  kFadeInRate = 0.02f;  // Smooth fade-in per frame when becoming active
+    static constexpr float  kFadeOutRate = 0.005f; // Smooth fade-out per frame when muted
+
+    struct Source {
+        uint32_t ssrc = 0;
+        std::vector<int32_t> ring;
+        size_t write_pos = 0;
+        size_t read_pos = 0;
+        uint32_t channels = 2;
+        std::chrono::steady_clock::time_point last_seen;
+        bool active = false;
+
+        // VAD: energy-based voice activity detection
+        float rms_energy = 0.0f;      // Smoothed RMS energy (EMA)
+        bool  voice_active = false;    // Currently speaking?
+
+        // AGC: per-source automatic gain control
+        float agc_gain = 1.0f;        // Current gain multiplier
+
+        // Spatial panning: position in stereo field (-1.0 = full left, +1.0 = full right)
+        float pan = 0.0f;             // Assigned on creation, spread evenly
+        float pan_gain_l = 1.0f;
+        float pan_gain_r = 1.0f;
+
+        // Smooth fade for mute/unmute transitions
+        float fade = 0.0f;            // 0.0 = silent, 1.0 = full volume
+
+        // Source index (for deterministic pan assignment)
+        uint32_t slot_index = 0;
+    };
+
+    MultiSourceMixer() {
+        for (size_t i = 0; i < kMaxSources; i++) {
+            sources_[i].ring.resize(kRingFrames * 2, 0);  // Stereo by default
+            sources_[i].slot_index = static_cast<uint32_t>(i);
+        }
+    }
+
+    // Write decoded PCM from a specific SSRC into its ring buffer
+    void write(uint32_t ssrc, const int32_t* data, size_t frames, uint32_t channels) {
+        auto* src = find_or_create(ssrc, channels);
+        if (!src) return;
+        src->last_seen = std::chrono::steady_clock::now();
+        src->channels = channels;
+
+        // Resize ring if channel count changed
+        size_t needed = kRingFrames * channels;
+        if (src->ring.size() != needed) {
+            src->ring.resize(needed, 0);
+            src->write_pos = 0;
+            src->read_pos = 0;
+        }
+
+        // Update RMS energy for VAD (exponential moving average)
+        double sum_sq = 0.0;
+        size_t samples = frames * channels;
+        for (size_t i = 0; i < samples; i++) {
+            double s = static_cast<double>(data[i]);
+            sum_sq += s * s;
+        }
+        float frame_rms = static_cast<float>(std::sqrt(sum_sq / std::max(samples, size_t(1))));
+        src->rms_energy = src->rms_energy * 0.85f + frame_rms * 0.15f;  // EMA α=0.15
+        src->voice_active = (src->rms_energy > kVadThreshold);
+
+        // AGC: adjust gain toward target level
+        if (src->voice_active && frame_rms > 0.0f) {
+            float target_rms = kAgcTarget * static_cast<float>(INT32_MAX);
+            float desired_gain = target_rms / frame_rms;
+            desired_gain = std::max(0.1f, std::min(4.0f, desired_gain));  // Clamp gain range
+            float alpha = (desired_gain < src->agc_gain) ? kAgcAttack : kAgcRelease;
+            src->agc_gain = src->agc_gain * (1.0f - alpha) + desired_gain * alpha;
+        }
+
+        // Write to ring buffer
+        for (size_t i = 0; i < samples; i++) {
+            src->ring[(src->write_pos + i) % src->ring.size()] = data[i];
+        }
+        src->write_pos = (src->write_pos + samples) % src->ring.size();
+    }
+
+    // Read mixed audio from active sources with VAD + Top-N + spatial panning + AGC
+    size_t read_mixed(int32_t* output, size_t frames, uint32_t out_channels) {
+        size_t total_samples = frames * out_channels;
+        std::memset(output, 0, total_samples * sizeof(int32_t));
+
+        auto now = std::chrono::steady_clock::now();
+
+        // Step 1: Collect active sources and sort by energy (Top-N selection)
+        struct Candidate { Source* src; float energy; size_t avail; };
+        std::vector<Candidate> candidates;
+        candidates.reserve(kMaxSources);
+
+        for (auto& src : sources_) {
+            if (!src.active) continue;
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - src.last_seen).count();
+            if (elapsed > static_cast<long long>(kTimeoutMs)) {
+                src.active = false;
+                src.fade = 0.0f;
+                continue;
+            }
+
+            size_t src_samples = frames * src.channels;
+            size_t avail = (src.write_pos >= src.read_pos)
+                ? (src.write_pos - src.read_pos)
+                : (src.ring.size() - src.read_pos + src.write_pos);
+            if (avail < src_samples) continue;
+
+            candidates.push_back({&src, src.rms_energy, avail});
+        }
+
+        // Sort by energy descending — loudest speakers first
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const Candidate& a, const Candidate& b) { return a.energy > b.energy; });
+
+        // Step 2: Mix Top-N sources with VAD gating, AGC, and spatial panning
+        size_t mixed_count = 0;
+        for (size_t ci = 0; ci < candidates.size(); ci++) {
+            auto* src = candidates[ci].src;
+            bool should_mix = (ci < kTopN) && src->voice_active;
+
+            // Smooth fade in/out
+            float target_fade = should_mix ? 1.0f : 0.0f;
+            // Process per-frame for smooth transitions
+
+            size_t src_samples = frames * src->channels;
+            float gain = src->agc_gain;
+            float pan_l = src->pan_gain_l;
+            float pan_r = src->pan_gain_r;
+
+            for (size_t f = 0; f < frames; f++) {
+                // Update fade
+                if (src->fade < target_fade) {
+                    src->fade = std::min(src->fade + kFadeInRate, 1.0f);
+                } else if (src->fade > target_fade) {
+                    src->fade = std::max(src->fade - kFadeOutRate, 0.0f);
+                }
+
+                if (src->fade < 0.001f) continue;  // Skip if fully faded out
+
+                float frame_gain = gain * src->fade;
+
+                if (out_channels >= 2) {
+                    // Stereo output with spatial panning
+                    int32_t src_l = 0, src_r = 0;
+                    size_t base = (src->read_pos + f * src->channels) % src->ring.size();
+                    src_l = src->ring[base];
+                    if (src->channels >= 2) {
+                        src_r = src->ring[(base + 1) % src->ring.size()];
+                    } else {
+                        src_r = src_l;  // Mono source → duplicate
+                    }
+
+                    int64_t out_l = (int64_t)output[f * out_channels + 0]
+                                  + (int64_t)(src_l * frame_gain * pan_l);
+                    int64_t out_r = (int64_t)output[f * out_channels + 1]
+                                  + (int64_t)(src_r * frame_gain * pan_r);
+                    output[f * out_channels + 0] = (int32_t)std::clamp(out_l, (int64_t)INT32_MIN, (int64_t)INT32_MAX);
+                    output[f * out_channels + 1] = (int32_t)std::clamp(out_r, (int64_t)INT32_MIN, (int64_t)INT32_MAX);
+                } else {
+                    // Mono output
+                    size_t base = (src->read_pos + f * src->channels) % src->ring.size();
+                    int32_t sample = src->ring[base];
+                    if (src->channels >= 2) {
+                        sample = (int32_t)(((int64_t)sample + src->ring[(base + 1) % src->ring.size()]) / 2);
+                    }
+                    int64_t out_m = (int64_t)output[f] + (int64_t)(sample * frame_gain);
+                    output[f] = (int32_t)std::clamp(out_m, (int64_t)INT32_MIN, (int64_t)INT32_MAX);
+                }
+            }
+
+            src->read_pos = (src->read_pos + src_samples) % src->ring.size();
+            if (src->fade > 0.001f) mixed_count++;
+        }
+
+        return (mixed_count > 0) ? frames : 0;
+    }
+
+    size_t active_source_count() const {
+        size_t count = 0;
+        for (const auto& s : sources_) if (s.active) count++;
+        return count;
+    }
+
+    size_t speaking_count() const {
+        size_t count = 0;
+        for (const auto& s : sources_) if (s.active && s.voice_active) count++;
+        return count;
+    }
+
+    bool has_data(size_t frames, uint32_t channels) const {
+        for (const auto& src : sources_) {
+            if (!src.active) continue;
+            size_t src_samples = frames * src.channels;
+            size_t avail = (src.write_pos >= src.read_pos)
+                ? (src.write_pos - src.read_pos)
+                : (src.ring.size() - src.read_pos + src.write_pos);
+            if (avail >= src_samples) return true;
+        }
+        return false;
+    }
+
+private:
+    Source* find_or_create(uint32_t ssrc, uint32_t channels) {
+        // Find existing
+        for (auto& s : sources_) {
+            if (s.active && s.ssrc == ssrc) return &s;
+        }
+        // Find empty slot
+        for (size_t i = 0; i < kMaxSources; i++) {
+            if (!sources_[i].active) {
+                auto& s = sources_[i];
+                s.ssrc = ssrc;
+                s.channels = channels;
+                s.write_pos = 0;
+                s.read_pos = 0;
+                s.active = true;
+                s.voice_active = false;
+                s.rms_energy = 0.0f;
+                s.agc_gain = 1.0f;
+                s.fade = 0.0f;
+                s.last_seen = std::chrono::steady_clock::now();
+                // Assign spatial pan position: spread evenly across stereo field
+                assign_pan(s);
+                std::memset(s.ring.data(), 0, s.ring.size() * sizeof(int32_t));
+                return &s;
+            }
+        }
+        // All slots full, evict the oldest inactive source
+        Source* oldest = nullptr;
+        for (auto& s : sources_) {
+            if (!s.voice_active && (!oldest || s.last_seen < oldest->last_seen)) {
+                oldest = &s;
+            }
+        }
+        if (!oldest) oldest = &sources_[0];  // Fallback: evict first
+        oldest->ssrc = ssrc;
+        oldest->channels = channels;
+        oldest->write_pos = 0;
+        oldest->read_pos = 0;
+        oldest->active = true;
+        oldest->voice_active = false;
+        oldest->rms_energy = 0.0f;
+        oldest->agc_gain = 1.0f;
+        oldest->fade = 0.0f;
+        oldest->last_seen = std::chrono::steady_clock::now();
+        assign_pan(*oldest);
+        std::memset(oldest->ring.data(), 0, oldest->ring.size() * sizeof(int32_t));
+        return oldest;
+    }
+
+    // Assign stereo pan position based on slot index
+    // Spreads sources across the stereo field: center, left, right, ...
+    void assign_pan(Source& s) {
+        // Pattern: 0=center, 1=left30%, 2=right30%, 3=left60%, 4=right60%, ...
+        uint32_t idx = s.slot_index;
+        if (idx == 0) {
+            s.pan = 0.0f;
+        } else {
+            float spread = 0.3f * ((idx + 1) / 2);  // 0.3, 0.3, 0.6, 0.6, 0.9, 0.9, ...
+            spread = std::min(spread, 0.9f);
+            s.pan = (idx % 2 == 1) ? -spread : spread;
+        }
+        // Equal-power panning (constant-power law)
+        float angle = (s.pan + 1.0f) * 0.5f;  // 0.0 (left) to 1.0 (right)
+        s.pan_gain_l = std::cos(angle * static_cast<float>(M_PI) * 0.5f);
+        s.pan_gain_r = std::sin(angle * static_cast<float>(M_PI) * 0.5f);
+    }
+
+    std::array<Source, kMaxSources> sources_;
+};
+
 /// Internal receiver implementation
 class ReceiverImpl {
 public:
+    static constexpr uint32_t kMaxRxChannels = 8;  // Support up to 7.1ch
+
     ReceiverImpl(const std::string& multicast_group, uint16_t port, uint32_t channels)
         : multicast_group_(multicast_group)
         , port_(port)
-        , channels_(channels)
+        , channels_(channels)      // Output channels: 1=mono (downmix), 2=stereo
         , volume_(1.0f)
         , muted_(false)
         , running_(false)
-        , target_fill_frames_(2880)  // 60ms initial — adaptive algorithm grows as needed
-        , ring_buffer_(192000, channels * sizeof(int32_t)) // 4s capacity for WiFi jitter
-        , read_buffer_(4096 * channels)
-        , drain_buf_(4096 * channels)
-        , held_sample_(channels, 0)
+        , target_fill_frames_(1440)  // 30ms initial
+        , ring_buffer_(192000, kMaxRxChannels * sizeof(int32_t)) // 4s capacity, max channels
+        , read_buffer_(4096 * kMaxRxChannels)
+        , drain_buf_(4096 * kMaxRxChannels)
+        , held_sample_(kMaxRxChannels, 0)
         , ramp_(0.0f)
     {}
 
@@ -1201,11 +2316,11 @@ public:
     bool start() {
         if (running_.load()) return false;
 
-        // Create RTP receiver
+        // Create RTP receiver — channel count auto-detected from OSTP stream_id
         SimpleRtpReceiver::Config rx_config;
         rx_config.listen_port = port_;
         rx_config.multicast_group = multicast_group_;
-        rx_config.channels = channels_;
+        rx_config.channels = kMaxRxChannels;  // Max capacity; actual count detected per-packet
         rx_config.format = SampleFormat::S24_LE;
         rx_config.mode = ReceiveMode::Auto;
 
@@ -1218,6 +2333,13 @@ public:
         rtp_receiver_->sync_target_frames_ = &target_fill_frames_;
         rtp_receiver_->sync_playout_delay_ms_ = 80.0;
 
+        // Wire up multi-source mixer callback (feeds decoded PCM per-SSRC)
+        rtp_receiver_->on_decoded = [this](uint32_t ssrc, const int32_t* data, size_t frames, uint32_t channels) {
+            if (talk_mode_active_.load(std::memory_order_relaxed)) {
+                multi_mixer_.write(ssrc, data, frames, channels);
+            }
+        };
+
         // Create audio output device
         audio_device_ = pal::AudioDevice::create();
         if (!audio_device_) {
@@ -1226,8 +2348,8 @@ public:
 
         pal::AudioStreamConfig audio_config;
         audio_config.sample_rate = kDefaultSampleRate;
-        audio_config.channels = channels_;
-        audio_config.frames_per_buffer = 512;  // ~10ms — more headroom for WiFi jitter
+        audio_config.channels = channels_;  // Output: user's choice (1=mono, 2=stereo)
+        audio_config.frames_per_buffer = 512;
         audio_config.format = SampleFormat::S24_LE;
 
         if (!audio_device_->open_output("default", audio_config)) {
@@ -1327,6 +2449,8 @@ public:
         sync_mode_.store(enabled);
         if (enabled) {
             target_fill_frames_.store(sync_delay_ms_.load() * 48u);
+            sync_samples_count_ = 0;  // Reset for fast convergence on new session
+            sync_delay_idx_ = 0;
         }
     }
     bool is_sync_mode() const { return sync_mode_.load(); }
@@ -1347,6 +2471,10 @@ public:
     // ── Loudness normalization (EBU R128) ─────────────────────────────────
     void set_loudness_norm(bool enabled) { loudness_norm_enabled_.store(enabled); }
     bool is_loudness_norm() const { return loudness_norm_enabled_.load(); }
+
+    // ── Talk mode (multi-speaker) ──────────────────────────────────────────
+    void set_talk_mode(bool enabled) { talk_mode_active_.store(enabled, std::memory_order_relaxed); }
+    bool is_talk_mode() const { return talk_mode_active_.load(std::memory_order_relaxed); }
 
     // ── 3-Band EQ ─────────────────────────────────────────────────────────
     void set_eq(int band, float gain_db) {
@@ -1371,6 +2499,12 @@ public:
         record_callback_ = std::move(cb);
     }
 
+    // ── Sample Tap (for fingerprinting) ──────────────────────────────────
+    void set_sample_tap_callback(std::function<void(const float*, uint32_t, uint32_t)> cb) {
+        std::lock_guard<std::mutex> lock(sample_tap_mutex_);
+        sample_tap_callback_ = std::move(cb);
+    }
+
     SimpleRtpReceiver::Stats stats() const {
         if (rtp_receiver_) return rtp_receiver_->stats_snapshot();
         return {};
@@ -1392,7 +2526,41 @@ public:
     }
 
     void inject_raw_packet(const uint8_t* data, size_t len) {
-        if (rtp_receiver_) rtp_receiver_->inject_raw_packet(data, len, ring_buffer_);
+        if (!rtp_receiver_) return;
+        // When FileSync is active, skip PCM stream injection to avoid mixing
+        if (filesync_network_disabled_.load(std::memory_order_relaxed)) return;
+        // On first relay packet: flush stale data & set reasonable buffer
+        if (!relay_first_packet_received_.load(std::memory_order_relaxed)) {
+            relay_first_packet_received_.store(true, std::memory_order_relaxed);
+            flush_requested_.store(true, std::memory_order_release);
+            target_fill_frames_.store(24000, std::memory_order_relaxed);  // 500ms — WAN jitter cushion (EU→JP ~250ms RTT)
+            health_.store(0, std::memory_order_relaxed);
+            health_silenced_.store(false, std::memory_order_relaxed);
+            health_window_start_ms_ = 0;
+            health_underruns_in_window_ = 0;
+            last_underrun_ms_ = 0;
+            NSLog(@"[relay] First packet — buffer flushed, target=24000 (500ms)");
+        }
+        relay_inject_count_++;
+        rtp_receiver_->inject_raw_packet(data, len, ring_buffer_);
+
+        // Propagate detected TX channel count from receiver to audio callback
+        uint32_t rx_tx_ch = rtp_receiver_->detected_tx_channels_.load(std::memory_order_relaxed);
+        if (rx_tx_ch > 0) {
+            detected_tx_channels_.store(rx_tx_ch, std::memory_order_relaxed);
+        }
+
+        // Periodic stats log (every ~5 seconds at 500pps)
+        if (relay_inject_count_ % 2500 == 0) {
+            auto st = rtp_receiver_->stats();
+            size_t fill = ring_buffer_.available_read();
+            uint32_t tx_ch = detected_tx_channels_.load(std::memory_order_relaxed);
+            NSLog(@"[relay] pkts=%llu ostp=%llu seq_err=%llu fill=%zu target=%u tx_ch=%u",
+                  (unsigned long long)st.packets_received,
+                  (unsigned long long)st.ostp_packets,
+                  (unsigned long long)st.sequence_errors,
+                  fill, target_fill_frames_.load(), tx_ch);
+        }
     }
 
     void inject_pcm_samples(const int32_t* samples, size_t frame_count) {
@@ -1406,7 +2574,8 @@ public:
     // ── WAN Relay ─────────────────────────────────────────────────────────
 
     bool wan_relay_connect(const std::string& host, uint16_t port,
-                           const std::string& group, const std::string& password) {
+                           const std::string& group, const std::string& password,
+                           const std::string& device_id = "") {
         if (!wan_relay_) wan_relay_ = std::make_unique<WanRelayClient>();
         wan_relay_->set_rx_callback([this](const uint8_t* data, size_t len) {
             inject_raw_packet(data, len);
@@ -1416,10 +2585,27 @@ public:
         if (stored_meta_cb_) wan_relay_->set_meta_callback(stored_meta_cb_);
         if (stored_file_cb_) wan_relay_->set_file_callback(stored_file_cb_);
         if (stored_sync_cb_) wan_relay_->set_sync_callback(stored_sync_cb_);
-        bool ok = wan_relay_->connect(host, port, group, password, "iPhone");
+        // MAXDELAY: adapt sync_delay_ms_ to group-wide max (up to 2000ms)
+        wan_relay_->set_maxdelay_callback([this](uint32_t max_ms) {
+            uint32_t capped = std::min(max_ms, 2000u);
+            uint32_t current = sync_delay_ms_.load(std::memory_order_relaxed);
+            if (capped != current) {
+                sync_delay_ms_.store(capped, std::memory_order_relaxed);
+                NSLog(@"[sync] MAXDELAY received: %u ms (was %u ms)", capped, current);
+            }
+        });
+        // Reset first-packet flag BEFORE connect so inject_raw_packet triggers buffer reset
+        relay_first_packet_received_.store(false, std::memory_order_relaxed);
+        bool ok = wan_relay_->connect(host, port, group, password, "iPhone", device_id);
         if (ok) {
             // Switch to relay-only mode: multicast is LAN-only, relay carries WAN audio
             relay_network_disabled_.store(true);
+            // Force stable buffer for relay — sync mode EMA may have reduced it
+            target_fill_frames_.store(24000, std::memory_order_relaxed);  // 500ms WAN jitter cushion (EU→JP ~250ms RTT)
+            health_.store(0, std::memory_order_relaxed);
+            health_silenced_.store(false, std::memory_order_relaxed);
+            prefilled_ = false;  // Re-prefill with relay data
+            NSLog(@"[relay] Connected — forced target=24000 (500ms), reset health");
         }
         return ok;
     }
@@ -1439,6 +2625,14 @@ public:
 
     std::string wan_relay_error() const {
         return wan_relay_ ? wan_relay_->error() : "";
+    }
+
+    std::string wan_relay_external_addr() const {
+        return wan_relay_ ? wan_relay_->external_addr() : "";
+    }
+
+    std::string wan_relay_debug_log() const {
+        return wan_relay_ ? wan_relay_->get_debug_log() : "no relay";
     }
 
     void wan_relay_set_meta_callback(WanRelayClient::MetaCallback cb) {
@@ -1464,6 +2658,22 @@ public:
         if (wan_relay_) wan_relay_->send_audio(data, len);
     }
 
+    void wan_relay_mic_allow(const std::string& device_id) {
+        if (wan_relay_) wan_relay_->send_mic_allow(device_id);
+    }
+
+    void wan_relay_mic_deny(const std::string& device_id) {
+        if (wan_relay_) wan_relay_->send_mic_deny(device_id);
+    }
+
+    void wan_relay_mic_list() {
+        if (wan_relay_) wan_relay_->send_mic_list();
+    }
+
+    void wan_relay_members() {
+        if (wan_relay_) wan_relay_->send_members();
+    }
+
     std::unique_ptr<WanRelayClient> wan_relay_;
     WanRelayClient::MetaCallback stored_meta_cb_;
     WanRelayClient::FileCallback stored_file_cb_;
@@ -1473,6 +2683,10 @@ public:
     float output_peak() const { return output_peak_.load(std::memory_order_relaxed); }
     size_t ring_buffer_available_read() const { return ring_buffer_.available_read(); }
     uint32_t get_target_fill_frames() const { return target_fill_frames_.load(); }
+    bool is_prefilled() const { return prefilled_; }
+    bool is_health_silenced() const { return health_silenced_.load(std::memory_order_relaxed); }
+    float get_volume() const { return volume_.load(std::memory_order_relaxed); }
+    bool is_relay_first_packet() const { return relay_first_packet_received_.load(std::memory_order_relaxed); }
     SimpleRtpReceiver::Stats get_rtp_stats() const {
         return rtp_receiver_ ? rtp_receiver_->stats_snapshot() : SimpleRtpReceiver::Stats{};
     }
@@ -1488,6 +2702,11 @@ private:
     }
 
     void record_underrun_now() {
+        // Before first relay packet: skip entirely to prevent hp=2/sil=1 on startup.
+        if (!relay_first_packet_received_.load(std::memory_order_relaxed)) {
+            return;
+        }
+
         uint64_t now = now_ms_();
         if (health_window_start_ms_ == 0 || now - health_window_start_ms_ >= 30000) {
             health_window_start_ms_ = now;
@@ -1497,12 +2716,18 @@ private:
         last_underrun_ms_ = now;
 
         // ── Adaptive buffer: increase on underrun ──────────────────────────
-        // Bump target by 20ms (960 frames @ 48kHz) each underrun, up to 2000ms max.
+        // Bump target by 50ms (2400 frames @ 48kHz) each underrun, up to 2000ms max.
+        // Critical for WAN relay: jitter can exceed 500ms initial buffer.
         uint32_t cur_target = target_fill_frames_.load(std::memory_order_relaxed);
-        constexpr uint32_t kBumpFrames = 960;    // 20ms
+        constexpr uint32_t kBumpFrames = 2400;   // 50ms
         constexpr uint32_t kMaxTarget  = 96000;  // 2000ms
         if (cur_target + kBumpFrames <= kMaxTarget) {
             target_fill_frames_.store(cur_target + kBumpFrames, std::memory_order_relaxed);
+        }
+
+        // In relay mode, skip health degradation (silencing) — only grow buffer
+        if (relay_network_disabled_.load(std::memory_order_relaxed)) {
+            return;
         }
 
         int cur = health_.load(std::memory_order_relaxed);
@@ -1523,10 +2748,12 @@ private:
         // ── Adaptive buffer: shrink when stable ────────────────────────────
         // If no underrun for 5 seconds, reduce target by 5ms (240 frames).
         // This slowly converges to the minimum viable buffer for the network.
+        // Skip shrinking in relay mode — buffer needs to stay large for stability.
         constexpr uint32_t kShrinkFrames = 240;   // 5ms
         constexpr uint32_t kMinTarget    = 1440;   // 30ms floor
         uint64_t now = now_ms_();
-        if (last_underrun_ms_ != 0 && now - last_underrun_ms_ >= 5000) {
+        if (!relay_network_disabled_.load(std::memory_order_relaxed) &&
+            last_underrun_ms_ != 0 && now - last_underrun_ms_ >= 5000) {
             uint32_t cur_target = target_fill_frames_.load(std::memory_order_relaxed);
             if (cur_target > kMinTarget + kShrinkFrames) {
                 target_fill_frames_.store(cur_target - kShrinkFrames, std::memory_order_relaxed);
@@ -1563,9 +2790,21 @@ private:
                 for (int i = 0; i < 10 && running_.load(); i++) {
                     if (!rtp_receiver_->receive_packet(ring_buffer_)) break;
                 }
+                // Propagate detected TX channel count from receiver to audio callback
+                uint32_t rx_tx_ch = rtp_receiver_->detected_tx_channels_.load(std::memory_order_relaxed);
+                if (rx_tx_ch > 0) {
+                    detected_tx_channels_.store(rx_tx_ch, std::memory_order_relaxed);
+                }
             }
 
             // ── Sync mode: adjust buffer target from OSTP wall-clock timestamps ──
+            // Uses NTP-like clock sync to correct offset between TX and RX clocks.
+            // All devices seeing the same media_timestamp will converge to the same
+            // playout offset, achieving multi-device synchronization within ±5ms.
+            // Propagate clock offset from relay client (updated every 5s via PT=125)
+            if (wan_relay_) {
+                clock_offset_ns_.store(wan_relay_->clock_offset_ns(), std::memory_order_relaxed);
+            }
             if (sync_mode_.load(std::memory_order_relaxed) && rtp_receiver_) {
                 uint32_t media_ts = rtp_receiver_->last_media_timestamp.load(std::memory_order_relaxed);
                 if (media_ts != 0) {
@@ -1574,18 +2813,67 @@ private:
                     uint32_t now_ns32 = static_cast<uint32_t>(
                         (static_cast<uint64_t>(now_ts.tv_sec) * 1'000'000'000ULL + now_ts.tv_nsec)
                         & 0xFFFFFFFF);
-                    int32_t net_delay_ns = static_cast<int32_t>(now_ns32 - media_ts);
+                    // Apply clock offset correction (relay_time - local_time)
+                    // media_ts is stamped by TX (relay's clock reference).
+                    // Subtracting offset adjusts local now to relay's time frame.
+                    int64_t offset_ns = clock_offset_ns_.load(std::memory_order_relaxed);
+                    int32_t net_delay_ns = static_cast<int32_t>(now_ns32 - media_ts)
+                                           + static_cast<int32_t>(offset_ns & 0xFFFFFFFF);
                     if (net_delay_ns >= 0 && net_delay_ns < 2'000'000'000) {
                         // Add hardware output latency (Bluetooth/AirPlay) to sync delay
                         float hw_latency_ms = output_latency_ms_.load(std::memory_order_relaxed);
                         uint32_t total_delay_ms = sync_delay_ms_.load() + static_cast<uint32_t>(hw_latency_ms);
                         uint32_t sync_delay_ns = total_delay_ms * 1'000'000u;
                         int32_t buffer_ns = static_cast<int32_t>(sync_delay_ns) - net_delay_ns;
-                        if (buffer_ns < 5'000'000) buffer_ns = 5'000'000;
+                        if (buffer_ns < 5'000'000) buffer_ns = 5'000'000;   // 5ms floor
                         uint32_t target = static_cast<uint32_t>(
                             (static_cast<int64_t>(buffer_ns) * 48000) / 1'000'000'000LL);
+
+                        // Adaptive EMA: fast convergence initially (α=0.2), slow when stable (α=0.02)
+                        // This lets new devices lock within 1-2 seconds while maintaining stability.
                         uint32_t prev = target_fill_frames_.load();
-                        target_fill_frames_.store(static_cast<uint32_t>(prev * 0.98 + target * 0.02));
+                        int32_t diff = static_cast<int32_t>(target) - static_cast<int32_t>(prev);
+                        double alpha;
+                        if (sync_samples_count_ < 50) {
+                            alpha = 0.20;  // First ~250ms: fast lock-on
+                            sync_samples_count_++;
+                        } else if (std::abs(diff) > 2400) {
+                            alpha = 0.15;  // >50ms jump: re-converge quickly
+                        } else if (std::abs(diff) > 480) {
+                            alpha = 0.08;  // 10-50ms drift: moderate correction
+                        } else {
+                            alpha = 0.02;  // Stable: gentle smoothing (±10ms)
+                        }
+                        uint32_t smoothed = static_cast<uint32_t>(prev * (1.0 - alpha) + target * alpha);
+                        // In relay mode, enforce minimum 200ms buffer for stability
+                        if (relay_network_disabled_.load(std::memory_order_relaxed)) {
+                            smoothed = std::max(smoothed, 9600u);  // 200ms floor for WAN
+                        }
+                        target_fill_frames_.store(smoothed);
+
+                        // Median filter: track last 5 net_delay measurements to reject outliers
+                        sync_delay_history_[sync_delay_idx_ % 5] = net_delay_ns;
+                        sync_delay_idx_++;
+                    }
+                }
+            }
+
+            // Report network delay to relay every ~5 seconds for sync coordination
+            if (log_counter % 50000 == 0 && wan_relay_ && sync_mode_.load(std::memory_order_relaxed)) {
+                if (rtp_receiver_) {
+                    uint32_t media_ts = rtp_receiver_->last_media_timestamp.load(std::memory_order_relaxed);
+                    if (media_ts != 0) {
+                        struct timespec rpt_ts;
+                        clock_gettime(CLOCK_REALTIME, &rpt_ts);
+                        uint32_t rpt_ns32 = static_cast<uint32_t>(
+                            (static_cast<uint64_t>(rpt_ts.tv_sec) * 1'000'000'000ULL + rpt_ts.tv_nsec) & 0xFFFFFFFF);
+                        int64_t offset_ns = clock_offset_ns_.load(std::memory_order_relaxed);
+                        int32_t nd_ns = static_cast<int32_t>(rpt_ns32 - media_ts)
+                                        + static_cast<int32_t>(offset_ns & 0xFFFFFFFF);
+                        if (nd_ns >= 0 && nd_ns < 2'000'000'000) {
+                            uint32_t nd_ms = static_cast<uint32_t>(nd_ns / 1'000'000);
+                            wan_relay_->send_delay(nd_ms);
+                        }
                     }
                 }
             }
@@ -1708,6 +2996,129 @@ private:
         return buf;
     }
 
+    /// Downmix one frame from tx_ch → out_ch (no EQ/compressor, for underrun path)
+    inline void downmix_frame(const int32_t* src, uint32_t tx_ch,
+                              float* dst, uint32_t out_ch, float gain) {
+        if (out_ch == 1) {
+            // Sum all TX channels → mono
+            float sum = 0;
+            for (uint32_t c = 0; c < tx_ch; c++)
+                sum += static_cast<float>(src[c]) / 8388608.0f;
+            float s = sum / static_cast<float>(tx_ch);
+            if (s > 1.0f) s = 1.0f; else if (s < -1.0f) s = -1.0f;
+            float out = s * gain;
+            dst[0] = out;
+            held_sample_[0] = out;
+        } else if (out_ch == 2 && tx_ch == 1) {
+            // Mono → Stereo: duplicate to both channels
+            float s = static_cast<float>(src[0]) / 8388608.0f;
+            if (s > 1.0f) s = 1.0f; else if (s < -1.0f) s = -1.0f;
+            float out = s * gain;
+            dst[0] = out; dst[1] = out;
+            held_sample_[0] = out; held_sample_[1] = out;
+        } else if (out_ch == 2 && tx_ch > 2) {
+            // Downmix surround → stereo: L = sum(even ch) / (tx_ch/2), R = sum(odd ch) / (tx_ch/2)
+            float L = 0, R = 0;
+            for (uint32_t c = 0; c < tx_ch; c++) {
+                float s = static_cast<float>(src[c]) / 8388608.0f;
+                if (c % 2 == 0) L += s; else R += s;
+            }
+            float div = static_cast<float>((tx_ch + 1) / 2);
+            L = std::max(-1.0f, std::min(1.0f, L / div)) * gain;
+            R = std::max(-1.0f, std::min(1.0f, R / div)) * gain;
+            dst[0] = L; dst[1] = R;
+            held_sample_[0] = L; held_sample_[1] = R;
+        } else {
+            // Pass-through or truncate to out_ch (tx_ch >= out_ch)
+            uint32_t n = std::min(tx_ch, out_ch);
+            for (uint32_t c = 0; c < n; c++) {
+                float s = static_cast<float>(src[c]) / 8388608.0f;
+                if (s > 1.0f) s = 1.0f; else if (s < -1.0f) s = -1.0f;
+                float out = s * gain;
+                dst[c] = out;
+                held_sample_[c] = out;
+            }
+            for (uint32_t c = n; c < out_ch; c++) {
+                dst[c] = 0; held_sample_[c] = 0;
+            }
+        }
+    }
+
+    /// Downmix one frame with EQ + compressor + drift crossfade (normal playback path)
+    inline void downmix_frame_eq(const int32_t* src, uint32_t tx_ch,
+                                 float* dst, uint32_t out_ch, float gain) {
+        if (out_ch == 1) {
+            float sum = 0;
+            for (uint32_t c = 0; c < tx_ch; c++)
+                sum += static_cast<float>(src[c]) / 8388608.0f;
+            float s = sum / static_cast<float>(tx_ch);
+            if (s > 1.0f) s = 1.0f; else if (s < -1.0f) s = -1.0f;
+            s = eq_.process(s, 0);
+            s = compressor_.process(s);
+            float out = s * gain;
+            if (drift_xfade_ > 0) {
+                float alpha = 1.0f - static_cast<float>(drift_xfade_) / 49.0f;
+                out = out * alpha + held_sample_[0] * (1.0f - alpha);
+            }
+            dst[0] = out;
+            held_sample_[0] = out;
+        } else if (out_ch == 2 && tx_ch == 1) {
+            // Mono → Stereo: process once, duplicate to both channels
+            float s = static_cast<float>(src[0]) / 8388608.0f;
+            if (s > 1.0f) s = 1.0f; else if (s < -1.0f) s = -1.0f;
+            s = eq_.process(s, 0);
+            s = compressor_.process(s);
+            float out = s * gain;
+            if (drift_xfade_ > 0) {
+                float alpha = 1.0f - static_cast<float>(drift_xfade_) / 49.0f;
+                out = out * alpha + held_sample_[0] * (1.0f - alpha);
+            }
+            dst[0] = out; dst[1] = out;
+            held_sample_[0] = out; held_sample_[1] = out;
+        } else if (out_ch == 2 && tx_ch > 2) {
+            // Surround → stereo downmix with EQ
+            float L = 0, R = 0;
+            for (uint32_t c = 0; c < tx_ch; c++) {
+                float s = static_cast<float>(src[c]) / 8388608.0f;
+                if (c % 2 == 0) L += s; else R += s;
+            }
+            float div = static_cast<float>((tx_ch + 1) / 2);
+            L = std::max(-1.0f, std::min(1.0f, L / div));
+            R = std::max(-1.0f, std::min(1.0f, R / div));
+            float chans[2] = {L, R};
+            for (uint32_t c = 0; c < 2; c++) {
+                float s = eq_.process(chans[c], c);
+                s = compressor_.process(s);
+                float out = s * gain;
+                if (drift_xfade_ > 0) {
+                    float alpha = 1.0f - static_cast<float>(drift_xfade_) / 49.0f;
+                    out = out * alpha + held_sample_[c] * (1.0f - alpha);
+                }
+                dst[c] = out;
+                held_sample_[c] = out;
+            }
+        } else {
+            // Pass-through or truncate
+            uint32_t n = std::min(tx_ch, out_ch);
+            for (uint32_t c = 0; c < n; c++) {
+                float s = static_cast<float>(src[c]) / 8388608.0f;
+                if (s > 1.0f) s = 1.0f; else if (s < -1.0f) s = -1.0f;
+                s = eq_.process(s, c);
+                s = compressor_.process(s);
+                float out = s * gain;
+                if (drift_xfade_ > 0) {
+                    float alpha = 1.0f - static_cast<float>(drift_xfade_) / 49.0f;
+                    out = out * alpha + held_sample_[c] * (1.0f - alpha);
+                }
+                dst[c] = out;
+                held_sample_[c] = out;
+            }
+            for (uint32_t c = n; c < out_ch; c++) {
+                dst[c] = 0; held_sample_[c] = 0;
+            }
+        }
+    }
+
     void audio_callback(float* buffer, uint32_t frame_count) {
         if (flush_requested_.load(std::memory_order_acquire)) {
             flush_requested_.store(false, std::memory_order_relaxed);
@@ -1718,7 +3129,23 @@ private:
 
         const float vol = (muted_.load() || health_silenced_.load(std::memory_order_relaxed))
                           ? 0.0f : volume_.load();
-        const uint32_t total_samples = frame_count * channels_;
+        const uint32_t tx_ch = detected_tx_channels_.load(std::memory_order_relaxed);
+        const uint32_t out_ch = channels_;
+        const uint32_t total_samples = frame_count * out_ch;
+
+        // ── Multi-source mixing path (talk mode) ─────────────────────────
+        if (talk_mode_active_.load(std::memory_order_relaxed) && multi_mixer_.has_data(frame_count, tx_ch)) {
+            std::vector<int32_t> mix_buf(frame_count * tx_ch);
+            size_t mixed = multi_mixer_.read_mixed(mix_buf.data(), frame_count, tx_ch);
+            if (mixed > 0) {
+                const float gain = vol;
+                for (uint32_t i = 0; i < frame_count; i++) {
+                    ramp_ += 0.002f * (gain - ramp_);
+                    downmix_frame_eq(mix_buf.data() + i * tx_ch, tx_ch, buffer + i * out_ch, out_ch, ramp_);
+                }
+                return;
+            }
+        }
 
         uint32_t target = target_fill_frames_.load();
         // Ensure target is at least a few callbacks worth
@@ -1746,7 +3173,11 @@ private:
 
         // ── Initial prefill (only at startup, NOT reset on underrun) ───────
         if (!prefilled_) {
-            if (avail < min_target) {
+            // Wait until ring buffer has enough data before starting playback.
+            // Use the full target (buffer target from adaptive/sync) as threshold
+            // to prevent underruns on WAN connections (e.g. Germany→Japan ~250ms RTT).
+            uint32_t prefill_threshold = target;
+            if (avail < prefill_threshold) {
                 std::memset(buffer, 0, total_samples * sizeof(float));
                 return;
             }
@@ -1754,34 +3185,36 @@ private:
             ramp_ = 0.0f;  // ensure clean fade-in
         }
 
-        // ── Underrun: play what we have, then fade out remainder ──────────
-        // This avoids hard cuts on short WiFi hiccups.
+        // ── Underrun: play what we have ────────────────────────────────────
+        // Ring buffer frames are kMaxRxChannels-wide; stride by kMaxRxChannels
         if (avail < frame_count) {
             record_underrun_now();
             maybe_check_recovery();
-            // Play available samples first
             const size_t have = avail;
             if (have > 0) {
                 ring_buffer_.read(read_buffer_.data(), have);
                 const int32_t* src = read_buffer_.data();
                 for (uint32_t i = 0; i < have; i++) {
                     ramp_ += kFadeIn * (vol - ramp_);
-                    for (uint32_t ch = 0; ch < channels_; ch++) {
-                        const uint32_t idx = i * channels_ + ch;
-                        float s = static_cast<float>(src[idx]) / 8388608.0f;
-                        if (s > 1.0f) s = 1.0f;
-                        else if (s < -1.0f) s = -1.0f;
-                        float out = s * ramp_;
-                        buffer[idx] = out;
-                        held_sample_[ch] = out;
-                    }
+                    // Downmix tx_ch → out_ch (stride by kMaxRxChannels in ring buffer)
+                    downmix_frame(src + i * kMaxRxChannels, tx_ch, buffer + i * out_ch, out_ch, ramp_);
                 }
             }
-            // Fade out the remainder using last held sample
-            for (uint32_t i = static_cast<uint32_t>(have); i < frame_count; i++) {
-                ramp_ *= (1.0f - kFadeOut);
-                for (uint32_t ch = 0; ch < channels_; ch++) {
-                    buffer[i * channels_ + ch] = held_sample_[ch] * ramp_;
+            // Hold last sample with gentle decay to prevent clicks
+            if (relay_network_disabled_.load(std::memory_order_relaxed)) {
+                constexpr float kHoldDecay = 0.998f;
+                for (uint32_t i = static_cast<uint32_t>(have); i < frame_count; i++) {
+                    for (uint32_t ch = 0; ch < out_ch; ch++) {
+                        held_sample_[ch] *= kHoldDecay;
+                        buffer[i * out_ch + ch] = held_sample_[ch];
+                    }
+                }
+            } else {
+                for (uint32_t i = static_cast<uint32_t>(have); i < frame_count; i++) {
+                    ramp_ *= (1.0f - kFadeOut);
+                    for (uint32_t ch = 0; ch < out_ch; ch++) {
+                        buffer[i * out_ch + ch] = held_sample_[ch] * ramp_;
+                    }
                 }
             }
             return;
@@ -1790,27 +3223,13 @@ private:
         maybe_check_recovery();
 
         // ── Normal playback ────────────────────────────────────────────────
+        // Ring buffer frames are kMaxRxChannels-wide; stride by kMaxRxChannels
         ring_buffer_.read(read_buffer_.data(), frame_count);
         const int32_t* src = read_buffer_.data();
         for (uint32_t i = 0; i < frame_count; i++) {
             ramp_ += kFadeIn * (vol - ramp_);
-            for (uint32_t ch = 0; ch < channels_; ch++) {
-                const uint32_t idx = i * channels_ + ch;
-                float s = static_cast<float>(src[idx]) / 8388608.0f;
-                if (s > 1.0f) s = 1.0f;
-                else if (s < -1.0f) s = -1.0f;
-                // 3-band EQ
-                s = eq_.process(s, ch);
-                // Compressor
-                s = compressor_.process(s);
-                float out = s * ramp_;
-                if (drift_xfade_ > 0) {
-                    float alpha = 1.0f - static_cast<float>(drift_xfade_) / 49.0f;
-                    out = out * alpha + held_sample_[ch] * (1.0f - alpha);
-                }
-                buffer[idx] = out;
-                held_sample_[ch] = out;
-            }
+            // Downmix tx_ch → out_ch with EQ/compressor (stride by kMaxRxChannels)
+            downmix_frame_eq(src + i * kMaxRxChannels, tx_ch, buffer + i * out_ch, out_ch, ramp_);
             if (drift_xfade_ > 0) drift_xfade_--;
         }
 
@@ -1878,6 +3297,14 @@ private:
                 record_callback_(buffer, total_samples);
             }
         }
+
+        // ── Sample tap: feed fingerprinting ──────────────────────────────
+        {
+            std::lock_guard<std::mutex> lock(sample_tap_mutex_);
+            if (sample_tap_callback_) {
+                sample_tap_callback_(buffer, total_samples, channels_);
+            }
+        }
     }
 
     std::function<void(const uint8_t*, size_t)> relay_callback_;
@@ -1890,9 +3317,18 @@ private:
     std::atomic<bool>     running_;
     std::atomic<uint32_t> target_fill_frames_;
     std::atomic<bool>     relay_network_disabled_{false};
+    std::atomic<bool>     relay_first_packet_received_{false};
+    uint64_t              relay_inject_count_{0};
+    std::atomic<uint32_t> detected_tx_channels_{1};  // Auto-detected from OSTP stream_id (default mono)
     std::atomic<bool>     filesync_network_disabled_{false};
     std::atomic<bool>     sync_mode_{true};
-    std::atomic<uint32_t> sync_delay_ms_{200};
+    std::atomic<uint32_t> sync_delay_ms_{80};     // 80ms default (was 200ms — tighter for WiFi sync)
+    // Sync convergence state:
+    uint32_t              sync_samples_count_{0};  // EMA sample counter for fast initial lock
+    int32_t               sync_delay_history_[5]{};// median filter for outlier rejection
+    uint32_t              sync_delay_idx_{0};
+    // Clock offset from relay (nanoseconds, relay_time - local_time):
+    std::atomic<int64_t>  clock_offset_ns_{0};
     // Output latency compensation (Bluetooth/AirPlay):
     std::atomic<float>    output_latency_ms_{0.0f};
     // Loudness normalization (EBU R128):
@@ -1905,6 +3341,9 @@ private:
     // Recording callback (called from audio callback with float samples):
     std::function<void(const float*, uint32_t)> record_callback_;
     std::mutex record_mutex_;
+    // Sample tap callback (for fingerprinting — called from audio callback):
+    std::function<void(const float*, uint32_t, uint32_t)> sample_tap_callback_;
+    std::mutex sample_tap_mutex_;
     // Health tracking atomics (written audio-cb, read ObjC):
     std::atomic<int>      health_{0};           ///< 0=good 1=stressed 2=silenced
     std::atomic<bool>     health_silenced_{false};
@@ -1931,6 +3370,10 @@ private:
     pipeline::RingBuffer  ring_buffer_;
     std::vector<int32_t>  read_buffer_;
     std::vector<int32_t>  drain_buf_;
+
+    // Multi-source mixer for talk mode (multiple simultaneous speakers)
+    MultiSourceMixer multi_mixer_;
+    std::atomic<bool> talk_mode_active_{false};
 
     std::thread receive_thread_;
     soluna::control::WebSocketServer ws_server_;
@@ -1979,6 +3422,7 @@ private:
     std::unique_ptr<ReceiverImpl> _impl;
     std::unique_ptr<TransmitterImpl> _txImpl;
     std::unique_ptr<DJBroadcaster> _djImpl;
+    std::unique_ptr<DJController> _djCtrlImpl;
     NSTimer *_statsTimer;
     uint32_t _bufferTargetMs;
     CMHeadphoneMotionManager *_headphoneMotion;
@@ -2157,6 +3601,32 @@ private:
     if ([_delegate respondsToSelector:@selector(receiverDidUpdate:)]) {
         [_delegate receiverDidUpdate:[self currentStats]];
     }
+    // Send pipeline state to Mac debug server
+    if (_impl) {
+        static int dbg_sock2 = -1;
+        static struct sockaddr_in dbg_addr2 = {};
+        if (dbg_sock2 < 0) {
+            dbg_sock2 = socket(AF_INET, SOCK_DGRAM, 0);
+            dbg_addr2.sin_family = AF_INET;
+            dbg_addr2.sin_port = htons(9999);
+            inet_pton(AF_INET, "192.168.0.194", &dbg_addr2.sin_addr);
+        }
+        size_t rb = _impl->ring_buffer_available_read();
+        uint32_t tgt = _impl->get_target_fill_frames();
+        int hp = _impl->device_health();
+        bool pf = _impl->is_prefilled();
+        bool sil = _impl->is_health_silenced();
+        bool rel = _impl->is_network_disabled();
+        bool fp = _impl->is_relay_first_packet();
+        float vol = _impl->get_volume();
+        float peak = _impl->output_peak();
+        char buf[256];
+        snprintf(buf, sizeof(buf),
+                 "PIPE: RB=%zu tgt=%u hp=%d pf=%d sil=%d rel=%d fp=%d vol=%.2f peak=%.4f",
+                 rb, tgt, hp, pf, sil, rel, fp, vol, peak);
+        sendto(dbg_sock2, buf, strlen(buf), 0,
+               (struct sockaddr*)&dbg_addr2, sizeof(dbg_addr2));
+    }
 }
 
 // ── P2P Relay ───────────────────────────────────────────────────────────────
@@ -2247,18 +3717,41 @@ private:
 
 - (BOOL)connectToRelay:(NSString *)host port:(uint16_t)port
                  group:(NSString *)group password:(NSString *)password {
+    return [self connectToRelay:host port:port group:group password:password deviceId:@""];
+}
+
+- (BOOL)connectToRelay:(NSString *)host port:(uint16_t)port
+                 group:(NSString *)group password:(NSString *)password
+              deviceId:(NSString *)deviceId {
     if (!_impl) return NO;
     auto* impl = _impl.get();
     bool ok = impl->wan_relay_connect(
         std::string([host UTF8String]), port,
         std::string([group UTF8String]),
-        std::string([password UTF8String]));
+        std::string([password UTF8String]),
+        std::string([deviceId UTF8String]));
     if (ok && _txImpl) {
         _txImpl->tx_relay_callback = [impl](const uint8_t* data, size_t len) {
             impl->wan_relay_send_audio(data, len);
         };
     }
     return ok ? YES : NO;
+}
+
+- (void)sendMicAllow:(NSString *)deviceId {
+    if (_impl) _impl->wan_relay_mic_allow(std::string([deviceId UTF8String]));
+}
+
+- (void)sendMicDeny:(NSString *)deviceId {
+    if (_impl) _impl->wan_relay_mic_deny(std::string([deviceId UTF8String]));
+}
+
+- (void)requestMicList {
+    if (_impl) _impl->wan_relay_mic_list();
+}
+
+- (void)requestMembers {
+    if (_impl) _impl->wan_relay_members();
 }
 
 - (void)disconnectRelay {
@@ -2293,6 +3786,31 @@ private:
     return e.empty() ? nil : [NSString stringWithUTF8String:e.c_str()];
 }
 
+- (NSString *)relayExternalAddr {
+    if (!_impl) return nil;
+    auto a = _impl->wan_relay_external_addr();
+    return a.empty() ? nil : [NSString stringWithUTF8String:a.c_str()];
+}
+
+- (NSString *)debugLog {
+    if (!_impl) return @"impl=nil";
+    auto log = _impl->wan_relay_debug_log();
+    // Append audio pipeline state
+    size_t rb_avail = _impl->ring_buffer_available_read();
+    uint32_t target = _impl->get_target_fill_frames();
+    int health = _impl->device_health();
+    bool prefilled = _impl->is_prefilled();
+    bool silenced = _impl->is_health_silenced();
+    bool relay_dis = _impl->is_network_disabled();
+    float vol = _impl->get_volume();
+    char extra[256];
+    snprintf(extra, sizeof(extra),
+             "\nRB:%zu tgt:%u hp:%d pf:%d sil:%d rel:%d vol:%.2f",
+             rb_avail, target, health, prefilled, silenced, relay_dis, vol);
+    log += extra;
+    return [NSString stringWithUTF8String:log.c_str()];
+}
+
 // ── Sync Mode ───────────────────────────────────────────────────────────────
 
 - (BOOL)syncMode {
@@ -2309,6 +3827,14 @@ private:
 
 - (void)setSyncDelayMs:(uint32_t)syncDelayMs {
     if (_impl) _impl->set_sync_delay_ms(syncDelayMs);
+}
+
+// ── Talk Mode (multi-speaker) ────────────────────────────────────────────────
+
+- (void)setTalkMode:(BOOL)enabled {
+    if (_impl) {
+        _impl->set_talk_mode(enabled);
+    }
 }
 
 // ── Mic Transmit (TX) ───────────────────────────────────────────────────────
@@ -2599,6 +4125,96 @@ private:
 
 - (float)djMusicGain {
     return _djImpl ? _djImpl->music_gain_.load(std::memory_order_relaxed) : 0.7f;
+}
+
+// ── DJ Dual-Deck Mode ────────────────────────────────────────────────────────
+
+- (BOOL)startDeckA:(NSString *)filePath {
+    if (!_impl) return NO;
+    WanRelayClient* relay = _impl->wan_relay_.get();
+    if (!relay || relay->state() != WanRelayClient::State::Connected) {
+        fprintf(stderr, "[DJCtrl] Cannot start deck A: relay not connected\n");
+        return NO;
+    }
+    if (!_djCtrlImpl) _djCtrlImpl = std::make_unique<DJController>(relay);
+    return _djCtrlImpl->start_deck_a(filePath.UTF8String) ? YES : NO;
+}
+
+- (BOOL)startDeckB:(NSString *)filePath {
+    if (!_impl) return NO;
+    WanRelayClient* relay = _impl->wan_relay_.get();
+    if (!relay || relay->state() != WanRelayClient::State::Connected) {
+        fprintf(stderr, "[DJCtrl] Cannot start deck B: relay not connected\n");
+        return NO;
+    }
+    if (!_djCtrlImpl) _djCtrlImpl = std::make_unique<DJController>(relay);
+    return _djCtrlImpl->start_deck_b(filePath.UTF8String) ? YES : NO;
+}
+
+- (void)toggleDeckA {
+    if (_djCtrlImpl) _djCtrlImpl->toggle_deck_a();
+}
+
+- (void)toggleDeckB {
+    if (_djCtrlImpl) _djCtrlImpl->toggle_deck_b();
+}
+
+- (void)stopDualDeck {
+    _djCtrlImpl.reset();
+}
+
+- (void)setDjCrossfader:(float)v {
+    if (_djCtrlImpl) _djCtrlImpl->set_crossfader(v);
+}
+
+- (float)djCrossfader {
+    return _djCtrlImpl ? _djCtrlImpl->get_crossfader() : 0.5f;
+}
+
+- (BOOL)isDualDeckActive {
+    return _djCtrlImpl && _djCtrlImpl->is_active() ? YES : NO;
+}
+
+- (NSString *)deckATrack {
+    if (!_djCtrlImpl) return nil;
+    auto name = _djCtrlImpl->deck_a_track();
+    return name.empty() ? nil : @(name.c_str());
+}
+
+- (NSString *)deckBTrack {
+    if (!_djCtrlImpl) return nil;
+    auto name = _djCtrlImpl->deck_b_track();
+    return name.empty() ? nil : @(name.c_str());
+}
+
+- (float)deckAProgress {
+    return _djCtrlImpl ? _djCtrlImpl->deck_a_progress() : 0.0f;
+}
+
+- (float)deckBProgress {
+    return _djCtrlImpl ? _djCtrlImpl->deck_b_progress() : 0.0f;
+}
+
+- (BOOL)deckAPlaying {
+    return _djCtrlImpl && _djCtrlImpl->deck_a_playing() ? YES : NO;
+}
+
+- (BOOL)deckBPlaying {
+    return _djCtrlImpl && _djCtrlImpl->deck_b_playing() ? YES : NO;
+}
+
+// ── Sample Tap (for fingerprinting) ─────────────────────────────────────────
+
+- (void)setSampleTapCallback:(nullable void(^)(const float * _Nonnull samples, uint32_t sampleCount, uint32_t channels))callback {
+    if (!_impl) return;
+    if (callback) {
+        auto block = [callback](const float* samples, uint32_t count, uint32_t ch) {
+            callback(samples, count, ch);
+        };
+        _impl->set_sample_tap_callback(block);
+    } else {
+        _impl->set_sample_tap_callback(nullptr);
+    }
 }
 
 @end

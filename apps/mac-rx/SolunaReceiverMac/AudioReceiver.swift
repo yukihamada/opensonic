@@ -216,6 +216,24 @@ final class AudioReceiver: ObservableObject {
 
     @Published private(set) var relayState: RelayState = .disconnected
     @Published private(set) var relayGroup: String?
+
+    /// Unique device ID (UUID v4), persisted across launches
+    var deviceId: String {
+        let key = "soluna_device_id"
+        if let existing = UserDefaults.standard.string(forKey: key), !existing.isEmpty {
+            return existing
+        }
+        let newId = UUID().uuidString.lowercased()
+        UserDefaults.standard.set(newId, forKey: key)
+        return newId
+    }
+
+    /// Reset device ID (re-generate)
+    func resetDeviceId() -> String {
+        let newId = UUID().uuidString.lowercased()
+        UserDefaults.standard.set(newId, forKey: "soluna_device_id")
+        return newId
+    }
     @Published private(set) var relayError: String?
 
     /// Available local output devices (BT, AirPlay, USB, etc.)
@@ -407,6 +425,11 @@ final class AudioReceiver: ObservableObject {
         updateNowPlaying()
     }
 
+    /// Enable/disable talk mode (multiple simultaneous speakers)
+    func setTalkMode(_ enabled: Bool) {
+        receiver.setTalkMode(enabled)
+    }
+
     /// Toggle microphone transmit on/off
     func toggleMic() {
         if isMicTransmitting {
@@ -458,7 +481,7 @@ final class AudioReceiver: ObservableObject {
 
     /// Connect to WAN relay server with group code
     func connectRelay(group: String, password: String = "",
-                      host: String = "46.225.77.119", port: UInt16 = 5100) {
+                      host: String = "relay.solun.art", port: UInt16 = 5100) {
         NSLog("[FileSync] connectRelay called, isPlaying=\(isPlaying), state=\(state), relayState=\(relayState)")
         guard isPlaying else {
             NSLog("[FileSync] connectRelay skipped: not playing")
@@ -468,9 +491,10 @@ final class AudioReceiver: ObservableObject {
         relayError = nil
 
         // Run connection on background to avoid blocking UI during DNS/JOIN
+        let devId = deviceId
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            let ok = self.receiver.connect(toRelay: host, port: port, group: group, password: password)
+            let ok = self.receiver.connect(toRelay: host, port: port, group: group, password: password, deviceId: devId)
             NSLog("[FileSync] connectRelay result: \(ok)")
             Task { @MainActor in
                 self.updateRelayState()
@@ -482,6 +506,28 @@ final class AudioReceiver: ObservableObject {
     func disconnectRelay() {
         receiver.disconnectRelay()
         updateRelayState()
+    }
+
+    // MARK: - Mic Permissions
+
+    /// Allow a specific device to use microphone (owner/DJ only)
+    func allowMic(deviceId: String) {
+        receiver.sendMicAllow(deviceId)
+    }
+
+    /// Deny a specific device from using microphone (owner/DJ only)
+    func denyMic(deviceId: String) {
+        receiver.sendMicDeny(deviceId)
+    }
+
+    /// Request mic list from relay
+    func requestMicList() {
+        receiver.requestMicList()
+    }
+
+    /// Request members list from relay
+    func requestMembers() {
+        receiver.requestMembers()
     }
 
     /// Update relay state from bridge (called from stats timer)
@@ -983,7 +1029,7 @@ final class AudioReceiver: ObservableObject {
     private func downloadAndPrepare(filename: String) {
         NSLog("[FileSync] downloadAndPrepare: %@", filename)
         let encoded = filename.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? filename
-        guard let url = URL(string: "http://46.225.77.119:5102/api/music/\(encoded)") else {
+        guard let url = URL(string: "http://relay.solun.art:5102/api/music/\(encoded)") else {
             NSLog("[FileSync] URL encoding failed for: %@", filename)
             return
         }
@@ -1334,6 +1380,70 @@ final class AudioReceiver: ObservableObject {
         default:
             break
         }
+    }
+
+    // MARK: - DJ Dual-Deck
+
+    @Published private(set) var deckATrack: String?
+    @Published private(set) var deckBTrack: String?
+    @Published private(set) var deckAProgress: Float = 0.0
+    @Published private(set) var deckBProgress: Float = 0.0
+    @Published private(set) var deckAPlaying: Bool = false
+    @Published private(set) var deckBPlaying: Bool = false
+    @Published private(set) var isDualDeckActive: Bool = false
+
+    private var dualDeckPollTimer: Timer?
+
+    func startDeckA(url: URL) {
+        let path = url.path
+        if receiver.startDeckA(path) {
+            startDualDeckPollTimer()
+        }
+    }
+
+    func startDeckB(url: URL) {
+        let path = url.path
+        if receiver.startDeckB(path) {
+            startDualDeckPollTimer()
+        }
+    }
+
+    func toggleDeckA() { receiver.toggleDeckA() }
+    func toggleDeckB() { receiver.toggleDeckB() }
+
+    func setCrossfader(_ v: Float) { receiver.djCrossfader = v }
+
+    func stopDualDeck() {
+        receiver.stopDualDeck()
+        stopDualDeckPollTimer()
+        deckATrack = nil
+        deckBTrack = nil
+        deckAProgress = 0
+        deckBProgress = 0
+        deckAPlaying = false
+        deckBPlaying = false
+        isDualDeckActive = false
+    }
+
+    private func startDualDeckPollTimer() {
+        guard dualDeckPollTimer == nil else { return }
+        dualDeckPollTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.deckATrack = self.receiver.deckATrack
+                self.deckBTrack = self.receiver.deckBTrack
+                self.deckAProgress = self.receiver.deckAProgress
+                self.deckBProgress = self.receiver.deckBProgress
+                self.deckAPlaying = self.receiver.deckAPlaying
+                self.deckBPlaying = self.receiver.deckBPlaying
+                self.isDualDeckActive = self.receiver.isDualDeckActive
+            }
+        }
+    }
+
+    private func stopDualDeckPollTimer() {
+        dualDeckPollTimer?.invalidate()
+        dualDeckPollTimer = nil
     }
 
     // MARK: - Internal delegate handling

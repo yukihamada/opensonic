@@ -7,6 +7,7 @@
 
 import SwiftUI
 import MultipeerConnectivity
+import UniformTypeIdentifiers
 
 // MARK: - Root
 
@@ -28,6 +29,7 @@ struct ContentView: View {
     @State private var pttPressed    = false
     @State private var showPlayer    = false
     @State private var showDJPicker  = false
+    @State private var showDJDeckView = false
     @State private var talkMode      = false
     @State private var quickChannelInput = ""
     @State private var showChannelCreate = false
@@ -154,12 +156,16 @@ struct ContentView: View {
             playerModel.speakersController = speakers
             loadSavedSettings()
             receiver.autoStart()
+            // Wire RTCP receiver reports: AudioReceiver → primary DaemonClient
+            receiver.daemonClient = speakers.primaryDaemon
             Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
                 Task { @MainActor in
                     speakers.applyServerRxDelay()
                     if !(playerModel.daemon?.isConnected ?? false) {
                         playerModel.rebindIfNeeded(speakers.primaryDaemon)
                     }
+                    // Re-wire if primary daemon changed (e.g. reconnect)
+                    receiver.daemonClient = speakers.primaryDaemon
                 }
             }
             playerModel.daemon = speakers.primaryDaemon
@@ -497,7 +503,7 @@ struct ContentView: View {
 
                 Button(action: {
                     if receiver.isDJActive { receiver.stopDJBroadcast() }
-                    else { showDJPicker = true }
+                    else { showDJDeckView = true }
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: receiver.isDJActive ? "stop.circle.fill" : "music.note.list")
@@ -505,7 +511,7 @@ struct ContentView: View {
                             .font(.system(size: 13, weight: .medium))
                     }
                 }
-                .buttonStyle(PillButtonStyle(color: .purple, isActive: receiver.isDJActive))
+                .buttonStyle(PillButtonStyle(color: .purple, isActive: receiver.isDJActive || receiver.isDualDeckActive))
             }
 
             // Mic level meter
@@ -515,7 +521,7 @@ struct ContentView: View {
                     .padding(.horizontal, 24)
             }
 
-            // DJ progress bar
+            // Single-deck DJ progress bar
             if receiver.isDJActive {
                 VStack(spacing: 4) {
                     HStack {
@@ -538,20 +544,8 @@ struct ContentView: View {
         }
         .padding(14)
         .glassCard()
-        .fileImporter(
-            isPresented: $showDJPicker,
-            allowedContentTypes: [
-                UTType("public.mp3") ?? .audio,
-                UTType("com.microsoft.waveform-audio") ?? .audio,
-                UTType("org.xiph.flac") ?? .audio,
-                UTType("public.aiff-audio") ?? .audio,
-                .audio
-            ],
-            allowsMultipleSelection: false
-        ) { result in
-            if let url = try? result.get().first {
-                receiver.startDJBroadcast(url: url)
-            }
+        .sheet(isPresented: $showDJDeckView) {
+            DJDeckView(receiver: receiver)
         }
     }
 
