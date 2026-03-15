@@ -1,0 +1,1743 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <script>if(!sessionStorage.getItem('lang-set')&&/^en/i.test(navigator.language)){location.replace('/en/protocol')}</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="OSTP (Open Sonic Transport Protocol) — UDPベースのリアルタイム・マルチルームオーディオ配信プロトコル完全仕様書。パケットフォーマット、リレープロトコル、輻輳制御、DJデュアルデッキ、セキュリティ仕様。">
+  <meta name="keywords" content="OSTP, OpenSonic, プロトコル仕様, RTP, P2P, オーディオ, リアルタイム配信, DTLS-SRTP, スワーム, DJ">
+  <meta name="author" content="Soluna Project">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#05060a">
+  <link rel="canonical" href="https://solun.art/protocol">
+
+  <meta property="og:title" content="OSTP Protocol Specification — Soluna">
+  <meta property="og:description" content="UDPベースのリアルタイム・マルチルームオーディオ配信プロトコル完全仕様書。">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://solun.art/protocol">
+  <meta property="og:image" content="https://solun.art/og-image.png">
+  <meta property="og:site_name" content="Soluna">
+  <meta property="og:locale" content="ja_JP">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="OSTP Protocol Specification — Soluna">
+  <meta name="twitter:description" content="UDPベースのリアルタイム・マルチルームオーディオ配信プロトコル完全仕様書。">
+  <meta name="twitter:image" content="https://solun.art/og-image.png">
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+  <title>OSTP Protocol Specification — Soluna</title>
+
+  <style>
+    :root {
+      --bg:      #05060a;
+      --s1:      #0c0e16;
+      --s2:      #12151f;
+      --s3:      #1a1e2e;
+      --border:  rgba(255,255,255,0.06);
+      --border2: rgba(255,255,255,0.12);
+      --text:    #e8eaf2;
+      --text2:   #8b91a8;
+      --text3:   #50566e;
+      --blue:    #3b82f6;
+      --cyan:    #06b6d4;
+      --green:   #10b981;
+      --purple:  #8b5cf6;
+      --amber:   #f59e0b;
+      --pink:    #ec4899;
+      font-synthesis: none;
+      -webkit-font-smoothing: antialiased;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      overflow-x: hidden;
+    }
+
+    /* ── Scroll reveal ─────────────────────────────── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.65s ease, transform 0.65s ease;
+    }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+
+    /* ── Top Nav ───────────────────────────────────── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 max(20px, calc(50% - 680px));
+      height: 58px;
+      background: rgba(5,6,10,0.82);
+      backdrop-filter: blur(24px) saturate(1.8);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo {
+      font-size: 17px; font-weight: 700; letter-spacing: -0.02em;
+      display: flex; align-items: center; gap: 8px;
+      text-decoration: none; color: var(--text);
+    }
+    .nav-logo svg { width: 22px; height: 22px; }
+    .nav-links { display: flex; align-items: center; gap: 20px; }
+    .nav-links a {
+      color: var(--text2); text-decoration: none; font-size: 13.5px;
+      transition: color 0.2s; font-weight: 500;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-links a.active { color: var(--text); font-weight: 600; }
+    .nav-cta {
+      padding: 7px 16px;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      color: #fff !important;
+      border-radius: 9px;
+      font-weight: 600;
+      font-size: 12.5px !important;
+      transition: opacity 0.2s, transform 0.2s !important;
+      box-shadow: 0 2px 10px rgba(59,130,246,0.3);
+    }
+    .nav-cta:hover { opacity: 0.9; transform: translateY(-1px) !important; }
+
+    /* ── Hero ──────────────────────────────────────── */
+    .hero {
+      position: relative;
+      padding: 130px max(20px, calc(50% - 680px)) 80px;
+      overflow: hidden;
+      border-bottom: 1px solid var(--border);
+    }
+    .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+    .hero-orb {
+      position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.12;
+      animation: orb-float 22s ease-in-out infinite;
+    }
+    .hero-orb-1 { width: 500px; height: 500px; background: var(--cyan); top: -15%; right: 5%; }
+    .hero-orb-2 { width: 380px; height: 380px; background: var(--blue); bottom: -10%; left: 0%; animation-delay: -8s; }
+    .hero-orb-3 { width: 280px; height: 280px; background: var(--purple); top: 40%; left: 45%; animation-delay: -15s; }
+    @keyframes orb-float {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(25px, -18px) scale(1.04); }
+      66% { transform: translate(-18px, 12px) scale(0.96); }
+    }
+    .hero-content { position: relative; z-index: 1; }
+    .hero-badges { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 13px; border-radius: 100px;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .badge-blue { background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.3); color: #93bbfc; }
+    .badge-amber { background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.3); color: var(--amber); }
+    .badge-green { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3); color: var(--green); }
+    .badge-purple { background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.3); color: var(--purple); }
+    h1 {
+      font-size: clamp(30px, 5.5vw, 58px); font-weight: 800;
+      letter-spacing: -0.04em; line-height: 1.1; margin-bottom: 20px;
+    }
+    .h1-mono {
+      font-family: "SF Mono", "Fira Code", monospace;
+      background: linear-gradient(135deg, var(--cyan), var(--blue), var(--purple));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; background-size: 200% auto;
+      animation: grad-shift 5s ease-in-out infinite;
+    }
+    @keyframes grad-shift {
+      0%, 100% { background-position: 0% center; }
+      50% { background-position: 100% center; }
+    }
+    .hero-sub {
+      font-size: clamp(15px, 2.2vw, 18px); color: var(--text2);
+      max-width: 680px; line-height: 1.8; margin-bottom: 0;
+    }
+
+    /* ── Layout ────────────────────────────────────── */
+    .layout {
+      display: flex;
+      padding-top: 0;
+      min-height: calc(100vh - 58px);
+    }
+
+    /* ── Sidebar ───────────────────────────────────── */
+    .sidebar {
+      width: 260px;
+      flex-shrink: 0;
+      position: sticky;
+      top: 58px;
+      height: calc(100vh - 58px);
+      overflow-y: auto;
+      padding: 28px 0 48px;
+      border-right: 1px solid var(--border);
+      background: var(--s1);
+    }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+    .sidebar-section-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--text3);
+      padding: 16px 20px 6px;
+    }
+    .sidebar a {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 20px; text-decoration: none;
+      font-size: 13px; color: var(--text2);
+      border-left: 2px solid transparent;
+      transition: color 0.2s, background 0.2s, border-color 0.2s;
+      line-height: 1.4;
+    }
+    .sidebar a:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+    .sidebar a.active {
+      color: var(--cyan); font-weight: 600;
+      border-left-color: var(--cyan);
+      background: rgba(6,182,212,0.06);
+    }
+    .sidebar-num {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 11px; color: var(--text3); min-width: 18px;
+    }
+    .sidebar a.active .sidebar-num { color: var(--cyan); opacity: 0.7; }
+
+    /* ── Main Content ──────────────────────────────── */
+    .main {
+      flex: 1;
+      min-width: 0;
+      padding: 0 max(24px, calc(50% - 480px)) 80px;
+    }
+
+    /* ── Sections ──────────────────────────────────── */
+    .spec-section {
+      padding: 72px 0 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0;
+    }
+    .spec-section:last-child { border-bottom: none; }
+    .spec-section-inner { padding-bottom: 64px; }
+    .section-number {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; margin-bottom: 8px;
+      background: linear-gradient(90deg, var(--cyan), var(--blue));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    h2 {
+      font-size: clamp(22px, 3.5vw, 32px); font-weight: 800;
+      letter-spacing: -0.03em; line-height: 1.2; margin-bottom: 8px;
+    }
+    h3 {
+      font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+      margin: 40px 0 16px; color: var(--text);
+    }
+    h4 {
+      font-size: 14px; font-weight: 700; letter-spacing: 0.02em;
+      text-transform: uppercase; color: var(--text2);
+      margin: 32px 0 12px;
+    }
+    .section-desc {
+      font-size: 15px; color: var(--text2); line-height: 1.8;
+      max-width: 640px; margin-bottom: 40px;
+    }
+
+    /* ── Cards ─────────────────────────────────────── */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 28px 0; }
+    .card {
+      background: var(--s2); border: 1px solid var(--border);
+      border-radius: 16px; padding: 24px 20px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .card:hover { border-color: var(--border2); transform: translateY(-2px); }
+    .card-icon { font-size: 28px; margin-bottom: 12px; }
+    .card-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+    .card-desc { font-size: 13px; color: var(--text2); line-height: 1.6; }
+    .card-value {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 22px; font-weight: 800; margin: 10px 0 4px;
+    }
+
+    /* ── Tables ────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; margin: 24px 0; border-radius: 14px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    thead tr { background: var(--s2); }
+    thead th {
+      padding: 12px 16px; text-align: left; font-size: 11px;
+      font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--text2); border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(255,255,255,0.02); }
+    td { padding: 11px 16px; color: var(--text); vertical-align: top; }
+    td code { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; color: var(--cyan); }
+    .td-mono { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; color: var(--cyan); }
+    .check { color: var(--green); }
+    .pending { color: var(--amber); }
+    .cross { color: var(--text3); }
+
+    /* ── Code blocks ───────────────────────────────── */
+    .code-wrap { position: relative; margin: 20px 0; }
+    pre {
+      background: var(--s1); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px 24px;
+      overflow-x: auto; font-size: 13px; line-height: 1.7;
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      color: var(--text2);
+    }
+    pre .c-blue  { color: var(--blue); }
+    pre .c-cyan  { color: var(--cyan); }
+    pre .c-green { color: var(--green); }
+    pre .c-amber { color: var(--amber); }
+    pre .c-purple{ color: var(--purple); }
+    pre .c-pink  { color: var(--pink); }
+    pre .c-dim   { color: var(--text3); }
+    .copy-btn {
+      position: absolute; top: 10px; right: 10px;
+      background: var(--s3); border: 1px solid var(--border2);
+      color: var(--text2); padding: 5px 12px; border-radius: 7px;
+      font-size: 11px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em;
+      transition: background 0.2s, color 0.2s; z-index: 1;
+      font-family: -apple-system, sans-serif;
+    }
+    .copy-btn:hover { background: var(--border2); color: var(--text); }
+    .copy-btn.copied { color: var(--green); border-color: rgba(16,185,129,0.3); }
+
+    /* ── Bit Diagram Table ─────────────────────────── */
+    .bit-diagram { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .bit-diagram thead th {
+      padding: 8px 4px; text-align: center; font-size: 10px;
+      color: var(--text3); border-bottom: 1px solid var(--border);
+      background: transparent; letter-spacing: 0; text-transform: none;
+    }
+    .bit-row td {
+      padding: 0; border: none; height: 64px;
+      vertical-align: middle; text-align: center;
+    }
+    .bit-cell {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 64px; padding: 4px 6px;
+      border-right: 1px solid rgba(0,0,0,0.3);
+    }
+    .bit-cell:last-of-type { border-right: none; }
+    .bit-field-name { font-size: 11px; font-weight: 700; margin-bottom: 2px; }
+    .bit-field-desc { font-size: 10px; opacity: 0.7; white-space: nowrap; }
+    .bf-rtp { background: rgba(59,130,246,0.18); color: #93bbfc; }
+    .bf-ext { background: rgba(139,92,246,0.18); color: #c4b5fd; }
+    .bf-payload { background: rgba(16,185,129,0.18); color: #6ee7b7; }
+    .bf-crc { background: rgba(245,158,11,0.18); color: #fcd34d; }
+    .bf-label {
+      grid-column: 1 / -1; background: var(--s3);
+      padding: 6px 12px; font-size: 10px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase; color: var(--text3);
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Packet Visual ─────────────────────────────── */
+    .pkt-visual { overflow-x: auto; margin: 24px 0; }
+    .pkt-row {
+      display: flex; margin-bottom: 3px; min-width: 600px;
+    }
+    .pkt-bits-label {
+      width: 90px; flex-shrink: 0; font-size: 10px; color: var(--text3);
+      font-family: "SF Mono", "Fira Code", monospace; padding: 0 10px 0 0;
+      display: flex; align-items: center; justify-content: flex-end;
+    }
+    .pkt-fields { display: flex; flex: 1; gap: 2px; }
+    .pkt-field {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 8px 6px; border-radius: 6px;
+      min-height: 60px; text-align: center; cursor: default;
+      transition: filter 0.2s;
+    }
+    .pkt-field:hover { filter: brightness(1.15); }
+    .pkt-fn { font-size: 11px; font-weight: 700; margin-bottom: 2px; }
+    .pkt-fd { font-size: 10px; opacity: 0.72; }
+    .pkt-fsz {
+      font-size: 9px; font-weight: 700; margin-top: 3px;
+      padding: 1px 5px; border-radius: 3px; background: rgba(0,0,0,0.25);
+    }
+
+    /* ── Flow Diagram ──────────────────────────────── */
+    .flow { margin: 28px 0; }
+    .flow-step {
+      display: flex; align-items: flex-start; gap: 16px;
+      padding: 14px 0; border-bottom: 1px solid var(--border);
+    }
+    .flow-step:last-child { border-bottom: none; }
+    .flow-arrow {
+      width: 32px; flex-shrink: 0; display: flex; align-items: center;
+      justify-content: center; margin-top: 2px;
+    }
+    .flow-dir-cr { color: var(--blue); font-size: 18px; }
+    .flow-dir-rc { color: var(--cyan); font-size: 18px; }
+    .flow-cmd { font-family: "SF Mono", "Fira Code", monospace; font-size: 13px; font-weight: 700; color: var(--cyan); }
+    .flow-desc { font-size: 13px; color: var(--text2); margin-top: 2px; }
+
+    /* ── Note / Alert boxes ────────────────────────── */
+    .note {
+      background: rgba(6,182,212,0.06); border: 1px solid rgba(6,182,212,0.2);
+      border-radius: 10px; padding: 14px 18px;
+      font-size: 13.5px; color: var(--text2); line-height: 1.7;
+      margin: 20px 0;
+    }
+    .note strong { color: var(--cyan); }
+    .warn {
+      background: rgba(245,158,11,0.06); border: 1px solid rgba(245,158,11,0.2);
+      border-radius: 10px; padding: 14px 18px;
+      font-size: 13.5px; color: var(--text2); line-height: 1.7;
+      margin: 20px 0;
+    }
+    .warn strong { color: var(--amber); }
+
+    /* ── ASCII art ─────────────────────────────────── */
+    .arch-diagram {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 28px 0;
+    }
+    .arch-plane {
+      background: var(--s1); border-radius: 14px; padding: 24px 20px;
+      border: 1px solid var(--border);
+    }
+    .arch-plane-title {
+      font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; margin-bottom: 16px; padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .arch-plane-title.blue { color: var(--blue); border-color: rgba(59,130,246,0.2); }
+    .arch-plane-title.cyan { color: var(--cyan); border-color: rgba(6,182,212,0.2); }
+    .arch-pre { font-size: 12px; line-height: 1.9; color: var(--text2); white-space: pre; }
+
+    /* ── Doc cards ─────────────────────────────────── */
+    .doc-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin: 28px 0; }
+    .doc-card {
+      background: var(--s2); border: 1px solid var(--border);
+      border-radius: 16px; padding: 24px;
+      transition: border-color 0.2s, transform 0.2s; text-decoration: none;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .doc-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+    .doc-card-icon { font-size: 32px; }
+    .doc-card-title { font-size: 16px; font-weight: 700; color: var(--text); }
+    .doc-card-sub { font-size: 12px; color: var(--text3); font-family: "SF Mono", monospace; }
+    .doc-card-desc { font-size: 13px; color: var(--text2); line-height: 1.6; }
+    .doc-card-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+    .doc-link {
+      padding: 4px 12px; border-radius: 7px;
+      background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2);
+      color: var(--blue); font-size: 12px; font-weight: 600;
+      text-decoration: none; transition: background 0.2s;
+    }
+    .doc-link:hover { background: rgba(59,130,246,0.18); }
+
+    /* ── Footer ────────────────────────────────────── */
+    .spec-footer {
+      border-top: 1px solid var(--border); padding: 40px max(24px, calc(50% - 480px));
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 16px;
+    }
+    .footer-note { font-size: 13px; color: var(--text3); max-width: 540px; line-height: 1.7; }
+
+    /* ── Inline code ───────────────────────────────── */
+    code {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 12.5px; color: var(--cyan);
+      background: rgba(6,182,212,0.08); padding: 2px 7px;
+      border-radius: 5px; border: 1px solid rgba(6,182,212,0.15);
+    }
+
+    /* ── Responsive ────────────────────────────────── */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .main { padding: 0 20px 60px; }
+      .arch-diagram { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      h1 { font-size: 26px; }
+      h2 { font-size: 22px; }
+      .pkt-bits-label { display: none; }
+    }
+
+    /* ── Divider ───────────────────────────────────── */
+    .divider { height: 1px; background: var(--border); margin: 32px 0; }
+
+    /* ── Tag ───────────────────────────────────────── */
+    .tag {
+      display: inline-block; padding: 2px 9px; border-radius: 6px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    }
+    .tag-optional { background: rgba(16,185,129,0.1); color: var(--green); border: 1px solid rgba(16,185,129,0.2); }
+    .tag-required { background: rgba(245,158,11,0.1); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); }
+    .tag-planned  { background: rgba(139,92,246,0.1); color: var(--purple); border: 1px solid rgba(139,92,246,0.2); }
+  </style>
+</head>
+<body>
+
+<!-- ── Top Navigation ──────────────────────────────────────── -->
+<nav>
+  <a class="nav-logo" href="/">
+    <svg viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" stroke="url(#ng)" stroke-width="1.5"/>
+      <path d="M7 12 Q10 6 12 12 Q14 18 17 12" stroke="url(#ng)" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+      <defs>
+        <linearGradient id="ng" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#06b6d4"/>
+          <stop offset="100%" stop-color="#8b5cf6"/>
+        </linearGradient>
+      </defs>
+    </svg>
+    Soluna
+  </a>
+  <div class="nav-links">
+    <a href="/protocol" class="active">Protocol</a>
+    <a href="/guide">Guide</a>
+    <a href="https://github.com/yukihamada/opensonic" target="_blank" rel="noopener">GitHub</a>
+    <a href="/docs/draft-hamada-opensonic-ostp-00.html" class="nav-cta">RFC Draft ↗</a>
+  </div>
+</nav>
+
+<!-- ── Hero ────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero-bg">
+    <div class="hero-orb hero-orb-1"></div>
+    <div class="hero-orb hero-orb-2"></div>
+    <div class="hero-orb hero-orb-3"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badges">
+      <span class="badge badge-blue">v0.9.3</span>
+      <span class="badge badge-amber">RFC Draft — Experimental</span>
+      <span class="badge badge-green">UDP / RTP</span>
+      <span class="badge badge-purple">Open Source</span>
+    </div>
+    <h1>
+      <span class="h1-mono">OSTP</span><br>
+      <span style="background:linear-gradient(135deg,#e8eaf2 0%,rgba(232,234,242,0.6) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">Open Sonic Transport Protocol</span>
+    </h1>
+    <p class="hero-sub">
+      UDPベースのリアルタイム・マルチルームオーディオ配信プロトコル。
+      サブ100ms遅延、100,000+同時受信者、DJデュアルデッキ、経済レイヤーを内蔵した次世代プロトコル仕様。
+    </p>
+  </div>
+</section>
+
+<!-- ── Main Layout ──────────────────────────────────────────── -->
+<div class="layout">
+
+  <!-- ── Sidebar ──────────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-section-label">仕様セクション</div>
+    <a href="#overview" data-section="overview"><span class="sidebar-num">1</span> 概要</a>
+    <a href="#architecture" data-section="architecture"><span class="sidebar-num">2</span> アーキテクチャ</a>
+    <a href="#packet-format" data-section="packet-format"><span class="sidebar-num">3</span> パケットフォーマット</a>
+    <a href="#channel-addressing" data-section="channel-addressing"><span class="sidebar-num">4</span> チャンネルアドレッシング</a>
+    <a href="#relay-protocol" data-section="relay-protocol"><span class="sidebar-num">5</span> リレープロトコル (RSP)</a>
+    <a href="#congestion-control" data-section="congestion-control"><span class="sidebar-num">6</span> 輻輳制御</a>
+    <a href="#file-delivery" data-section="file-delivery"><span class="sidebar-num">7</span> ファイル配信プロトコル</a>
+    <a href="#dcp" data-section="dcp"><span class="sidebar-num">8</span> デーモン制御 (DCP)</a>
+    <a href="#dual-deck" data-section="dual-deck"><span class="sidebar-num">9</span> DJデュアルデッキ</a>
+    <a href="#security" data-section="security"><span class="sidebar-num">10</span> セキュリティ</a>
+    <a href="#iana" data-section="iana"><span class="sidebar-num">11</span> IANA登録</a>
+    <a href="#implementations" data-section="implementations"><span class="sidebar-num">12</span> 実装状況</a>
+    <a href="#documents" data-section="documents"><span class="sidebar-num">13</span> ドキュメント</a>
+  </aside>
+
+  <!-- ── Main Content ─────────────────────────────────────── -->
+  <main class="main">
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 1  概要
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="overview">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 1</div>
+        <h2>概要</h2>
+        <p class="section-desc">
+          UDPベースのリアルタイム・マルチルームオーディオ配信プロトコル。
+          RTPを基盤にOSTPool拡張ヘッダを追加し、LAN・P2P・WAN全ての接続モードを統一的に扱う。
+        </p>
+
+        <div class="cards">
+          <div class="card reveal reveal-delay-1">
+            <div class="card-icon">⚡</div>
+            <div class="card-value" style="color:var(--cyan);">&lt;100ms</div>
+            <div class="card-title">サブ100ms遅延</div>
+            <div class="card-desc">LAN Multicastでは&lt;5ms。P2P Direct &lt;30ms。WANリレー経由でも&lt;100msを保証。</div>
+          </div>
+          <div class="card reveal reveal-delay-2">
+            <div class="card-icon">🌐</div>
+            <div class="card-value" style="color:var(--green);">100,000+</div>
+            <div class="card-title">同時受信スケール</div>
+            <div class="card-desc">スワームトポロジーにより、リレーサーバーを増やさずに100,000+の同時受信者をサポート。</div>
+          </div>
+          <div class="card reveal reveal-delay-3">
+            <div class="card-icon">💎</div>
+            <div class="card-value" style="color:var(--purple);">内蔵</div>
+            <div class="card-title">経済レイヤー内蔵</div>
+            <div class="card-desc">著作権追跡・チップ・DJ支援をプロトコルレベルでサポート。外部決済システム不要。</div>
+          </div>
+        </div>
+
+        <h3>プロトコル比較</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>特徴</th>
+                <th>WebRTC</th>
+                <th>AES67</th>
+                <th style="color:var(--cyan);">OSTP</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>トポロジー</td>
+                <td>Mesh P2P</td>
+                <td>Multicast</td>
+                <td style="color:var(--cyan);">Hybrid (LAN/P2P/WAN Swarm)</td>
+              </tr>
+              <tr>
+                <td>最大受信者数</td>
+                <td>~100 (SFU)</td>
+                <td>LAN限定</td>
+                <td style="color:var(--cyan);">100,000+ (Swarm)</td>
+              </tr>
+              <tr>
+                <td>LAN/WAN</td>
+                <td>WAN中心</td>
+                <td>LANのみ</td>
+                <td style="color:var(--cyan);">両方対応</td>
+              </tr>
+              <tr>
+                <td>著作権追跡</td>
+                <td class="cross">✗</td>
+                <td class="cross">✗</td>
+                <td class="check">✅ SSRC fingerprint</td>
+              </tr>
+              <tr>
+                <td>経済レイヤー</td>
+                <td class="cross">✗</td>
+                <td class="cross">✗</td>
+                <td class="check">✅ TIP / SUPPORT / CHARGE</td>
+              </tr>
+              <tr>
+                <td>初回音声到達</td>
+                <td>500–2000ms (ICE)</td>
+                <td>&lt;5ms</td>
+                <td style="color:var(--cyan);">&lt;5ms (LAN) / &lt;100ms (WAN)</td>
+              </tr>
+              <tr>
+                <td>DJデュアルデッキ</td>
+                <td class="cross">✗</td>
+                <td class="cross">✗</td>
+                <td class="check">✅ stream_id encoding</td>
+              </tr>
+              <tr>
+                <td>ファイルプリバッファ</td>
+                <td class="cross">✗</td>
+                <td class="cross">✗</td>
+                <td class="check">✅ 50ms切替</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 2  アーキテクチャ
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="architecture">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 2</div>
+        <h2>アーキテクチャ</h2>
+        <p class="section-desc">
+          OSTProは<strong>Media Plane</strong>（UDPによる音声配信）と<strong>Control Plane</strong>（WebSocketによる制御）の2層構造を持つ。
+        </p>
+
+        <div class="arch-diagram">
+          <div class="arch-plane">
+            <div class="arch-plane-title blue">Media Plane (UDP)</div>
+            <pre class="arch-pre"><span style="color:var(--blue);">Source</span> → <span style="color:var(--cyan);">Relay</span>
+  ├── <span style="color:var(--green);">Swarm Node 1</span>
+  │     ├── Leaf Node A
+  │     └── Leaf Node B
+  └── <span style="color:var(--green);">Swarm Node 2</span>
+        ├── Leaf Node C
+        ├── Leaf Node D
+        └── Leaf Node E</pre>
+          </div>
+          <div class="arch-plane">
+            <div class="arch-plane-title cyan">Control Plane (WebSocket)</div>
+            <pre class="arch-pre"><span style="color:var(--cyan);">solunad :8400/ws</span>  <span style="color:var(--text3);">(DCP)</span>
+  └── Monitor commands
+  └── Player control
+  └── System info
+
+<span style="color:var(--blue);">relay.solun.art:5100</span>  <span style="color:var(--text3);">(RSP)</span>
+  └── JOIN / HELLO / MEMBERS
+  └── TIP / SUPPORT / CHARGE
+  └── RTCP receiver reports</pre>
+          </div>
+        </div>
+
+        <h3>接続モード</h3>
+        <div class="cards">
+          <div class="card">
+            <div class="card-icon">🏠</div>
+            <div class="card-title">LAN Multicast</div>
+            <code>239.69.0.1:5004</code>
+            <div class="card-desc" style="margin-top:10px;">&lt;5ms。IGMPv3対応スイッチのみ。チャンネル名ハッシュからマルチキャストアドレスを導出。</div>
+          </div>
+          <div class="card">
+            <div class="card-icon">🔗</div>
+            <div class="card-title">P2P Direct</div>
+            <code>UDP hole-punch</code>
+            <div class="card-desc" style="margin-top:10px;">&lt;30ms。リレーサーバーが <code>PEER</code> ヒントを配信。NATトラバーサルで直接接続。</div>
+          </div>
+          <div class="card">
+            <div class="card-icon">🌐</div>
+            <div class="card-title">Relay WAN</div>
+            <code>relay.solun.art:5100</code>
+            <div class="card-desc" style="margin-top:10px;">&lt;100ms。3リージョン（nrt/lax/ams）。スワームノードで10万+受信者にスケール。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 3  パケットフォーマット
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="packet-format">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 3</div>
+        <h2>パケットフォーマット</h2>
+        <p class="section-desc">
+          OSTProパケットはRTP (RFC 3550) ベースに、RFC 5285準拠のRTP拡張ヘッダ（Profile=<code>0x4F53</code> "OS"）を付加した構造を持つ。
+        </p>
+
+        <h3>3.1 Modern OSTProパケット (28バイトヘッダ)</h3>
+        <div class="note">
+          <strong>重要:</strong> Modern形式は拡張フラグ X=1 で識別。RTPヘッダ直後にRFC 5285拡張ヘッダが続き、stream_id・seq_ext・media_timestampを含む。
+        </div>
+
+        <!-- Packet Visual Diagram -->
+        <div class="pkt-visual">
+          <!-- Row header -->
+          <div class="pkt-row" style="min-width:600px;">
+            <div class="pkt-bits-label" style="color:var(--text3);font-size:10px;">Bit offset</div>
+            <div style="flex:1;display:flex;justify-content:space-between;padding:0 2px;">
+              <span style="font-size:9px;color:var(--text3);font-family:monospace;">0</span>
+              <span style="font-size:9px;color:var(--text3);font-family:monospace;">8</span>
+              <span style="font-size:9px;color:var(--text3);font-family:monospace;">16</span>
+              <span style="font-size:9px;color:var(--text3);font-family:monospace;">24</span>
+              <span style="font-size:9px;color:var(--text3);font-family:monospace;">31</span>
+            </div>
+          </div>
+
+          <!-- Row 1: RTP fixed header first word -->
+          <div class="pkt-row">
+            <div class="pkt-bits-label">0–31</div>
+            <div class="pkt-fields">
+              <div class="pkt-field bf-rtp" style="flex:1;"><div class="pkt-fn">V=2</div><div class="pkt-fd">version</div><div class="pkt-fsz">2b</div></div>
+              <div class="pkt-field bf-rtp" style="flex:1;"><div class="pkt-fn">P=0</div><div class="pkt-fd">padding</div><div class="pkt-fsz">1b</div></div>
+              <div class="pkt-field bf-ext" style="flex:1;"><div class="pkt-fn">X=1</div><div class="pkt-fd">extension</div><div class="pkt-fsz">1b</div></div>
+              <div class="pkt-field bf-rtp" style="flex:1;"><div class="pkt-fn">CC=0</div><div class="pkt-fd">CSRC count</div><div class="pkt-fsz">4b</div></div>
+              <div class="pkt-field bf-rtp" style="flex:1;"><div class="pkt-fn">M</div><div class="pkt-fd">marker</div><div class="pkt-fsz">1b</div></div>
+              <div class="pkt-field bf-rtp" style="flex:3;"><div class="pkt-fn">PT</div><div class="pkt-fd">payload type (96–98)</div><div class="pkt-fsz">7b</div></div>
+              <div class="pkt-field bf-rtp" style="flex:6;"><div class="pkt-fn">Sequence Number</div><div class="pkt-fd">シーケンス番号</div><div class="pkt-fsz">16b</div></div>
+            </div>
+          </div>
+
+          <!-- Row 2: RTP Timestamp -->
+          <div class="pkt-row">
+            <div class="pkt-bits-label">32–63</div>
+            <div class="pkt-fields">
+              <div class="pkt-field bf-rtp" style="flex:1;"><div class="pkt-fn">RTP Timestamp</div><div class="pkt-fd">48000 Hz タイムスタンプ</div><div class="pkt-fsz">32bit</div></div>
+            </div>
+          </div>
+
+          <!-- Row 3: SSRC -->
+          <div class="pkt-row">
+            <div class="pkt-bits-label">64–95</div>
+            <div class="pkt-fields">
+              <div class="pkt-field bf-rtp" style="flex:1;"><div class="pkt-fn">SSRC</div><div class="pkt-fd">送信者識別子 (著作権追跡に使用)</div><div class="pkt-fsz">32bit</div></div>
+            </div>
+          </div>
+
+          <!-- Row 4: Extension header -->
+          <div class="pkt-row">
+            <div class="pkt-bits-label">96–127</div>
+            <div class="pkt-fields">
+              <div class="pkt-field bf-ext" style="flex:1;"><div class="pkt-fn">Profile = 0x4F53</div><div class="pkt-fd">"OS" — OSTP識別</div><div class="pkt-fsz">16bit</div></div>
+              <div class="pkt-field bf-ext" style="flex:1;"><div class="pkt-fn">Length = 0x0002</div><div class="pkt-fd">拡張ヘッダ長 (2×32bit)</div><div class="pkt-fsz">16bit</div></div>
+            </div>
+          </div>
+
+          <!-- Row 5: stream_id + seq_ext -->
+          <div class="pkt-row">
+            <div class="pkt-bits-label">128–159</div>
+            <div class="pkt-fields">
+              <div class="pkt-field bf-ext" style="flex:1;"><div class="pkt-fn">deck_id</div><div class="pkt-fd">stream_id[15:12]</div><div class="pkt-fsz">4b</div></div>
+              <div class="pkt-field bf-ext" style="flex:1;"><div class="pkt-fn">ch_count</div><div class="pkt-fd">stream_id[11:8]</div><div class="pkt-fsz">4b</div></div>
+              <div class="pkt-field bf-ext" style="flex:2;"><div class="pkt-fn">reserved=0</div><div class="pkt-fd">stream_id[7:0]</div><div class="pkt-fsz">8b</div></div>
+              <div class="pkt-field bf-ext" style="flex:4;"><div class="pkt-fn">seq_ext</div><div class="pkt-fd">拡張シーケンス番号</div><div class="pkt-fsz">16bit</div></div>
+            </div>
+          </div>
+
+          <!-- Row 6: media_timestamp -->
+          <div class="pkt-row">
+            <div class="pkt-bits-label">160–191</div>
+            <div class="pkt-fields">
+              <div class="pkt-field bf-ext" style="flex:1;"><div class="pkt-fn">media_timestamp</div><div class="pkt-fd">メディアタイムスタンプ (μs精度)</div><div class="pkt-fsz">32bit</div></div>
+            </div>
+          </div>
+
+          <!-- Audio Payload -->
+          <div class="pkt-row">
+            <div class="pkt-bits-label">192+</div>
+            <div class="pkt-fields">
+              <div class="pkt-field bf-payload" style="flex:1;"><div class="pkt-fn">Audio Payload</div><div class="pkt-fd">PCM24 / F32 / Opus (可変長)</div><div class="pkt-fsz">variable</div></div>
+            </div>
+          </div>
+
+          <!-- CRC -->
+          <div class="pkt-row">
+            <div class="pkt-bits-label">末尾</div>
+            <div class="pkt-fields">
+              <div class="pkt-field bf-crc" style="flex:1;"><div class="pkt-fn">CRC-32</div><div class="pkt-fd">オプション。整合性チェック</div><div class="pkt-fsz">32bit opt.</div></div>
+            </div>
+          </div>
+        </div>
+
+        <h4>stream_id フィールド詳細</h4>
+        <div class="code-wrap">
+          <button class="copy-btn">COPY</button>
+          <pre><span class="c-amber">stream_id[15:12]</span> = <span class="c-cyan">deck_id</span>    <span class="c-dim">// 0 = Deck A, 1 = Deck B</span>
+<span class="c-amber">stream_id[11:8]</span>  = <span class="c-cyan">ch_count</span>   <span class="c-dim">// 0=legacy 2ch, 1=mono, 2=stereo, 6=5.1, 8=7.1</span>
+<span class="c-amber">stream_id[7:0]</span>   = <span class="c-dim">reserved</span>   <span class="c-dim">// MUST be 0x00</span></pre>
+        </div>
+
+        <h3>3.2 ペイロードタイプ (PT)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>PT</th><th>名前</th><th>説明</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="td-mono">96</td><td>PCM24</td><td>24-bit integer PCM、48000Hz</td></tr>
+              <tr><td class="td-mono">97</td><td>F32</td><td>32-bit float PCM、48000Hz</td></tr>
+              <tr><td class="td-mono">98</td><td>Opus</td><td>Opus compressed (RFC 6716)、可変ビットレート</td></tr>
+              <tr><td class="td-mono">10</td><td>AES67/L24</td><td>AES67 互換 24-bit PCM (互換レイヤー)</td></tr>
+              <tr><td class="td-mono">11</td><td>AES67/L16</td><td>AES67 互換 16-bit PCM (互換レイヤー)</td></tr>
+              <tr><td class="td-mono">126</td><td>NACK</td><td>再送要求 (RFC 4585 Generic NACK)</td></tr>
+              <tr><td class="td-mono">127</td><td>FEC/XOR</td><td>XOR パリティパケット (N=5)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>3.3 Legacy フォーマット (後方互換)</h3>
+        <p class="section-desc" style="margin-bottom:12px;">
+          X=0の場合、RTPヘッダ12バイトの直後（offset 12）に4バイトのマジック <code>0x4F535450</code>（"OSTP"）を検出することで識別する。
+          Modern形式への移行推奨。レガシー識別子は受信側でのみサポート。
+        </p>
+        <div class="warn">
+          <strong>MUST NOT:</strong> 新規実装でLegacyフォーマットを送信してはならない。受信側は両形式を受け入れること (MUST accept)。
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 4  チャンネルアドレッシング
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="channel-addressing">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 4</div>
+        <h2>チャンネルアドレッシング</h2>
+        <p class="section-desc">
+          チャンネル名は人間が読めるUTF-8文字列で、LAN・WAN両方のアドレスに変換される。
+        </p>
+
+        <h3>名前規則</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>制約</th><th>値</th></tr></thead>
+            <tbody>
+              <tr><td>エンコーディング</td><td>UTF-8 NFC正規化</td></tr>
+              <tr><td>長さ</td><td>1–64バイト</td></tr>
+              <tr><td>使用可能文字</td><td>Printableユニコード + <code>/</code>（パス区切り）</td></tr>
+              <tr><td>禁止文字</td><td>制御文字 (U+0000–U+001F)、NULL</td></tr>
+              <tr><td>パス最大深度</td><td>4階層</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>名前例</h3>
+        <div class="code-wrap">
+          <button class="copy-btn">COPY</button>
+          <pre><span class="c-green">"test"</span>                    <span class="c-dim">// シンプルな名前</span>
+<span class="c-green">"soluna/stage-a"</span>          <span class="c-dim">// 階層: ブランド/ステージ</span>
+<span class="c-green">"venue/tokyo/floor-1"</span>     <span class="c-dim">// 階層: 会場/都市/フロア</span>
+<span class="c-green">"dj/akira/set-20260316"</span>  <span class="c-dim">// 階層: アーティスト/セット</span></pre>
+        </div>
+
+        <h3>LAN → Multicastアドレス導出</h3>
+        <p style="color:var(--text2);font-size:14px;margin-bottom:16px;">
+          チャンネル名のFNV-1a 32bitハッシュを計算し、Organization-Localマルチキャスト範囲にマップする：
+        </p>
+        <div class="code-wrap">
+          <button class="copy-btn">COPY</button>
+          <pre><span class="c-cyan">h</span> = FNV1a_32(<span class="c-green">channel_name</span>)
+<span class="c-cyan">X</span> = (h >> 8) & 0xFF
+<span class="c-cyan">Y</span> = h & 0xFF
+multicast_addr = <span class="c-amber">239.69.</span><span class="c-cyan">X</span><span class="c-amber">.</span><span class="c-cyan">Y</span>
+port           = <span class="c-amber">5004</span>          <span class="c-dim">// AES67互換</span></pre>
+        </div>
+
+        <h3>WAN → Relay接続</h3>
+        <div class="code-wrap">
+          <button class="copy-btn">COPY</button>
+          <pre><span class="c-dim">// UDP unicast to relay</span>
+relay.solun.art:<span class="c-amber">5100</span>
+
+<span class="c-dim">// TCP/WS control</span>
+JOIN:<span class="c-green">channel_name</span>:<span class="c-green">password</span>:<span class="c-green">device_name</span>\n</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 5  リレープロトコル (RSP)
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="relay-protocol">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 5</div>
+        <h2>リレープロトコル (RSP)</h2>
+        <p class="section-desc">
+          Relay Session Protocol。TCP上のテキストベースプロトコル。各コマンドは <code>\n</code> で終端。
+          接続先: <code>relay.solun.art:5100</code>
+        </p>
+
+        <h3>接続フロー</h3>
+        <div class="flow">
+          <div class="flow-step">
+            <div class="flow-arrow"><span class="flow-dir-cr">→</span></div>
+            <div>
+              <div class="flow-cmd">JOIN:channel:password:device_name\n</div>
+              <div class="flow-desc">チャンネル参加リクエスト。パスワードなしの場合は空文字。</div>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-arrow"><span class="flow-dir-rc">←</span></div>
+            <div>
+              <div class="flow-cmd">ROLE:dj|owner|listener\n</div>
+              <div class="flow-desc">割り当てられたロールの通知。</div>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-arrow"><span class="flow-dir-rc">←</span></div>
+            <div>
+              <div class="flow-cmd">OK:joined\n</div>
+              <div class="flow-desc">接続成功確認。</div>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-arrow"><span class="flow-dir-cr">→</span></div>
+            <div>
+              <div class="flow-cmd">HELLO\n</div>
+              <div class="flow-desc">キープアライブ。5秒毎に送信しなければならない。15秒無応答でタイムアウト。</div>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-arrow"><span class="flow-dir-cr">→</span></div>
+            <div>
+              <div class="flow-cmd">MEMBERS\n</div>
+              <div class="flow-desc">現在のチャンネルメンバー一覧を要求。</div>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-arrow"><span class="flow-dir-rc">←</span></div>
+            <div>
+              <div class="flow-cmd">MEMBERS:{...}\n</div>
+              <div class="flow-desc">JSON形式のメンバー一覧。</div>
+            </div>
+          </div>
+        </div>
+
+        <h3>コマンド一覧</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>コマンド</th><th>方向</th><th>説明</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="td-mono">JOIN:&lt;ch&gt;:&lt;pw&gt;:&lt;name&gt;</td><td>C→R</td><td>チャンネル参加。pw省略可</td></tr>
+              <tr><td class="td-mono">HELLO</td><td>C→R</td><td>キープアライブ (5秒毎、MUST)</td></tr>
+              <tr><td class="td-mono">MEMBERS</td><td>C→R</td><td>メンバー一覧取得</td></tr>
+              <tr><td class="td-mono">WALLET</td><td>C→R</td><td>残高照会 (Solana)</td></tr>
+              <tr><td class="td-mono">TIP:&lt;amount&gt;</td><td>C→R</td><td>DJ/配信者へチップ送信 (ENAI)</td></tr>
+              <tr><td class="td-mono">SUPPORT:&lt;amount&gt;</td><td>C→R</td><td>DJ/イベント支援 (ENAI)</td></tr>
+              <tr><td class="td-mono">REPORT:&lt;ssrc&gt;:&lt;recv&gt;:&lt;lost&gt;:&lt;loss%&gt;:&lt;jitter&gt;:&lt;seq&gt;</td><td>C→R</td><td>RTCP受信レポート</td></tr>
+              <tr><td class="td-mono">OK:joined</td><td>R→C</td><td>接続成功</td></tr>
+              <tr><td class="td-mono">ROLE:&lt;role&gt;</td><td>R→C</td><td>ロール通知 (dj/owner/listener)</td></tr>
+              <tr><td class="td-mono">PEER:&lt;ip&gt;:&lt;port&gt;</td><td>R→C</td><td>P2Pピアヒント (NAT traverse用)</td></tr>
+              <tr><td class="td-mono">ERROR:&lt;code&gt;:&lt;msg&gt;</td><td>R→C</td><td>エラー通知</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 6  輻輳制御
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="congestion-control">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 6</div>
+        <h2>輻輳制御</h2>
+        <p class="section-desc">
+          RFC 8085準拠のUDP輻輳制御。損失率・ジッターを監視し、ビットレートラダーを自動調整する。
+        </p>
+
+        <h3>ビットレートラダー</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Tier</th><th>ビットレート</th><th>品質</th><th>想定用途</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="td-mono">0</td><td>32 kbps</td><td>音声</td><td>緊急/低速WAN (3G等)</td></tr>
+              <tr><td class="td-mono">1</td><td>64 kbps</td><td>良好</td><td>標準モバイル (4G)</td></tr>
+              <tr><td class="td-mono">2</td><td>128 kbps</td><td>Hi-Fi</td><td><strong>デフォルト</strong> (WiFi/5G)</td></tr>
+              <tr><td class="td-mono">3</td><td>192 kbps</td><td>スタジオ</td><td>高品質WiFi/有線</td></tr>
+              <tr><td class="td-mono">4</td><td>320 kbps</td><td>マスター</td><td>録音/アーカイブ/LAN</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>状態遷移ルール</h3>
+        <div class="cards">
+          <div class="card" style="border-color:rgba(245,158,11,0.2);">
+            <div style="color:var(--amber);font-size:20px;margin-bottom:8px;">⬇ ダウングレード</div>
+            <div class="card-desc">損失率 &gt;10% が <strong>3秒間継続</strong>した場合、1ティア下げる。Opaque NACKが溢れた場合も即座にダウングレード。</div>
+          </div>
+          <div class="card" style="border-color:rgba(16,185,129,0.2);">
+            <div style="color:var(--green);font-size:20px;margin-bottom:8px;">⬆ アップグレード</div>
+            <div class="card-desc">損失率 &lt;0.5% が <strong>30秒間安定</strong>して継続した場合のみ1ティア上げる。急激なアップグレードは禁止。</div>
+          </div>
+        </div>
+
+        <h3>3層回復メカニズム</h3>
+        <div class="flow">
+          <div class="flow-step">
+            <div class="flow-arrow" style="font-size:14px;color:var(--green);font-weight:700;">①</div>
+            <div>
+              <div class="flow-cmd" style="color:var(--green);">Opus In-Band FEC</div>
+              <div class="flow-desc">Opusコーデック内蔵のFEC。前パケット情報を現パケットに埋め込む。追加帯域なし。</div>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-arrow" style="font-size:14px;color:var(--amber);font-weight:700;">②</div>
+            <div>
+              <div class="flow-cmd" style="color:var(--amber);">XOR Parity FEC (N=5)</div>
+              <div class="flow-desc">5パケット毎にXORパリティパケット (PT=127) を送信。1バースト損失を1パケットで回復。</div>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-arrow" style="font-size:14px;color:var(--pink);font-weight:700;">③</div>
+            <div>
+              <div class="flow-cmd" style="color:var(--pink);">NACK Retransmit (RFC 4585)</div>
+              <div class="flow-desc">FECで回復不能な場合、NACK (PT=126) を送信して再送要求。レート制限: 10 NACK/秒/セッション。</div>
+            </div>
+          </div>
+        </div>
+
+        <h3>XOR FECパケットフォーマット</h3>
+        <div class="code-wrap">
+          <button class="copy-btn">COPY</button>
+          <pre>PT      = <span class="c-amber">127</span>          <span class="c-dim">// FEC/XOR</span>
+stream_id = <span class="c-amber">0xFFFF</span>     <span class="c-dim">// FECパケット識別</span>
+seq     = <span class="c-cyan">base_seq</span>     <span class="c-dim">// 保護対象の先頭シーケンス番号</span>
+
+Payload = XOR(<span class="c-green">pkt[N]</span>, <span class="c-green">pkt[N+1]</span>, <span class="c-green">pkt[N+2]</span>, <span class="c-green">pkt[N+3]</span>, <span class="c-green">pkt[N+4]</span>)</pre>
+        </div>
+
+        <h3>RTCP受信レポート (JSON over WebSocket)</h3>
+        <div class="code-wrap">
+          <button class="copy-btn">COPY</button>
+          <pre>{
+  <span class="c-cyan">"command"</span>: <span class="c-green">"rx.receiver_report"</span>,
+  <span class="c-cyan">"ssrc"</span>: <span class="c-amber">3141592653</span>,
+  <span class="c-cyan">"packets_received"</span>: <span class="c-amber">25000</span>,
+  <span class="c-cyan">"packets_lost"</span>: <span class="c-amber">12</span>,
+  <span class="c-cyan">"loss_rate_pct"</span>: <span class="c-amber">0.05</span>,
+  <span class="c-cyan">"jitter_ms"</span>: <span class="c-amber">1.8</span>,
+  <span class="c-cyan">"last_seq"</span>: <span class="c-amber">25012</span>,
+  <span class="c-cyan">"rtt_ms"</span>: <span class="c-amber">45.2</span>
+}</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 7  ファイル配信プロトコル
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="file-delivery">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 7</div>
+        <h2>ファイル配信プロトコル</h2>
+        <p class="section-desc">
+          次の曲ファイルを再生前に全受信者へ配信するプリバッファ機構。これにより曲切替を <strong>50ms</strong> 以内に同期実行できる。
+        </p>
+
+        <div class="table-wrap" style="margin-bottom:24px;">
+          <table>
+            <thead><tr><th>方式</th><th>切替遅延</th></tr></thead>
+            <tbody>
+              <tr><td>通常アップロード (逐次転送)</td><td style="color:var(--text2);">3,000 – 30,000 ms (ファイルサイズに依存)</td></tr>
+              <tr><td>プリバッファ済み (OSTP)</td><td style="color:var(--green);font-weight:700;">50 ms ✅</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>配信フロー</h3>
+        <div class="code-wrap" style="margin-bottom:0;">
+          <pre style="font-size:12px;line-height:1.9;"><span class="c-dim">// ── 75%再生時点でプリバッファ開始 ─────────────────────────────</span>
+
+<span class="c-blue">iOS/Android</span> ──POST /api/player/upload?name=track.mp3&mode=next──→ <span class="c-cyan">solunad</span>
+<span class="c-cyan">solunad</span>     ←── event: <span class="c-green">player.next_file_start</span> {name, size} ──────→ 全受信者
+            ←── binary: <span class="c-amber">[0xFC][0xFD][hi][lo][32KB chunk]</span> × N ──→ 全受信者
+<span class="c-cyan">solunad</span>     ←── event: <span class="c-green">player.next_file_done</span> ────────────────────→ 全受信者
+各受信者     ──command: <span class="c-green">player.next_file_ready</span> ──────────────────────→ <span class="c-cyan">solunad</span>
+
+<span class="c-dim">// ── 曲切替時 (全員準備完了後) ────────────────────────────────</span>
+
+<span class="c-cyan">solunad</span>     ←── event: <span class="c-green">player.switch</span> {switch_delay_ms: 50, file_pos_ms: 0} → 全受信者
+各受信者     ── <span class="c-amber">50ms後</span>にローカルAVPlayer/MediaPlayerで再生開始 ─────────</pre>
+        </div>
+
+        <h3>バイナリフレームフォーマット</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>マジック</th><th>用途</th></tr></thead>
+            <tbody>
+              <tr><td class="td-mono">0xFA 0xFB</td><td>現在曲チャンク (ライブ配信)</td></tr>
+              <tr><td class="td-mono">0xFC 0xFD</td><td>次曲プリバッファチャンク</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note" style="margin-top:16px;">
+          <strong>フレーム構造:</strong> <code>[magic 2B][size_hi 1B][size_lo 1B][payload 最大32768B]</code>
+          — サイズフィールドはbig-endian。最大チャンクサイズ = 32,768バイト = 32KB。
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 8  デーモン制御 (DCP)
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="dcp">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 8</div>
+        <h2>デーモン制御プロトコル (DCP)</h2>
+        <p class="section-desc">
+          solunadデーモンをWebSocket経由で制御するJSONプロトコル。接続先: <code>ws://host:8400/ws</code>
+        </p>
+
+        <h3>メッセージフォーマット</h3>
+        <div class="code-wrap">
+          <button class="copy-btn">COPY</button>
+          <pre><span class="c-dim">// リクエスト (id は任意の整数)</span>
+{ <span class="c-cyan">"id"</span>: <span class="c-amber">42</span>, <span class="c-cyan">"command"</span>: <span class="c-green">"monitor.set_delay"</span>, <span class="c-cyan">"ms"</span>: <span class="c-amber">40</span> }
+
+<span class="c-dim">// レスポンス</span>
+{ <span class="c-cyan">"id"</span>: <span class="c-amber">42</span>, <span class="c-cyan">"success"</span>: <span class="c-green">true</span>, <span class="c-cyan">"data"</span>: <span class="c-green">""</span> }
+
+<span class="c-dim">// ブロードキャストイベント (id なし)</span>
+{ <span class="c-cyan">"event"</span>: <span class="c-green">"player.switch"</span>, <span class="c-cyan">"switch_delay_ms"</span>: <span class="c-amber">50</span>, <span class="c-cyan">"file_pos_ms"</span>: <span class="c-amber">0</span> }</pre>
+        </div>
+
+        <h3>コマンド一覧</h3>
+
+        <h4>Monitor (TX再生制御)</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>コマンド</th><th>説明</th></tr></thead>
+            <tbody>
+              <tr><td class="td-mono">monitor.stats</td><td>送信統計 (送信パケット数、ビットレート、接続数)</td></tr>
+              <tr><td class="td-mono">monitor.start</td><td>音声送信開始</td></tr>
+              <tr><td class="td-mono">monitor.stop</td><td>音声送信停止</td></tr>
+              <tr><td class="td-mono">monitor.set_volume</td><td>音量設定 (0.0–1.0)</td></tr>
+              <tr><td class="td-mono">monitor.set_mute</td><td>ミュート切替 (bool)</td></tr>
+              <tr><td class="td-mono">monitor.set_buffer</td><td>バッファサイズ設定 (ms)</td></tr>
+              <tr><td class="td-mono">monitor.set_delay</td><td>遅延補正設定 (ms)</td></tr>
+              <tr><td class="td-mono">monitor.list_devices</td><td>利用可能なオーディオデバイス一覧</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4>Player</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>コマンド</th><th>説明</th></tr></thead>
+            <tbody>
+              <tr><td class="td-mono">player.status</td><td>現在の再生状態</td></tr>
+              <tr><td class="td-mono">player.play</td><td>再生開始</td></tr>
+              <tr><td class="td-mono">player.pause</td><td>一時停止</td></tr>
+              <tr><td class="td-mono">player.stop</td><td>停止</td></tr>
+              <tr><td class="td-mono">player.seek</td><td>シーク (pos_ms)</td></tr>
+              <tr><td class="td-mono">player.file_ready</td><td>現在曲のプリバッファ完了通知 (受信者→送信者)</td></tr>
+              <tr><td class="td-mono">player.next_file_ready</td><td>次曲のプリバッファ完了通知 (受信者→送信者)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4>System / Channel</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>コマンド</th><th>説明</th></tr></thead>
+            <tbody>
+              <tr><td class="td-mono">system.info</td><td>デーモンバージョン、OS、ビルド情報</td></tr>
+              <tr><td class="td-mono">time.ping</td><td>RTT測定 (遅延補正計算に使用)</td></tr>
+              <tr><td class="td-mono">mode.get</td><td>現在の動作モード取得 (tx/rx/loopback)</td></tr>
+              <tr><td class="td-mono">mode.set</td><td>動作モード切替</td></tr>
+              <tr><td class="td-mono">channel.get</td><td>現在のチャンネル名取得</td></tr>
+              <tr><td class="td-mono">channel.set</td><td>チャンネル名変更</td></tr>
+              <tr><td class="td-mono">rx.receiver_report</td><td>RTCP受信レポート送信 (→ relay)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Time Sync アルゴリズム</h3>
+        <div class="note">
+          <strong>目的:</strong> solunadのバッファ遅延をネットワーク遅延に合わせて自動調整し、全受信者の再生タイミングを同期する。
+        </div>
+        <div class="code-wrap">
+          <button class="copy-btn">COPY</button>
+          <pre><span class="c-dim">// クライアントサイド実装例 (TypeScript)</span>
+<span class="c-blue">const</span> t1 = Date.now()
+<span class="c-cyan">ws</span>.send(JSON.stringify({ <span class="c-cyan">command</span>: <span class="c-green">"time.ping"</span> }))
+
+<span class="c-dim">// recv: {"data": "{\"pong\":true}"}</span>
+<span class="c-blue">const</span> t2 = Date.now()
+<span class="c-blue">const</span> latency = Math.max(<span class="c-amber">20</span>, Math.floor((t2 - t1) / <span class="c-amber">2</span>) + <span class="c-amber">15</span>)
+
+<span class="c-dim">// 遅延補正をデーモンに適用</span>
+<span class="c-cyan">ws</span>.send(JSON.stringify({ <span class="c-cyan">command</span>: <span class="c-green">"monitor.set_delay"</span>, <span class="c-cyan">ms</span>: latency }))
+
+<span class="c-dim">// ジッターバッファも同期</span>
+jitterBufferTarget = latency</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 9  DJデュアルデッキ
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="dual-deck">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 9</div>
+        <h2>DJデュアルデッキ</h2>
+        <p class="section-desc">
+          stream_idフィールドを利用して2つのデッキ（Deck A / Deck B）を同時に扱う。
+          クロスフェード・BPM同期・エフェクトをプロトコルレベルでサポート。
+        </p>
+
+        <h3>stream_id エンコーディング</h3>
+        <div class="pkt-visual">
+          <div class="pkt-row">
+            <div class="pkt-bits-label">stream_id</div>
+            <div class="pkt-fields">
+              <div class="pkt-field bf-ext" style="flex:1;">
+                <div class="pkt-fn">deck_id</div>
+                <div class="pkt-fd">bits [15:12]</div>
+                <div class="pkt-fsz">4bit</div>
+              </div>
+              <div class="pkt-field bf-ext" style="flex:1;">
+                <div class="pkt-fn">ch_count</div>
+                <div class="pkt-fd">bits [11:8]</div>
+                <div class="pkt-fsz">4bit</div>
+              </div>
+              <div class="pkt-field" style="flex:2;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;">
+                <div class="pkt-fn" style="color:var(--text3);">reserved</div>
+                <div class="pkt-fd" style="color:var(--text3);">bits [7:0]</div>
+                <div class="pkt-fsz">8bit = 0x00</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>deck_id</th><th>意味</th></tr></thead>
+            <tbody>
+              <tr><td class="td-mono">0x0</td><td>Deck A (プライマリ)</td></tr>
+              <tr><td class="td-mono">0x1</td><td>Deck B (セカンダリ)</td></tr>
+              <tr><td class="td-mono">0x2–0xF</td><td>Reserved (将来の拡張用)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>動作モード</h3>
+        <div class="cards">
+          <div class="card" style="border-color:rgba(16,185,129,0.2);">
+            <div style="color:var(--green);font-weight:700;margin-bottom:8px;">✅ param-only (デフォルト)</div>
+            <div class="card-desc">
+              パラメータ（クロスフェード値・BPM等）のみ送信。受信者側でローカルファイルを加工して再生。
+              帯域幅を最小化。
+            </div>
+          </div>
+          <div class="card" style="border-color:rgba(139,92,246,0.2);">
+            <div style="color:var(--purple);font-weight:700;margin-bottom:8px;">dual-stream</div>
+            <div class="card-desc">
+              2つのUDP音声ストリームを同時送信。各ストリームがstream_idで識別される。
+              帯域幅2倍が必要。
+            </div>
+          </div>
+        </div>
+
+        <h3>パラメータコマンド</h3>
+        <div class="code-wrap">
+          <button class="copy-btn">COPY</button>
+          <pre><span class="c-dim">// クロスフェード位置設定 (0.0 = Deck A, 1.0 = Deck B)</span>
+{ <span class="c-cyan">"command"</span>: <span class="c-green">"deck.set_param"</span>, <span class="c-cyan">"deck"</span>: <span class="c-amber">0</span>, <span class="c-cyan">"param"</span>: <span class="c-green">"crossfade"</span>, <span class="c-cyan">"value"</span>: <span class="c-amber">0.7</span> }
+
+<span class="c-dim">// BPM設定</span>
+{ <span class="c-cyan">"command"</span>: <span class="c-green">"deck.set_param"</span>, <span class="c-cyan">"deck"</span>: <span class="c-amber">1</span>, <span class="c-cyan">"param"</span>: <span class="c-green">"bpm"</span>, <span class="c-cyan">"value"</span>: <span class="c-amber">128.0</span> }
+
+<span class="c-dim">// モード切替</span>
+{ <span class="c-cyan">"command"</span>: <span class="c-green">"deck.set_mode"</span>, <span class="c-cyan">"mode"</span>: <span class="c-green">"param_only"</span> }</pre>
+        </div>
+
+        <h3>等パワークロスフェードアルゴリズム</h3>
+        <div class="note">
+          <strong>Equal-Power Crossfade:</strong> クリックノイズを防ぐため、10ms (480サンプル @ 48kHz) 以上でスムーシングする (MUST)。
+        </div>
+        <div class="code-wrap">
+          <button class="copy-btn">COPY</button>
+          <pre><span class="c-dim">// crossfade: 0.0 = Deck A only, 1.0 = Deck B only</span>
+θ = crossfade × <span class="c-cyan">π</span> / <span class="c-amber">2</span>
+
+gain_A = cos(θ)   <span class="c-dim">// Deck A: 1.0 → 0.0 (equal-power curve)</span>
+gain_B = sin(θ)   <span class="c-dim">// Deck B: 0.0 → 1.0 (equal-power curve)</span>
+
+output = gain_A × deck_A + gain_B × deck_B
+
+<span class="c-dim">// MUST smooth over ≥ 10ms (480 samples @ 48kHz) to prevent clicks</span>
+<span class="c-dim">// クリックノイズ防止のため ≥480サンプルかけてスムーシングすること</span></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 10  セキュリティ
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="security">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 10</div>
+        <h2>セキュリティ</h2>
+        <p class="section-desc">
+          OSTProのセキュリティモデルはコンテンツの機密性に応じて段階的に適用される。
+        </p>
+
+        <h3>暗号化</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>要件</th><th>ケース</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><span class="tag tag-optional">OPTIONAL</span> DTLS-SRTP</td>
+                <td>パブリックチャンネル (無料コンテンツ)</td>
+              </tr>
+              <tr>
+                <td><span class="tag tag-required">REQUIRED</span> DTLS-SRTP</td>
+                <td>有料コンテンツ / クローズドチャンネル / ペイウォール</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>セッショントークン</h3>
+        <div class="code-wrap">
+          <button class="copy-btn">COPY</button>
+          <pre><span class="c-dim">// 256-bit random, base64url encoded</span>
+token = base64url(crypto.randomBytes(<span class="c-amber">32</span>))
+
+<span class="c-dim">// WebSocket Authorizationヘッダで送信</span>
+Authorization: Bearer &lt;token&gt;
+
+<span class="c-dim">// トークン有効期限: セッション終了まで (最大24時間)</span></pre>
+        </div>
+
+        <h3>レート制限</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>対象</th><th>制限</th><th>窓</th></tr></thead>
+            <tbody>
+              <tr><td>JOIN試行</td><td>10回</td><td>1分/IP</td></tr>
+              <tr><td>NACK送信</td><td>10パケット</td><td>1秒/セッション</td></tr>
+              <tr><td>UDP受信</td><td>10,000パケット</td><td>1秒/IP</td></tr>
+              <tr><td>CHARGE (支払い)</td><td>nonce + 300秒ウィンドウ</td><td>リプレイ防止</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>プライバシー</h3>
+        <div class="note">
+          <strong>Fingerprint保護:</strong> SSRCフィンガープリントはk-anonymityハッシュプレフィックスを使用。
+          著作権追跡に必要な最小限の情報のみ保持し、<strong>48時間後に自動削除</strong>される。
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 11  IANA登録
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="iana">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 11</div>
+        <h2>IANA登録</h2>
+        <p class="section-desc">
+          OSTProが使用するポート番号・ペイロードタイプ・マルチキャストアドレスのIANA登録状況。
+        </p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>リソース</th><th>値</th><th>状態</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>RTP Extension Profile</td>
+                <td class="td-mono">0x4F53 ("OS")</td>
+                <td><span class="tag tag-planned">申請予定</span></td>
+              </tr>
+              <tr>
+                <td>UDP Port (audio)</td>
+                <td class="td-mono">5004</td>
+                <td><span class="tag tag-optional">既存割当 (AES67互換)</span></td>
+              </tr>
+              <tr>
+                <td>UDP/TCP Port (relay)</td>
+                <td class="td-mono">5100</td>
+                <td><span class="tag tag-planned">申請予定</span></td>
+              </tr>
+              <tr>
+                <td>TCP/WS Port (DCP)</td>
+                <td class="td-mono">8400</td>
+                <td><span class="tag tag-planned">申請予定</span></td>
+              </tr>
+              <tr>
+                <td>Payload Type 96</td>
+                <td class="td-mono">PCM24</td>
+                <td><span class="badge badge-green" style="font-size:11px;">Dynamic</span></td>
+              </tr>
+              <tr>
+                <td>Payload Type 97</td>
+                <td class="td-mono">F32</td>
+                <td><span class="badge badge-green" style="font-size:11px;">Dynamic</span></td>
+              </tr>
+              <tr>
+                <td>Payload Type 98</td>
+                <td class="td-mono">Opus</td>
+                <td><span class="badge badge-green" style="font-size:11px;">Dynamic</span></td>
+              </tr>
+              <tr>
+                <td>Payload Type 126</td>
+                <td class="td-mono">NACK</td>
+                <td><span class="badge badge-green" style="font-size:11px;">Dynamic</span></td>
+              </tr>
+              <tr>
+                <td>Payload Type 127</td>
+                <td class="td-mono">FEC/XOR</td>
+                <td><span class="badge badge-green" style="font-size:11px;">Dynamic</span></td>
+              </tr>
+              <tr>
+                <td>Multicast (LAN)</td>
+                <td class="td-mono">239.69.0.0/16</td>
+                <td><span class="tag tag-optional">Organization-Local</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="note">
+          <strong>参照RFC:</strong> RFC 3550 (RTP), RFC 4585 (NACK), RFC 5285 (RTP Extension Header), RFC 6716 (Opus), RFC 8085 (UDP Congestion Control)
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 12  実装状況
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="implementations">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 12</div>
+        <h2>実装状況</h2>
+        <p class="section-desc">
+          各プラットフォームでのOSTProサポート状況。✅ = 実装済み・テスト済み、🔜 = 実装計画あり (DTLS)。
+        </p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>プラットフォーム</th>
+                <th>受信 RX</th>
+                <th>送信 TX</th>
+                <th>FEC</th>
+                <th>NACK</th>
+                <th>DTLS</th>
+                <th>RTCP</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Mac (solunad)</strong></td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="pending">🔜</td>
+                <td class="check">✅</td>
+              </tr>
+              <tr>
+                <td><strong>iOS (Swift)</strong></td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="pending">🔜</td>
+                <td class="check">✅</td>
+              </tr>
+              <tr>
+                <td><strong>Android (Kotlin)</strong></td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="pending">🔜</td>
+                <td class="check">✅</td>
+              </tr>
+              <tr>
+                <td><strong>Windows</strong></td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="pending">🔜</td>
+                <td class="check">✅</td>
+              </tr>
+              <tr>
+                <td><strong>Web (Browser)</strong></td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="pending">🔜</td>
+                <td class="check">✅</td>
+              </tr>
+              <tr>
+                <td><strong>Linux / RPi</strong></td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="pending">🔜</td>
+                <td class="check">✅</td>
+              </tr>
+              <tr>
+                <td><strong>ESP32</strong></td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="pending">🔜</td>
+                <td class="check">✅</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="note" style="margin-top:24px;">
+          <strong>凡例:</strong> ✅ = 実装済みかつテスト済み / 🔜 = DTLS-SRTP (実装計画あり)
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         § 13  ドキュメント
+    ════════════════════════════════════════════════════════ -->
+    <section class="spec-section" id="documents">
+      <div class="spec-section-inner reveal">
+        <div class="section-number">Section 13</div>
+        <h2>ドキュメント</h2>
+        <p class="section-desc">
+          OSTP仕様書・Internet-Draft・APIリファレンスへのリンク。
+        </p>
+
+        <div class="doc-cards">
+          <div class="doc-card">
+            <div class="doc-card-icon">📄</div>
+            <div class="doc-card-title">Internet-Draft (IETF)</div>
+            <div class="doc-card-sub">draft-hamada-opensonic-ostp-00</div>
+            <div class="doc-card-desc">
+              Independent Submission, Experimental。
+              Expires: 2026-09-17。
+            </div>
+            <div class="doc-card-links">
+              <a href="/docs/draft-hamada-opensonic-ostp-00.txt" class="doc-link">TXT 59KB</a>
+              <a href="/docs/draft-hamada-opensonic-ostp-00.html" class="doc-link">HTML 141KB</a>
+              <a href="/docs/draft-hamada-opensonic-ostp-00.xml" class="doc-link">XML Source</a>
+              <a href="https://github.com/yukihamada/opensonic/blob/master/docs/draft-hamada-opensonic-ostp-00.txt" target="_blank" rel="noopener" class="doc-link">GitHub ↗</a>
+            </div>
+          </div>
+
+          <div class="doc-card">
+            <div class="doc-card-icon">📚</div>
+            <div class="doc-card-title">完全仕様書</div>
+            <div class="doc-card-sub">OSTP-SPEC.md (2,183行)</div>
+            <div class="doc-card-desc">
+              17セクション。スワームトポロジー・経済レイヤー・DJデッキまで完全記述。
+            </div>
+            <div class="doc-card-links">
+              <a href="https://github.com/yukihamada/opensonic/blob/master/OSTP-SPEC.md" target="_blank" rel="noopener" class="doc-link">GitHubで見る ↗</a>
+            </div>
+          </div>
+
+          <div class="doc-card">
+            <div class="doc-card-icon">🔌</div>
+            <div class="doc-card-title">API リファレンス</div>
+            <div class="doc-card-sub">api.md</div>
+            <div class="doc-card-desc">
+              DCP WebSocket API・RSP コマンド・イベント一覧。インタラクティブサンドボックス付き。
+            </div>
+            <div class="doc-card-links">
+              <a href="/api-docs" class="doc-link">API Docs</a>
+            </div>
+          </div>
+
+          <div class="doc-card">
+            <div class="doc-card-icon">⭐</div>
+            <div class="doc-card-title">GitHub</div>
+            <div class="doc-card-sub">yukihamada/opensonic</div>
+            <div class="doc-card-desc">
+              MIT License。solunad C++ / iOS Swift / Android Kotlin / Web JS 実装。
+            </div>
+            <div class="doc-card-links">
+              <a href="https://github.com/yukihamada/opensonic" target="_blank" rel="noopener" class="doc-link">GitHub ↗</a>
+              <a href="https://github.com/yukihamada/opensonic/releases" target="_blank" rel="noopener" class="doc-link">Releases ↗</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Footer ──────────────────────────────────────────── -->
+    <footer class="spec-footer">
+      <div class="footer-note">
+        このドキュメントについて: この仕様はOpenSonic/Solunaの実装を元に作成されたIndependent Internet-Draftです。
+        IETF標準ではありませんが、RFC 3550・RFC 4585・RFC 5285・RFC 8085等の既存RFCに準拠しています。
+        フィードバック・貢献は
+        <a href="https://github.com/yukihamada/opensonic" style="color:var(--cyan);text-decoration:none;">GitHub</a>
+        へ。
+      </div>
+      <div style="font-size:12px;color:var(--text3);">
+        OSTP v0.9.3 · draft-hamada-opensonic-ostp-00<br>
+        © 2026 Soluna Project · MIT License
+      </div>
+    </footer>
+
+  </main>
+</div>
+
+<script>
+  // ── Scroll reveal ─────────────────────────────────────────
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+  // ── Sidebar active section highlighting ──────────────────
+  const sections = document.querySelectorAll('.spec-section');
+  const sidebarLinks = document.querySelectorAll('.sidebar a[data-section]');
+
+  const sectionObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.id;
+        sidebarLinks.forEach(link => {
+          link.classList.remove('active');
+          if (link.dataset.section === id) {
+            link.classList.add('active');
+            // Scroll sidebar to show active link
+            const sidebar = document.getElementById('sidebar');
+            const linkRect = link.getBoundingClientRect();
+            const sidebarRect = sidebar.getBoundingClientRect();
+            if (linkRect.top < sidebarRect.top + 40 || linkRect.bottom > sidebarRect.bottom - 40) {
+              link.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+          }
+        });
+      }
+    });
+  }, {
+    threshold: 0,
+    rootMargin: '-58px 0px -55% 0px'
+  });
+
+  sections.forEach(section => sectionObserver.observe(section));
+
+  // ── Smooth scroll from sidebar links ─────────────────────
+  sidebarLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const target = document.querySelector(link.getAttribute('href'));
+      if (target) {
+        const top = target.getBoundingClientRect().top + window.scrollY - 72;
+        window.scrollTo({ top, behavior: 'smooth' });
+      }
+    });
+  });
+
+  // ── Copy to clipboard ─────────────────────────────────────
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pre = btn.closest('.code-wrap').querySelector('pre');
+      const text = pre.innerText || pre.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'COPIED!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'COPY';
+          btn.classList.remove('copied');
+        }, 2000);
+      }).catch(() => {
+        // Fallback for older browsers
+        const range = document.createRange();
+        range.selectNode(pre);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.execCommand('copy');
+        window.getSelection().removeAllRanges();
+        btn.textContent = 'COPIED!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'COPY';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    });
+  });
+</script>
+</body>
+</html>
