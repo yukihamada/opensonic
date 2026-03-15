@@ -108,8 +108,28 @@ Copyright Notice
        11.4. Economic Security
        11.5. Fingerprint Privacy
    12. IANA Considerations
-   13. References
-   14. Authors' Addresses
+   13. File Distribution Protocol
+       13.1. Overview
+       13.2. Binary Frame Format
+       13.3. File Transfer State Machine
+       13.4. Synchronized Playback Switch
+       13.5. Pre-Buffer Optimization
+       13.6. HTTP Upload Endpoint
+   14. Daemon Control Protocol (DCP)
+       14.1. Overview
+       14.2. Monitor Commands (TX Local Playback)
+       14.3. Receiver Commands
+       14.4. System Commands
+       14.5. Player Commands
+       14.6. Broadcast Events
+       14.7. Time Synchronization via DCP
+   15. DJ Dual-Deck Protocol
+       15.1. Overview
+       15.2. Deck Control Parameters
+       15.3. Operating Modes
+       15.4. Crossfade Algorithm
+   16. References
+   17. Authors' Addresses
 
 ---
 
@@ -604,6 +624,32 @@ Copyright Notice
    Expected latency: < 5ms (LAN propagation + switch forwarding).
    Jitter: < 1ms on well-managed switches.
 
+   #### Multicast Address Collision Avoidance
+
+   The 16-bit FNV-1a hash mapping yields 65536 distinct multicast
+   addresses. By the birthday paradox, collision probability at N
+   simultaneous active channels on a subnet is:
+
+     P(collision) ≈ 1 - e^(-N²/131072)
+     At N=300: P ≈ 50%   At N=100: P ≈ 7%
+
+   To mitigate this, receivers MUST apply a secondary filter using the
+   `channel_id` field embedded in the OSTP `stream_id` header bits
+   [15:8] (upper byte). This provides an 8-bit discriminator (256
+   values) on top of the 16-bit multicast address, for an effective
+   24-bit address space (16M combinations).
+
+   The upper 8 bits of `stream_id` MUST be set to
+   `hash(channel_name)[16:24]` (bits 16–23 of the 32-bit FNV-1a hash
+   of the channel name in UTF-8).
+
+   When a receiver detects audio from an unexpected SSRC or channel_id
+   in the OSTP header that does not match the joined channel, it MUST:
+     1. Verify the `channel_id` field in OSTP `stream_id` bits [15:8]
+        matches the joined channel's hash bits [16:24].
+     2. If mismatch: discard the packet (do NOT deliver to audio).
+     3. Log a collision event and report via RTCP BYE.
+
 ### 6.3. P2P Mode (STUN/TURN)
 
    For WAN delivery with group size ≤ 50 listeners, the Source
@@ -751,8 +797,35 @@ Copyright Notice
    token   = timestamp + ":" + HMAC-SHA256-hex(key, message)
    ```
    Note: `std::to_string(double)` uses 6 decimal places (e.g., `0.010000`).
-   Replay protection: tokens are valid for 300 seconds; duplicate tokens
+   Replay protection: tokens are valid for 30 seconds; duplicate tokens
    within the window are rejected with HTTP 409.
+
+### 6.9. UDP NACK Retransmission (PT=126)
+
+   UDP receivers (native iOS/macOS clients) that have a bidirectional
+   UDP path to the relay MAY request retransmission using a PT=126 OSTP
+   packet sent directly to the relay UDP port:
+
+   **PT=126 NACK packet format:**
+   ```
+   RTP header (12B): V=2, X=1, PT=126, seq=1, ts=0, SSRC=client_ssrc
+   OSTP ext header:  profile=0x4F53, length=2 (8 bytes)
+   OSTP ext data:    stream_id=0, seq_ext=0, media_ts=0
+   Payload:          N × uint16_BE (missing sequence numbers, max 32)
+   CRC-32:           4 bytes (IEEE 802.3 LE, over entire body)
+   ```
+
+   The relay looks up each requested sequence in its per-channel replay
+   buffer and retransmits the original OSTP packet to the requesting
+   client. The sender MUST be registered in the channel (have sent JOIN)
+   for the relay to accept NACK packets.
+
+   Gap detection and NACK triggering:
+   - Receivers SHOULD detect gaps using signed 16-bit arithmetic to handle
+     sequence number wraparound: `gap = (int16_t)(cur_seq - (last_seq+1))`
+   - Gaps ≤ 2 SHOULD be concealed via PLC without issuing NACK
+   - Gaps 3–32 SHOULD trigger NACK immediately
+   - Gaps > 32 are treated as stream discontinuity (no NACK)
 
 ---
 
@@ -1222,9 +1295,13 @@ Copyright Notice
 
    Replay prevention:
    - The listener MUST reject any CHARGE with `timestamp_unix` more
-     than 300 seconds in the past or 60 seconds in the future.
-   - The listener MUST maintain a nonce cache for the past 600 seconds
-     and reject any CHARGE with a previously-seen nonce.
+     than 30 seconds in the past or 30 seconds in the future.
+     (Reduced from 300s — payment commands require tighter windows
+     to limit the replay attack surface. A 300s window would allow a
+     5-minute network partition to be exploited for replayed charges.)
+   - Relays MUST maintain a seen-nonce cache for 60 seconds and reject
+     any CHARGE with a previously-seen nonce.
+   - Receivers MUST reject CHARGE packets with timestamp > 30s old.
    - The cache SHOULD use an LRU structure with a maximum of 1000 entries.
 
    Session token rotation:
@@ -1419,28 +1496,88 @@ Copyright Notice
 
 ### 10.3. FEC and Packet Recovery
 
-   OSTP supports two packet recovery mechanisms:
+   OSTP supports three packet recovery mechanisms, applied in order of
+   latency cost (lowest first):
 
-   **Opus In-Band FEC**: When the Opus encoder is configured with
-   `OPUS_SET_INBAND_FEC(1)`, each packet carries a low-bitrate
-   redundant encoding of the previous frame. Receivers that miss a
-   packet can reconstruct it from the next packet's FEC data.
-   This adds 6–10 kbps overhead and recovers from single-packet loss
-   with no additional RTT.
+   **1. Opus In-Band FEC** (zero RTT, ~6–10 kbps overhead):
+   When the Opus encoder is configured with `OPUS_SET_INBAND_FEC(1)`,
+   each packet carries a low-bitrate redundant encoding of the previous
+   frame. Receivers that miss a packet can reconstruct it from the next
+   packet's FEC data with no additional RTT.
 
-   **RTP Retransmission (RFC 4588)**: For relay-mode connections over
-   WebSocket, receivers MAY request retransmission of lost packets via:
-   ```json
-   {"type": "NACK", "channel": "soluna/stage-a",
-    "ssrc": 3141592653, "seq": [1048590, 1048591]}
+   **2. XOR Parity FEC (PT=127)** (zero RTT, variable overhead):
+   The relay generates one XOR parity packet (PT=127, `stream_id=0xFFFF`)
+   for every `N` consecutive audio packets, where N is the dynamic FEC
+   group size (see Dynamic FEC Group Size below). The parity packet's
+   `seq` field carries `base_seq` (the seq of the first packet in the
+   group). The payload is the XOR of the N audio payloads, zero-padded
+   to the maximum payload length in the group.
+
+   The sender signals the current N value in the OSTP `stream_id` field
+   bits [7:4] (low nibble of the high byte). A value of 0 means FEC
+   disabled. Receivers MUST tolerate any N from 0–15.
+
+   **Receiver recovery algorithm:**
    ```
-   The relay server SHOULD maintain a retransmission buffer of the last
-   500 packets (10 seconds at 50 pps). RTX latency adds 1 × server RTT.
+   On PT=127 arrival with base_seq=B and group_size=N:
+     group = {B, B+1, ..., B+N-1}
+     missing = set(group) - set(received)
+     if |missing| == 1:
+       recovered_payload = fec_payload XOR (XOR of all present payloads)
+       inject synthetic OSTP packet with seq=missing[0]
+     if |missing| > 1:
+       fall through to NACK (§6.7/§6.9)
+   ```
+
+   #### Dynamic FEC Group Size
+
+   The FEC group size N SHOULD be adapted based on observed packet loss
+   rate (derived from RTCP Receiver Reports):
+
+     loss_rate = 0%           → N = 0  (FEC disabled, no overhead)
+     loss_rate = 0–2%         → N = 10 (10% overhead)
+     loss_rate = 2–5%         → N = 5  (20% overhead, default)
+     loss_rate = 5–10%        → N = 3  (33% overhead)
+     loss_rate > 10%          → N = 2  (50% overhead, + consider bitrate down)
+
+   Hysteresis: N SHOULD NOT change more than once per 10-second window to
+   avoid oscillation.
+
+   FEC recovery is tracked via `soluna_relay_fec_packets_sent_total` and
+   `soluna_relay_fec_recoveries_total` Prometheus metrics.
+
+   **3. NACK Retransmission** (1× RTT latency):
+   When FEC cannot recover (>1 packet lost in group), receivers fall
+   back to NACK retransmission as described in §6.7 (WebSocket) and
+   §6.9 (UDP). The relay SHOULD maintain a retransmission buffer of the
+   last 5000 packets (~50 seconds at 100 pps).
    RTX is NOT supported in UDP swarm mode (too late to be useful).
 
 ---
 
 ## 11. Security Considerations
+
+### 11.0. Control Plane Security (REQUIRED)
+
+   The OSTP control plane (JOIN, WALLET, TIP, MEMBERS, HELLO, REPORT
+   commands; all Swarm Coordinator WebSocket messages; all DCP commands)
+   MUST be transported over:
+     - TLS 1.3 (REQUIRED) or TLS 1.2 (PERMITTED for compatibility)
+     - For relay TCP connections: use TLS on port 5100 with SNI
+     - For WebSocket connections: use WSS (WebSocket over TLS)
+
+   Implementations that transport RSP/DCP commands over unencrypted TCP
+   or plain WebSocket MUST be considered non-conformant and MUST display
+   a security warning to the user.
+
+   The JOIN command includes a plaintext password field. Transmitting
+   JOIN over unencrypted transport constitutes a critical security
+   vulnerability (credential exposure). This is PROHIBITED in
+   production deployments.
+
+   The bootstrap API endpoint (Section 5.2) MUST be served over HTTPS.
+   The `wallet_shared_secret` (Section 11.2) MUST ONLY be transmitted
+   over TLS-protected connections.
 
 ### 11.1. DTLS-SRTP
 
@@ -1504,8 +1641,8 @@ Copyright Notice
    The economic layer has several attack surfaces:
 
    **CHARGE replay**: Prevented by nonce caching and timestamp validation
-   (Section 8.3). The 300-second window means a 5-minute network outage
-   cannot be used to replay old charges.
+   (Section 8.3). The 30-second window minimizes the replay attack surface
+   for payment commands while accommodating normal clock skew.
 
    **Fake fingerprints**: A malicious listener could submit false
    fingerprints to trigger false copyright claims. Mitigated by the
@@ -1547,7 +1684,371 @@ Copyright Notice
 
 ---
 
-## 13. References
+## 13. File Distribution Protocol
+
+### 13.1. Overview
+
+   OSTP includes an optional file distribution sub-protocol for
+   transmitting compressed audio files (MP3, FLAC, AAC, WAV) from the
+   Source to all connected receivers. This enables receivers to perform
+   local high-fidelity playback synchronized with the Source's media
+   clock, rather than playing streamed PCM audio.
+
+   The file distribution protocol operates over WebSocket (the Swarm
+   Coordinator control channel) as binary frames with a 4-byte magic
+   header.
+
+### 13.2. Binary Frame Format
+
+   File distribution uses binary WebSocket frames. Each frame begins
+   with a 4-byte header:
+
+   ```
+   Byte 0-1: Magic (2 bytes)
+             0xFA 0xFB = current-track chunk
+             0xFC 0xFD = next-track chunk (pre-buffer)
+   Byte 2:   Payload size high byte
+   Byte 3:   Payload size low byte
+   Byte 4-N: Chunk payload (up to 32,768 bytes)
+   ```
+
+   Maximum chunk payload size: 32,768 bytes (32 KiB).
+
+### 13.3. File Transfer State Machine
+
+   ```
+   Source → SC: POST /api/player/upload?name=<filename>[&mode=next]
+                Content-Type: application/octet-stream
+
+   SC → All receivers (JSON event):
+     {"event":"player.file_start","name":"<filename>","size":<bytes>}
+     OR (for pre-buffer):
+     {"event":"player.next_file_start","name":"<filename>","size":<bytes>}
+
+   SC → All receivers (binary frames, repeated):
+     [0xFA][0xFB][hi][lo][payload]   (current track)
+     [0xFC][0xFD][hi][lo][payload]   (pre-buffered next track)
+
+   SC → All receivers (JSON event):
+     {"event":"player.file_done"}
+     OR: {"event":"player.next_file_done"}
+
+   Receiver → SC (WebSocket JSON):
+     {"command":"player.file_ready"}
+     OR: {"command":"player.next_file_ready"}
+   ```
+
+### 13.4. Synchronized Playback Switch
+
+   After all receivers acknowledge file receipt, the Source triggers
+   a synchronized playback switch using an in-band RTCP APP packet.
+
+   #### RTCP APP Packet for Track Switch (PT=204, name="SWCH")
+
+   ```
+   RTCP APP Packet for Track Switch (PT=204, name="SWCH")
+     +--------+--------+--------+--------+
+     |V=2|P|SC| PT=204 |       length    |
+     +--------+--------+--------+--------+
+     |              SSRC                 |
+     +--------+--------+--------+--------+
+     |  name  = "SWCH" (4 bytes ASCII)   |
+     +--------+--------+--------+--------+
+     |     switch_at_rtp_ts (32 bits)    |  ← future RTP timestamp to switch
+     +--------+--------+--------+--------+
+     |     next_track_id (32 bits)       |  ← CRC32 of next track name
+     +--------+--------+--------+--------+
+   ```
+
+   All receivers buffering audio MUST switch tracks at the RTP timestamp
+   specified in `switch_at_rtp_ts`. The timestamp SHOULD be set 500ms in
+   the future (24000 RTP ticks at 48kHz) to allow buffered receivers to
+   prepare.
+
+   The in-band RTCP APP packet is the authoritative mechanism for media
+   synchronization. For a 50ms sync requirement, the WebSocket
+   `player.switch` event MUST NOT be used for media synchronization
+   because TCP retransmission can add hundreds of milliseconds on packet
+   loss.
+
+   The WebSocket `player.switch` event (below) is retained as a fallback
+   notification only, for UI display purposes:
+
+   ```
+   SC → All receivers (JSON event, UI notification only):
+   {
+     "event": "player.switch",
+     "switch_delay_ms": 50,
+     "file_pos_ms": 0
+   }
+   ```
+
+   Note: `switch_delay_ms` in the WebSocket event is informational only.
+   Receivers MUST use `switch_at_rtp_ts` from the RTCP APP packet for
+   precise media-plane synchronization.
+
+   Normal upload switch delay: 2,000–5,000 ms (full file transfer time)
+   Pre-buffered switch delay:  50 ms (file already distributed)
+
+   Receivers MUST seek the local AVPlayer/MediaPlayer to `file_pos_ms`
+   before starting playback.
+
+### 13.5. Pre-Buffer Optimization
+
+   To minimize the switch delay between tracks (§13.4), Sources SHOULD
+   begin uploading the next track when the current track reaches 75%
+   of its total duration. This "pre-buffer" upload uses `mode=next`
+   and the 0xFC/0xFD binary frame magic.
+
+   Pre-buffer reduces the effective switch delay from the full file
+   transfer window (typically 3–30 seconds) to approximately 50 ms,
+   as the file has already been fully distributed to all receivers
+   before the switch event is issued.
+
+   Receivers MUST maintain two separate file buffers:
+   - Current-track buffer (populated by 0xFA/0xFB frames)
+   - Next-track buffer (populated by 0xFC/0xFD frames)
+
+   On `player.next_file_done`, the receiver writes the next-track
+   buffer to local storage and responds with `player.next_file_ready`.
+   The Source issues `player.switch` with `switch_delay_ms=50` only
+   after all receivers have acknowledged `player.next_file_ready`.
+
+### 13.6. HTTP Upload Endpoint
+
+   ```
+   POST /api/player/upload?name=<pct-encoded-filename>[&mode=next]
+   Content-Type: application/octet-stream
+   Authorization: Bearer <session_token>
+   Body: raw file bytes (max 200 MiB)
+   ```
+
+   The `mode=next` query parameter causes the upload to be treated as
+   a pre-buffer upload, triggering the 0xFC/0xFD distribution path.
+
+---
+
+## 14. Daemon Control Protocol (DCP)
+
+### 14.1. Overview
+
+   The Daemon Control Protocol (DCP) operates over WebSocket at port
+   8400 (ws://<host>:8400/ws). All messages are UTF-8 JSON objects.
+   Each request carries a monotonically increasing `id` field for
+   response correlation.
+
+   Request format:
+   ```json
+   {"id": 42, "command": "<command>", "<param>": <value>, ...}
+   ```
+
+   Response format (success):
+   ```json
+   {"id": 42, "success": true, "data": "<json-string>"}
+   ```
+
+   Response format (error):
+   ```json
+   {"id": 42, "success": false, "error": "<message>"}
+   ```
+
+   Broadcast event format (no id):
+   ```json
+   {"event": "<event-name>", "<field>": <value>, ...}
+   ```
+
+### 14.2. Monitor Commands (TX Local Playback)
+
+   | Command              | Parameters          | Response fields                    |
+   |----------------------|---------------------|------------------------------------|
+   | monitor.stats        | —                   | supported, running, volume, muted, packets, delay_ms, rx_delay_ms |
+   | monitor.start        | device: string      | —                                  |
+   | monitor.stop         | —                   | —                                  |
+   | monitor.set_volume   | volume: 0.0–1.0     | —                                  |
+   | monitor.set_mute     | muted: bool         | —                                  |
+   | monitor.set_buffer   | ms: 5–2000          | —                                  |
+   | monitor.set_delay    | ms: 0–2000          | —                                  |
+   | monitor.list_devices | —                   | JSON array of device name strings  |
+
+### 14.3. Receiver Commands
+
+   | Command              | Parameters          | Response fields                    |
+   |----------------------|---------------------|------------------------------------|
+   | rx.stats             | —                   | packets, errors, buf_fill, buf_cap, volume, muted, buf_target_ms |
+   | rx.set_volume        | volume: 0.0–1.0     | —                                  |
+   | rx.set_mute          | muted: bool         | —                                  |
+   | rx.set_buffer        | ms: 1–2000          | —                                  |
+   | rx.set_global_delay  | ms: 0–2000          | —                                  |
+
+### 14.4. System Commands
+
+   | Command              | Parameters          | Response fields                    |
+   |----------------------|---------------------|------------------------------------|
+   | system.info          | —                   | tunnel_url, multicast, port, channels, sample_rate |
+   | time.ping            | —                   | pong: true                         |
+   | mode.get             | —                   | mode: "sync"\|"jam"                |
+   | mode.set             | mode: string        | —                                  |
+   | channel.get          | —                   | channel, host, port, connected     |
+   | channel.set          | channel: string     | —                                  |
+   | latency              | —                   | total_local_ms, total_monitor_ms, buf_target_ms |
+
+### 14.5. Player Commands
+
+   | Command                | Parameters     | Response / Event                 |
+   |------------------------|----------------|----------------------------------|
+   | player.status          | —              | active, paused, pos_ms, dur_ms, file |
+   | player.play            | —              | —                                |
+   | player.pause           | —              | —                                |
+   | player.stop            | —              | event: player.stopped            |
+   | player.seek            | pos_ms: uint64 | —                                |
+   | player.file_ready      | —              | triggers player.switch event     |
+   | player.next_file_ready | —              | triggers player.switch (50ms)    |
+
+### 14.6. Broadcast Events
+
+   | Event                  | Fields                                          |
+   |------------------------|-------------------------------------------------|
+   | player.stream_start    | name, fmt, dur_ms                               |
+   | player.file_start      | name, size                                      |
+   | player.file_done       | —                                               |
+   | player.next_file_start | name, size                                      |
+   | player.next_file_done  | —                                               |
+   | player.switch          | switch_delay_ms, file_pos_ms                    |
+   | player.done            | —                                               |
+   | player.stopped         | —                                               |
+   | channel.changed        | channel                                         |
+
+### 14.7. Time Synchronization via DCP
+
+   The DCP provides a `time.ping` command for UI latency display:
+
+   ```
+   Client → Daemon: {"id":1,"command":"time.ping"}
+   Client records t1 = wall_clock_ms()
+   Daemon → Client: {"id":1,"success":true,"data":"{\"pong\":true}"}
+   Client records t2 = wall_clock_ms()
+
+   RTT = t2 - t1
+   ```
+
+   WARNING: The `time.ping` RTT MUST NOT be used for media plane jitter
+   buffer calculation. TCP (WebSocket) RTT is affected by OS send
+   buffering, Head-of-Line Blocking, and retransmission — it does not
+   reflect actual UDP media plane delay. Use RTCP-based measurement
+   instead (see below).
+
+   `time.ping` MAY be used only for UI latency indicator display.
+
+   #### RTCP-Based Jitter Buffer Adaptation (RFC 3550 §6.4)
+
+   Receivers use RTCP Receiver Reports (sent every 5 seconds) to provide
+   the sender with:
+     - Interarrival jitter (J) in units of RTP timestamp ticks
+     - Cumulative packet loss fraction
+
+   The sender uses RTCP Sender Reports (SR) to embed:
+     - NTP wall-clock timestamp (64-bit: NTP_sec + NTP_frac)
+     - RTP timestamp at that wall-clock moment
+     - Sender packet count and octet count
+
+   Receivers compute one-way media delay by correlating SR NTP timestamps
+   with their local clock:
+
+     one_way_delay_ms = (local_arrival_ntp - sr_ntp) * 1000
+
+   The jitter buffer target is set to:
+     target_fill_ms = max(20, jitter * 2 + one_way_delay_ms)
+
+   This is updated on every received SR, not via TCP control messages.
+   The `monitor.set_delay` and jitter buffer target MUST be derived from
+   RTCP SR measurements, not from `time.ping` RTT.
+
+---
+
+## 15. DJ Dual-Deck Protocol
+
+### 15.1. Overview
+
+   OSTP supports simultaneous transmission of two independent audio
+   streams ("decks") over a single channel, enabling DJ-style
+   crossfade, beatmatching, and multi-source mixing.
+
+   The two streams are distinguished using the `stream_id` field in
+   the OSTP extension header (Section 4.4):
+
+   ```
+   stream_id[15:12] = deck_id   (0 = Deck A, 1 = Deck B, 2–14 = reserved, 15 = control)
+   stream_id[11:8]  = channel_count  (0=1ch, 1=2ch, 2=6ch, 3=8ch)
+   stream_id[7:0]   = reserved (MUST be 0)
+   ```
+
+### 15.2. Deck Control Parameters
+
+   Deck parameters are transmitted via DCP (Section 14) as parameter-
+   only messages that do NOT require raw audio stream transmission:
+
+   ```json
+   {"command": "deck.set_param", "deck": 0, "param": "crossfade", "value": 0.5}
+   {"command": "deck.set_param", "deck": 1, "param": "bpm", "value": 128.0}
+   {"command": "deck.set_param", "deck": 0, "param": "pitch", "value": 1.02}
+   {"command": "deck.set_param", "deck": 0, "param": "low_gain_db", "value": 3.0}
+   {"command": "deck.set_param", "deck": 0, "param": "mid_gain_db", "value": -1.5}
+   {"command": "deck.set_param", "deck": 0, "param": "high_gain_db", "value": 2.0}
+   ```
+
+   Supported parameters:
+
+   | Parameter     | Range       | Description                              |
+   |---------------|-------------|------------------------------------------|
+   | crossfade     | 0.0–1.0     | 0.0 = full Deck A, 1.0 = full Deck B     |
+   | bpm           | 40.0–300.0  | Current track BPM (informational)        |
+   | pitch         | 0.5–2.0     | Pitch/tempo ratio (1.0 = original speed) |
+   | low_gain_db   | −20.0–+6.0  | EQ low band (below 250 Hz)               |
+   | mid_gain_db   | −20.0–+6.0  | EQ mid band (250 Hz–4 kHz)               |
+   | high_gain_db  | −20.0–+6.0  | EQ high band (above 4 kHz)               |
+   | volume        | 0.0–1.0     | Deck fader level                         |
+   | cue_active    | bool        | Headphone cue monitoring                 |
+
+### 15.3. Operating Modes
+
+   **Parameter-only mode (default)**:
+   Raw audio is NOT streamed for the second deck. The receiver applies
+   the crossfade/EQ parameters to the locally cached file (see
+   Section 13). This eliminates the bandwidth cost of dual streaming.
+   The Source MUST have pre-distributed the second deck's audio file
+   via the pre-buffer protocol (Section 13.5) before activating the
+   deck.
+
+   **Dual-stream mode (optional)**:
+   Both decks transmit live PCM audio over UDP using distinct `deck_id`
+   values in `stream_id`. Receivers mix the two streams in real time
+   applying the crossfade parameter. This mode doubles bandwidth
+   consumption but supports live input sources (microphone, mixer).
+
+   Mode selection:
+   ```json
+   {"command": "deck.set_mode", "mode": "param_only"}
+   {"command": "deck.set_mode", "mode": "dual_stream"}
+   ```
+
+### 15.4. Crossfade Algorithm
+
+   Receivers MUST implement equal-power crossfade:
+
+   ```
+   θ = crossfade × π/2        // 0 .. π/2
+   gain_A = cos(θ)            // 1.0 .. 0.0
+   gain_B = sin(θ)            // 0.0 .. 1.0
+   output = gain_A × deck_A + gain_B × deck_B
+   ```
+
+   Crossfade transitions MUST be smoothed over at least 10ms (480
+   samples at 48 kHz) using linear interpolation of the gain values
+   to prevent clicks.
+
+---
+
+## 16. References
 
 ### Normative References
 
@@ -1599,7 +2100,7 @@ Copyright Notice
 
 ---
 
-## 14. Authors' Addresses
+## 17. Authors' Addresses
 
    Open Sonic Workgroup
    https://opensonic.io/

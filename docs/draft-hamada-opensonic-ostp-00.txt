@@ -11,6 +11,10 @@ Expires: 17 September 2026
                   Open Sonic Transport Protocol (OSTP)
                      draft-hamada-opensonic-ostp-00
 
+   Rev 00a: Fixed TCP/UDP sync (RTCP-based), in-band track switch
+   (RTCP APP), dynamic FEC, multicast collision avoidance, mandatory
+   TLS for Control Plane, 30s CHARGE replay window.
+
 Abstract
 
    This document specifies the Open Sonic Transport Protocol (OSTP), a
