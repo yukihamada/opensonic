@@ -6,6 +6,7 @@ import android.media.AudioTrack
 import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
 
 /**
  * AudioTrack wrapper for OSTP audio playback.
@@ -21,10 +22,15 @@ class AudioPlayer {
         const val SAMPLE_RATE = 48000
         const val CHANNELS = 2
         private const val INT32_MAX = 2147483647.0f
+        private const val LEVEL_UPDATE_INTERVAL = SAMPLE_RATE / 10  // every 100ms
     }
+
+    var onLevelUpdate: ((Float) -> Unit)? = null
 
     private var audioTrack: AudioTrack? = null
     private var isPlaying = false
+    private var levelAccum = 0f
+    private var levelCount = 0
 
     fun start() {
         if (isPlaying) return
@@ -78,6 +84,13 @@ class AudioPlayer {
         for (i in 0 until sampleCount) {
             val sample = bb.getInt()
             floatBuf[i] = sample / INT32_MAX
+            levelAccum += abs(floatBuf[i])
+        }
+        levelCount += sampleCount
+        if (levelCount >= LEVEL_UPDATE_INTERVAL) {
+            onLevelUpdate?.invoke(levelAccum / levelCount)
+            levelAccum = 0f
+            levelCount = 0
         }
 
         audioTrack?.write(floatBuf, 0, sampleCount, AudioTrack.WRITE_NON_BLOCKING)
