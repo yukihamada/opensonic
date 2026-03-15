@@ -1,0 +1,102 @@
+name: Sync Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Run OSTP sync test
+        run: |
+          cat > /tmp/tx.py << 'PYEOF'
+          import socket,struct,time,math,zlib,threading
+
+          HOST,PORT,CH = "relay.solun.art",5100,"sync-test"
+          RATE,FPP,CH_CNT = 48000,480,2
+
+          def crc32b(d): return zlib.crc32(d)&0xFFFFFFFF
+
+          def build(seq,rts,ssrc,smp):
+              rtp=struct.pack(">BBHII",0x80,96,seq&0xFFFF,rts&0xFFFFFFFF,ssrc)
+              oh=b'OSTP'+struct.pack(">HHIII",(CH_CNT<<12)&0xFFFF,0,ssrc,0,rts&0xFFFFFFFF)
+              pcm=b"".join(struct.pack(">i",max(-8388608,min(8388607,int(s*8388608))))for s in smp)
+              body=rtp+oh+pcm
+              return body+struct.pack("<I",crc32b(body))
+
+          results={"a":[],"b":[],"c":[]}
+          log=print
+
+          def rx(name):
+              s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+              s.settimeout(2)
+              s.sendto(f"JOIN:{CH}::{name}\n".encode(),(HOST,PORT))
+              joined=False
+              t0=time.time()
+              while time.time()-t0<13:
+                  try:
+                      data,_=s.recvfrom(65536)
+                  except socket.timeout:
+                      if joined: break
+                      continue
+                  if data[0] in range(32,127):
+                      msg=data.decode("utf-8","replace").strip()
+                      if "OK:joined" in msg:
+                          joined=True
+                          log(f"[{name}] joined")
+                      continue
+                  if not joined or len(data)<32: continue
+                  if data[12:16]!=b"OSTP": continue
+                  seq,rts=struct.unpack(">HI",data[2:8])
+                  results[name].append((seq,rts,time.time()))
+              s.close()
+              log(f"[{name}] {len(results[name])} pkts")
+
+          threads=[threading.Thread(target=rx,args=(n,)) for n in ("a","b","c")]
+          for t in threads: t.start()
+          time.sleep(1)
+
+          s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+          s.sendto(f"JOIN:{CH}::tx\n".encode(),(HOST,PORT))
+          ssrc,seq,rts=0xDEADBEEF,0,0
+          t0=time.time()
+          pkts=0
+          while time.time()-t0<10:
+              smp=[]
+              for f in range(FPP):
+                  v=math.sin(2*math.pi*440*(rts+f)/RATE)*0.3
+                  smp+=[v,v]
+              s.sendto(build(seq,rts,ssrc,smp),(HOST,PORT))
+              seq+=1; rts+=FPP; pkts+=1
+              sl=pkts*FPP/RATE-(time.time()-t0)
+              if sl>0: time.sleep(sl)
+          s.close()
+          log(f"[TX] {pkts} pkts")
+
+          for t in threads: t.join()
+
+          # Compare
+          print("\n=== SYNC ANALYSIS ===")
+          for name,data in results.items():
+              if data:
+                  seqs=[x[0] for x in data]
+                  print(f"  {name}: {len(data)} pkts, seq {seqs[0]}..{seqs[-1]}")
+              else:
+                  print(f"  {name}: NO PACKETS")
+
+          if all(results.values()):
+              common=set(x[0] for x in results["a"]) & set(x[0] for x in results["b"]) & set(x[0] for x in results["c"])
+              print(f"  Common seqs: {len(common)}")
+              if common:
+                  # latency between first common packet on each client
+                  for seq in sorted(common)[:5]:
+                      times={n:next(x[2] for x in results[n] if x[0]==seq) for n in results if results[n]}
+                      tvals=list(times.values())
+                      jitter_ms=(max(tvals)-min(tvals))*1000
+                      print(f"  seq {seq}: jitter {jitter_ms:.1f}ms  {times}")
+                  print("\n✅ SYNC OK" if len(common)>50 else "\n⚠️  Few common packets")
+              else:
+                  print("\n❌ No common packets between clients")
+          PYEOF
+          python3 /tmp/tx.py
