@@ -25,7 +25,7 @@ static const uint8_t  PT_L24     = 96;      // OSTP 24-bit linear PCM
 static const uint8_t  PT_ADPCM   = 116;     // IMA-ADPCM mono (OSTP §4.9)
 static const uint32_t SSRC       = 0x524144;  // "RAD"
 static const uint16_t OSTP_PROFILE = 0x4F53;  // "OS"
-static const uint32_t RAW_FIRST_PKTS = 5;   // Send 5 raw PCM packets before ADPCM switch
+static const uint32_t RAW_FIRST_PKTS = 0xFFFFFFFF;  // ADPCM disabled for now — always raw PCM
 
 // ── IMA-ADPCM inline encoder (from soluna/codec/adpcm.h) ──
 
