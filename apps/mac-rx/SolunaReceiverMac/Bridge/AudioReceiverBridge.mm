@@ -220,7 +220,7 @@ private:
                 if (adpcm_state_.valprev > 32767) adpcm_state_.valprev = 32767;
                 if (adpcm_state_.valprev < -32768) adpcm_state_.valprev = -32768;
                 adpcm_state_.index += ima_index_table_[nib];
-                if (adpcm_state_.index < 0) adpcm_state_.index = 0;
+                if (adpcm_state_.index < 0) adpcm_state_.index = 40;
                 if (adpcm_state_.index > 88) adpcm_state_.index = 88;
                 // 16-bit → 24-bit (shift left 8)
                 adpcm_decode_buf_[i] = static_cast<int32_t>(adpcm_state_.valprev) << 8;
@@ -246,7 +246,7 @@ private:
         if (rtp.pt == 96 && payload_size >= sizeof(int32_t)) {
             int32_t last = reinterpret_cast<const int32_t*>(payload)[payload_size/sizeof(int32_t) - 1];
             adpcm_state_.valprev = static_cast<int16_t>(last >> 8); // 24-bit → 16-bit
-            adpcm_state_.index = 0;
+            adpcm_state_.index = 40;
         }
 
         // OSTP payload is int32_t (4 bytes/sample, native byte order)
