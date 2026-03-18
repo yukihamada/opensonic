@@ -2449,7 +2449,98 @@ Copyright Notice
 
 ---
 
-## 19. References
+## 19. VAD Deep Sleep (Battery Optimization for COIN)
+
+### 19.1. Problem
+
+   A 26mm COIN device has a ~100-150mAh LiPo battery. ESP32 Wi-Fi RX
+   + I2S amp draws ~100-120mA. Battery life: ~1 hour. Festivals last
+   6+ hours.
+
+### 19.2. Solution: Protocol-Driven Modem Sleep
+
+   **Transmitter (Pi5/Mac):**
+   - Monitor audio RMS. When RMS < -60dB for 100ms, STOP sending
+     audio packets entirely (not even silence/zeros).
+   - 30ms before next sound begins, send a single HEARTBEAT packet
+     (Flags bit 2 = 0x04) to wake all receivers.
+
+   **Receiver (ESP32/COIN):**
+   - If no packets received for 100ms, enter Wi-Fi Modem-sleep
+     (power: ~20mA, 5x reduction from ~100mA).
+   - On HEARTBEAT packet, wake Wi-Fi modem (takes ~5ms on ESP32).
+   - Audio output: fade to zero during sleep, fade in on wake.
+
+   ```
+   [Music playing]  → 100mA (Wi-Fi RX + I2S active)
+   [Silence/MC talk] → 20mA  (Modem-sleep, I2S idle)
+   [HEARTBEAT]       → 100mA (wake, 5ms, ready for audio)
+   ```
+
+### 19.3. Battery Impact
+
+   | Scenario | Active % | Sleep % | Avg mA | 150mAh life |
+   |----------|----------|---------|--------|-------------|
+   | No sleep | 100% | 0% | 110 | 1.4 hours |
+   | VAD sleep (typical set) | 60% | 40% | 74 | 2.0 hours |
+   | VAD sleep (heavy MC) | 40% | 60% | 56 | 2.7 hours |
+   | Extreme (ambient show) | 20% | 80% | 38 | 3.9 hours |
+
+---
+
+## 20. Packet Authentication (Anti-Spoofing)
+
+### 20.1. Problem
+
+   UDP multicast is unauthenticated. Any device on the same Wi-Fi
+   can inject packets to multicast address 239.69.0.1:5004. A
+   malicious attendee could blast noise to 1000 COINs simultaneously.
+
+### 20.2. Solution: SipHash-2-4 Authentication Tag
+
+   Replace the CRC-32 trailer (4 bytes) with a SipHash-2-4 MAC
+   (Message Authentication Code) computed over the full packet.
+
+   ```
+   Packet layout:
+   [RTP 12B][ExtHdr 4B][OSTP 8B][Audio payload][SipHash 4B]
+                                                 ^^^^^^^^
+                                    Replaces CRC-32 with auth tag
+   ```
+
+   **Key distribution:**
+   - Channel owner generates a 128-bit SipHash key per session
+   - Key is distributed via encrypted DTLS channel or QR code
+   - Each COIN receives the key at join time
+
+   **Verification (ESP32, ~1 microsecond):**
+   ```c
+   uint64_t tag = siphash_2_4(key, packet, packet_len - 4);
+   if (memcmp(&tag, packet + packet_len - 4, 4) != 0) {
+       drop_packet();  // forgery — discard in <1μs
+       return;
+   }
+   // Authentic packet — proceed to AES decrypt + play
+   ```
+
+### 20.3. Security Properties
+
+   - SipHash-2-4: cryptographically secure PRF, 2^64 security
+   - 4-byte tag: 1 in 4 billion chance of forgery per packet
+   - At 500 pps attack rate: ~272 years to forge a single valid packet
+   - Zero bandwidth overhead (reuses existing CRC-32 trailer slot)
+   - ESP32 hardware: SipHash in ~200 CPU cycles
+
+### 20.4. Backward Compatibility
+
+   Legacy receivers that expect CRC-32 will see "CRC failures" but
+   can still play audio (CRC is advisory in OSTP). To signal that
+   SipHash auth is active, set bit 1 of OSTP Flags (stream_id
+   lower byte bit 1): `stream_id & 0x0002 != 0`.
+
+---
+
+## 21. References
 
 ### Normative References
 
