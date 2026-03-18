@@ -2321,7 +2321,135 @@ Copyright Notice
 
 ---
 
-## 16. References
+## 16. ESP-NOW Hybrid Mesh (Self-Healing P2P)
+
+### 16.1. Problem
+
+   Wi-Fi multicast has dead zones in festivals: crowd density blocks
+   radio waves ("wall of flesh"), and AP coverage gaps leave devices
+   without connectivity.
+
+### 16.2. Solution: ESP-NOW Bridge Layer
+
+   Devices that successfully receive Wi-Fi multicast simultaneously
+   rebroadcast audio via ESP-NOW (250kbps, peer-to-peer, no AP
+   required). Devices that lose Wi-Fi automatically fall back to
+   ESP-NOW reception from nearby peers.
+
+   ```
+   Normal:  AP → Wi-Fi Multicast → All devices
+   Shadow:  AP → Wi-Fi → Device_A → ESP-NOW → Device_B (in dead zone)
+   ```
+
+   **Protocol rules:**
+   - ESP-NOW broadcast: same OSTP packet, max 250 bytes payload
+   - Only ADPCM packets are relayed via ESP-NOW (raw PCM too large)
+   - TTL=1: packets are NOT re-relayed (prevents echo storms)
+   - ESP-NOW channel: derived from OSTP channel_id (mod 14)
+   - Devices MUST prefer Wi-Fi multicast when available (lower jitter)
+
+### 16.3. Implementation Notes
+
+   ESP-NOW operates on the same 2.4GHz band as Wi-Fi but bypasses
+   the TCP/IP stack entirely. Range: ~20m indoor, ~50m outdoor.
+   Latency: <1ms. No association required.
+
+   On ESP32-S3: `esp_now_send(broadcast_mac, ostp_packet, len)`.
+   On iOS/Mac: not applicable (ESP-NOW is ESP32-specific).
+
+---
+
+## 17. Acoustic Chirp Calibration (MEMS Microphone)
+
+### 17.1. Problem
+
+   GPS has 3-10m error, which translates to 9-29ms audio timing
+   error. Professional audio requires <1ms precision.
+
+### 17.2. Solution: Time-of-Flight Measurement
+
+   Before a live set begins, the stage PA emits a calibration chirp
+   (logarithmic sweep, 50Hz-16kHz, 50ms duration). Each device
+   records when the chirp arrives via its MEMS microphone.
+
+   ```
+   Stage PA:  emits chirp at T=0 (NTP-synced)
+   Device_A:  MEMS mic detects chirp at T=145ms → distance = 49.7m
+   Device_B:  MEMS mic detects chirp at T=291ms → distance = 99.8m
+   ```
+
+   **Protocol:**
+
+   1. Channel owner sends `CHIRP_START:<wall_clock_ms>\n` to relay
+   2. Relay broadcasts to all members
+   3. PA system emits chirp at specified wall-clock time
+   4. Each device runs cross-correlation on MEMS audio to find
+      chirp arrival time
+   5. Device reports: `CHIRP_RESULT:<arrival_ms>\n` to relay
+   6. Relay computes acoustic delay per device:
+      `delay_ms = arrival_ms - chirp_start_ms`
+   7. Relay sends: `ACOUSTIC_DELAY:<device_id>:<delay_ms>\n`
+
+### 17.3. Advantages over GPS
+
+   - Accounts for temperature (sound speed = 331 + 0.6×T_celsius)
+   - Accounts for wind direction and speed
+   - Accounts for physical obstacles (walls, crowd density)
+   - Sub-millisecond precision (44.1kHz mic = 0.023ms resolution)
+   - Works indoors (no GPS signal required)
+
+---
+
+## 18. Frequency-Split Multicast (Band Routing)
+
+### 18.1. Problem
+
+   A 26mm COIN speaker cannot physically reproduce frequencies below
+   200Hz. Sending full-bandwidth audio wastes 30-40% of network
+   bandwidth and ESP32 decode cycles on inaudible bass.
+
+### 18.2. Solution: Crossover-Based Channel Splitting
+
+   The transmitter (Pi5/Mac) splits audio into frequency bands and
+   sends each band to a separate multicast group:
+
+   ```
+   Source audio → Crossover filter (200Hz)
+                  ├→ Low band (<200Hz)  → Multicast 239.69.0.1 (SUB)
+                  └→ High band (>200Hz) → Multicast 239.69.0.2 (COIN)
+   ```
+
+   **Channel mapping:**
+   - Base multicast + 0: Full bandwidth (default)
+   - Base multicast + 1: Low frequency (<200Hz, for subwoofers)
+   - Base multicast + 2: Mid-high frequency (>200Hz, for COINs)
+   - Base multicast + 3: Voice-only (300Hz-4kHz, for hearing aids)
+
+### 18.3. Benefits
+
+   | Device | Receives | Bandwidth saved | Battery gain |
+   |--------|----------|----------------|--------------|
+   | PA/SUB | Full or Low only | 0% | N/A (mains) |
+   | COIN (26mm) | Mid-high only | ~35% | +50% battery |
+   | Phone | Full | 0% | Normal |
+   | Hearing aid | Voice-only | ~70% | +200% battery |
+
+### 18.4. Implementation
+
+   Transmitter uses a 4th-order Linkwitz-Riley crossover filter
+   (24dB/octave slope) at the split frequency. Each band is
+   independently ADPCM-encoded and sent with the same
+   media_timestamp for synchronization.
+
+   The `stream_id` upper 4 bits encode the band:
+   - 0x0xxx: Full bandwidth
+   - 0x1xxx: Low band
+   - 0x2xxx: Mid-high band
+   - 0x3xxx: Voice-only band
+
+---
+
+## 19. References
 
 ### Normative References
 
