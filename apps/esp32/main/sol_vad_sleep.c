@@ -1,3 +1,4 @@
+#include <inttypes.h>
 /**
  * Soluna ESP32 — VAD Deep Sleep + Modem Control (§19)
  * Battery optimization: Wi-Fi modem sleep during silence.
@@ -19,7 +20,7 @@ static const uint32_t SILENCE_THRESHOLD_MS = 100;
 void sol_vad_init(void) {
     s_last_packet_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
     s_modem_sleeping = false;
-    ESP_LOGI(TAG, "VAD sleep controller initialized (threshold=%ums)",
+    ESP_LOGI(TAG, "VAD sleep controller initialized (threshold=%" PRIu32 "ms)",
              SILENCE_THRESHOLD_MS);
 }
 
@@ -44,7 +45,7 @@ void sol_vad_tick(void) {
         /* No packets for 100ms → enter modem sleep (~20mA vs ~100mA) */
         esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
         s_modem_sleeping = true;
-        ESP_LOGI(TAG, "Modem SLEEP (silence %ums)", elapsed);
+        ESP_LOGI(TAG, "Modem SLEEP (silence %" PRIu32 "ms)", elapsed);
     }
 }
 

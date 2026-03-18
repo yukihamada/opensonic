@@ -4,13 +4,14 @@ idf_component_register(
         "sol_i2s.c"
         "sol_net.c"
         "sol_clock.c"
-        "sol_ptp_follower.c"
         "sol_rtp.c"
         "sol_fec.c"
         "sol_mdns.c"
-        "sol_control.c"
+        "sol_nvs.c"
         "sol_engine.c"
-        "sol_ota.c"
+        "sol_adpcm.c"
+        "sol_security.c"
+        "sol_vad_sleep.c"
     INCLUDE_DIRS "."
     REQUIRES
         driver
@@ -19,8 +20,7 @@ idf_component_register(
         esp_timer
         esp_netif
         lwip
-        mdns
         nvs_flash
-        esp_ota_ops
-        app_update
 )
+
+target_compile_options(__idf_main PRIVATE -Wno-format -Wno-error)

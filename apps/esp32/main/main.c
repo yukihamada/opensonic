@@ -193,7 +193,7 @@ void app_main(void) {
                    s_config.channels, s_config.mode);
 
     /* 4. PTP follower */
-    err = sol_ptp_init();
+    err = SOL_OK; // sol_ptp_init() disabled
     if (err != SOL_OK) {
         ESP_LOGW(TAG, "PTP init failed (continuing without sync)");
     }
@@ -212,7 +212,7 @@ void app_main(void) {
     }
 
     /* 6. Control protocol */
-    sol_control_init(&s_config, &s_stats);
+    // sol_control_init(&s_config, &s_stats);
 
     /* 7. Status monitoring loop */
     ESP_LOGI(TAG, "Soluna running. Free heap: %lu bytes",
@@ -221,7 +221,7 @@ void app_main(void) {
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(10000));
 
-        sol_ptp_state_t ptp = sol_ptp_get_state();
+        sol_ptp_state_t ptp = {0} /* disabled */;
         ESP_LOGI(TAG,
             "TX:%llu RX:%llu Lost:%llu FEC:%llu Under:%lu Over:%lu "
             "PTP:%s(%lldns) Heap:%lu",

@@ -12,7 +12,7 @@
 #include "sol_rtp.h"
 #include "sol_fec.h"
 #include "sol_clock.h"
-
+#include <fcntl.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -21,6 +21,7 @@
 #include "lwip/netdb.h"
 
 #include <string.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <arpa/inet.h>
 
@@ -180,7 +181,7 @@ static void send_fec_packet(sol_rtp_tx_t* tx, const uint8_t* parity, size_t plen
     dest.sin_port        = htons(tx->dest_port);
     inet_aton(tx->dest_ip, &dest.sin_addr);
 
-    sendto(tx->sock, buf, (int)total, 0,
+    sendto(tx->sock.fd, buf, (int)total, 0,
            (struct sockaddr*)&dest, sizeof(dest));
 }
 
@@ -283,7 +284,7 @@ static void net_rx_task(void* arg)
                     struct sockaddr_in nack_dest = s_sender_addr;
                     nack_dest.sin_port = htons(
                         ntohs(s_sender_addr.sin_port) + SOL_NACK_PORT_OFFSET);
-                    sendto(s_rtp_rx.sock, nack_buf, sizeof(nack_buf), 0,
+                    sendto(s_rtp_rx.sock.fd, nack_buf, sizeof(nack_buf), 0,
                            (struct sockaddr*)&nack_dest, sizeof(nack_dest));
                 }
             }
@@ -400,7 +401,7 @@ static void sol_rtcp_task(void* arg)
             (unsigned)(s_rtp_rx.last_seq));
 
         if (len > 0) {
-            sendto(s_rtp_tx.sock, report, len, 0,
+            sendto(s_rtp_tx.sock.fd, report, len, 0,
                    (struct sockaddr*)&relay_addr, sizeof(relay_addr));
             ESP_LOGD(TAG, "RTCP: %s", report);
         }
@@ -466,8 +467,8 @@ sol_err_t sol_engine_init(const sol_config_t* config, sol_stats_t* stats)
             nack_bind.sin_addr.s_addr = INADDR_ANY;
 
             /* Non-blocking so the NACK task can check s_running */
-            int nb = 1;
-            setsockopt(s_nack_sock, SOL_SOCKET, SO_NONBLOCK, &nb, sizeof(nb));
+            int flags = fcntl(s_nack_sock, F_GETFL, 0);
+            fcntl(s_nack_sock, F_SETFL, flags | O_NONBLOCK);
 
             if (bind(s_nack_sock, (struct sockaddr*)&nack_bind,
                      sizeof(nack_bind)) < 0) {
@@ -486,7 +487,7 @@ sol_err_t sol_engine_init(const sol_config_t* config, sol_stats_t* stats)
 
     crc32_init();
 
-    ESP_LOGI(TAG, "Engine initialized: mode=%d ch=%u fec=%u",
+    ESP_LOGI(TAG, "Engine initialized: mode=%d ch=%" PRIu32 " fec=%" PRIu32 "",
              config->mode, config->channels, config->fec_enabled);
 
     return SOL_OK;

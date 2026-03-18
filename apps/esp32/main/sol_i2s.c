@@ -208,10 +208,10 @@ sol_err_t sol_i2s_init(const sol_i2s_config_t* cfg) {
         }
     }
 
-    ESP_LOGI(TAG, "I2S initialized: %uHz, %uch, BCK=%u WS=%u DOUT=%u DIN=%u",
-        cfg->sample_rate ? cfg->sample_rate : SOL_SAMPLE_RATE,
-        cfg->channels, cfg->bck_pin, cfg->ws_pin,
-        cfg->data_out_pin, cfg->data_in_pin);
+    ESP_LOGI(TAG, "I2S initialized: %dHz, %dch, BCK=%d WS=%d DOUT=%d DIN=%d",
+        (int)(cfg->sample_rate ? cfg->sample_rate : SOL_SAMPLE_RATE),
+        (int)cfg->channels, (int)cfg->bck_pin, (int)cfg->ws_pin,
+        (int)cfg->data_out_pin, (int)cfg->data_in_pin);
 
     return SOL_OK;
 }

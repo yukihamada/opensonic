@@ -1,3 +1,4 @@
+#include "esp_mac.h"
 /**
  * Soluna ESP32 — PTP Leader Mode Implementation
  *

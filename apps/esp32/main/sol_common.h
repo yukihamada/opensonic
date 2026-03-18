@@ -47,7 +47,7 @@
  * practical compromise.  Enable CONFIG_SPIRAM=y and set
  * SOL_RING_FRAMES=192000 when PSRAM is available.                       */
 #define SOL_RING_CAPACITY_UNIFIED 192000          /* other platforms     */
-#define SOL_RING_FRAMES           19200           /* ESP32 SRAM budget   */
+#define SOL_RING_FRAMES           4800           /* ESP32 SRAM budget   */
 #define SOL_RING_CHANNELS         2               /* static-alloc width  */
 
 /* Drift-correction / jitter-buffer parameters (unified across platforms) */
