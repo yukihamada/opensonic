@@ -283,6 +283,8 @@ int main(int argc, char* argv[]) {
         int32_t pcm_buf[FRAMES_PER_PKT * CHANNELS];
         AdpcmState adpcm_state;
         uint32_t pkt_count = 0;
+        uint8_t prev_adpcm[4 + FRAMES_PER_PKT]; // In-band FEC: previous packet's ADPCM
+        size_t prev_adpcm_size = 0;
 
         // Timing
         struct timespec next_send;
@@ -338,8 +340,26 @@ int main(int argc, char* argv[]) {
                     else       adpcm_buf[4 + i/2] = nib;
                 }
 
-                payload = adpcm_buf;
-                payload_size = 4 + (nread + 1) / 2;
+                size_t adpcm_size = 4 + (nread + 1) / 2;
+
+                // In-band FEC: prepend previous packet's ADPCM data
+                // If receiver missed previous packet, it can decode from FEC copy
+                // Layout: [prev_adpcm_size:2][prev_adpcm_data:N][current_adpcm:M]
+                if (prev_adpcm_size > 0 && prev_adpcm_size + adpcm_size + 2 < sizeof(pkt) - 64) {
+                    uint8_t fec_buf[2048];
+                    fec_buf[0] = (uint8_t)(prev_adpcm_size & 0xFF);
+                    fec_buf[1] = (uint8_t)((prev_adpcm_size >> 8) & 0xFF);
+                    memcpy(fec_buf + 2, prev_adpcm, prev_adpcm_size);
+                    memcpy(fec_buf + 2 + prev_adpcm_size, adpcm_buf, adpcm_size);
+                    payload = fec_buf;
+                    payload_size = 2 + prev_adpcm_size + adpcm_size;
+                } else {
+                    payload = adpcm_buf;
+                    payload_size = adpcm_size;
+                }
+                // Save current for next packet's FEC
+                memcpy(prev_adpcm, adpcm_buf, adpcm_size);
+                prev_adpcm_size = adpcm_size;
                 pt = PT_ADPCM;
             }
 

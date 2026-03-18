@@ -194,9 +194,63 @@ private:
         uint32_t tx_channels = (ostp.stream_id >> 12) & 0xF;
         if (tx_channels == 0) tx_channels = 2;  // backward compat
 
+        const uint32_t ring_ch = config_.channels;  // ring buffer channel width
+
+        // §4.9 IMA-ADPCM decode (PT=115 stereo, PT=116 mono)
+        if (rtp.pt == 115 || rtp.pt == 116) {
+            if (payload_size < 4) return false;
+            // Read ADPCM header: valprev(16) + index(8) + reserved(8)
+            if (adpcm_state_.valprev == 0 && adpcm_state_.index == 0) {
+                adpcm_state_.valprev = static_cast<int16_t>(payload[0] | (payload[1] << 8));
+                adpcm_state_.index = payload[2];
+            }
+            size_t num_samples = (payload_size - 4) * 2;
+            size_t adpcm_frames = num_samples / tx_channels;
+            // Decode nibbles → 24-bit int32_t for ring buffer
+            for (size_t i = 0; i < num_samples && i < adpcm_decode_buf_.size(); i++) {
+                uint8_t nib = (i & 1) ? ((payload[4 + i/2] >> 4) & 0x0F)
+                                       : (payload[4 + i/2] & 0x0F);
+                // IMA-ADPCM decode inline
+                int step = ima_step_table_[adpcm_state_.index];
+                int dq = step >> 3;
+                if (nib & 4) dq += step;
+                if (nib & 2) dq += (step >> 1);
+                if (nib & 1) dq += (step >> 2);
+                adpcm_state_.valprev += (nib & 8) ? -dq : dq;
+                if (adpcm_state_.valprev > 32767) adpcm_state_.valprev = 32767;
+                if (adpcm_state_.valprev < -32768) adpcm_state_.valprev = -32768;
+                adpcm_state_.index += ima_index_table_[nib];
+                if (adpcm_state_.index < 0) adpcm_state_.index = 0;
+                if (adpcm_state_.index > 88) adpcm_state_.index = 88;
+                // 16-bit → 24-bit (shift left 8)
+                adpcm_decode_buf_[i] = static_cast<int32_t>(adpcm_state_.valprev) << 8;
+            }
+            // Write to ring buffer (expand mono → stereo if needed)
+            if (tx_channels == ring_ch) {
+                ring.write(adpcm_decode_buf_.data(), adpcm_frames);
+            } else {
+                for (size_t f = 0; f < adpcm_frames; f++) {
+                    for (uint32_t c = 0; c < ring_ch; c++) {
+                        uint32_t sc = (c < tx_channels) ? c : 0;
+                        audio_buf_[f * ring_ch + c] = adpcm_decode_buf_[f * tx_channels + sc];
+                    }
+                }
+                ring.write(audio_buf_.data(), adpcm_frames);
+            }
+            if (on_audio_written && adpcm_frames > 0)
+                on_audio_written(adpcm_decode_buf_.data(), adpcm_frames);
+            return true;
+        }
+
+        // Raw PCM: seed ADPCM state from last sample (§4.9 Raw First)
+        if (rtp.pt == 96 && payload_size >= sizeof(int32_t)) {
+            int32_t last = reinterpret_cast<const int32_t*>(payload)[payload_size/sizeof(int32_t) - 1];
+            adpcm_state_.valprev = static_cast<int16_t>(last >> 8); // 24-bit → 16-bit
+            adpcm_state_.index = 0;
+        }
+
         // OSTP payload is int32_t (4 bytes/sample, native byte order)
         size_t frames = payload_size / (sizeof(int32_t) * tx_channels);
-        const uint32_t ring_ch = config_.channels;  // ring buffer channel width
 
         // PLC: conceal gaps of ≤2 packets by repeating the last known frame
         if (gap > 0 && gap <= 2 && frames > 0 && !last_frame_.empty()) {
@@ -354,6 +408,18 @@ private:
     std::vector<uint8_t> recv_buf_;
     std::vector<int32_t> audio_buf_;
     std::vector<int32_t> last_frame_;  // PLC: last received frame for concealment
+    // §4.9 ADPCM decode state + buffer
+    struct { int32_t valprev = 0; int32_t index = 0; } adpcm_state_;
+    std::vector<int32_t> adpcm_decode_buf_ = std::vector<int32_t>(2048);
+    static constexpr int16_t ima_step_table_[89] = {
+        7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,
+        50,55,60,66,73,80,88,97,107,118,130,143,157,173,190,209,230,
+        253,279,307,337,371,408,449,494,544,598,658,724,796,876,963,
+        1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,
+        3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,8630,9493,
+        10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,
+        27086,29794,32767};
+    static constexpr int8_t ima_index_table_[16] = {-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8};
     Stats stats_;
 };
 
