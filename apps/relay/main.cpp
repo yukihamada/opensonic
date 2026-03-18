@@ -9908,6 +9908,21 @@ int main(int argc, char** argv) {
             } else if (n >= 6 && memcmp(pkt, "ROUTE:", 6) == 0) {
                 // Path preference notification (informational)
                 handle_route((const char*)pkt, (size_t)n, from);
+            } else if (n >= 12 && memcmp(pkt, "STAGE_DELAY:", 12) == 0) {
+                // §6.9 Acoustic delay tower: forward to all group members
+                std::string msg((const char*)pkt, n);
+                std::shared_lock<std::shared_mutex> lock(g_mutex);
+                auto _rk = g_addr_to_group.find(addr_key(from));
+                if (_rk != g_addr_to_group.end()) {
+                    auto it = g_groups.find(_rk->second);
+                    if (it != g_groups.end()) {
+                        for (const auto& m : it->second.members) {
+                            if (!addr_equal(m.addr, from))
+                                sendto(g_udp_sock, msg.c_str(), msg.size(), 0,
+                                       (const sockaddr*)&m.addr, sizeof(m.addr));
+                        }
+                    }
+                }
             } else if (n >= 11 && memcmp(pkt, "TURN_ALLOC:", 11) == 0) {
                 // TURN fallback allocation request (OSTP v0.9.3 §5.x)
                 handle_turn_alloc((const char*)pkt, (size_t)n, from);

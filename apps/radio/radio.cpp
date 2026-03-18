@@ -22,8 +22,46 @@ static const uint32_t SAMPLE_RATE = 48000;
 static const uint32_t CHANNELS    = 1;
 static const uint32_t FRAMES_PER_PKT = 96;  // 2ms at 48kHz mono (96*1*4=384 bytes/pkt, ~500pps)
 static const uint8_t  PT_L24     = 96;      // OSTP 24-bit linear PCM
+static const uint8_t  PT_ADPCM   = 116;     // IMA-ADPCM mono (OSTP §4.9)
 static const uint32_t SSRC       = 0x524144;  // "RAD"
 static const uint16_t OSTP_PROFILE = 0x4F53;  // "OS"
+static const uint32_t RAW_FIRST_PKTS = 5;   // Send 5 raw PCM packets before ADPCM switch
+
+// ── IMA-ADPCM inline encoder (from soluna/codec/adpcm.h) ──
+
+static const int16_t kStepTable[89] = {
+    7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,
+    50,55,60,66,73,80,88,97,107,118,130,143,157,173,190,209,230,
+    253,279,307,337,371,408,449,494,544,598,658,724,796,876,963,
+    1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,
+    3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,8630,9493,
+    10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,
+    27086,29794,32767
+};
+static const int8_t kIndexTable[16] = {-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8};
+
+struct AdpcmState { int32_t valprev = 0; int32_t index = 0; };
+
+static uint8_t adpcm_encode_one(int16_t sample, AdpcmState& s) {
+    int step = kStepTable[s.index];
+    int diff = sample - s.valprev;
+    uint8_t nib = 0;
+    if (diff < 0) { nib = 8; diff = -diff; }
+    if (diff >= step) { nib |= 4; diff -= step; }
+    if (diff >= (step >> 1)) { nib |= 2; diff -= (step >> 1); }
+    if (diff >= (step >> 2)) { nib |= 1; }
+    int dq = kStepTable[s.index] >> 3;
+    if (nib & 4) dq += kStepTable[s.index];
+    if (nib & 2) dq += (kStepTable[s.index] >> 1);
+    if (nib & 1) dq += (kStepTable[s.index] >> 2);
+    s.valprev += (nib & 8) ? -dq : dq;
+    if (s.valprev > 32767) s.valprev = 32767;
+    if (s.valprev < -32768) s.valprev = -32768;
+    s.index += kIndexTable[nib];
+    if (s.index < 0) s.index = 0;
+    if (s.index > 88) s.index = 88;
+    return nib;
+}
 
 // ── OSTP packet builder (inlined from transport library) ──
 
@@ -243,6 +281,8 @@ int main(int argc, char* argv[]) {
         }
 
         int32_t pcm_buf[FRAMES_PER_PKT * CHANNELS];
+        AdpcmState adpcm_state;
+        uint32_t pkt_count = 0;
 
         // Timing
         struct timespec next_send;
@@ -260,19 +300,53 @@ int main(int argc, char* argv[]) {
             for (size_t i = 0; i < nread; i++)
                 pcm_buf[i] >>= 8;
 
-            size_t payload_size = nread * sizeof(int32_t);
-            const uint8_t* payload = reinterpret_cast<const uint8_t*>(pcm_buf);
-
             // media_timestamp: wall-clock milliseconds (32-bit, 49-day rollover)
-            // Must match solunad (OSTP v0.9.3 §4.2) — was ns which caused 4.3s rollover bug
             struct timespec now_ts;
             clock_gettime(CLOCK_REALTIME, &now_ts);
             uint32_t media_ts = (uint32_t)((now_ts.tv_sec * 1000ULL + now_ts.tv_nsec / 1000000ULL) & 0xFFFFFFFF);
 
+            const uint8_t* payload;
+            size_t payload_size;
+            uint8_t pt;
+            uint8_t adpcm_buf[4 + FRAMES_PER_PKT]; // ADPCM: 4 header + N/2 nibbles
+
+            if (pkt_count < RAW_FIRST_PKTS) {
+                // §4.9 Raw First: send raw PCM for instant DMA playback
+                payload = reinterpret_cast<const uint8_t*>(pcm_buf);
+                payload_size = nread * sizeof(int32_t);
+                pt = PT_L24;
+
+                // Seed ADPCM state from last sample (§4.9 valprev initialization)
+                int16_t last_sample = (int16_t)(pcm_buf[nread - 1] >> 8); // 24-bit → 16-bit
+                adpcm_state.valprev = last_sample;
+                adpcm_state.index = 0;
+            } else {
+                // ADPCM mode: 4:1 bandwidth reduction
+                // Convert 24-bit samples to 16-bit for ADPCM
+                int16_t pcm16[FRAMES_PER_PKT * CHANNELS];
+                for (size_t i = 0; i < nread; i++)
+                    pcm16[i] = (int16_t)(pcm_buf[i] >> 8);
+
+                // Encode: 4 bytes header + packed nibbles
+                adpcm_buf[0] = (uint8_t)(adpcm_state.valprev & 0xFF);
+                adpcm_buf[1] = (uint8_t)((adpcm_state.valprev >> 8) & 0xFF);
+                adpcm_buf[2] = (uint8_t)adpcm_state.index;
+                adpcm_buf[3] = 0;
+                for (size_t i = 0; i < nread; i++) {
+                    uint8_t nib = adpcm_encode_one(pcm16[i], adpcm_state);
+                    if (i & 1) adpcm_buf[4 + i/2] |= (nib << 4);
+                    else       adpcm_buf[4 + i/2] = nib;
+                }
+
+                payload = adpcm_buf;
+                payload_size = 4 + (nread + 1) / 2;
+                pt = PT_ADPCM;
+            }
+
             size_t pkt_size = build_ostp_packet(
                 pkt, sizeof(pkt),
                 SSRC, seq, rtp_ts,
-                PT_L24, stream_id, seq_ext, media_ts,
+                pt, stream_id, seq_ext, media_ts,
                 payload, payload_size);
 
             if (pkt_size > 0) {
@@ -281,8 +355,9 @@ int main(int argc, char* argv[]) {
             }
 
             seq++;
-            if (seq == 0) seq_ext++;  // 32-bit extended sequence
+            if (seq == 0) seq_ext++;
             rtp_ts += (uint32_t)frames;
+            pkt_count++;
 
             // Keep-alive
             time_t now = time(nullptr);
