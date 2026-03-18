@@ -49,16 +49,13 @@ struct ContentView: View {
 
     private func connectToDevice(_ device: SolunaLocalDevice) {
         connectedDeviceHost = device.host
-        let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+        // P2P direct: disconnect WAN relay, use LAN multicast instead
+        // Mac sends audio to multicast 239.69.0.1:5004 — iPhone receives directly
+        receiver.disconnectRelay()
         if receiver.state == .stopped || receiver.state == .error {
-            // Start receiver first, then connect to device relay
             receiver.start()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                receiver.connectRelay(group: ch, host: device.host, port: UInt16(device.port))
-            }
-        } else {
-            receiver.connectRelay(group: ch, host: device.host, port: UInt16(device.port))
         }
+        // Audio arrives via multicast automatically (no relay needed on LAN)
     }
 
     private func disconnectDevice() {

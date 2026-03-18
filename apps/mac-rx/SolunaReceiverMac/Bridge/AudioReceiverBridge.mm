@@ -3310,7 +3310,7 @@ private:
                         sync_mode_.load() ? " [SYNC]" : "");
                 last_log_pkts = st.packets_received;
             }
-            std::this_thread::sleep_for(std::chrono::microseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
 

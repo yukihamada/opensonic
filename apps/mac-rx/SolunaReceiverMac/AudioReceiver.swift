@@ -537,7 +537,12 @@ final class AudioReceiver: ObservableObject {
             let ok = self.receiver.connect(toRelay: host, port: port, group: group, password: password, deviceId: devId)
             NSLog("[FileSync] connectRelay result: \(ok)")
             Task { @MainActor in
+                self.relayState = ok ? .connected : .error
+                self.relayGroup = self.receiver.relayGroup
                 self.updateRelayState()
+                // System audio TX is available via UI button (not auto-started to save CPU)
+                // P2P direct relay: disabled for now (high CPU usage)
+                // iPhone connects via WAN relay instead
             }
         }
     }
@@ -646,11 +651,13 @@ final class AudioReceiver: ObservableObject {
         relayGroup = receiver.relayGroup
         relayError = receiver.relayError
 
-        // Refresh group members every 5 seconds when connected
-        if relayState == .connected {
+        // Refresh group members every 5 seconds when relay is connected
+        let isRelayUp = relayState == .connected
+        if isRelayUp {
             membersRefreshCounter += 1
             if membersRefreshCounter >= 5 {
                 membersRefreshCounter = 0
+                NSLog("[Members] Requesting members (relayState=\(relayState.rawValue))")
                 requestMembers()
             }
         } else {
@@ -1136,12 +1143,33 @@ final class AudioReceiver: ObservableObject {
                   let data = jsonStr.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let membersArr = json["members"] as? [[String: Any]] else { return }
+            let myDeviceId = self.deviceId
+            let myName = Host.current().localizedName ?? ""
+            // Collect IPs that belong to entries matching our device_id or name
+            var myIPs = Set<String>()
+            for m in membersArr {
+                let did = m["device_id"] as? String ?? ""
+                let dname = m["device"] as? String ?? ""
+                let addr = m["addr"] as? String ?? ""
+                let ip = addr.components(separatedBy: ":").first ?? ""
+                if did == myDeviceId || (!dname.isEmpty && dname == myName) {
+                    myIPs.insert(ip)
+                }
+            }
             self.groupMembers = membersArr.compactMap { m in
                 guard let deviceId = m["device_id"] as? String,
-                      let name = m["device"] as? String,
                       let role = m["role"] as? String else { return nil }
-                // Skip self
-                if deviceId == self.deviceId { return nil }
+                let rawName = m["device"] as? String ?? ""
+                let addr = m["addr"] as? String ?? ""
+                let ip = addr.components(separatedBy: ":").first ?? ""
+                // Skip radio (localhost)
+                if ip == "127.0.0.1" { return nil }
+                // Skip self by device_id or name
+                if deviceId == myDeviceId { return nil }
+                if !rawName.isEmpty && !myName.isEmpty && rawName == myName { return nil }
+                // Skip unnamed entries from our own IP (TX socket, duplicate connection)
+                if rawName.isEmpty && myIPs.contains(ip) { return nil }
+                let name = rawName.isEmpty ? "Device \(AuthManager.shortId(from: deviceId))" : rawName
                 return GroupMember(deviceId: deviceId, name: name, role: role)
             }
         }
