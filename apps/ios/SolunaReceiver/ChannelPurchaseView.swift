@@ -18,6 +18,7 @@ struct ChannelPurchaseView: View {
     @State private var checkTask: Task<Void, Never>?
     @State private var claimState: ClaimState = .idle
     @State private var showSuccess: Bool = false
+    @State private var isProcessing = false
 
     private enum ClaimState: Equatable {
         case idle
@@ -196,9 +197,22 @@ struct ChannelPurchaseView: View {
             }
             .navigationTitle("Channel")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
+            .toolbar(content: {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
+                }
+            })
+            .overlay {
+                if isProcessing {
+                    ZStack {
+                        Color.black.opacity(0.3)
+                            .ignoresSafeArea()
+                        ProgressView("Processing...")
+                            .padding(24)
+                            .background(.regularMaterial)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .allowsHitTesting(true)
                 }
             }
             .alert("Channel Claimed", isPresented: $showSuccess) {
@@ -297,6 +311,8 @@ struct ChannelPurchaseView: View {
 
     private func purchaseAndClaim() async {
         let name = desiredName.trimmingCharacters(in: .whitespaces).lowercased()
+        isProcessing = true
+        defer { isProcessing = false }
 
         // If already purchased (changing name), skip purchase step
         if store.isPurchased {

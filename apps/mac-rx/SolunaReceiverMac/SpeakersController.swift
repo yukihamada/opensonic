@@ -83,6 +83,7 @@ final class SpeakersController: ObservableObject {
         var name: String
         var host: String
         var autoDiscovered: Bool = false
+        var channel: String = ""   // per-speaker channel override
     }
 
     @Published var speakers: [Speaker] = []
@@ -126,6 +127,14 @@ final class SpeakersController: ObservableObject {
     }
 
     func client(for id: UUID) -> DaemonClient? { clients[id] }
+
+    /// Update a speaker's channel and notify the daemon.
+    func setChannel(for id: UUID, channel: String) {
+        guard let idx = speakers.firstIndex(where: { $0.id == id }) else { return }
+        speakers[idx].channel = channel
+        clients[id]?.setChannel(channel)
+        persist()
+    }
 
     /// First connected daemon (used by PlayerModel).
     var primaryDaemon: DaemonClient? {

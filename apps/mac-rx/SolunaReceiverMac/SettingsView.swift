@@ -14,7 +14,7 @@ struct SettingsView: View {
 
     @AppStorage("multicastGroup") private var multicastGroup = "239.69.0.1"
     @AppStorage("port") private var port = 5004
-    @AppStorage("channels") private var channels = 2
+    @AppStorage("channels") private var channels = 1
     @AppStorage("autoConnect") private var autoConnect = true
     @AppStorage("streamMode") private var streamMode = "sync"
     @AppStorage("channel") private var channel = "soluna"
@@ -24,6 +24,8 @@ struct SettingsView: View {
     @State private var tempChannel: String = ""
     @State private var showingResetAlert = false
     @State private var showChannelPurchase = false
+    @State private var showLogin = false
+    @StateObject private var auth = AuthManager.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -33,31 +35,12 @@ struct SettingsView: View {
                 .padding(.bottom, 8)
 
             Form {
-                Section(header: Text("Network")) {
-                    HStack {
-                        Image(systemName: "network")
-                            .foregroundColor(.blue)
-                            .frame(width: 28)
-                        TextField("Multicast Group", text: $tempMulticastGroup)
-                            .disableAutocorrection(true)
-                    }
-
-                    HStack {
-                        Image(systemName: "antenna.radiowaves.left.and.right")
-                            .foregroundColor(.green)
-                            .frame(width: 28)
-                        TextField("Port", text: $tempPort)
-                    }
-
-                    Text("Default: 239.69.0.1:5004 (Soluna multicast)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                // MARK: - Essential
 
                 Section(header: Text("Channel")) {
                     HStack {
                         Image(systemName: "dot.radiowaves.left.and.right")
-                            .foregroundColor(.purple)
+                            .foregroundColor(.solunaGradientStart)
                             .frame(width: 28)
                         Text(tempChannel.isEmpty ? "soluna" : tempChannel)
                         Spacer()
@@ -107,7 +90,7 @@ struct SettingsView: View {
                         .frame(width: 400, height: 500)
                 }
 
-                Section(header: Text("Audio")) {
+                Section(header: Text("Output Channels")) {
                     Picker(selection: $tempChannels, label:
                         HStack {
                             Image(systemName: "speaker.wave.2")
@@ -133,7 +116,7 @@ struct SettingsView: View {
                     Picker(selection: $streamMode, label:
                         HStack {
                             Image(systemName: "waveform.path")
-                                .foregroundColor(.indigo)
+                                .foregroundColor(.solunaGradientMid)
                                 .frame(width: 28)
                             Text("Mode")
                         }
@@ -153,16 +136,81 @@ struct SettingsView: View {
                     }
                 }
 
-                Section(header: Text("Behavior")) {
+                Section(header: Text("Connection")) {
                     Toggle(isOn: $autoConnect) {
                         HStack {
                             Image(systemName: "play.circle")
-                                .foregroundColor(.purple)
+                                .foregroundColor(.solunaGradientStart)
                                 .frame(width: 28)
-                            Text("Auto-connect on launch")
+                            Text("Connect Mode")
                         }
                     }
+
+                    Text("Automatically connect on launch and reconnect if disconnected.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
+
+                // MARK: - Advanced
+
+                Section {
+                    DisclosureGroup("Advanced") {
+                        HStack {
+                            Image(systemName: "network")
+                                .foregroundColor(.blue)
+                                .frame(width: 28)
+                            TextField("Multicast Group", text: $tempMulticastGroup)
+                                .disableAutocorrection(true)
+                        }
+
+                        HStack {
+                            Image(systemName: "antenna.radiowaves.left.and.right")
+                                .foregroundColor(.green)
+                                .frame(width: 28)
+                            TextField("Port", text: $tempPort)
+                        }
+
+                        Text("Default: 239.69.0.1:5004")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                // MARK: - Account
+
+                Section(header: Text("Account")) {
+                    if auth.isAuthenticated, let email = auth.userEmail {
+                        HStack {
+                            Image(systemName: "person.crop.circle.fill")
+                                .foregroundColor(.solunaLive)
+                                .frame(width: 28)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(email)
+                                    .font(.body)
+                                Text("Device \(auth.shortDeviceId)")
+                                    .font(.caption2.monospaced())
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button("Logout") { auth.logout() }
+                                .foregroundColor(.red)
+                        }
+                    } else {
+                        Button {
+                            showLogin = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "envelope.badge")
+                                    .foregroundColor(.solunaGradientStart)
+                                    .frame(width: 28)
+                                Text("Login with Email")
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // MARK: - Reset
 
                 Section {
                     Button(action: {
@@ -176,29 +224,6 @@ struct SettingsView: View {
                         .foregroundColor(.red)
                     }
                     .buttonStyle(.plain)
-                }
-
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("About Soluna Rx")
-                            .font(.headline)
-                        Text("Version 1.0.0")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Text("Receives network audio via RTP multicast. Supports OSTP and AES67 protocols.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        Link(destination: URL(string: "https://github.com/yukihamada/opensonic")!) {
-                            HStack {
-                                Image(systemName: "link")
-                                Text("View on GitHub")
-                            }
-                            .font(.caption)
-                        }
-                        .padding(.top, 4)
-                    }
-                    .padding(.vertical, 4)
                 }
             }
             .formStyle(.grouped)
@@ -218,7 +243,7 @@ struct SettingsView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
         }
-        .frame(width: 420, height: 620)
+        .frame(width: 420, height: 560)
         .alert("Reset Settings", isPresented: $showingResetAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Reset", role: .destructive) {
@@ -226,6 +251,9 @@ struct SettingsView: View {
             }
         } message: {
             Text("This will reset all settings to their default values.")
+        }
+        .sheet(isPresented: $showLogin) {
+            EmailLoginView(auth: auth)
         }
         .onAppear {
             loadCurrentSettings()
@@ -258,9 +286,9 @@ struct SettingsView: View {
     private func resetToDefaults() {
         tempMulticastGroup = "239.69.0.1"
         tempPort = "5004"
-        tempChannels = 2
+        tempChannels = 1
         tempChannel = "soluna"
-        autoConnect = false
+        autoConnect = true
         streamMode = "sync"
     }
 

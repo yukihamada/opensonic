@@ -12,7 +12,7 @@ import Foundation
 @MainActor
 final class ChannelStore: ObservableObject {
     static let productID = "com.soluna.channel.year"  // ¥1,000/year
-    static let relayHost = "46.225.77.119"
+    static let relayHost = "relay.solun.art"
     static let relayPort: UInt16 = 5100
 
     @Published var product: Product?

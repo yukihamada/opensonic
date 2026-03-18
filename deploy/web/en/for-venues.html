@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script>sessionStorage.setItem('lang-set','1')</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Soluna for Venues — Per-minute micro-billing for bars, restaurants, and event spaces. Cheaper than fixed annual contracts, with full copyright compliance.">
     <meta property="og:title" content="Soluna for Venues — Solve Your BGM Copyright Issues.">
@@ -46,7 +47,7 @@
 
         nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 0 max(20px, calc(50% - 580px)); height: 60px; background: rgba(5,6,10,0.7); backdrop-filter: blur(24px) saturate(1.8); border-bottom: 1px solid var(--border); }
         .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; }
-        .nav-logo .diamond { color: var(--cyan); font-size: 20px; }
+        .nav-logo svg { width: 24px; height: 24px; }
         .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
         .nav-links a { color: var(--text2); text-decoration: none; font-size: 13px; transition: color 0.2s; }
         .nav-links a:hover { color: var(--text); }
@@ -131,15 +132,21 @@
 <body>
 
 <nav>
-    <a href="/en/" class="nav-logo"><span class="diamond">&#9670;</span> Soluna</a>
+    <a href="/en/" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
     <div class="nav-links">
-        <a href="/en/">Home</a>
-        <a href="/en/for-djs">For DJs</a>
-        <a href="/en/for-venues" class="active">For Venues</a>
-        <a href="/en/for-events">For Events</a>
-        <a href="/en/for-developers">For Developers</a>
-        <a href="/for-venues" title="日本語">JP</a>
-        <a href="https://testflight.apple.com/join/PYbefDSE" class="nav-cta">TestFlight</a>
+        <a href="/en/" class="hide-sm">Home</a>
+        <a href="/en/for-djs" class="hide-sm">DJs</a>
+        <a href="/en/for-venues" class="hide-sm active">Venues</a>
+        <a href="/en/for-events" class="hide-sm">Events</a>
+        <a href="/en/for-developers" class="hide-sm">Developers</a>
+        <a href="/en/vision" class="hide-sm">Vision</a>
+        <a href="/en/protocol" class="hide-sm">Protocol</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/for-venues" class="hide-sm" onclick="sessionStorage.removeItem('lang-set')" style="font-size:12px;opacity:0.6">JP</a>
+        <a href="/dashboard" class="nav-cta">Dashboard</a>
     </div>
 </nav>
 
@@ -299,7 +306,7 @@
             <a href="/en/">Main Site</a>
             <a href="https://github.com/yukihamada/opensonic">GitHub</a>
             <a href="https://testflight.apple.com/join/PYbefDSE">TestFlight</a>
-            <a href="https://github.com/yukihamada/opensonic/blob/main/docs/protocol.md">Protocol Spec</a>
+            <a href="/en/protocol">Protocol Spec</a>
         </div>
         <div class="footer-col">
             <h4>Use Cases</h4>

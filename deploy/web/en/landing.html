@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script>sessionStorage.setItem('lang-set','1')</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Soluna — Stream audio from your Mac to iPhone, Raspberry Pi, and browsers in real time over the network. P2P mesh relay scales to 3 billion listeners. Copyright detection + automatic royalty distribution. Open source (MIT).">
     <meta name="keywords" content="Soluna, network audio, real-time audio streaming, P2P, mesh relay, DJ, BGM, open source, Mac, iPhone, Raspberry Pi, AES67, copyright, royalty">
@@ -9,6 +10,9 @@
     <meta name="robots" content="index, follow">
     <meta name="theme-color" content="#05060a">
     <link rel="canonical" href="https://solun.art/en/">
+    <link rel="alternate" hreflang="ja" href="https://solun.art/">
+    <link rel="alternate" hreflang="en" href="https://solun.art/en/">
+    <link rel="alternate" hreflang="x-default" href="https://solun.art/">
 
     <!-- Open Graph -->
     <meta property="og:title" content="Soluna — Your music, to every speaker in the world.">
@@ -109,6 +113,7 @@
         .nav-logo {
             font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
             display: flex; align-items: center; gap: 8px;
+            text-decoration: none; color: var(--text);
         }
         .nav-logo svg { width: 24px; height: 24px; }
         .nav-links { display: flex; align-items: center; gap: 24px; }
@@ -117,6 +122,7 @@
             transition: color 0.2s;
         }
         .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--text); font-weight: 600; }
         .nav-cta {
             padding: 8px 18px;
             background: linear-gradient(135deg, var(--blue), var(--purple));
@@ -727,23 +733,16 @@
 
 <!-- Nav -->
 <nav>
-    <div class="nav-logo">
-        <svg viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/>
-            <path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/>
-            <defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs>
-        </svg>
+    <a href="/en/" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
         Soluna
-    </div>
+    </a>
     <div class="nav-links">
-        <a href="#how" class="hide-sm">How it Works</a>
-        <a href="#features" class="hide-sm">Features</a>
-        <a href="#install" class="hide-sm">Install</a>
-        <a href="#usecases" class="hide-sm">Use Cases</a>
-        <a href="https://github.com/yukihamada/opensonic/blob/main/docs/protocol.md" class="hide-sm" target="_blank">Protocol</a>
-        <a href="#faq" class="hide-sm">FAQ</a>
+        <a href="/en/" class="hide-sm active">Home</a>
+        <a href="/en/vision" class="hide-sm">Vision</a>
+        <a href="/en/protocol" class="hide-sm">Protocol</a>
         <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
-        <a href="/" class="hide-sm" title="日本語">JP</a>
+        <a href="/soluna" class="hide-sm" onclick="sessionStorage.removeItem('lang-set')" style="font-size:12px;opacity:0.6">JP</a>
         <a href="/dashboard" class="nav-cta">Dashboard</a>
     </div>
 </nav>
@@ -1006,7 +1005,7 @@
                     <div style="font-size:11px;color:var(--text3)">Sound Settings → Output</div>
                 </div>
             </div>
-            <a href="/guide" class="ic-link">Detailed setup guide →</a>
+            <a href="/en/guide" class="ic-link">Detailed setup guide →</a>
         </div>
         <div class="install-card reveal reveal-delay-2">
             <div class="ic-header">
@@ -1055,7 +1054,7 @@
                 </div>
             </div>
             <div class="code-block">
-                <span class="prompt">$ </span>curl -fsSL https://soluna-web.fly.dev/install-rx.sh | sudo bash
+                <span class="prompt">$ </span>curl -fsSL https://solun.art/install-rx.sh | sudo bash
                 <button class="copy-btn" onclick="copyCode(this)">Copy</button>
             </div>
             <p style="font-size:12px;color:var(--text3);margin-top:4px">See the <a href="https://github.com/yukihamada/opensonic#readme" style="color:var(--text2)">README</a> for CLI install details</p>
@@ -1340,7 +1339,7 @@
     <h2 class="reveal">Listen now.</h2>
     <p class="sub reveal">Demo channels running across 3 global regions. Click to join.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:24px">
-        <a href="https://soluna-relay.fly.dev/c/ambient-tokyo" class="install-card reveal reveal-delay-1" style="text-decoration:none;color:inherit;cursor:pointer">
+        <a href="https://relay.solun.art/c/ambient-tokyo" class="install-card reveal reveal-delay-1" style="text-decoration:none;color:inherit;cursor:pointer">
             <div style="display:flex;align-items:center;gap:12px">
                 <div style="font-size:28px">🎵</div>
                 <div>
@@ -1350,7 +1349,7 @@
                 <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.15);color:#10b981">LIVE</span>
             </div>
         </a>
-        <a href="https://soluna-relay.fly.dev/c/electronic-la" class="install-card reveal reveal-delay-2" style="text-decoration:none;color:inherit;cursor:pointer">
+        <a href="https://relay.solun.art/c/electronic-la" class="install-card reveal reveal-delay-2" style="text-decoration:none;color:inherit;cursor:pointer">
             <div style="display:flex;align-items:center;gap:12px">
                 <div style="font-size:28px">🎧</div>
                 <div>
@@ -1360,7 +1359,7 @@
                 <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.15);color:#10b981">LIVE</span>
             </div>
         </a>
-        <a href="https://soluna-relay.fly.dev/c/chill-amsterdam" class="install-card reveal reveal-delay-3" style="text-decoration:none;color:inherit;cursor:pointer">
+        <a href="https://relay.solun.art/c/chill-amsterdam" class="install-card reveal reveal-delay-3" style="text-decoration:none;color:inherit;cursor:pointer">
             <div style="display:flex;align-items:center;gap:12px">
                 <div style="font-size:28px">🌍</div>
                 <div>
@@ -1536,7 +1535,7 @@
                 <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg">Mac Download</a>
                 <a href="https://testflight.apple.com/join/PYbefDSE">iOS TestFlight</a>
                 <a href="/dashboard">Dashboard</a>
-                <a href="/guide">Setup Guide</a>
+                <a href="/en/guide">Setup Guide</a>
             </div>
         </div>
         <div>
@@ -1553,7 +1552,7 @@
             <div class="f-links" style="flex-direction:column;gap:8px">
                 <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
                 <a href="https://github.com/yukihamada/opensonic/releases" target="_blank">Release Notes</a>
-                <a href="https://github.com/yukihamada/opensonic/blob/main/docs/protocol-ja.md" target="_blank">Protocol Spec (OSTP)</a>
+                <a href="/en/protocol">Protocol Spec (OSTP)</a>
                 <a href="https://github.com/yukihamada/opensonic/blob/main/LICENSE" target="_blank">MIT License</a>
             </div>
         </div>

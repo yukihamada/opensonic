@@ -7,31 +7,38 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		1A0062 /* ChannelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0062 /* ChannelStore.swift */; };
-		1A0063 /* ChannelPurchaseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0063 /* ChannelPurchaseView.swift */; };
+		09F07383067CAFC71F1AA8E3 /* DeviceBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A97C68C624EF649C481264 /* DeviceBrowserView.swift */; };
+		GD0010 /* GlobalDeviceRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = GD0011 /* GlobalDeviceRegistry.swift */; };
+		GD0012 /* GlobalDevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GD0013 /* GlobalDevicePickerView.swift */; };
 		1A0001 /* SolunaReceiverApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0001 /* SolunaReceiverApp.swift */; };
 		1A0002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0002 /* ContentView.swift */; };
 		1A0003 /* AudioReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0003 /* AudioReceiver.swift */; };
 		1A0004 /* AudioReceiverBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = 2A0004 /* AudioReceiverBridge.mm */; };
 		1A0005 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0008 /* SettingsView.swift */; };
-		1A0020 /* DaemonClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0020 /* DaemonClient.swift */; };
-		1A0030 /* SpeakersController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0030 /* SpeakersController.swift */; };
-		1A0040 /* PeerRelayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0040 /* PeerRelayManager.swift */; };
-		1A0041 /* SolunaAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0041 /* SolunaAppIntents.swift */; };
-		1A0042 /* RemoteControlServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0042 /* RemoteControlServer.swift */; };
-		1A0051 /* PlayerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0051 /* PlayerModel.swift */; };
-		1A0052 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0052 /* PlayerView.swift */; };
-		1A0070 /* SystemAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0070 /* SystemAudioCapture.swift */; };
-		1A0071 /* MultiChannelConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0071 /* MultiChannelConfig.swift */; };
-		1A0072 /* DJModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0072 /* DJModeView.swift */; };
 		1A0006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2A0009 /* Assets.xcassets */; };
-		1A0050 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2A0050 /* PrivacyInfo.xcprivacy */; };
 		1A0010 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0010 /* CoreAudio.framework */; };
 		1A0011 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0011 /* AudioToolbox.framework */; };
 		1A0013 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0013 /* AVFoundation.framework */; };
 		1A0014 /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0014 /* CoreFoundation.framework */; };
 		1A0015 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0015 /* Accelerate.framework */; };
 		1A0016 /* ScreenCaptureKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A0016 /* ScreenCaptureKit.framework */; };
+		1A0020 /* DaemonClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0020 /* DaemonClient.swift */; };
+		1A0030 /* SpeakersController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0030 /* SpeakersController.swift */; };
+		1A0040 /* PeerRelayManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0040 /* PeerRelayManager.swift */; };
+		1A0041 /* SolunaAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0041 /* SolunaAppIntents.swift */; };
+		1A0042 /* RemoteControlServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0042 /* RemoteControlServer.swift */; };
+		1A0050 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2A0050 /* PrivacyInfo.xcprivacy */; };
+		1A0051 /* PlayerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0051 /* PlayerModel.swift */; };
+		1A0052 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0052 /* PlayerView.swift */; };
+		1A0062 /* ChannelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0062 /* ChannelStore.swift */; };
+		1A0063 /* ChannelPurchaseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0063 /* ChannelPurchaseView.swift */; };
+		1A0070 /* SystemAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0070 /* SystemAudioCapture.swift */; };
+		1A0071 /* MultiChannelConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0071 /* MultiChannelConfig.swift */; };
+		1A0072 /* DJModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0072 /* DJModeView.swift */; };
+		743C8681E1C94ED850959E77 /* SolunaTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47E8DA98D4B778AD22C4AB0 /* SolunaTheme.swift */; };
+		C8145EDE67A8100D20F243AA /* EmailLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6C8CB1101F54DD18CAC44B0 /* EmailLoginView.swift */; };
+		CBE3FB2B4463 /* ChannelBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBD56C074C1D /* ChannelBrowserView.swift */; };
+		F6A5043AD6A6B2F87C632842 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30DF3249D4E2E9E07573C11B /* AuthManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,28 +50,35 @@
 		2A0006 /* SolunaReceiver-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SolunaReceiver-Bridging-Header.h"; sourceTree = "<group>"; };
 		2A0007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		2A0008 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		2A0062 /* ChannelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelStore.swift; sourceTree = "<group>"; };
-		2A0063 /* ChannelPurchaseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelPurchaseView.swift; sourceTree = "<group>"; };
-		2A0020 /* DaemonClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonClient.swift; sourceTree = "<group>"; };
-		2A0030 /* SpeakersController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakersController.swift; sourceTree = "<group>"; };
-		2A0040 /* PeerRelayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerRelayManager.swift; sourceTree = "<group>"; };
-		2A0041 /* SolunaAppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaAppIntents.swift; sourceTree = "<group>"; };
-		2A0042 /* RemoteControlServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteControlServer.swift; sourceTree = "<group>"; };
-		2A0051 /* PlayerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerModel.swift; sourceTree = "<group>"; };
-		2A0052 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
-		2A0070 /* SystemAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioCapture.swift; sourceTree = "<group>"; };
-		2A0071 /* MultiChannelConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiChannelConfig.swift; sourceTree = "<group>"; };
-		2A0072 /* DJModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DJModeView.swift; sourceTree = "<group>"; };
 		2A0009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		2A0050 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		2A0060 /* SolunaReceiverMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SolunaReceiverMac.entitlements; sourceTree = "<group>"; };
 		2A0010 /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
 		2A0011 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
 		2A0013 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		2A0014 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
 		2A0015 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		2A0016 /* ScreenCaptureKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ScreenCaptureKit.framework; path = System/Library/Frameworks/ScreenCaptureKit.framework; sourceTree = SDKROOT; };
+		2A0020 /* DaemonClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonClient.swift; sourceTree = "<group>"; };
+		2A0030 /* SpeakersController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakersController.swift; sourceTree = "<group>"; };
+		2A0040 /* PeerRelayManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerRelayManager.swift; sourceTree = "<group>"; };
+		2A0041 /* SolunaAppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaAppIntents.swift; sourceTree = "<group>"; };
+		2A0042 /* RemoteControlServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteControlServer.swift; sourceTree = "<group>"; };
+		2A0050 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		2A0051 /* PlayerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerModel.swift; sourceTree = "<group>"; };
+		2A0052 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
+		2A0060 /* SolunaReceiverMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SolunaReceiverMac.entitlements; sourceTree = "<group>"; };
+		2A0062 /* ChannelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelStore.swift; sourceTree = "<group>"; };
+		2A0063 /* ChannelPurchaseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelPurchaseView.swift; sourceTree = "<group>"; };
+		2A0070 /* SystemAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioCapture.swift; sourceTree = "<group>"; };
+		2A0071 /* MultiChannelConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiChannelConfig.swift; sourceTree = "<group>"; };
+		2A0072 /* DJModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DJModeView.swift; sourceTree = "<group>"; };
+		30DF3249D4E2E9E07573C11B /* AuthManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		3A0000 /* SolunaReceiverMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SolunaReceiverMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A47E8DA98D4B778AD22C4AB0 /* SolunaTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SolunaTheme.swift; sourceTree = "<group>"; };
+		CBD56C074C1D /* ChannelBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelBrowserView.swift; sourceTree = "<group>"; };
+		E6C8CB1101F54DD18CAC44B0 /* EmailLoginView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EmailLoginView.swift; sourceTree = "<group>"; };
+		F5A97C68C624EF649C481264 /* DeviceBrowserView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DeviceBrowserView.swift; sourceTree = "<group>"; };
+		GD0011 /* GlobalDeviceRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GlobalDeviceRegistry.swift; sourceTree = "<group>"; };
+		GD0013 /* GlobalDevicePickerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GlobalDevicePickerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,7 +98,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		5A0000 /* Root */ = {
+		5A0000 = {
 			isa = PBXGroup;
 			children = (
 				5A0001 /* SolunaReceiverMac */,
@@ -111,12 +125,19 @@
 				2A0071 /* MultiChannelConfig.swift */,
 				2A0072 /* DJModeView.swift */,
 				2A0062 /* ChannelStore.swift */,
+				CBD56C074C1D /* ChannelBrowserView.swift */,
 				2A0063 /* ChannelPurchaseView.swift */,
 				5A0010 /* Bridge */,
 				2A0009 /* Assets.xcassets */,
 				2A0050 /* PrivacyInfo.xcprivacy */,
 				2A0060 /* SolunaReceiverMac.entitlements */,
 				2A0007 /* Info.plist */,
+				A47E8DA98D4B778AD22C4AB0 /* SolunaTheme.swift */,
+				30DF3249D4E2E9E07573C11B /* AuthManager.swift */,
+				E6C8CB1101F54DD18CAC44B0 /* EmailLoginView.swift */,
+				F5A97C68C624EF649C481264 /* DeviceBrowserView.swift */,
+				GD0011 /* GlobalDeviceRegistry.swift */,
+				GD0013 /* GlobalDevicePickerView.swift */,
 			);
 			path = SolunaReceiverMac;
 			sourceTree = "<group>";
@@ -196,7 +217,7 @@
 				en,
 				Base,
 			);
-			mainGroup = 5A0000 /* Root */;
+			mainGroup = 5A0000;
 			productRefGroup = 5A0003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -239,7 +260,14 @@
 				1A0071 /* MultiChannelConfig.swift in Sources */,
 				1A0072 /* DJModeView.swift in Sources */,
 				1A0062 /* ChannelStore.swift in Sources */,
+				CBE3FB2B4463 /* ChannelBrowserView.swift in Sources */,
 				1A0063 /* ChannelPurchaseView.swift in Sources */,
+				743C8681E1C94ED850959E77 /* SolunaTheme.swift in Sources */,
+				F6A5043AD6A6B2F87C632842 /* AuthManager.swift in Sources */,
+				C8145EDE67A8100D20F243AA /* EmailLoginView.swift in Sources */,
+				09F07383067CAFC71F1AA8E3 /* DeviceBrowserView.swift in Sources */,
+				GD0010 /* GlobalDeviceRegistry.swift in Sources */,
+				GD0012 /* GlobalDevicePickerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -393,10 +421,8 @@
 					"$(SRCROOT)/../../build-mac",
 				);
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
-					"-lsoluna_core",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.soluna.Soluna";
+				OTHER_LDFLAGS = "-lsoluna_core";
+				PRODUCT_BUNDLE_IDENTIFIER = com.soluna.Soluna;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "SolunaReceiverMac/Bridge/SolunaReceiver-Bridging-Header.h";
@@ -432,10 +458,8 @@
 					"$(SRCROOT)/../../build-mac",
 				);
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
-					"-lsoluna_core",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.soluna.Soluna";
+				OTHER_LDFLAGS = "-lsoluna_core";
+				PRODUCT_BUNDLE_IDENTIFIER = com.soluna.Soluna;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "SolunaReceiverMac/Bridge/SolunaReceiver-Bridging-Header.h";

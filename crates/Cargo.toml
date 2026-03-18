@@ -1,0 +1,3 @@
+[workspace]
+members = ["soluna-core", "soluna-wasm"]
+resolver = "2"

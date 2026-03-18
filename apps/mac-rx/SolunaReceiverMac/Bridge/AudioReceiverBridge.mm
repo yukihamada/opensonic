@@ -597,8 +597,10 @@ public:
         vDSP_hann_window(window_.data(), kFFTSize, vDSP_HANN_NORM);
         input_buf_.resize(kFFTSize, 0);
         windowed_.resize(kFFTSize, 0);
-        split_.realp = reinterpret_cast<float*>(malloc(kFFTSize / 2 * sizeof(float)));
-        split_.imagp = reinterpret_cast<float*>(malloc(kFFTSize / 2 * sizeof(float)));
+        split_real_.resize(kFFTSize / 2, 0);
+        split_imag_.resize(kFFTSize / 2, 0);
+        split_.realp = split_real_.data();
+        split_.imagp = split_imag_.data();
         magnitudes_.resize(kFFTSize / 2, 0);
         write_pos_ = 0;
         for (auto& b : bands_) b.store(0, std::memory_order_relaxed);
@@ -606,8 +608,6 @@ public:
 
     ~SpectrumAnalyzer() {
         if (fft_setup_) vDSP_destroy_fftsetup(fft_setup_);
-        free(split_.realp);
-        free(split_.imagp);
     }
 
     /// Feed mono samples from audio callback. Processes FFT when buffer is full.
@@ -684,6 +684,8 @@ private:
     std::vector<float> window_;
     std::vector<float> input_buf_;
     std::vector<float> windowed_;
+    std::vector<float> split_real_;
+    std::vector<float> split_imag_;
     DSPSplitComplex split_;
     std::vector<float> magnitudes_;
     uint32_t write_pos_;
@@ -1085,6 +1087,9 @@ public:
     using MetaCallback = std::function<void(const std::string&)>;
     using FileCallback = std::function<void(const std::string&)>;
     using SyncCallback = std::function<void(const std::string&)>;
+    using MaxDelayCallback = std::function<void(uint32_t)>;
+    using VolumeCallback = std::function<void(float)>;
+    using MembersCallback = std::function<void(const std::string&)>;
 
     WanRelayClient() = default;
     ~WanRelayClient() { disconnect(); }
@@ -1093,8 +1098,11 @@ public:
                  const std::string& group, const std::string& password,
                  const std::string& device_name,
                  const std::string& device_id = "") {
-        if (state_.load() == State::Connected || state_.load() == State::Connecting)
-            return false;
+        // Auto-disconnect if already connected (enables channel switching)
+        if (state_.load() == State::Connected || state_.load() == State::Connecting) {
+            fprintf(stderr, "[relay] Auto-disconnect for channel switch → '%s'\n", group.c_str());
+            disconnect();
+        }
 
         device_id_ = device_id;
         state_.store(State::Connecting, std::memory_order_relaxed);
@@ -1187,6 +1195,16 @@ public:
                     std::lock_guard<std::mutex> lk(cb_mutex_);
                     if (sync_callback_) sync_callback_(sync);
                 }
+                else if (n >= 9 && strncmp(buf, "MAXDELAY:", 9) == 0) {
+                    char tmp[32] = {};
+                    size_t copy_len = std::min((size_t)n - 9, sizeof(tmp) - 1);
+                    memcpy(tmp, buf + 9, copy_len);
+                    uint32_t max_ms = (uint32_t)atoi(tmp);
+                    if (max_ms > 0) {
+                        std::lock_guard<std::mutex> lk(cb_mutex_);
+                        if (maxdelay_callback_) maxdelay_callback_(max_ms);
+                    }
+                }
                 else if (n >= 5 && strncmp(buf, "META:", 5) == 0) {
                     std::string meta(buf + 5, n - 5);
                     while (!meta.empty() && (meta.back() == '\n' || meta.back() == '\r')) meta.pop_back();
@@ -1267,6 +1285,18 @@ public:
         sync_callback_ = std::move(cb);
     }
 
+    void set_maxdelay_callback(MaxDelayCallback cb) {
+        std::lock_guard<std::mutex> lock(cb_mutex_);
+        maxdelay_callback_ = std::move(cb);
+    }
+
+    void set_members_callback(MembersCallback cb) {
+        std::lock_guard<std::mutex> lock(cb_mutex_);
+        members_callback_ = std::move(cb);
+    }
+
+    int64_t clock_offset_ns() const { return clock_offset_ns_.load(std::memory_order_relaxed); }
+
     void send_ready(const std::string& filename) {
         if (udp_sock_ < 0 || state_.load() != State::Connected) return;
         std::string msg = "READY:" + filename + "\n";
@@ -1300,6 +1330,25 @@ public:
 
     void send_members() {
         send_command("MEMBERS\n");
+    }
+
+    /// Send DELAY report to relay (for sync mode coordination)
+    void send_delay(uint32_t net_delay_ms) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "DELAY:%u\n", net_delay_ms);
+        send_command(std::string(buf));
+    }
+
+    void set_volume_callback(VolumeCallback cb) {
+        std::lock_guard<std::mutex> lock(cb_mutex_);
+        volume_callback_ = std::move(cb);
+    }
+
+    /// Send VOLUME command to relay targeting a specific device
+    void send_volume(const std::string& target_device_id, int level) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "VOLUME:%s:%d\n", target_device_id.c_str(), level);
+        send_command(std::string(buf));
     }
 
 private:
@@ -1363,6 +1412,39 @@ private:
                     std::lock_guard<std::mutex> lk(cb_mutex_);
                     if (sync_callback_) sync_callback_(sync);
                 }
+                // MEMBERS: response — JSON list of group members
+                else if (n >= 8 && memcmp(buf, "MEMBERS:", 8) == 0) {
+                    std::string json((const char*)buf + 8, n - 8);
+                    while (!json.empty() && (json.back() == '\n' || json.back() == '\r'))
+                        json.pop_back();
+                    std::lock_guard<std::mutex> lk(cb_mutex_);
+                    if (members_callback_) members_callback_(json);
+                }
+                // MAXDELAY: sync mode group-wide max delay
+                else if (n >= 9 && memcmp(buf, "MAXDELAY:", 9) == 0) {
+                    char tmp[32] = {};
+                    size_t copy_len = std::min((size_t)n - 9, sizeof(tmp) - 1);
+                    memcpy(tmp, buf + 9, copy_len);
+                    uint32_t max_ms = (uint32_t)atoi(tmp);
+                    if (max_ms > 0) {
+                        std::lock_guard<std::mutex> lk(cb_mutex_);
+                        if (maxdelay_callback_) maxdelay_callback_(max_ms);
+                    }
+                }
+                // VOLUME_SET: remote volume control from another device via relay
+                else if (n >= 11 && memcmp(buf, "VOLUME_SET:", 11) == 0) {
+                    std::string val((const char*)buf + 11, n - 11);
+                    while (!val.empty() && (val.back() == '\n' || val.back() == '\r'))
+                        val.pop_back();
+                    int level = std::atoi(val.c_str());
+                    float vol = std::max(0.0f, std::min(1.0f, level / 100.0f));
+                    std::lock_guard<std::mutex> lk(cb_mutex_);
+                    if (volume_callback_) volume_callback_(vol);
+                }
+                // NTP sync pong (PT=125, first byte 0x7D)
+                else if (n >= 25 && buf[0] == 0x7D) {
+                    handle_sync_pong(buf, (size_t)n);
+                }
                 // RTP/OSTP audio packet from relay or peer
                 else if (n >= 12 && (buf[0] & 0xC0) == 0x80) {
                     std::lock_guard<std::mutex> lock(cb_mutex_);
@@ -1379,9 +1461,46 @@ private:
                 const char* hello = "HELLO\n";
                 sendto(udp_sock_, hello, strlen(hello), 0,
                        reinterpret_cast<const sockaddr*>(&relay_addr_), sizeof(relay_addr_));
+                send_sync_ping();
                 last_hello = now;
             }
         }
+    }
+
+    void send_sync_ping() {
+        if (udp_sock_ < 0 || state_.load() != State::Connected) return;
+        uint8_t pkt[25] = {};
+        pkt[0] = 0x7D;
+        struct timespec now_ts;
+        clock_gettime(CLOCK_REALTIME, &now_ts);
+        uint64_t t1_ns = (uint64_t)now_ts.tv_sec * 1000000000ULL + (uint64_t)now_ts.tv_nsec;
+        memcpy(pkt + 1, &t1_ns, 8);
+        sendto(udp_sock_, pkt, 25, 0,
+               reinterpret_cast<const sockaddr*>(&relay_addr_), sizeof(relay_addr_));
+    }
+
+    void handle_sync_pong(const uint8_t* data, size_t len) {
+        if (len < 25 || data[0] != 0x7D) return;
+        uint64_t t1_ns, t2_ns, t3_ns;
+        memcpy(&t1_ns, data + 1, 8);
+        memcpy(&t2_ns, data + 9, 8);
+        memcpy(&t3_ns, data + 17, 8);
+        struct timespec now_ts;
+        clock_gettime(CLOCK_REALTIME, &now_ts);
+        uint64_t t4_ns = (uint64_t)now_ts.tv_sec * 1000000000ULL + (uint64_t)now_ts.tv_nsec;
+        if (t2_ns == 0 || t3_ns == 0) return;
+        int64_t offset = ((int64_t)(t2_ns - t1_ns) + (int64_t)(t3_ns - t4_ns)) / 2;
+        int64_t rtt = (int64_t)(t4_ns - t1_ns) - (int64_t)(t3_ns - t2_ns);
+        if (rtt < 0 || rtt > 500000000LL) return;
+        int64_t prev = clock_offset_ns_.load(std::memory_order_relaxed);
+        double alpha = (sync_ping_count_ < 5) ? 0.3 : 0.1;
+        if (sync_ping_count_ < 5) sync_ping_count_++;
+        int64_t smoothed = (int64_t)(prev * (1.0 - alpha) + offset * alpha);
+        if (sync_ping_count_ == 1) smoothed = offset;
+        clock_offset_ns_.store(smoothed, std::memory_order_relaxed);
+        if (sync_ping_count_ <= 3)
+            fprintf(stderr, "[clock-sync] offset=%.2fms rtt=%.2fms (#%u)\n",
+                    offset / 1e6, rtt / 1e6, sync_ping_count_);
     }
 
     void add_peer(const sockaddr_in& peer) {
@@ -1408,6 +1527,11 @@ private:
     SyncCallback sync_callback_;
     std::mutex peers_mutex_;
     std::vector<sockaddr_in> peers_;
+    MaxDelayCallback maxdelay_callback_;
+    VolumeCallback volume_callback_;
+    MembersCallback members_callback_;
+    std::atomic<int64_t> clock_offset_ns_{0};
+    uint32_t sync_ping_count_ = 0;
 };
 
 /// Internal microphone transmitter implementation
@@ -2315,7 +2439,7 @@ private:
         auto next_time = std::chrono::steady_clock::now();
 
         while (running_.load()) {
-            next_time += std::chrono::duration<double>(kInterval);
+            next_time += std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kInterval));
 
             std::fill(buf_a.begin(), buf_a.end(), 0.f);
             std::fill(buf_b.begin(), buf_b.end(), 0.f);
@@ -2426,7 +2550,12 @@ public:
 
         rtp_receiver_ = std::make_unique<SimpleRtpReceiver>(rx_config);
         if (!rtp_receiver_->init()) {
-            return false;
+            // Multicast socket init failed (sandbox, port in use, or no network).
+            // Continue in relay-only mode: WAN relay injects audio via inject_raw_packet
+            // which bypasses the socket entirely. Disable network receive loop to avoid
+            // calling receive_packet() on the uninitialized socket.
+            fprintf(stderr, "[SolunaRx] Multicast init failed — relay-only mode\n");
+            set_relay_network_disabled(true);
         }
 
         // Wire up NTP sync: receiver adjusts target_fill_frames_ based on media_timestamp
@@ -2664,7 +2793,54 @@ public:
     }
 
     void inject_raw_packet(const uint8_t* data, size_t len) {
-        if (rtp_receiver_) rtp_receiver_->inject_raw_packet(data, len, ring_buffer_);
+        if (!rtp_receiver_) return;
+        // On first relay packet: flush stale data & boost buffer to 500ms for WAN jitter
+        if (!relay_first_packet_received_.load(std::memory_order_relaxed)) {
+            relay_first_packet_received_.store(true, std::memory_order_relaxed);
+            flush_requested_.store(true, std::memory_order_release);
+            target_fill_frames_.store(24000, std::memory_order_relaxed);  // 500ms WAN jitter cushion
+            health_underruns_in_window_ = 0;
+            last_underrun_ms_ = 0;
+            fprintf(stderr, "[relay] First packet — buffer flushed, target=24000 (500ms)\n");
+        }
+        relay_inject_count_++;
+        rtp_receiver_->inject_raw_packet(data, len, ring_buffer_);
+
+        // RTCP inter-arrival jitter (RFC 3550)
+        if (len >= 8 && (data[0] & 0xC0) == 0x80) {
+            uint32_t rtp_ts;
+            std::memcpy(&rtp_ts, data + 4, 4);
+            rtp_ts = ntohl(rtp_ts);
+            struct timespec now_ts;
+            clock_gettime(CLOCK_REALTIME, &now_ts);
+            uint64_t now_ns = static_cast<uint64_t>(now_ts.tv_sec) * 1'000'000'000ULL + now_ts.tv_nsec;
+            if (ia_last_arrival_ns_ != 0 && ia_last_rtp_ts_ != 0) {
+                double arrival_diff_ms = static_cast<double>(now_ns - ia_last_arrival_ns_) / 1'000'000.0;
+                double rtp_diff_ms    = static_cast<double>(static_cast<int32_t>(rtp_ts - ia_last_rtp_ts_)) / 48.0;
+                double d = std::abs(arrival_diff_ms - rtp_diff_ms);
+                ia_jitter_ema_ms_ += (d - ia_jitter_ema_ms_) / 16.0;
+            }
+            ia_last_arrival_ns_ = now_ns;
+            ia_last_rtp_ts_     = rtp_ts;
+        }
+
+        // Periodic stats + jitter-adaptive buffer (every ~5s at 500pps)
+        if (relay_inject_count_ % 2500 == 0) {
+            size_t fill   = ring_buffer_.available_read();
+            uint32_t tgt  = target_fill_frames_.load();
+            fprintf(stderr, "[relay] fill=%zu target=%u jitter=%.1fms\n",
+                    fill, tgt, ia_jitter_ema_ms_);
+            // RFC 3550: buffer = 4× jitter, clamped [30ms, 500ms]
+            if (ia_jitter_ema_ms_ > 1.0) {
+                double jt_ms = std::max(30.0, std::min(500.0, ia_jitter_ema_ms_ * 4.0));
+                uint32_t jt_frames = static_cast<uint32_t>(jt_ms * 48.0);
+                uint32_t cur = target_fill_frames_.load(std::memory_order_relaxed);
+                uint32_t blended = static_cast<uint32_t>(cur * 0.9 + jt_frames * 0.1);
+                // 500ms floor in WAN mode
+                blended = std::max(blended, 24000u);
+                target_fill_frames_.store(blended, std::memory_order_relaxed);
+            }
+        }
     }
 
     /// Inject decoded PCM samples directly into the ring buffer.
@@ -2825,10 +3001,34 @@ public:
         if (stored_meta_cb_) wan_relay_->set_meta_callback(stored_meta_cb_);
         if (stored_file_cb_) wan_relay_->set_file_callback(stored_file_cb_);
         if (stored_sync_cb_) wan_relay_->set_sync_callback(stored_sync_cb_);
+        if (stored_members_cb_) wan_relay_->set_members_callback(stored_members_cb_);
+        // MAXDELAY: adapt sync_delay_ms_ to group-wide max
+        wan_relay_->set_maxdelay_callback([this](uint32_t max_ms) {
+            uint32_t capped = std::min(max_ms, 2000u);
+            uint32_t current = sync_delay_ms_.load(std::memory_order_relaxed);
+            if (capped != current) {
+                sync_delay_ms_.store(capped, std::memory_order_relaxed);
+                fprintf(stderr, "[sync] MAXDELAY received: %u ms (was %u ms)\n", capped, current);
+            }
+        });
+        // VOLUME_SET: remote volume control from another device
+        wan_relay_->set_volume_callback([this](float vol) {
+            volume_.store(vol, std::memory_order_relaxed);
+            fprintf(stderr, "[relay] Remote volume set to %.0f%%\n", vol * 100.0f);
+        });
+        // Reset first-packet flag so buffer is re-initialized on (re)connect
+        relay_first_packet_received_.store(false, std::memory_order_relaxed);
         bool ok = wan_relay_->connect(host, port, group, password, device_name, device_id);
         if (ok) {
-            // Switch to relay-only mode: multicast is LAN-only, relay carries WAN audio
             set_relay_network_disabled(true);
+            // Flush old channel audio from ring buffer
+            flush_requested_.store(true, std::memory_order_release);
+            target_fill_frames_.store(24000, std::memory_order_relaxed);  // 500ms WAN jitter cushion
+            health_.store(0, std::memory_order_relaxed);
+            health_silenced_.store(false, std::memory_order_relaxed);
+            prefilled_ = false;
+            sync_samples_count_ = 0;  // reset for fast re-convergence
+            fprintf(stderr, "[relay] Connected — buffer flushed, target=24000 (500ms), health reset\n");
         }
         return ok;
     }
@@ -2872,6 +3072,11 @@ public:
         if (wan_relay_) wan_relay_->set_sync_callback(std::move(cb));
     }
 
+    void wan_relay_set_members_callback(WanRelayClient::MembersCallback cb) {
+        stored_members_cb_ = cb;
+        if (wan_relay_) wan_relay_->set_members_callback(std::move(cb));
+    }
+
     void wan_relay_send_ready(const std::string& filename) {
         if (wan_relay_) wan_relay_->send_ready(filename);
     }
@@ -2890,6 +3095,10 @@ public:
 
     void wan_relay_members() {
         if (wan_relay_) wan_relay_->send_members();
+    }
+
+    void wan_relay_send_volume(const std::string& target_device_id, int level) {
+        if (wan_relay_) wan_relay_->send_volume(target_device_id, level);
     }
 
     /// Send a raw text command via WAN relay (for DJ mode FILE:/META:/SYNC: commands)
@@ -2968,6 +3177,8 @@ public:
         return 0;
     }
 
+    WanRelayClient* wan_relay() { return wan_relay_.get(); }
+
 private:
     // ── Health tracking helpers (audio-callback thread only) ──────────────
 
@@ -3005,8 +3216,8 @@ private:
         if (++recovery_check_counter_ < 200) return;  // ~1 s at 5ms/callback
         recovery_check_counter_ = 0;
         if (last_underrun_ms_ == 0) return;
-        if (now_ms_() - last_underrun_ms_ >= 60000) {
-            // 60 seconds clean: restore normal operation
+        if (now_ms_() - last_underrun_ms_ >= 5000) {
+            // 5 seconds clean: restore normal operation
             health_.store(0, std::memory_order_relaxed);
             health_silenced_.store(false, std::memory_order_relaxed);
             health_window_start_ms_ = 0;
@@ -3033,34 +3244,56 @@ private:
             }
 
             // ── Sync mode: adjust buffer target from OSTP wall-clock timestamps ──
-            if (sync_mode_.load(std::memory_order_relaxed) && rtp_receiver_) {
+            // Run every 50 injected packets (~0.1s at 500pps) — same as iOS
+            if ((relay_inject_count_ % 50 == 0) &&
+                sync_mode_.load(std::memory_order_relaxed) && rtp_receiver_) {
                 uint32_t media_ts = rtp_receiver_->last_media_timestamp.load(std::memory_order_relaxed);
                 if (media_ts != 0) {
                     struct timespec now_ts;
                     clock_gettime(CLOCK_REALTIME, &now_ts);
-                    uint32_t now_ns32 = static_cast<uint32_t>(
-                        (static_cast<uint64_t>(now_ts.tv_sec) * 1'000'000'000ULL + now_ts.tv_nsec)
+                    uint32_t now_ms32 = static_cast<uint32_t>(
+                        (static_cast<uint64_t>(now_ts.tv_sec) * 1000ULL +
+                         static_cast<uint64_t>(now_ts.tv_nsec) / 1'000'000ULL)
                         & 0xFFFFFFFF);
-
-                    // Network delay = how long ago this packet was created (TX wall-clock)
-                    int32_t net_delay_ns = static_cast<int32_t>(now_ns32 - media_ts);
-
-                    // Sanity: if net_delay is negative or > 2s, ignore (clock skew / wrap)
-                    if (net_delay_ns >= 0 && net_delay_ns < 2'000'000'000) {
-                        uint32_t sync_delay_ns = sync_delay_ms_.load() * 1'000'000u;
-
-                        // Buffer should hold: sync_delay - network_delay worth of audio
-                        int32_t buffer_ns = static_cast<int32_t>(sync_delay_ns) - net_delay_ns;
-                        if (buffer_ns < 5'000'000) buffer_ns = 5'000'000; // min 5ms
-
-                        uint32_t target = static_cast<uint32_t>(
-                            (static_cast<int64_t>(buffer_ns) * 48000) / 1'000'000'000LL);
-
-                        // Smooth the target to avoid jitter (EMA, α = 0.02)
+                    // Apply NTP clock offset correction (relay_time - local_time)
+                    int64_t offset_ns = wan_relay_ ? wan_relay_->clock_offset_ns() : 0;
+                    int32_t offset_ms = static_cast<int32_t>(offset_ns / 1'000'000LL);
+                    int32_t net_delay_ms = static_cast<int32_t>(now_ms32 - media_ts) + offset_ms;
+                    if (net_delay_ms >= 0 && net_delay_ms < 2000) {
+                        uint32_t total_delay_ms = sync_delay_ms_.load();
+                        int32_t buffer_ms = static_cast<int32_t>(total_delay_ms) - net_delay_ms;
+                        if (buffer_ms < 5) buffer_ms = 5;
+                        uint32_t target = static_cast<uint32_t>(buffer_ms * 48);
                         uint32_t prev = target_fill_frames_.load();
-                        uint32_t smoothed = static_cast<uint32_t>(
-                            prev * 0.98 + target * 0.02);
+                        int32_t diff = static_cast<int32_t>(target) - static_cast<int32_t>(prev);
+                        // Adaptive EMA: fast initial lock-on, slow when stable
+                        double alpha = (sync_samples_count_ < 50) ? 0.20
+                                     : (std::abs(diff) > 2400)    ? 0.15
+                                     : (std::abs(diff) > 480)     ? 0.08
+                                                                   : 0.02;
+                        if (sync_samples_count_ < 50) sync_samples_count_++;
+                        uint32_t smoothed = static_cast<uint32_t>(prev * (1.0 - alpha) + target * alpha);
+                        // 500ms floor in WAN relay mode to prevent underruns
+                        smoothed = std::max(smoothed, 24000u);
                         target_fill_frames_.store(smoothed);
+                    }
+                }
+            }
+
+            // Report network delay to relay every ~5 seconds for sync coordination
+            if (loop_count % 50000 == 0 && wan_relay_ && sync_mode_.load(std::memory_order_relaxed)) {
+                uint32_t media_ts = rtp_receiver_ ? rtp_receiver_->last_media_timestamp.load(std::memory_order_relaxed) : 0;
+                if (media_ts != 0) {
+                    struct timespec rpt_ts;
+                    clock_gettime(CLOCK_REALTIME, &rpt_ts);
+                    uint32_t rpt_ms32 = static_cast<uint32_t>(
+                        (static_cast<uint64_t>(rpt_ts.tv_sec) * 1000ULL +
+                         static_cast<uint64_t>(rpt_ts.tv_nsec) / 1'000'000ULL) & 0xFFFFFFFF);
+                    int64_t offset_ns = wan_relay_->clock_offset_ns();
+                    int32_t offset_ms = static_cast<int32_t>(offset_ns / 1'000'000LL);
+                    int32_t nd_ms = static_cast<int32_t>(rpt_ms32 - media_ts) + offset_ms;
+                    if (nd_ms >= 0 && nd_ms < 2000) {
+                        wan_relay_->send_delay(static_cast<uint32_t>(nd_ms));
                     }
                 }
             }
@@ -3215,7 +3448,11 @@ private:
         // Handle deferred flush request from main thread (see flush_ring_buffer())
         if (flush_requested_.load(std::memory_order_acquire)) {
             flush_requested_.store(false, std::memory_order_relaxed);
-            ring_buffer_.reset();
+            // Safe consumer-side drain: advance read_pos to current write_pos.
+            // Do NOT use ring_buffer_.reset() — it resets both write_pos and read_pos,
+            // which is unsafe while the relay thread is concurrently writing.
+            size_t to_drain = ring_buffer_.available_read();
+            if (to_drain > 0) ring_buffer_.discard(to_drain);
             prefilled_ = false;
             ramp_ = 0.0f;
         }
@@ -3262,6 +3499,14 @@ private:
             }
             prefilled_ = true;
             ramp_ = 0.0f;  // ensure clean fade-in
+            // Buffer refilled — immediately clear silenced state so audio resumes
+            if (health_silenced_.load(std::memory_order_relaxed)) {
+                health_silenced_.store(false, std::memory_order_relaxed);
+                health_.store(0, std::memory_order_relaxed);
+                health_underruns_in_window_ = 0;
+                last_underrun_ms_ = 0;
+                fprintf(stderr, "[health] Buffer refilled — silence cleared\n");
+            }
         }
 
         // ── Underrun: play what we have, then fade out remainder ──────────
@@ -3453,6 +3698,14 @@ private:
     StereoSpatializer     primary_spatializer_;       // Virtual surround for primary
     SpectrumAnalyzer       spectrum_;                  // FFT spectrum analyzer
 
+    // WAN relay jitter tracking (RFC 3550 inter-arrival jitter)
+    std::atomic<bool> relay_first_packet_received_{false};
+    uint64_t relay_inject_count_ = 0;
+    uint32_t sync_samples_count_ = 0;  // for adaptive EMA alpha
+    uint64_t ia_last_arrival_ns_ = 0;
+    uint32_t ia_last_rtp_ts_     = 0;
+    double   ia_jitter_ema_ms_   = 0.0;
+
     // Recording callback (called from audio callback with float samples)
     std::function<void(const float*, uint32_t)> record_callback_;
     std::mutex record_mutex_;
@@ -3493,6 +3746,7 @@ private:
     WanRelayClient::MetaCallback stored_meta_cb_;
     WanRelayClient::FileCallback stored_file_cb_;
     WanRelayClient::SyncCallback stored_sync_cb_;
+    WanRelayClient::MembersCallback stored_members_cb_;
 };
 
 } // anonymous namespace
@@ -4294,6 +4548,10 @@ private:
     if (_impl) _impl->wan_relay_members();
 }
 
+- (void)sendVolumeToDevice:(NSString *)deviceId level:(int)level {
+    if (_impl) _impl->wan_relay_send_volume(std::string([deviceId UTF8String]), level);
+}
+
 - (void)disconnectRelay {
     // Remove TX relay callbacks
     if (_txImpl) {
@@ -4369,6 +4627,19 @@ private:
             });
         } else {
             _impl->wan_relay_set_sync_callback(nullptr);
+        }
+    }
+}
+
+- (void)setMembersCallback:(nullable void(^)(NSString *))callback {
+    if (_impl) {
+        if (callback) {
+            _impl->wan_relay_set_members_callback([callback](const std::string& json) {
+                NSString *str = [NSString stringWithUTF8String:json.c_str()];
+                dispatch_async(dispatch_get_main_queue(), ^{ callback(str); });
+            });
+        } else {
+            _impl->wan_relay_set_members_callback(nullptr);
         }
     }
 }
@@ -4525,7 +4796,7 @@ private:
 
 - (BOOL)startDeckA:(NSString *)filePath {
     if (!_impl) return NO;
-    WanRelayClient* relay = _impl->wan_relay_.get();
+    WanRelayClient* relay = _impl->wan_relay();
     if (!relay || relay->state() != WanRelayClient::State::Connected) {
         fprintf(stderr, "[DJCtrl] Cannot start deck A: relay not connected\n");
         return NO;
@@ -4536,7 +4807,7 @@ private:
 
 - (BOOL)startDeckB:(NSString *)filePath {
     if (!_impl) return NO;
-    WanRelayClient* relay = _impl->wan_relay_.get();
+    WanRelayClient* relay = _impl->wan_relay();
     if (!relay || relay->state() != WanRelayClient::State::Connected) {
         fprintf(stderr, "[DJCtrl] Cannot start deck B: relay not connected\n");
         return NO;

@@ -14,6 +14,7 @@ final class RemoteControlServer: ObservableObject {
     @Published var isRunning = false
     private var listener: NWListener?
     private weak var receiver: AudioReceiver?
+    private var bonjourService: NetService?
 
     static let port: UInt16 = 9400
 
@@ -38,12 +39,31 @@ final class RemoteControlServer: ObservableObject {
         listener?.stateUpdateHandler = { [weak self] state in
             Task { @MainActor in
                 self?.isRunning = (state == .ready)
+                if state == .ready {
+                    self?.startBonjourAdvertising()
+                }
             }
         }
         listener?.start(queue: .main)
     }
 
+    private func startBonjourAdvertising() {
+        let channel = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+        let hostname = Host.current().localizedName ?? "Mac"
+        bonjourService = NetService(domain: "local.", type: "_soluna._tcp.", name: hostname, port: Int32(Self.port))
+        bonjourService?.setTXTRecord(NetService.data(fromTXTRecord: [
+            "platform": "mac".data(using: .utf8)!,
+            "mode": "rx".data(using: .utf8)!,
+            "channel": channel.data(using: .utf8)!,
+            "version": "0.4.5".data(using: .utf8)!
+        ]))
+        bonjourService?.publish()
+        print("[Bonjour] Advertising _soluna._tcp on port \(Self.port): \(hostname)")
+    }
+
     func stop() {
+        bonjourService?.stop()
+        bonjourService = nil
         listener?.cancel()
         listener = nil
         isRunning = false

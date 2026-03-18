@@ -137,8 +137,9 @@ LicenseInfo validate_license_key(const std::string& key) {
     }
     if (diff != 0) return info;
 #else
-    // Without TLS/OpenSSL, accept all keys (development mode)
-    fprintf(stderr, "License: signature verification skipped (no OpenSSL)\n");
+    // Without TLS/OpenSSL, reject all non-Free licenses (signature cannot be verified)
+    fprintf(stderr, "License: signature verification unavailable (no OpenSSL) — rejecting key\n");
+    return info;
 #endif
 
     // Parse JSON payload

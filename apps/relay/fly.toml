@@ -13,6 +13,7 @@ primary_region = "nrt"
 # fly machine clone <machine_id> --region lax -a soluna-relay
 # fly machine clone <machine_id> --region ams -a soluna-relay
 
+# UDP relay (audio packets)
 [[services]]
   internal_port = 5100
   protocol = "udp"
@@ -20,19 +21,17 @@ primary_region = "nrt"
   [[services.ports]]
     port = 5100
 
-[[services]]
+# HTTP + WebSocket (force HTTP/1.1 backend for WS compat)
+[http_service]
   internal_port = 5102
-  protocol = "tcp"
+  force_https = true
 
-  [[services.ports]]
-    port = 443
-    handlers = ["tls", "http"]
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 2500
+    soft_limit = 2000
 
-  [[services.ports]]
-    port = 80
-    handlers = ["http"]
-
-  [[services.http_checks]]
+  [[http_service.checks]]
     interval = 15000
     timeout = 5000
     grace_period = "30s"

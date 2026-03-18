@@ -41,6 +41,19 @@
 #include <alsa/asoundlib.h>
 #endif
 
+#ifdef SOLUNA_HAS_PIPEWIRE
+#include <pipewire/pipewire.h>
+#include <spa/param/audio/format-utils.h>
+#endif
+
+#ifdef SOLUNA_HAS_DLNA
+#include <soluna/transport/dlna.h>
+#endif
+
+#ifdef SOLUNA_HAS_AIRPLAY
+#include <soluna/transport/airplay.h>
+#endif
+
 #include <fcntl.h>
 #include <netdb.h>
 #include <poll.h>
@@ -55,16 +68,22 @@ struct RtpHeader {
     uint32_t ssrc;
 } __attribute__((packed));
 
+struct RtpExtensionHeader {
+    uint16_t profile_specific;  // 0x4F53 ("OS") for OSTP
+    uint16_t length;            // 2 (32-bit words)
+} __attribute__((packed));
+
+static_assert(sizeof(RtpExtensionHeader) == 4, "RTP ext header must be 4 bytes");
+
 struct OstpHeader {
-    uint8_t  magic[4];    // 'O','S','T','P'
     uint16_t stream_id;
     uint16_t sequence_ext;
-    uint32_t device_id;
-    uint32_t flags;
     uint32_t media_timestamp; // wall-clock capture time (ns since epoch, network byte order)
 } __attribute__((packed));
 
-static constexpr uint32_t kOstpMagic = 0x4F535450; // 'OSTP'
+static_assert(sizeof(OstpHeader) == 8, "OSTP header must be 8 bytes");
+
+static constexpr uint16_t kOstpProfile = 0x4F53; // "OS"
 static constexpr size_t   kMaxPktSize = 65536;
 
 // ── Sync parameters (matched with iOS/Mac) ────────────────────────────────────
@@ -303,6 +322,82 @@ static double now_sec() {
     return t.tv_sec + t.tv_usec * 1e-6;
 }
 
+// ── NTP Clock Sync state (matched with iOS/Mac WanRelayClient) ───────────────
+static int64_t  g_clock_offset_ns   = 0;   // relay_time - local_time (ns)
+static uint32_t g_sync_ping_count   = 0;   // number of pong samples received
+static uint32_t g_last_media_ts     = 0;   // last OSTP media_timestamp (ms, 32-bit wrap)
+static uint32_t g_sync_samples_count = 0;  // EMA convergence counter for buffer depth
+
+// ── NTP Clock Sync: send ping (PT=125) — matched with iOS WanRelayClient ────
+static void send_sync_ping(int sock, const sockaddr_in& relay_addr) {
+    uint8_t pkt[25] = {};
+    pkt[0] = 0x7D;  // PT=125 sync marker
+
+    // T1 = local CLOCK_REALTIME nanoseconds (64-bit LE)
+    struct timespec now_ts;
+    clock_gettime(CLOCK_REALTIME, &now_ts);
+    uint64_t t1_ns = (uint64_t)now_ts.tv_sec * 1000000000ULL + (uint64_t)now_ts.tv_nsec;
+    memcpy(pkt + 1, &t1_ns, 8);
+    // T2, T3 zeroed — relay will fill them
+
+    sendto(sock, pkt, 25, 0,
+           (const sockaddr*)&relay_addr, sizeof(relay_addr));
+}
+
+// ── NTP Clock Sync: handle pong — matched with iOS WanRelayClient ────────────
+static void handle_sync_pong(const uint8_t* data, size_t len) {
+    if (len < 25 || data[0] != 0x7D) return;
+
+    // Extract T1, T2, T3 (all 64-bit LE nanoseconds)
+    uint64_t t1_ns, t2_ns, t3_ns;
+    memcpy(&t1_ns, data + 1, 8);
+    memcpy(&t2_ns, data + 9, 8);
+    memcpy(&t3_ns, data + 17, 8);
+
+    // T4 = local receive time
+    struct timespec now_ts;
+    clock_gettime(CLOCK_REALTIME, &now_ts);
+    uint64_t t4_ns = (uint64_t)now_ts.tv_sec * 1000000000ULL + (uint64_t)now_ts.tv_nsec;
+
+    // Validate: T2 and T3 must be non-zero (relay filled them)
+    if (t2_ns == 0 || t3_ns == 0) return;
+
+    // NTP offset = ((T2-T1) + (T3-T4)) / 2
+    int64_t offset = ((int64_t)(t2_ns - t1_ns) + (int64_t)(t3_ns - t4_ns)) / 2;
+    int64_t rtt = (int64_t)(t4_ns - t1_ns) - (int64_t)(t3_ns - t2_ns);
+
+    // Reject outliers: RTT > 500ms is unreliable
+    if (rtt < 0 || rtt > 500000000LL) return;
+
+    // EMA smoothing (α=0.3 for first 10 samples, then 0.1) — matched with iOS
+    int64_t prev = g_clock_offset_ns;
+    g_sync_ping_count++;
+
+    // First measurement: jump directly
+    if (g_sync_ping_count == 1) {
+        g_clock_offset_ns = offset;
+    } else if (g_sync_ping_count <= 10) {
+        double alpha = 0.3;
+        g_clock_offset_ns = (int64_t)(prev * (1.0 - alpha) + offset * alpha);
+    } else {
+        double alpha = 0.1;
+        g_clock_offset_ns = (int64_t)(prev * (1.0 - alpha) + offset * alpha);
+    }
+
+    if (g_sync_ping_count <= 3) {
+        fprintf(stderr, "[clock-sync] offset=%.2fms rtt=%.2fms (#%u)\n",
+                offset / 1e6, rtt / 1e6, g_sync_ping_count);
+    }
+}
+
+// ── DELAY reporting: send net delay to relay — matched with iOS ──────────────
+static void send_delay_report(int sock, const sockaddr_in& relay_addr, uint32_t net_delay_ms) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "DELAY:%u\n", net_delay_ms);
+    sendto(sock, buf, strlen(buf), 0,
+           (const sockaddr*)&relay_addr, sizeof(relay_addr));
+}
+
 // ── ALSA helpers ──────────────────────────────────────────────────────────────
 
 #ifdef __linux__
@@ -353,6 +448,7 @@ struct PlaybackState {
     uint32_t rate = kDefaultRate;
     uint32_t target_fill_frames = 0; // set from --buffer
     bool     use_alsa = true;
+    bool     use_pipewire = false;
     std::atomic<float> volume{1.0f};
     std::atomic<bool>  muted{false};
 
@@ -364,6 +460,11 @@ struct PlaybackState {
     WavWriter* wav = nullptr;
     uint64_t record_frames_max = 0;
     uint64_t record_frames_written = 0;
+
+#ifdef SOLUNA_HAS_AIRPLAY
+    // AirPlay TX: forward audio to local speakers (non-owning pointer)
+    soluna::transport::AirPlaySender* airplay_sender = nullptr;
+#endif
 };
 
 static void playback_thread_func(PlaybackState* st) {
@@ -387,6 +488,127 @@ static void playback_thread_func(PlaybackState* st) {
             fprintf(stderr, "[rx] ALSA playback thread: open failed, exiting\n");
             return;
         }
+    }
+#endif
+
+#ifdef SOLUNA_HAS_PIPEWIRE
+    // PipeWire output: secondary ring buffer fed by this thread, drained by PW callback
+    SpscRingBuffer pw_ring(kRingCapFrames, ch);
+    pw_thread_loop* pw_loop = nullptr;
+    pw_stream* pw_stream_handle = nullptr;
+
+    struct PwSinkCtx {
+        SpscRingBuffer* ring;
+        pw_stream*      stream;
+        uint32_t        channels;
+        uint32_t        frames_per_buffer;
+    };
+    static PwSinkCtx pw_ctx; // static so the callback can reference it safely
+
+    if (st->use_pipewire) {
+        pw_init(nullptr, nullptr);
+
+        pw_ctx.ring = &pw_ring;
+        pw_ctx.stream = nullptr;
+        pw_ctx.channels = ch;
+        pw_ctx.frames_per_buffer = frame_count;
+
+        pw_loop = pw_thread_loop_new("soluna-rx", nullptr);
+        if (!pw_loop) {
+            fprintf(stderr, "[rx] PipeWire: failed to create thread loop\n");
+            return;
+        }
+
+        static const pw_stream_events pw_sink_events = {
+            .version = PW_VERSION_STREAM_EVENTS,
+            .process = [](void* userdata) {
+                auto* ctx = static_cast<PwSinkCtx*>(userdata);
+                pw_buffer* b = pw_stream_dequeue_buffer(ctx->stream);
+                if (!b) return;
+
+                spa_buffer* buf = b->buffer;
+                auto* dst = static_cast<int16_t*>(buf->datas[0].data);
+                if (!dst) {
+                    pw_stream_queue_buffer(ctx->stream, b);
+                    return;
+                }
+
+                uint32_t max_frames = buf->datas[0].maxsize /
+                                      (sizeof(int16_t) * ctx->channels);
+                uint32_t n_frames = ctx->frames_per_buffer;
+                if (n_frames > max_frames) n_frames = max_frames;
+
+                // Ring stores int16_t values widened to int32_t; narrow back
+                std::vector<int32_t> tmp(n_frames * ctx->channels);
+                size_t got = ctx->ring->read(tmp.data(), n_frames);
+                for (size_t i = 0; i < got * ctx->channels; i++) {
+                    dst[i] = static_cast<int16_t>(tmp[i]);
+                }
+                if (got < n_frames) {
+                    std::memset(dst + got * ctx->channels, 0,
+                                (n_frames - got) * ctx->channels * sizeof(int16_t));
+                }
+
+                buf->datas[0].chunk->offset = 0;
+                buf->datas[0].chunk->stride = static_cast<int32_t>(sizeof(int16_t) * ctx->channels);
+                buf->datas[0].chunk->size   = n_frames * ctx->channels * sizeof(int16_t);
+                pw_stream_queue_buffer(ctx->stream, b);
+            },
+        };
+
+        pw_properties* props = pw_properties_new(
+            PW_KEY_MEDIA_TYPE,     "Audio",
+            PW_KEY_MEDIA_CATEGORY, "Playback",
+            PW_KEY_MEDIA_ROLE,     "Music",
+            PW_KEY_APP_NAME,       "Soluna",
+            nullptr);
+
+        pw_stream_handle = pw_stream_new_simple(
+            pw_thread_loop_get_loop(pw_loop),
+            "soluna-rx",
+            props,
+            &pw_sink_events,
+            &pw_ctx);
+
+        if (!pw_stream_handle) {
+            fprintf(stderr, "[rx] PipeWire: failed to create stream\n");
+            pw_thread_loop_destroy(pw_loop);
+            return;
+        }
+        pw_ctx.stream = pw_stream_handle;
+
+        uint8_t params_buf[1024];
+        spa_pod_builder builder;
+        spa_pod_builder_init(&builder, params_buf, sizeof(params_buf));
+
+        spa_audio_info_raw audio_info;
+        spa_zero(audio_info);
+        audio_info.format   = SPA_AUDIO_FORMAT_S16;
+        audio_info.rate     = st->rate;
+        audio_info.channels = ch;
+
+        const spa_pod* params[1];
+        params[0] = spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat, &audio_info);
+
+        int res = pw_stream_connect(
+            pw_stream_handle,
+            PW_DIRECTION_OUTPUT,
+            PW_ID_ANY,
+            static_cast<pw_stream_flags>(
+                PW_STREAM_FLAG_AUTOCONNECT |
+                PW_STREAM_FLAG_MAP_BUFFERS |
+                PW_STREAM_FLAG_RT_PROCESS),
+            params, 1);
+
+        if (res < 0) {
+            fprintf(stderr, "[rx] PipeWire: stream connect failed: %s\n", spa_strerror(res));
+            pw_stream_destroy(pw_stream_handle);
+            pw_thread_loop_destroy(pw_loop);
+            return;
+        }
+
+        pw_thread_loop_start(pw_loop);
+        fprintf(stderr, "[rx] PipeWire output: %uHz %uch S16\n", st->rate, ch);
     }
 #endif
 
@@ -490,11 +712,32 @@ static void playback_thread_func(PlaybackState* st) {
             }
         }
 
+#ifdef SOLUNA_HAS_AIRPLAY
+        // AirPlay TX: forward audio to local AirPlay speakers
+        if (st->airplay_sender && st->airplay_sender->is_running()) {
+            st->airplay_sender->send_audio(out_buf.data(), frame_count,
+                                            static_cast<uint8_t>(ch), st->rate);
+        }
+#endif
+
         // Output
-        if (!st->use_alsa) {
+        if (!st->use_alsa && !st->use_pipewire) {
             fwrite(out_buf.data(), sizeof(int16_t) * ch, frame_count, stdout);
             fflush(stdout);
         }
+#ifdef SOLUNA_HAS_PIPEWIRE
+        else if (st->use_pipewire) {
+            // Widen int16_t → int32_t for the SPSC ring buffer, then PW callback narrows back
+            std::vector<int32_t> pw_tmp(frame_count * ch);
+            for (uint32_t i = 0; i < frame_count * ch; i++) {
+                pw_tmp[i] = static_cast<int32_t>(out_buf[i]);
+            }
+            pw_ring.write(pw_tmp.data(), frame_count);
+            // PipeWire drives timing via its own thread; yield briefly to avoid busy-spin
+            std::this_thread::sleep_for(std::chrono::microseconds(
+                static_cast<uint64_t>(frame_count) * 1000000 / st->rate));
+        }
+#endif
 #ifdef __linux__
         else if (pcm) {
             snd_pcm_sframes_t n = snd_pcm_writei(pcm, out_buf.data(),
@@ -510,6 +753,14 @@ static void playback_thread_func(PlaybackState* st) {
 
 #ifdef __linux__
     if (pcm) { snd_pcm_drain(pcm); snd_pcm_close(pcm); }
+#endif
+#ifdef SOLUNA_HAS_PIPEWIRE
+    if (pw_loop) {
+        pw_thread_loop_stop(pw_loop);
+        if (pw_stream_handle) pw_stream_destroy(pw_stream_handle);
+        pw_thread_loop_destroy(pw_loop);
+        pw_deinit();
+    }
 #endif
 }
 
@@ -536,7 +787,7 @@ static constexpr size_t   kRtpExtHeaderSize = 4;
 static constexpr size_t   kOstpExtDataSize  = 8;
 static constexpr size_t   kTotalTxHeader    = kRtpHeaderSize + kRtpExtHeaderSize + kOstpExtDataSize;
 static constexpr size_t   kCrcTrailerSize   = 4;
-static constexpr uint16_t kOstpProfile      = 0x4F53;  // "OS"
+// kOstpProfile already defined above with struct declarations
 static constexpr uint8_t  kPayloadTypePCM24 = 96;
 static constexpr uint32_t kFramesPerPacket  = 480;      // 10ms @ 48kHz
 static constexpr uint32_t kTxPayloadBytes   = kFramesPerPacket * 2 * 4; // stereo int32
@@ -1194,6 +1445,8 @@ static int rx_main(int argc, char** argv) {
     uint32_t    channels = 2;
     uint32_t    rate     = kDefaultRate;
     bool        use_alsa = true;
+    bool        use_pipewire = false;
+    bool        output_explicit = false; // true if user passed --output or --pipewire
     std::string alsa_dev = "default";
     std::string record_path;
     uint32_t    record_duration = 30;
@@ -1209,6 +1462,10 @@ static int rx_main(int argc, char** argv) {
     uint16_t    relay_port = 5100;
     std::string relay_group = "default";
     std::string relay_password;
+    bool        dlna_enabled = false;
+    std::string dlna_name = "Soluna";
+    bool        airplay_enabled = false;
+    bool        airplay_tx = false;
 
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
@@ -1247,12 +1504,27 @@ static int rx_main(int argc, char** argv) {
         }
         else if (a == "--group-name")     relay_group = next();
         else if (a == "--group-password") relay_password = next();
+        else if (a == "--dlna")          dlna_enabled = true;
+        else if (a == "--dlna-name")     dlna_name = next();
+        else if (a == "--airplay")       airplay_enabled = true;
+        else if (a == "--airplay-tx")    airplay_tx = true;
+        else if (a == "--pipewire") {
+            use_pipewire = true;
+            use_alsa = false;
+            output_explicit = true;
+        }
         else if (a == "--output") {
             std::string mode = next();
+            output_explicit = true;
             if (mode == "alsa") {
                 use_alsa = true;
+                use_pipewire = false;
+            } else if (mode == "pipewire") {
+                use_pipewire = true;
+                use_alsa = false;
             } else if (mode == "pipe") {
                 use_alsa = false;
+                use_pipewire = false;
             } else {
                 fprintf(stderr, "[rx] Unknown --output mode '%s'\n", mode.c_str());
                 return 1;
@@ -1273,7 +1545,9 @@ static int rx_main(int argc, char** argv) {
                 "  --group-password <pw>  Group password for WAN relay (optional)\n"
                 "  --channels <n>         Channels        (default: 2)\n"
                 "  --output alsa          Output to ALSA  (default)\n"
+                "  --output pipewire      Output via PipeWire\n"
                 "  --output pipe          Output raw S16LE to stdout\n"
+                "  --pipewire             Shorthand for --output pipewire\n"
                 "  --device <name>        ALSA device     (default: default)\n"
                 "  --buffer <ms>          Buffer target   (default: 60, sync'd with iOS/Mac)\n"
                 "  --sync                 Enable media_timestamp sync mode\n"
@@ -1283,10 +1557,44 @@ static int rx_main(int argc, char** argv) {
                 "  --record-dir <dir>     Record to dir as rx_<timestamp>.wav\n"
                 "  --metrics              Output JSON quality metrics to stderr\n"
                 "  --metrics-interval <s> Metrics interval (default: 5)\n"
+                "  --dlna                 Enable DLNA/UPnP Media Renderer (requires SOLUNA_HAS_DLNA)\n"
+                "  --dlna-name <name>     DLNA friendly name (default: Soluna)\n"
+                "  --airplay              Enable AirPlay 2 receiver (requires SOLUNA_HAS_AIRPLAY)\n"
+                "  --airplay-tx           Forward audio to local AirPlay speakers\n"
             );
             return 0;
         }
     }
+
+    // ── PipeWire auto-detection (if no explicit --output given) ───────────
+#ifdef SOLUNA_HAS_PIPEWIRE
+    if (!output_explicit) {
+        // Try PipeWire first: check if PIPEWIRE_RUNTIME_DIR or XDG_RUNTIME_DIR/pipewire-0 exists
+        const char* pw_runtime = getenv("PIPEWIRE_RUNTIME_DIR");
+        const char* xdg_runtime = getenv("XDG_RUNTIME_DIR");
+        bool pw_available = false;
+        if (pw_runtime) {
+            pw_available = true;
+        } else if (xdg_runtime) {
+            std::string pw_socket = std::string(xdg_runtime) + "/pipewire-0";
+            struct stat st_buf;
+            pw_available = (stat(pw_socket.c_str(), &st_buf) == 0);
+        }
+        if (pw_available) {
+            use_pipewire = true;
+            use_alsa = false;
+            fprintf(stderr, "[rx] Auto-detected PipeWire, using PipeWire output\n");
+        }
+    }
+    if (use_pipewire) {
+        fprintf(stderr, "[rx] PipeWire output selected\n");
+    }
+#else
+    if (use_pipewire) {
+        fprintf(stderr, "[rx] PipeWire requested but not compiled in (SOLUNA_ENABLE_PIPEWIRE=OFF)\n");
+        return 1;
+    }
+#endif
 
     // ── Open socket: WAN relay, P2P unicast, or multicast ────────────────
     bool peer_mode = !peer_host.empty();
@@ -1372,6 +1680,96 @@ static int rx_main(int argc, char** argv) {
         fprintf(stderr, "[rx] Sync mode ON: target end-to-end delay %ums\n", sync_delay_ms);
     }
 
+#ifdef SOLUNA_HAS_DLNA
+    std::unique_ptr<soluna::transport::DlnaRenderer> dlna_renderer;
+    if (dlna_enabled) {
+        dlna_renderer = std::make_unique<soluna::transport::DlnaRenderer>();
+        soluna::transport::DlnaRenderer::Config dlna_cfg;
+        dlna_cfg.friendly_name = dlna_name;
+        dlna_cfg.sample_rate = rate;
+        dlna_cfg.channels = channels;
+        auto* ring_ptr = &ring;
+        auto dlna_audio_cb = [ring_ptr, channels](const int32_t* samples, size_t frames,
+                                                    uint32_t /*ch*/, uint32_t /*r*/) {
+            ring_ptr->write(samples, frames * channels);
+        };
+        if (dlna_renderer->start(dlna_cfg, dlna_audio_cb)) {
+            fprintf(stderr, "[rx] DLNA renderer started on port %u\n",
+                    dlna_renderer->http_port());
+        } else {
+            fprintf(stderr, "[rx] Failed to start DLNA renderer\n");
+            dlna_renderer.reset();
+        }
+    }
+#else
+    if (dlna_enabled) {
+        fprintf(stderr, "[rx] DLNA support not compiled in (build with -DSOLUNA_ENABLE_DLNA=ON)\n");
+    }
+#endif
+
+#ifdef SOLUNA_HAS_AIRPLAY
+    std::unique_ptr<soluna::transport::AirPlayReceiver> airplay_rx;
+    if (airplay_enabled) {
+        airplay_rx = std::make_unique<soluna::transport::AirPlayReceiver>();
+        airplay_rx->set_device_name("Soluna");
+        auto* ring_ptr = &ring;
+        airplay_rx->set_audio_callback(
+            [ring_ptr, channels](const int16_t* pcm, uint32_t frames,
+                                  uint8_t ap_channels, uint32_t /*sample_rate*/) {
+                // Convert int16 → int32 and write to ring buffer
+                // TODO: resample if sample rate differs from receiver rate
+                std::vector<int32_t> buf(frames * channels);
+                if (ap_channels == channels) {
+                    for (uint32_t i = 0; i < frames * channels; i++) {
+                        buf[i] = static_cast<int32_t>(pcm[i]) << 16;
+                    }
+                } else if (ap_channels == 1 && channels == 2) {
+                    for (uint32_t i = 0; i < frames; i++) {
+                        int32_t s = static_cast<int32_t>(pcm[i]) << 16;
+                        buf[i * 2 + 0] = s;
+                        buf[i * 2 + 1] = s;
+                    }
+                } else if (ap_channels == 2 && channels == 1) {
+                    for (uint32_t i = 0; i < frames; i++) {
+                        buf[i] = (static_cast<int32_t>(pcm[i * 2]) + pcm[i * 2 + 1]) << 15;
+                    }
+                } else {
+                    for (uint32_t i = 0; i < frames * ap_channels && i < frames * channels; i++) {
+                        buf[i] = static_cast<int32_t>(pcm[i]) << 16;
+                    }
+                }
+                ring_ptr->write(buf.data(), frames * channels);
+            });
+        if (airplay_rx->start(7000)) {
+            fprintf(stderr, "[rx] AirPlay receiver started on port 7000\n");
+        } else {
+            fprintf(stderr, "[rx] Failed to start AirPlay receiver\n");
+            airplay_rx.reset();
+        }
+    }
+#ifdef SOLUNA_HAS_AIRPLAY
+    // AirPlay TX — forward received audio to local AirPlay speakers
+    std::unique_ptr<soluna::transport::AirPlaySender> airplay_sender;
+    if (airplay_tx) {
+        airplay_sender = std::make_unique<soluna::transport::AirPlaySender>();
+        if (!airplay_sender->start()) {
+            fprintf(stderr, "[rx] Failed to start AirPlay TX sender\n");
+            airplay_sender.reset();
+        } else {
+            fprintf(stderr, "[rx] AirPlay TX sender started — forwarding to local speakers\n");
+        }
+    }
+#endif
+
+#else
+    if (airplay_enabled) {
+        fprintf(stderr, "[rx] AirPlay support not compiled in (build with -DSOLUNA_ENABLE_AIRPLAY=ON)\n");
+    }
+    if (airplay_tx) {
+        fprintf(stderr, "[rx] AirPlay TX support not compiled in (build with -DSOLUNA_ENABLE_AIRPLAY=ON)\n");
+    }
+#endif
+
     // --record-dir: auto-generate timestamped filename
     if (record_path.empty() && !record_dir.empty()) {
         auto now = std::chrono::system_clock::now();
@@ -1404,8 +1802,14 @@ static int rx_main(int argc, char** argv) {
     pstate.rate = rate;
     pstate.target_fill_frames = target_fill_frames;
     pstate.use_alsa = use_alsa;
+    pstate.use_pipewire = use_pipewire;
     pstate.wav = &wav;
     pstate.record_frames_max = record_frames_max;
+#ifdef SOLUNA_HAS_AIRPLAY
+    if (airplay_sender) {
+        pstate.airplay_sender = airplay_sender.get();
+    }
+#endif
 
     std::thread playback(playback_thread_func, &pstate);
 
@@ -1451,16 +1855,29 @@ static int rx_main(int argc, char** argv) {
     int32_t last_seq = -1;
     uint64_t total_rx = 0, total_drop = 0;
     double last_hello_time = now_sec();
-    double sync_ema_fill_frames = (double)target_fill_frames; // EMA for sync mode
-
     while (g_running) {
-        // Heartbeat
+        // Heartbeat + sync ping (every 5s, same interval — matched with iOS)
         if (relay_mode) {
             double now = now_sec();
             if (now - last_hello_time >= 5.0) {
                 const char hello[] = "HELLO\n";
                 sendto(sock, hello, strlen(hello), 0,
                        (sockaddr*)&relay_addr, sizeof(relay_addr));
+                // Send NTP clock sync ping alongside HELLO (PT=125)
+                send_sync_ping(sock, relay_addr);
+                // DELAY reporting: send net delay to relay every ~5s
+                if (g_last_media_ts != 0) {
+                    struct timespec rpt_ts;
+                    clock_gettime(CLOCK_REALTIME, &rpt_ts);
+                    uint32_t rpt_ms32 = (uint32_t)(
+                        ((uint64_t)rpt_ts.tv_sec * 1000ULL +
+                         (uint64_t)rpt_ts.tv_nsec / 1000000ULL) & 0xFFFFFFFF);
+                    int32_t offset_ms = (int32_t)(g_clock_offset_ns / 1000000LL);
+                    int32_t nd_ms = (int32_t)(rpt_ms32 - g_last_media_ts) + offset_ms;
+                    if (nd_ms >= 0 && nd_ms < 2000) {
+                        send_delay_report(sock, relay_addr, (uint32_t)nd_ms);
+                    }
+                }
                 last_hello_time = now;
             }
         } else if (peer_mode) {
@@ -1486,41 +1903,104 @@ static int rx_main(int argc, char** argv) {
             }
             continue;
         }
+        // ── Handle text messages and sync pong before RTP parsing ─────
+        // Clock sync pong (PT=125, 0x7D marker, 25 bytes)
+        if (n == 25 && pkt[0] == 0x7D) {
+            handle_sync_pong(pkt, (size_t)n);
+            continue;
+        }
+        // Text messages from relay: MAXDELAY:<ms>\n
+        if (n >= 9 && memcmp(pkt, "MAXDELAY:", 9) == 0) {
+            char val_buf[32] = {};
+            size_t vlen = std::min((size_t)(n - 9), sizeof(val_buf) - 1);
+            memcpy(val_buf, pkt + 9, vlen);
+            // Strip trailing newline/CR
+            for (size_t i = vlen; i > 0; i--) {
+                if (val_buf[i-1] == '\n' || val_buf[i-1] == '\r') val_buf[i-1] = 0;
+                else break;
+            }
+            uint32_t max_ms = (uint32_t)atoi(val_buf);
+            if (max_ms > 2000) max_ms = 2000;
+            if (max_ms != sync_delay_ms) {
+                fprintf(stderr, "[sync] MAXDELAY received: %u ms (was %u ms)\n",
+                        max_ms, sync_delay_ms);
+                sync_delay_ms = max_ms;
+            }
+            continue;
+        }
+        // Skip other text messages (META:, FILE:, SYNC:, YOUR_ADDR:, etc.)
+        if (n >= 4 && pkt[0] >= 'A' && pkt[0] <= 'Z') {
+            // Not an RTP packet — text command from relay, skip
+            continue;
+        }
+
         if ((size_t)n < sizeof(RtpHeader)) continue;
 
         const RtpHeader* rtp = reinterpret_cast<const RtpHeader*>(pkt);
 
-        // Detect OSTP vs plain RTP
+        // Detect OSTP vs plain RTP via RTP extension header
         bool is_ostp = false;
         size_t payload_off = sizeof(RtpHeader);
-        if ((size_t)n >= sizeof(RtpHeader) + sizeof(OstpHeader)) {
-            const OstpHeader* ostp = reinterpret_cast<const OstpHeader*>(pkt + sizeof(RtpHeader));
-            uint32_t magic;
-            memcpy(&magic, ostp->magic, 4);
-            if (magic == htonl(kOstpMagic)) {
+        bool has_ext = (rtp->cc_x_p_v & 0x10) != 0; // X bit
+        if (has_ext && (size_t)n >= sizeof(RtpHeader) + sizeof(RtpExtensionHeader) + sizeof(OstpHeader)) {
+            const RtpExtensionHeader* ext = reinterpret_cast<const RtpExtensionHeader*>(pkt + sizeof(RtpHeader));
+            if (ntohs(ext->profile_specific) == kOstpProfile && ntohs(ext->length) == 2) {
                 is_ostp = true;
-                payload_off = sizeof(RtpHeader) + sizeof(OstpHeader);
+                payload_off = sizeof(RtpHeader) + sizeof(RtpExtensionHeader) + sizeof(OstpHeader);
             }
         }
 
         if (payload_off >= (size_t)n) continue;
 
         // ── Sync mode: adjust target fill from OSTP media_timestamp ──
-        if (sync_mode && is_ostp) {
-            const OstpHeader* ostp = reinterpret_cast<const OstpHeader*>(pkt + sizeof(RtpHeader));
+        // Matched with iOS AudioReceiverBridge.mm inject_raw_packet() sync algorithm.
+        // Uses NTP-corrected clock offset for accurate cross-device sync.
+        if (is_ostp) {
+            const OstpHeader* ostp = reinterpret_cast<const OstpHeader*>(
+                pkt + sizeof(RtpHeader) + sizeof(RtpExtensionHeader));
             uint32_t media_ts_raw = ntohl(ostp->media_timestamp);
             if (media_ts_raw != 0) {
-                uint64_t now_ns = (uint64_t)(now_sec() * 1e9);
-                uint32_t now_32 = (uint32_t)(now_ns & 0xFFFFFFFF);
-                int32_t network_delay_ns = (int32_t)(now_32 - media_ts_raw);
-                if (network_delay_ns < 0) network_delay_ns = 0;
-                double network_delay_ms = (double)network_delay_ns / 1e6;
-                double ideal_buffer_ms = (double)sync_delay_ms - network_delay_ms;
-                if (ideal_buffer_ms < 10.0) ideal_buffer_ms = 10.0;
-                if (ideal_buffer_ms > 500.0) ideal_buffer_ms = 500.0;
-                double ideal_frames = ideal_buffer_ms * rate / 1000.0;
-                sync_ema_fill_frames += 0.01 * (ideal_frames - sync_ema_fill_frames);
-                pstate.target_fill_frames = (uint32_t)sync_ema_fill_frames;
+                g_last_media_ts = media_ts_raw;  // store for DELAY reporting
+            }
+        }
+
+        // Every 50 packets: run sync algorithm (matched with iOS ~0.25s interval)
+        static uint32_t sync_pkt_counter = 0;
+        sync_pkt_counter++;
+        if (sync_mode && relay_mode && (sync_pkt_counter % 50 == 0) && g_last_media_ts != 0) {
+            struct timespec now_ts;
+            clock_gettime(CLOCK_REALTIME, &now_ts);
+            uint32_t now_ms32 = (uint32_t)(
+                ((uint64_t)now_ts.tv_sec * 1000ULL +
+                 (uint64_t)now_ts.tv_nsec / 1000000ULL) & 0xFFFFFFFF);
+
+            // Apply NTP clock offset correction (relay_time - local_time)
+            int32_t offset_ms = (int32_t)(g_clock_offset_ns / 1000000LL);
+            int32_t net_delay_ms = (int32_t)(now_ms32 - g_last_media_ts) + offset_ms;
+
+            if (net_delay_ms >= 0 && net_delay_ms < 2000) {
+                int32_t buffer_ms = (int32_t)sync_delay_ms - net_delay_ms;
+                if (buffer_ms < 5) buffer_ms = 5;  // 5ms floor — matched with iOS
+                uint32_t target = (uint32_t)(buffer_ms * 48);  // ms -> frames @48kHz
+
+                // Adaptive EMA — matched with iOS: fast initially, slow when stable
+                uint32_t prev = pstate.target_fill_frames;
+                int32_t diff = (int32_t)target - (int32_t)prev;
+                double alpha;
+                if (g_sync_samples_count < 50) {
+                    alpha = 0.20;  // First ~250ms: fast lock-on
+                    g_sync_samples_count++;
+                } else if (std::abs(diff) > 2400) {
+                    alpha = 0.15;  // >50ms jump: re-converge quickly
+                } else if (std::abs(diff) > 480) {
+                    alpha = 0.08;  // 10-50ms drift: moderate correction
+                } else {
+                    alpha = 0.02;  // Stable: gentle smoothing
+                }
+                uint32_t smoothed = (uint32_t)(prev * (1.0 - alpha) + target * alpha);
+                // WAN relay mode: enforce 500ms floor for stability — matched with iOS
+                smoothed = std::max(smoothed, 24000u);
+                pstate.target_fill_frames = smoothed;
             }
         }
 
@@ -1607,5 +2087,24 @@ static int rx_main(int argc, char** argv) {
         pstate.underruns.load());
 
     close(sock);
+
+#ifdef SOLUNA_HAS_DLNA
+    if (dlna_renderer) {
+        dlna_renderer->stop();
+        dlna_renderer.reset();
+    }
+#endif
+
+#ifdef SOLUNA_HAS_AIRPLAY
+    if (airplay_rx) {
+        airplay_rx->stop();
+        airplay_rx.reset();
+    }
+    if (airplay_sender) {
+        airplay_sender->stop();
+        airplay_sender.reset();
+    }
+#endif
+
     return 0;
 }

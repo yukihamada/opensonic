@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <script>if(!sessionStorage.getItem('lang-set')&&/^en/i.test(navigator.language)){location.replace('/en/guide')}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Soluna — セットアップガイド</title>
     <meta name="description" content="Soluna セットアップガイド — Mac・iPhone・Raspberry Pi・ブラウザへのリアルタイム音声配信を5分で開始。">
@@ -27,6 +28,17 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="stylesheet" href="/style.css">
     <style>
+        /* Nav */
+        nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc(50% - 580px));height:60px;background:rgba(5,6,10,0.7);backdrop-filter:blur(24px) saturate(1.8);border-bottom:1px solid var(--border)}
+        .nav-logo{font-size:18px;font-weight:700;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--text)}
+        .nav-logo svg{width:24px;height:24px}
+        .nav-links{display:flex;align-items:center;gap:24px}
+        .nav-links a{color:var(--text2);text-decoration:none;font-size:14px;transition:color 0.2s}
+        .nav-links a:hover{color:var(--text)}.nav-links a.active{color:var(--text);font-weight:600}
+        .nav-cta{padding:8px 18px;background:linear-gradient(135deg,var(--blue),#8b5cf6);color:#fff !important;border-radius:10px;font-weight:600;font-size:13px !important;box-shadow:0 2px 12px rgba(59,130,246,0.3)}
+        .nav-cta:hover{opacity:0.9;transform:translateY(-1px)}
+        @media(max-width:768px){.hide-sm{display:none}}
+
         /* Guide-specific overrides */
         .guide-wrap {
             max-width: 740px;
@@ -35,7 +47,7 @@
         }
         .guide-hero {
             text-align: center;
-            padding: 48px 0 32px;
+            padding: 100px 0 32px;
         }
         .guide-hero .logo {
             font-size: 2rem;
@@ -263,15 +275,20 @@
     </style>
 </head>
 <body>
-    <header>
-        <div class="header-left">
-            <span class="logo">◈ Soluna</span>
-        </div>
-        <div class="header-right">
-            <a href="/en/guide" title="English" style="color:var(--text2);font-size:13px;text-decoration:none;margin-right:16px;">EN</a>
-            <a href="/" class="guide-back">← ダッシュボード</a>
-        </div>
-    </header>
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/soluna" class="hide-sm">ホーム</a>
+        <a href="/vision" class="hide-sm">ビジョン</a>
+        <a href="/protocol" class="hide-sm">プロトコル</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/en/guide" class="hide-sm" onclick="sessionStorage.removeItem('lang-set')" style="font-size:12px;opacity:0.6">EN</a>
+        <a href="/dashboard" class="nav-cta">ダッシュボード</a>
+    </div>
+</nav>
 
     <div class="guide-wrap">
 
@@ -420,7 +437,7 @@
                     <div class="step-body">
                         <h3>ワンコマンドインストール</h3>
                         <p>RPi / Linux 上で実行。ビルドからサービス登録まで全自動。</p>
-                        <code>curl -fsSL https://soluna-web.fly.dev/install-rx.sh | sudo bash</code>
+                        <code>curl -fsSL https://solun.art/install-rx.sh | sudo bash</code>
                         <p>依存パッケージ、ビルド、systemd サービス登録まで自動で行います。</p>
                     </div>
                 </div>

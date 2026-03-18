@@ -287,6 +287,9 @@ struct Member {
     bool mic_allowed = false;  // per-device mic permission (Owner/DJ always implicitly allowed)
     std::string session_token;  // 16-char hex, issued on JOIN, required for wallet ops
     uint32_t net_delay_ms = 0;  // reported network delay for sync mode coordination
+    sockaddr_in backup_parent{};     // secondary parent for dual-parent reception
+    bool has_backup_parent = false;
+    std::chrono::steady_clock::time_point last_primary_packet;  // for churn detection
 };
 
 struct ReplayPacket {
@@ -1104,6 +1107,69 @@ static std::string http_get(const std::string& url, const std::string& user_agen
     return response;
 }
 
+static std::string http_post_json(const std::string& url, const std::string& body,
+                                   int timeout_sec = 5) {
+    CURL* curl = curl_easy_init();
+    if (!curl) return "";
+    std::string response;
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)timeout_sec);
+    CURLcode res = curl_easy_perform(curl);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    if (res != CURLE_OK) {
+        fprintf(stderr, "[http] POST %s failed: %s\n", url.c_str(), curl_easy_strerror(res));
+        return "";
+    }
+    return response;
+}
+
+// ── Solana RPC: verify TIP transaction (OSTP v0.9.3 §7.3) ───────────────────
+// Returns true if tx_signature is a confirmed transaction transferring >= amount_usd
+// Uses the memo field ("SOLUNA_TIP:<channel>:<amount>") to match intent.
+static bool solana_verify_tip_tx(const std::string& tx_sig, const std::string& wallet_pubkey,
+                                  double amount_usd) {
+    // Only verify if signature looks like a base58 Solana tx (~87 chars)
+    if (tx_sig.size() < 60 || tx_sig.size() > 100) return false;
+
+    static const char* RPC = "https://api.mainnet-beta.solana.com";
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getTransaction\","
+             "\"params\":[\"%s\",{\"encoding\":\"json\",\"maxSupportedTransactionVersion\":0}]}",
+             tx_sig.c_str());
+
+    std::string resp = http_post_json(RPC, body, 5);
+    if (resp.empty()) {
+        fprintf(stderr, "[tip] Solana RPC timeout for tx %s — accept pending\n", tx_sig.c_str());
+        return true;  // network failure: accept (don't block legitimate tips)
+    }
+
+    // Check for "err":null — confirmed transaction
+    size_t err_pos = resp.find("\"err\":");
+    if (err_pos == std::string::npos) return false;
+    size_t val_pos = err_pos + 6;
+    while (val_pos < resp.size() && resp[val_pos] == ' ') val_pos++;
+    if (resp.substr(val_pos, 4) != "null") {
+        fprintf(stderr, "[tip] Solana tx %s not confirmed\n", tx_sig.c_str());
+        return false;
+    }
+
+    // Check feePayer matches wallet_pubkey
+    if (!wallet_pubkey.empty() && resp.find(wallet_pubkey) == std::string::npos) {
+        fprintf(stderr, "[tip] Solana tx %s: pubkey mismatch\n", tx_sig.c_str());
+        return false;
+    }
+
+    return true;  // confirmed, feePayer matches
+}
+
 // ── Song identification via AcoustID / MusicBrainz / YouTube ─────────────────
 
 // Simple JSON value extractor (for flat JSON — handles both string and non-string values)
@@ -1397,6 +1463,7 @@ struct UserAccount {
     std::string email;
     std::string username;                 // unique @handle (optional)
     std::vector<std::string> devices;     // device_ids
+    std::string apns_token;              // APNs device token for push notifications
     int64_t created_at = 0;
     int64_t last_login = 0;
 };
@@ -1412,10 +1479,18 @@ static std::mutex g_auth_mutex;
 static std::unordered_map<std::string, UserAccount> g_users;           // email → UserAccount
 static std::unordered_map<std::string, std::string> g_auth_tokens;     // token → email
 static std::unordered_map<std::string, std::string> g_username_to_email; // username → email
+static std::unordered_map<std::string, std::string> g_username_to_apns; // username → apns_token
+static std::unordered_map<std::string, std::string> g_device_to_email;  // device_id → email (for multi-device sync)
 static std::unordered_map<std::string, VerificationCode> g_verify_codes; // email → code
 static std::unordered_map<std::string, int64_t> g_email_rate_limit;    // email → next_allowed_ts
 static std::string g_users_db_path = "/data/users.json";
 static std::string g_resend_api_key;  // RESEND_API_KEY env
+
+// APNs push notification config
+static std::string g_apns_key_id;        // APNS_KEY_ID env
+static std::string g_apns_team_id;       // APNS_TEAM_ID env
+static std::string g_apns_bundle_id;     // APNS_BUNDLE_ID env (com.soluna.SolunaReceiver)
+static std::string g_apns_auth_key_pem;  // APNS_AUTH_KEY env (contents of .p8 file)
 
 // Generate 6-digit verification code
 static std::string generate_code_6() {
@@ -1429,9 +1504,27 @@ static std::string generate_code_6() {
     return std::string(code);
 }
 
-// Generate auth token (128-bit hex)
+// Generate auth token with embedded creation timestamp: "<unix_hex>.<random_hex>"
+static constexpr int64_t kTokenExpirySeconds = 30 * 86400;  // 30 days
+
 static std::string generate_auth_token() {
-    return generate_hex(32);
+    char ts_hex[20];
+    snprintf(ts_hex, sizeof(ts_hex), "%llx", (unsigned long long)now_unix());
+    return std::string(ts_hex) + "." + generate_hex(32);
+}
+
+// Check if token has expired (30 days). Returns false if expired.
+static bool token_is_valid(const std::string& token) {
+    size_t dot = token.find('.');
+    if (dot == std::string::npos) {
+        // Legacy token without timestamp — treat as expired
+        return false;
+    }
+    std::string ts_hex = token.substr(0, dot);
+    char* end = nullptr;
+    int64_t created = (int64_t)strtoull(ts_hex.c_str(), &end, 16);
+    if (end == ts_hex.c_str()) return false;  // parse failure
+    return (now_unix() - created) < kTokenExpirySeconds;
 }
 
 // Send verification email via Resend API
@@ -1487,9 +1580,9 @@ static void users_save() {
     for (const auto& [email, u] : g_users) {
         if (!first) fprintf(f, ",");
         first = false;
-        fprintf(f, "\n  \"%s\":{\"user_id\":\"%s\",\"username\":\"%s\",\"devices\":[",
+        fprintf(f, "\n  \"%s\":{\"user_id\":\"%s\",\"username\":\"%s\",\"apns_token\":\"%s\",\"devices\":[",
                 json_escape(email).c_str(), json_escape(u.user_id).c_str(),
-                json_escape(u.username).c_str());
+                json_escape(u.username).c_str(), json_escape(u.apns_token).c_str());
         for (size_t i = 0; i < u.devices.size(); i++) {
             if (i > 0) fprintf(f, ",");
             fprintf(f, "\"%s\"", json_escape(u.devices[i]).c_str());
@@ -1550,6 +1643,15 @@ static void users_load() {
             username = content.substr(un_start, un_end - un_start);
         }
 
+        // Find apns_token (optional field)
+        std::string apns_token;
+        size_t at_key = content.find("\"apns_token\":\"", uid_end);
+        if (at_key != std::string::npos) {
+            size_t at_start = at_key + 14;
+            size_t at_end = content.find('"', at_start);
+            apns_token = content.substr(at_start, at_end - at_start);
+        }
+
         // Find created_at
         size_t ca_key = content.find("\"created_at\":", uid_end);
         int64_t created_at = 0;
@@ -1580,11 +1682,16 @@ static void users_load() {
         u.user_id = user_id;
         u.email = email;
         u.username = username;
+        u.apns_token = apns_token;
         u.devices = devices;
         u.created_at = created_at;
         u.last_login = last_login;
         g_users[email] = u;
         if (!username.empty()) g_username_to_email[username] = email;
+        if (!username.empty() && !apns_token.empty()) g_username_to_apns[username] = apns_token;
+        for (const auto& dev : devices) {
+            if (!dev.empty()) g_device_to_email[dev] = email;
+        }
 
         // Advance past this entry
         pos = content.find('}', uid_end);
@@ -1611,6 +1718,130 @@ static void users_load() {
 
     fprintf(stderr, "[auth] Loaded %zu users, %zu tokens from %s\n",
             g_users.size(), g_auth_tokens.size(), g_users_db_path.c_str());
+}
+
+// ── APNs push notifications ──────────────────────────────────────────────────
+// JWT ES256 + HTTP/2 via libcurl to api.push.apple.com
+
+static std::string apns_base64url(const std::string& in) {
+    static const char t[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    std::string o;
+    o.reserve(((in.size() + 2) / 3) * 4);
+    for (size_t i = 0; i < in.size(); i += 3) {
+        uint32_t n = ((uint8_t)in[i]) << 16;
+        if (i + 1 < in.size()) n |= ((uint8_t)in[i + 1]) << 8;
+        if (i + 2 < in.size()) n |= (uint8_t)in[i + 2];
+        o += t[(n >> 18) & 0x3f]; o += t[(n >> 12) & 0x3f];
+        o += (i + 1 < in.size()) ? t[(n >> 6) & 0x3f] : '\0';
+        o += (i + 2 < in.size()) ? t[n & 0x3f] : '\0';
+    }
+    // Remove trailing nulls (no padding for URL-safe base64)
+    while (!o.empty() && o.back() == '\0') o.pop_back();
+    return o;
+}
+
+// Generate APNs JWT valid for 1 hour
+static std::string apns_make_jwt() {
+    if (g_apns_key_id.empty() || g_apns_team_id.empty() || g_apns_auth_key_pem.empty()) return "";
+    // Header
+    std::string header_json = "{\"alg\":\"ES256\",\"kid\":\"" + g_apns_key_id + "\"}";
+    std::string header = apns_base64url(header_json);
+    // Payload
+    int64_t iat = (int64_t)time(nullptr);
+    std::string payload_json = "{\"iss\":\"" + g_apns_team_id + "\",\"iat\":" + std::to_string(iat) + "}";
+    std::string payload = apns_base64url(payload_json);
+    std::string signing_input = header + "." + payload;
+    // Sign with EVP_PKEY (P-256 / prime256v1)
+    BIO* bio = BIO_new_mem_buf(g_apns_auth_key_pem.c_str(), (int)g_apns_auth_key_pem.size());
+    if (!bio) return "";
+    EVP_PKEY* pkey = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    if (!pkey) {
+        fprintf(stderr, "[apns] Failed to parse EC private key\n");
+        return "";
+    }
+    // EVP_DigestSign produces DER-encoded ECDSA signature
+    EVP_MD_CTX* md_ctx = EVP_MD_CTX_new();
+    if (!md_ctx) { EVP_PKEY_free(pkey); return ""; }
+    if (EVP_DigestSignInit(md_ctx, nullptr, EVP_sha256(), nullptr, pkey) != 1) {
+        EVP_MD_CTX_free(md_ctx); EVP_PKEY_free(pkey); return "";
+    }
+    if (EVP_DigestSignUpdate(md_ctx, signing_input.c_str(), signing_input.size()) != 1) {
+        EVP_MD_CTX_free(md_ctx); EVP_PKEY_free(pkey); return "";
+    }
+    size_t der_sig_len = 0;
+    if (EVP_DigestSignFinal(md_ctx, nullptr, &der_sig_len) != 1) {
+        EVP_MD_CTX_free(md_ctx); EVP_PKEY_free(pkey); return "";
+    }
+    std::vector<unsigned char> der_sig(der_sig_len);
+    if (EVP_DigestSignFinal(md_ctx, der_sig.data(), &der_sig_len) != 1) {
+        EVP_MD_CTX_free(md_ctx); EVP_PKEY_free(pkey); return "";
+    }
+    der_sig.resize(der_sig_len);
+    EVP_MD_CTX_free(md_ctx);
+    EVP_PKEY_free(pkey);
+    // Decode DER signature to r+s for IEEE P1363 format (64-byte raw for JWT)
+    const unsigned char* der_ptr = der_sig.data();
+    ECDSA_SIG* sig = d2i_ECDSA_SIG(nullptr, &der_ptr, (long)der_sig.size());
+    if (!sig) return "";
+    const BIGNUM* r = nullptr;
+    const BIGNUM* s = nullptr;
+    ECDSA_SIG_get0(sig, &r, &s);
+    unsigned char raw_sig[64] = {};
+    int r_len = BN_num_bytes(r), s_len = BN_num_bytes(s);
+    BN_bn2bin(r, raw_sig + (32 - r_len));
+    BN_bn2bin(s, raw_sig + 32 + (32 - s_len));
+    ECDSA_SIG_free(sig);
+    std::string sig_str(reinterpret_cast<char*>(raw_sig), 64);
+    return signing_input + "." + apns_base64url(sig_str);
+}
+
+// Send APNs push notification in a detached thread (fire-and-forget)
+static void apns_send_push(const std::string& device_token,
+                            const std::string& title, const std::string& body,
+                            const std::string& category) {
+    if (device_token.empty() || g_apns_bundle_id.empty()) return;
+    // Detach to avoid blocking the relay loop
+    std::thread([device_token, title, body, category]() {
+        std::string jwt = apns_make_jwt();
+        if (jwt.empty()) {
+            fprintf(stderr, "[apns] JWT generation failed\n");
+            return;
+        }
+        std::string url = "https://api.push.apple.com/3/device/" + device_token;
+        std::string payload = "{\"aps\":{\"alert\":{\"title\":\"" + title +
+                              "\",\"body\":\"" + body + "\"},"
+                              "\"sound\":\"default\",\"badge\":1},"
+                              "\"category\":\"" + category + "\"}";
+        CURL* curl = curl_easy_init();
+        if (!curl) return;
+        std::string response;
+        struct curl_slist* headers = nullptr;
+        headers = curl_slist_append(headers, ("Authorization: bearer " + jwt).c_str());
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        headers = curl_slist_append(headers, ("apns-topic: " + g_apns_bundle_id).c_str());
+        headers = curl_slist_append(headers, "apns-push-type: alert");
+        headers = curl_slist_append(headers, "apns-priority: 10");
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+        CURLcode res = curl_easy_perform(curl);
+        long http_code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        if (res != CURLE_OK || http_code != 200) {
+            fprintf(stderr, "[apns] Push failed: curl=%s http=%ld resp=%s\n",
+                    curl_easy_strerror(res), http_code, response.c_str());
+        } else {
+            fprintf(stderr, "[apns] Push sent to ...%s\n",
+                    device_token.size() > 8 ? device_token.substr(device_token.size() - 8).c_str() : "?");
+        }
+    }).detach();
 }
 
 // ── Royalty rate calculation ─────────────────────────────────────────────────
@@ -1705,7 +1936,12 @@ static bool validate_session_token(const sockaddr_in& from, const std::string& t
     for (auto& [name, group] : g_groups) {
         for (auto& m : group.members) {
             if (addr_equal(m.addr, from)) {
-                return m.session_token == token;
+                // Constant-time comparison to prevent timing attacks
+                if (m.session_token.size() != token.size()) return false;
+                volatile unsigned char result = 0;
+                for (size_t i = 0; i < token.size(); i++)
+                    result |= m.session_token[i] ^ token[i];
+                return (result == 0);
             }
         }
     }
@@ -2266,8 +2502,9 @@ static void handle_swarm_lost(const char* msg, size_t len, const sockaddr_in& fr
 
     std::lock_guard<std::shared_mutex> lock(g_mutex);
 
-    // Find sender's group
-    std::string gname = find_member_group(from);
+    // Find sender's group via O(1) reverse lookup
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (gname.empty()) return;
 
     auto git = g_groups.find(gname);
@@ -2341,7 +2578,8 @@ static void handle_swarm_lost(const char* msg, size_t len, const sockaddr_in& fr
 // Caller acquires g_mutex inside.
 static void handle_swarm_ready(const sockaddr_in& from) {
     std::lock_guard<std::shared_mutex> lock(g_mutex);
-    std::string gname = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (gname.empty()) return;
     auto git = g_groups.find(gname);
     if (git == g_groups.end()) return;
@@ -2359,7 +2597,8 @@ static void handle_swarm_ready(const sockaddr_in& from) {
 // Caller acquires g_mutex inside.
 static void handle_swarm_unable(const sockaddr_in& from) {
     std::lock_guard<std::shared_mutex> lock(g_mutex);
-    std::string gname = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (gname.empty()) return;
     auto git = g_groups.find(gname);
     if (git == g_groups.end()) return;
@@ -2430,6 +2669,86 @@ static void handle_swarm_ack(const char* /*msg*/, size_t /*len*/, const sockaddr
     // Informational — could be used for latency tracking in the future.
 }
 
+// ── PARENT_FAIL handler ───────────────────────────────────────────────────────
+// Format: "PARENT_FAIL:<parent_ip>:<parent_port>\n"
+// Client reports primary parent stopped sending (>80ms silence); relay reassigns.
+
+static void handle_parent_fail(const char* msg, size_t len, const sockaddr_in& from) {
+    // Parse parent IP:port from message
+    std::string payload(msg + 12, len - 12); // skip "PARENT_FAIL:"
+    while (!payload.empty() && (payload.back() == '\n' || payload.back() == '\r'))
+        payload.pop_back();
+
+    fprintf(stderr, "[swarm] PARENT_FAIL from %s: parent=%s\n",
+            addr_str(from).c_str(), payload.c_str());
+
+    // Reassign: find a new parent from group members
+    std::lock_guard<std::shared_mutex> lock(g_mutex);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
+    if (gname.empty()) return;
+
+    auto& group = g_groups[gname];
+    if (!group.swarm_active) return;
+
+    // Find requester in swarm tree
+    for (size_t i = 0; i < group.members.size(); i++) {
+        if (addr_equal(group.members[i].addr, from)) {
+            // Pick a new parent: someone NOT equal to failed parent, with space for children
+            for (size_t j = 0; j < group.members.size(); j++) {
+                if (j == i) continue;
+                if (group.swarm_tree[j].children.size() < kSwarmFanOut) {
+                    group.swarm_tree[i].parent_addr = group.swarm_tree[j].addr;
+                    send_swarm_assign(group.swarm_tree[i]);
+                    fprintf(stderr, "[swarm] Reassigned %s → parent %s (fast recovery)\n",
+                            addr_str(from).c_str(), addr_str(group.swarm_tree[j].addr).c_str());
+                    break;
+                }
+            }
+            break;
+        }
+    }
+}
+
+// ── Multi-device auto-sync ────────────────────────────────────────────────────
+// When a device joins a channel, notify all other linked devices of the same user
+// so they can auto-join the same channel. Sends "SYNC_PLAY:<channel>\n" via UDP.
+// IMPORTANT: Caller must already hold g_mutex (shared_mutex write lock).
+static void notify_linked_devices(const std::string& device_id, const std::string& group_name) {
+    // Look up which user owns this device and collect sibling device IDs
+    std::vector<std::string> sibling_devices;
+    {
+        std::lock_guard<std::mutex> auth_lock(g_auth_mutex);
+        auto dit = g_device_to_email.find(device_id);
+        if (dit == g_device_to_email.end()) return;  // unlinked device
+        auto uit = g_users.find(dit->second);
+        if (uit == g_users.end()) return;
+        for (const auto& d : uit->second.devices) {
+            if (d != device_id) sibling_devices.push_back(d);
+        }
+    }
+    if (sibling_devices.empty()) return;
+
+    // For each sibling device, find if it's currently connected to any group
+    // and send it a SYNC_PLAY notification
+    std::string sync_msg = "SYNC_PLAY:" + group_name + "\n";
+    for (const auto& sib_dev : sibling_devices) {
+        // Search all groups for a member with this device_id
+        for (const auto& [gname, grp] : g_groups) {
+            for (const auto& m : grp.members) {
+                if (m.device_id == sib_dev) {
+                    sendto(g_udp_sock, sync_msg.c_str(), sync_msg.size(), 0,
+                           (const sockaddr*)&m.addr, sizeof(m.addr));
+                    fprintf(stderr, "[sync] Notified device %s (%s) → SYNC_PLAY:%s\n",
+                            sib_dev.c_str(), addr_str(m.addr).c_str(), group_name.c_str());
+                    goto next_sibling;  // found this device, move to next
+                }
+            }
+        }
+        next_sibling:;
+    }
+}
+
 // ── JOIN handler ──────────────────────────────────────────────────────────────
 // Format: "JOIN:<group_name>\n" or "JOIN:<group_name>:<password>\n"
 // Optionally: "JOIN:<group_name>:<password>:<device_name>\n"
@@ -2495,7 +2814,8 @@ static void handle_join(const char* msg, size_t len, const sockaddr_in& from) {
     }
 
     // Remove member from any existing group first
-    std::string old_group = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string old_group = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (!old_group.empty() && old_group != group_name) {
         auto it = g_groups.find(old_group);
         if (it != g_groups.end()) {
@@ -2615,6 +2935,26 @@ static void handle_join(const char* msg, size_t len, const sockaddr_in& from) {
     size_t new_member_idx = group.members.size() - 1;
     g_total_joins++;
 
+    // @mention notification: if channel name is "@<username>", push notify that user
+    // This implements phone-call-like notifications when someone joins your channel
+    if (group_name.size() > 1 && group_name[0] == '@') {
+        std::string mentioned = group_name.substr(1);  // strip '@'
+        // Look up APNs token outside g_mutex (g_auth_mutex is separate)
+        std::string apns_tok;
+        {
+            std::lock_guard<std::mutex> auth_lock(g_auth_mutex);
+            auto it = g_username_to_apns.find(mentioned);
+            if (it != g_username_to_apns.end()) apns_tok = it->second;
+        }
+        if (!apns_tok.empty()) {
+            std::string caller = device_name.empty() ? "Someone" : device_name;
+            apns_send_push(apns_tok,
+                "📞 " + caller + " wants to talk",
+                caller + " joined @" + mentioned + "'s channel on Soluna",
+                "MENTION_CALL");
+        }
+    }
+
     // Update reverse lookup map
     g_addr_to_group[addr_key(from)] = group_name;
 
@@ -2728,6 +3068,11 @@ static void handle_join(const char* msg, size_t len, const sockaddr_in& from) {
             sendto(g_udp_sock, url_msg.c_str(), url_msg.size(), 0,
                    (const sockaddr*)&from, sizeof(from));
         }
+    }
+
+    // Multi-device auto-sync: notify other devices of the same user
+    if (!device_id.empty()) {
+        notify_linked_devices(device_id, group_name);
     }
 }
 
@@ -2884,7 +3229,8 @@ static void handle_mode(const char* msg, size_t len, const sockaddr_in& from) {
 
     std::lock_guard<std::shared_mutex> lock(g_mutex);
 
-    std::string group_name = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string group_name = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (group_name.empty()) {
         const char* err = "ERR:not_in_group\n";
         sendto(g_udp_sock, err, strlen(err), 0, (const sockaddr*)&from, sizeof(from));
@@ -2958,7 +3304,8 @@ static void handle_royalty_payer(const char* msg, size_t len, const sockaddr_in&
 
     std::lock_guard<std::shared_mutex> lock(g_mutex);
 
-    std::string group_name = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string group_name = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (group_name.empty()) {
         const char* err = "ERR:not_in_group\n";
         sendto(g_udp_sock, err, strlen(err), 0, (const sockaddr*)&from, sizeof(from));
@@ -3017,8 +3364,9 @@ static void handle_grant(const char* msg, size_t len, const sockaddr_in& from) {
 
     std::lock_guard<std::shared_mutex> lock(g_mutex);
 
-    // Find sender's group
-    std::string gname = find_member_group(from);
+    // Find sender's group via O(1) reverse lookup
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (gname.empty()) {
         const char* err = "ERR:not_in_group\n";
         sendto(g_udp_sock, err, strlen(err), 0, (const sockaddr*)&from, sizeof(from));
@@ -3070,7 +3418,8 @@ static void handle_grant(const char* msg, size_t len, const sockaddr_in& from) {
 static void handle_members(const sockaddr_in& from) {
     std::lock_guard<std::shared_mutex> lock(g_mutex);
 
-    std::string gname = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (gname.empty()) {
         const char* err = "ERR:not_in_group\n";
         sendto(g_udp_sock, err, strlen(err), 0, (const sockaddr*)&from, sizeof(from));
@@ -3098,6 +3447,39 @@ static void handle_members(const sockaddr_in& from) {
     response += "]}\n";
     sendto(g_udp_sock, response.c_str(), response.size(), 0,
            (const sockaddr*)&from, sizeof(from));
+}
+
+// ── GOSSIP_PEERS handler ──────────────────────────────────────────────────────
+// Format: "GOSSIP_PEERS\n" — request peer table (8 candidates) for redundant reception
+
+static void handle_gossip_peers(const sockaddr_in& from) {
+    std::vector<sockaddr_in> candidates;
+    {
+        std::shared_lock<std::shared_mutex> lock(g_mutex);
+        auto _rk = g_addr_to_group.find(addr_key(from));
+        std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
+        if (gname.empty()) return;
+        auto& group = g_groups[gname];
+        for (const auto& m : group.members) {
+            if (!addr_equal(m.addr, from) && candidates.size() < 8) {
+                candidates.push_back(m.addr);
+            }
+        }
+    }
+    if (candidates.empty()) return;
+
+    // Build PEERS: response
+    std::string resp = "PEERS:";
+    for (size_t i = 0; i < candidates.size(); i++) {
+        if (i > 0) resp += ',';
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%s:%u",
+                 inet_ntoa(candidates[i].sin_addr),
+                 ntohs(candidates[i].sin_port));
+        resp += buf;
+    }
+    resp += "\n";
+    sendto(g_udp_sock, resp.c_str(), resp.size(), 0, (const sockaddr*)&from, sizeof(from));
 }
 
 // ── PING handler (P2P latency measurement) ──────────────────────────────────
@@ -3131,7 +3513,8 @@ static void handle_ping(const char* msg, size_t len, const sockaddr_in& from) {
     std::lock_guard<std::shared_mutex> lock(g_mutex);
 
     // Verify both sender and target are in the same group
-    std::string sender_group = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string sender_group = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (sender_group.empty()) return;
 
     auto it = g_groups.find(sender_group);
@@ -3158,6 +3541,46 @@ static void handle_route(const char* /* msg */, size_t /* len */, const sockaddr
     // No-op: informational message logged for future analytics.
     // Relay continues forwarding audio to all members regardless of client preference.
     // Client-side deduplication handles packets arriving on both paths.
+}
+
+// ── TURN fallback handler (OSTP v0.9.3 §5.x / RFC 5766 subset) ───────────────
+// When STUN hole-punching fails, client sends TURN_ALLOC to request relay forwarding.
+// The relay already forwards all group audio — this just confirms TURN allocation.
+//
+//   Client → Relay:  TURN_ALLOC:<session_token>\n
+//   Relay  → Client: TURN_OK:<relay_ip>:<relay_port>\n
+static void handle_turn_alloc(const char* msg, size_t len, const sockaddr_in& from) {
+    std::string session_tok(msg + 11, len - 11);  // skip "TURN_ALLOC:"
+    while (!session_tok.empty() && (session_tok.back() == '\n' || session_tok.back() == '\r'))
+        session_tok.pop_back();
+
+    {
+        std::lock_guard<std::shared_mutex> lock(g_mutex);
+        if (!validate_session_token(from, session_tok)) {
+            const char* err = "ERR:turn_invalid_session\n";
+            sendto(g_udp_sock, err, strlen(err), 0, (const sockaddr*)&from, sizeof(from));
+            return;
+        }
+    }
+
+    // Use the relay's socket address as the TURN allocation address
+    struct sockaddr_in relay_sa{};
+    socklen_t sa_len = sizeof(relay_sa);
+    getsockname(g_udp_sock, (struct sockaddr*)&relay_sa, &sa_len);
+
+    char relay_ip[INET_ADDRSTRLEN] = "relay.solun.art";
+    uint16_t relay_port = kDefaultPort;
+    if (relay_sa.sin_addr.s_addr != INADDR_ANY) {
+        inet_ntop(AF_INET, &relay_sa.sin_addr, relay_ip, sizeof(relay_ip));
+        relay_port = ntohs(relay_sa.sin_port);
+    }
+
+    char resp[128];
+    snprintf(resp, sizeof(resp), "TURN_OK:%s:%u\n", relay_ip, (unsigned)relay_port);
+    sendto(g_udp_sock, resp, strlen(resp), 0, (const sockaddr*)&from, sizeof(from));
+
+    fprintf(stderr, "[turn] ALLOC from %s → relay %s:%u\n",
+            addr_str(from).c_str(), relay_ip, (unsigned)relay_port);
 }
 
 // ── HELLO handler ─────────────────────────────────────────────────────────────
@@ -3222,7 +3645,7 @@ static uint64_t compute_audio_fingerprint(const int16_t* samples, size_t count) 
 }
 
 // Match fingerprint against known track database
-static bool match_fingerprint(uint64_t fingerprint, const std::string& group_name,
+static bool match_fingerprint([[maybe_unused]] uint64_t fingerprint, const std::string& group_name,
                                CopyrightMatch& out_match) {
     // Method 1: Local database lookup (hash -> track info)
     // In production, this would be a large database or Bloom filter
@@ -3585,7 +4008,6 @@ static void royalty_tick() {
             {
                 std::lock_guard<std::mutex> wlock(g_wallet_mutex);
                 double rights_share_total = royalty_per_min * 0.70;
-                double platform_total = royalty_per_min * 0.10;
                 // DJ cashback goes to DJ (20%)
                 std::string dj_id;
                 for (const auto& m : group.members) {
@@ -3866,7 +4288,8 @@ static void fingerprint_thread_func() {
 // Handle COPYRIGHT_ACK from DJ
 static void handle_copyright_ack(const sockaddr_in& from) {
     std::lock_guard<std::shared_mutex> lock(g_mutex);
-    std::string gname = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (gname.empty()) return;
     auto it = g_groups.find(gname);
     if (it == g_groups.end() || !it->second.copyright) return;
@@ -3877,7 +4300,8 @@ static void handle_copyright_ack(const sockaddr_in& from) {
 // Handle COPYRIGHT_SKIP from DJ
 static void handle_copyright_skip(const sockaddr_in& from) {
     std::lock_guard<std::shared_mutex> lock(g_mutex);
-    std::string gname = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (gname.empty()) return;
     auto it = g_groups.find(gname);
     if (it == g_groups.end() || !it->second.copyright) return;
@@ -3894,7 +4318,7 @@ static void handle_copyright_skip(const sockaddr_in& from) {
 // ── Wallet & billing handlers ────────────────────────────────────────────────
 
 // Helper: find device_name for an address (requires g_mutex held)
-static std::string find_device_name(const sockaddr_in& addr) {
+[[maybe_unused]] static std::string find_device_name(const sockaddr_in& addr) {
     for (const auto& [name, group] : g_groups) {
         for (const auto& m : group.members) {
             if (addr_equal(m.addr, addr)) {
@@ -4006,7 +4430,7 @@ static void handle_charge(const char* msg, size_t len, const sockaddr_in& from) 
         std::string client_hmac = token.substr(sep + 1);
         int64_t ts = std::atoll(ts_str.c_str());
         int64_t now = now_unix();
-        if (std::abs(now - ts) > 300) {
+        if (std::abs(now - ts) > 30) {
             const char* err = "ERR:token_expired\n";
             sendto(g_udp_sock, err, strlen(err), 0, (const sockaddr*)&from, sizeof(from));
             fprintf(stderr, "[wallet] CHARGE rejected: token expired (drift=%llds) from %s\n",
@@ -4206,19 +4630,30 @@ static void handle_payout_setup(const char* msg, size_t len, const sockaddr_in& 
             device_id.c_str(), method.c_str(), payout_id.c_str());
 }
 
-// TIP:<amount_usd>[:<session_token>]\n — Listener tips the DJ of current group
+// TIP:<amount_usd>:<tx_signature>:<wallet_pubkey>[:<session_token>]\n (OSTP v0.9.3 §7.3)
+// Legacy: TIP:<amount_usd>[:<session_token>]\n (no blockchain verification)
 static void handle_tip(const char* msg, size_t len, const sockaddr_in& from) {
     std::string payload(msg + 4, len - 4);  // skip "TIP:"
     while (!payload.empty() && (payload.back() == '\n' || payload.back() == '\r'))
         payload.pop_back();
 
-    // Parse amount and optional session token
-    std::string amount_str = payload, session_tok;
-    size_t tok_colon = payload.find(':');
-    if (tok_colon != std::string::npos) {
-        amount_str = payload.substr(0, tok_colon);
-        session_tok = payload.substr(tok_colon + 1);
+    // Split fields: amount[:tx_sig[:wallet_pubkey[:session_token]]]
+    std::vector<std::string> parts;
+    {
+        std::string s = payload;
+        size_t p;
+        while ((p = s.find(':')) != std::string::npos) {
+            parts.push_back(s.substr(0, p));
+            s = s.substr(p + 1);
+        }
+        parts.push_back(s);
     }
+
+    std::string amount_str   = parts.size() > 0 ? parts[0] : "";
+    std::string tx_sig       = parts.size() > 1 ? parts[1] : "";
+    std::string wallet_pubkey= parts.size() > 2 ? parts[2] : "";
+    std::string session_tok  = parts.size() > 3 ? parts[3] :
+                               (parts.size() == 2 ? parts[1] : ""); // legacy: 2nd field = session
     // Session token is REQUIRED for all financial operations
     if (session_tok.empty()) {
         const char* err = "ERR:session_required\n";
@@ -4241,6 +4676,15 @@ static void handle_tip(const char* msg, size_t len, const sockaddr_in& from) {
         return;
     }
 
+    // OSTP v0.9.3 §7.3: verify on-chain tx if tx_signature provided
+    if (!tx_sig.empty()) {
+        if (!solana_verify_tip_tx(tx_sig, wallet_pubkey, amount)) {
+            const char* err = "ERR:tx_verification_failed\n";
+            sendto(g_udp_sock, err, strlen(err), 0, (const sockaddr*)&from, sizeof(from));
+            return;
+        }
+    }
+
     std::string tipper_device;
     std::string dj_device;
     sockaddr_in dj_addr{};
@@ -4248,7 +4692,8 @@ static void handle_tip(const char* msg, size_t len, const sockaddr_in& from) {
 
     {
         std::lock_guard<std::shared_mutex> lock(g_mutex);
-        std::string gname = find_member_group(from);
+        auto _rk = g_addr_to_group.find(addr_key(from));
+        std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
         if (gname.empty()) {
             const char* err = "ERR:not_in_group\n";
             sendto(g_udp_sock, err, strlen(err), 0, (const sockaddr*)&from, sizeof(from));
@@ -4373,7 +4818,8 @@ static void handle_support(const char* msg, size_t len, const sockaddr_in& from)
 
     {
         std::lock_guard<std::shared_mutex> lock(g_mutex);
-        group_name = find_member_group(from);
+        auto _rk = g_addr_to_group.find(addr_key(from));
+        group_name = (_rk != g_addr_to_group.end()) ? _rk->second : "";
         if (group_name.empty()) {
             const char* err = "ERR:not_in_group\n";
             sendto(g_udp_sock, err, strlen(err), 0, (const sockaddr*)&from, sizeof(from));
@@ -4457,7 +4903,8 @@ static void handle_licensed_play(const char* msg, size_t len, const sockaddr_in&
 
     std::lock_guard<std::shared_mutex> lock(g_mutex);
 
-    std::string group_name = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string group_name = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (group_name.empty()) {
         const char* err = "ERR:not_in_group\n";
         sendto(g_udp_sock, err, strlen(err), 0, (const sockaddr*)&from, sizeof(from));
@@ -4708,17 +5155,17 @@ static std::atomic<uint64_t> g_rtp_legacy_packets{0};  // RTP packets without OS
 
 // FEC & NACK stats
 static constexpr size_t kFecGroupSize = 5;             // 5 data packets + 1 parity (§8.1)
-static constexpr uint8_t kPT_S24     = 96;
+[[maybe_unused]] static constexpr uint8_t kPT_S24     = 96;
 static constexpr uint8_t kPT_Float32 = 97;
 static constexpr uint8_t kPT_Opus    = 98;
 static constexpr uint8_t kPT_AES67_L24 = 10;
 static constexpr uint8_t kPT_AES67_L16 = 11;
-static constexpr uint8_t kPT_SYNC   = 125;
+[[maybe_unused]] static constexpr uint8_t kPT_SYNC   = 125;
 static constexpr uint8_t kPT_NACK   = 126;
 static constexpr uint8_t kPT_FEC    = 127;
 static std::atomic<uint64_t> g_sync_packets{0};
 static std::atomic<uint64_t> g_fec_packets_sent{0};
-static std::atomic<uint64_t> g_fec_recoveries{0};
+[[maybe_unused]] static std::atomic<uint64_t> g_fec_recoveries{0};
 static std::atomic<uint64_t> g_nack_requests_rx{0};
 static std::atomic<uint64_t> g_nack_retransmits{0};
 static std::atomic<uint64_t> g_fec_accumulations{0};  // debug: packets entering FEC accumulator
@@ -4881,6 +5328,28 @@ static void forward_audio(const uint8_t* data, size_t len, const sockaddr_in& fr
     // Handle NACK packets (PT=126) — retransmit from replay buffer
     if (ostp.payload_type == kPT_NACK) {
         handle_nack_packet(data, len, from);
+        return;
+    }
+
+    // Handle RTCP APP (PT=204) "SWCH" — forward to all group members for sync switch (OSTP v0.9.3 §5.4)
+    if (len == 16 && (data[0] & 0xC0) == 0x80 && data[1] == 204 &&
+        data[8] == 'S' && data[9] == 'W' && data[10] == 'C' && data[11] == 'H') {
+        std::vector<sockaddr_in> dests;
+        {
+            std::lock_guard<std::shared_mutex> lock(g_mutex);
+            auto rk = g_addr_to_group.find(addr_key(from));
+            if (rk != g_addr_to_group.end()) {
+                auto it = g_groups.find(rk->second);
+                if (it != g_groups.end()) {
+                    for (const auto& m : it->second.members) {
+                        if (!addr_equal(m.addr, from)) dests.push_back(m.addr);
+                    }
+                }
+            }
+        }
+        for (const auto& dst : dests) {
+            sendto(g_udp_sock, data, len, 0, (const sockaddr*)&dst, sizeof(dst));
+        }
         return;
     }
 
@@ -5855,6 +6324,37 @@ static void handle_mic_deny(const char* msg, size_t len, const sockaddr_in& from
     sendto(g_udp_sock, err, strlen(err), 0, (const sockaddr*)&from, sizeof(from));
 }
 
+// Format: "VOLUME:<target_device_id>:<level_0_100>\n"
+// Forward volume command to a specific device in the sender's group.
+// Any group member can send this (no role restriction).
+static void handle_volume_command(const char* msg, size_t len, const sockaddr_in& from) {
+    std::string payload(msg + 7, len - 7);  // skip "VOLUME:"
+    while (!payload.empty() && (payload.back() == '\n' || payload.back() == '\r'))
+        payload.pop_back();
+
+    auto colon = payload.find(':');
+    if (colon == std::string::npos) return;
+
+    std::string target_device = payload.substr(0, colon);
+    std::string level_str = payload.substr(colon + 1);
+    if (target_device.empty() || level_str.empty()) return;
+
+    std::shared_lock<std::shared_mutex> lock(g_mutex);
+    auto rk = g_addr_to_group.find(addr_key(from));
+    if (rk == g_addr_to_group.end()) return;
+    auto git = g_groups.find(rk->second);
+    if (git == g_groups.end()) return;
+
+    for (const auto& m : git->second.members) {
+        if (m.device_id == target_device) {
+            std::string cmd = "VOLUME_SET:" + level_str + "\n";
+            sendto(g_udp_sock, cmd.c_str(), cmd.size(), 0,
+                   (const sockaddr*)&m.addr, sizeof(m.addr));
+            return;
+        }
+    }
+}
+
 // Format: "MIC_LIST\n"
 // Returns JSON array of all devices with their mic status.
 static void handle_mic_list(const sockaddr_in& from) {
@@ -5879,6 +6379,31 @@ static void handle_mic_list(const sockaddr_in& from) {
                     "\"device\":\"" + json_escape(m.device_name) + "\","
                     "\"role\":\"" + role_name + "\","
                     "\"mic_allowed\":" + (effective_mic ? std::string("true") : std::string("false")) + "}";
+    }
+    response += "]\n";
+    sendto(g_udp_sock, response.c_str(), response.size(), 0,
+           (const sockaddr*)&from, sizeof(from));
+}
+
+// ── GLOBAL_DEVICES handler ───────────────────────────────────────────────────
+// Format: "GLOBAL_DEVICES\n" — no auth required, lists all DJ/Owner across all groups
+// Response: DEVICES:[{"name":"...","id":"...","group":"...","role":"owner|dj","addr":"ip:port"},...]\n
+static void handle_global_devices(const sockaddr_in& from) {
+    std::lock_guard<std::shared_mutex> lock(g_mutex);
+    std::string response = "DEVICES:[";
+    bool first = true;
+    for (const auto& [gname, group] : g_groups) {
+        for (const auto& m : group.members) {
+            if (m.role < MemberRole::DJ) continue;  // only TX-capable members
+            if (!first) response += ",";
+            first = false;
+            const char* role_name = m.role == MemberRole::Owner ? "owner" : "dj";
+            response += "{\"name\":\"" + json_escape(m.device_name.empty() ? "Unknown" : m.device_name) + "\","
+                        "\"id\":\"" + json_escape(m.device_id) + "\","
+                        "\"group\":\"" + json_escape(gname) + "\","
+                        "\"role\":\"" + role_name + "\","
+                        "\"addr\":\"" + addr_str(m.addr) + "\"}";
+        }
     }
     response += "]\n";
     sendto(g_udp_sock, response.c_str(), response.size(), 0,
@@ -5938,7 +6463,8 @@ static void handle_file_offer(const char* msg, size_t len, const sockaddr_in& fr
     if (filename.empty() || sha256.empty() || num_chunks == 0) return;
 
     std::lock_guard<std::shared_mutex> lock(g_mutex);
-    std::string gname = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (gname.empty()) return;
 
     auto git = g_groups.find(gname);
@@ -6030,7 +6556,8 @@ static void handle_file_url(const char* msg, size_t len, const sockaddr_in& from
     if (url.empty() || sha256.empty()) return;
 
     std::lock_guard<std::shared_mutex> lock(g_mutex);
-    std::string gname = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (gname.empty()) return;
 
     auto git = g_groups.find(gname);
@@ -6091,7 +6618,8 @@ static void handle_file_have(const char* msg, size_t len, const sockaddr_in& fro
     if (sha256.empty() || bitfield_hex.empty()) return;
 
     std::lock_guard<std::shared_mutex> lock(g_mutex);
-    std::string gname = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (gname.empty()) return;
 
     auto git = g_groups.find(gname);
@@ -6128,7 +6656,8 @@ static void handle_file_complete(const char* msg, size_t len, const sockaddr_in&
     if (sha256.empty()) return;
 
     std::lock_guard<std::shared_mutex> lock(g_mutex);
-    std::string gname = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (gname.empty()) return;
 
     auto git = g_groups.find(gname);
@@ -6177,7 +6706,8 @@ static void handle_chunk_request(const char* msg, size_t len, const sockaddr_in&
     uint32_t chunk_index = (uint32_t)std::atoi(payload.substr(colon + 1).c_str());
 
     std::lock_guard<std::shared_mutex> lock(g_mutex);
-    std::string gname = find_member_group(from);
+    auto _rk = g_addr_to_group.find(addr_key(from));
+    std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
     if (gname.empty()) return;
 
     auto git = g_groups.find(gname);
@@ -6748,6 +7278,8 @@ static void print_usage(const char* prog) {
         "  SWARM_UNABLE\\n                   Client can't relay (NAT/firewall)\n"
         "  SWARM_ACK:<parent>\\n             Client confirms parent assignment\n"
         "  SWARM_LOST:<parent>\\n            Client lost connection to parent\n"
+        "  GOSSIP_PEERS\\n                   Request 8 peer candidates\n"
+        "  PARENT_FAIL:<ip>:<port>\\n        Report parent failure for fast recovery\n"
         "  FILE_OFFER:<n>:<sz>:<sha>:<c>\\n  P2P file offer (DJ only)\n"
         "  FILE_URL:<url>:<sha>:<sz>\\n      HTTP URL for file download\n"
         "  FILE_HAVE:<sha>:<bitfield>\\n     Report owned chunks\n"
@@ -6768,10 +7300,21 @@ static void print_usage(const char* prog) {
 // Allowed CORS origins for HTTP API
 static const char* cors_origin(const char* request_origin) {
     if (!request_origin || !*request_origin) return "https://solun.art";
-    // Allow solun.art, relay.solun.art, localhost for dev
-    if (strstr(request_origin, "solun.art") || strstr(request_origin, "localhost")
-        || strstr(request_origin, "127.0.0.1"))
-        return request_origin;
+    // Exact-match allowed origins
+    static const char* allowed[] = {
+        "https://solun.art",
+        "https://relay.solun.art",
+        "https://www.solun.art",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        nullptr
+    };
+    for (const char** p = allowed; *p; ++p) {
+        if (strcmp(request_origin, *p) == 0)
+            return request_origin;
+    }
     return "https://solun.art";
 }
 
@@ -7177,7 +7720,7 @@ static void http_thread_func() {
                     "{\"error\":\"invalid_email\"}");
                 close(fd); continue;
             }
-            // Rate limit: 1 code per 60s per email
+            // Rate limit: 1 code per 30s per email
             {
                 std::lock_guard<std::mutex> lock(g_auth_mutex);
                 int64_t now = now_unix();
@@ -7187,7 +7730,7 @@ static void http_thread_func() {
                         "{\"error\":\"rate_limited\",\"retry_after\":" + std::to_string(it->second - now) + "}");
                     close(fd); continue;
                 }
-                g_email_rate_limit[email] = now + 60;
+                g_email_rate_limit[email] = now + 30;
 
                 // Generate and store verification code
                 std::string code = generate_code_6();
@@ -7272,6 +7815,7 @@ static void http_thread_func() {
                     if (d == device_id) { found = true; break; }
                 }
                 if (!found) user.devices.push_back(device_id);
+                g_device_to_email[device_id] = email;
             }
 
             // Generate auth token
@@ -7308,7 +7852,8 @@ static void http_thread_func() {
             }
             std::lock_guard<std::mutex> lock(g_auth_mutex);
             auto it = g_auth_tokens.find(token);
-            if (it == g_auth_tokens.end()) {
+            if (it == g_auth_tokens.end() || !token_is_valid(token)) {
+                if (it != g_auth_tokens.end()) g_auth_tokens.erase(it);
                 http_send(fd, 401, "Unauthorized", "application/json",
                     "{\"error\":\"invalid_token\"}");
                 close(fd); continue;
@@ -7410,7 +7955,8 @@ static void http_thread_func() {
             }
             std::lock_guard<std::mutex> lock(g_auth_mutex);
             auto it = g_auth_tokens.find(token);
-            if (it == g_auth_tokens.end()) {
+            if (it == g_auth_tokens.end() || !token_is_valid(token)) {
+                if (it != g_auth_tokens.end()) g_auth_tokens.erase(it);
                 http_send(fd, 401, "Unauthorized", "application/json",
                     "{\"error\":\"invalid_token\"}");
                 close(fd); continue;
@@ -7450,7 +7996,8 @@ static void http_thread_func() {
             }
             std::lock_guard<std::mutex> lock(g_auth_mutex);
             auto it = g_auth_tokens.find(token);
-            if (it == g_auth_tokens.end()) {
+            if (it == g_auth_tokens.end() || !token_is_valid(token)) {
+                if (it != g_auth_tokens.end()) g_auth_tokens.erase(it);
                 http_send(fd, 401, "Unauthorized", "application/json",
                     "{\"error\":\"invalid_token\"}");
                 close(fd); continue;
@@ -7462,10 +8009,44 @@ static void http_thread_func() {
             }
             if (!found) {
                 user.devices.push_back(device_id);
+                g_device_to_email[device_id] = it->second;
                 std::thread([]() { users_save(); }).detach();
             }
             http_send(fd, 200, "OK", "application/json",
                 "{\"ok\":true,\"devices_count\":" + std::to_string(user.devices.size()) + "}");
+            close(fd); continue;
+        }
+
+        // POST /api/auth/register-push — register APNs device token for push notifications
+        if (strcmp(method, "POST") == 0 && strcmp(path, "/api/auth/register-push") == 0) {
+            std::string token = get_bearer();
+            if (token.empty()) {
+                http_send(fd, 401, "Unauthorized", "application/json",
+                    "{\"error\":\"missing_token\"}");
+                close(fd); continue;
+            }
+            std::string apns_token = json_val(req_body, "apns_token");
+            if (apns_token.empty()) {
+                http_send(fd, 400, "Bad Request", "application/json",
+                    "{\"error\":\"missing_apns_token\"}");
+                close(fd); continue;
+            }
+            std::lock_guard<std::mutex> lock(g_auth_mutex);
+            auto it = g_auth_tokens.find(token);
+            if (it == g_auth_tokens.end() || !token_is_valid(token)) {
+                if (it != g_auth_tokens.end()) g_auth_tokens.erase(it);
+                http_send(fd, 401, "Unauthorized", "application/json",
+                    "{\"error\":\"invalid_token\"}");
+                close(fd); continue;
+            }
+            auto& user = g_users[it->second];
+            user.apns_token = apns_token;
+            // Update quick-lookup map if user has a username
+            if (!user.username.empty()) {
+                g_username_to_apns[user.username] = apns_token;
+            }
+            std::thread([]() { users_save(); }).detach();
+            http_send(fd, 200, "OK", "application/json", "{\"ok\":true}");
             close(fd); continue;
         }
 
@@ -8168,7 +8749,7 @@ fetchNP();setInterval(fetchNP,10000);
             std::string client_hmac = token.substr(sep + 1);
             int64_t ts  = std::atoll(ts_str.c_str());
             int64_t now = now_unix();
-            if (std::abs(now - ts) > 300) {
+            if (std::abs(now - ts) > 30) {
                 http_send(fd, 400, "Bad Request", "application/json",
                     "{\"error\":\"token_expired\"}");
                 close(fd); continue;
@@ -8332,7 +8913,9 @@ fetchNP();setInterval(fetchNP,10000);
             }
             {
                 std::lock_guard<std::mutex> alock(g_auth_mutex);
-                if (g_auth_tokens.find(bearer) == g_auth_tokens.end()) {
+                auto bearer_it = g_auth_tokens.find(bearer);
+                if (bearer_it == g_auth_tokens.end() || !token_is_valid(bearer)) {
+                    if (bearer_it != g_auth_tokens.end()) g_auth_tokens.erase(bearer_it);
                     http_send(fd, 401, "Unauthorized", "application/json",
                         "{\"error\":\"invalid_token\"}");
                     close(fd); continue;
@@ -8911,6 +9494,33 @@ int main(int argc, char** argv) {
 
     std::string upstream_host_port;  // for --region / --edge
 
+    // Load DTLS cert/key from environment variables if not supplied as CLI args.
+    // Fly.io secrets DTLS_CERT_PEM and DTLS_KEY_PEM are written to tmpfiles.
+    static std::string dtls_cert_tmpfile, dtls_key_tmpfile;
+    auto write_pem_tmpfile = [](const char* env_var, const char* prefix,
+                                 std::string& out_path) {
+        const char* pem = getenv(env_var);
+        if (!pem || !*pem) return;
+        char tmp[64];
+        snprintf(tmp, sizeof(tmp), "/tmp/soluna-%s-XXXXXX.pem", prefix);
+        int fd = mkstemps(tmp, 4);
+        if (fd < 0) { fprintf(stderr, "[dtls] mkstemps failed for %s\n", env_var); return; }
+        fchmod(fd, 0600);  // restrict PEM file permissions
+        // Replace literal \n in env var with real newlines
+        std::string content(pem);
+        size_t pos = 0;
+        while ((pos = content.find("\\n", pos)) != std::string::npos)
+            content.replace(pos, 2, "\n");
+        write(fd, content.c_str(), content.size());
+        close(fd);
+        out_path = tmp;
+        fprintf(stderr, "[dtls] Loaded %s from env → %s\n", env_var, tmp);
+    };
+    write_pem_tmpfile("DTLS_CERT_PEM", "cert", dtls_cert_tmpfile);
+    write_pem_tmpfile("DTLS_KEY_PEM",  "key",  dtls_key_tmpfile);
+    if (!dtls_cert_tmpfile.empty()) g_dtls_cert_path = dtls_cert_tmpfile;
+    if (!dtls_key_tmpfile.empty())  g_dtls_key_path  = dtls_key_tmpfile;
+
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         auto next = [&]() -> const char* { return (i + 1 < argc) ? argv[++i] : ""; };
@@ -9042,6 +9652,24 @@ int main(int argc, char** argv) {
     } else {
         fprintf(stderr, "[auth] WARNING: RESEND_API_KEY not set, email auth disabled\n");
     }
+
+    // Read APNs push notification config
+    if (const char* v = getenv("APNS_KEY_ID"))    g_apns_key_id   = v;
+    if (const char* v = getenv("APNS_TEAM_ID"))   g_apns_team_id  = v;
+    if (const char* v = getenv("APNS_BUNDLE_ID"))  g_apns_bundle_id = v;
+    if (const char* v = getenv("APNS_AUTH_KEY"))  {
+        g_apns_auth_key_pem = v;
+        // Allow \n escaping in env var (Fly.io stores as single line)
+        size_t p = 0;
+        while ((p = g_apns_auth_key_pem.find("\\n", p)) != std::string::npos) {
+            g_apns_auth_key_pem.replace(p, 2, "\n");
+        }
+    }
+    if (!g_apns_key_id.empty() && !g_apns_team_id.empty() && !g_apns_bundle_id.empty() && !g_apns_auth_key_pem.empty())
+        fprintf(stderr, "[apns] APNs configured: kid=%s team=%s bundle=%s\n",
+                g_apns_key_id.c_str(), g_apns_team_id.c_str(), g_apns_bundle_id.c_str());
+    else
+        fprintf(stderr, "[apns] WARNING: APNs not fully configured — push disabled\n");
 
     // Initialize libcurl globally (must be called before any curl_easy_init)
     curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -9178,9 +9806,18 @@ int main(int argc, char** argv) {
             } else if (n >= 6 && memcmp(pkt, "GRANT:", 6) == 0) {
                 // Grant DJ/listener role to a member (owner only)
                 handle_grant((const char*)pkt, (size_t)n, from);
+            } else if (n >= 7 && memcmp(pkt, "VOLUME:", 7) == 0) {
+                // Remote volume control: forward to target device in same group
+                handle_volume_command((const char*)pkt, (size_t)n, from);
             } else if (n >= 7 && memcmp(pkt, "MEMBERS", 7) == 0) {
                 // List members and roles
                 handle_members(from);
+            } else if (n >= 12 && memcmp(pkt, "GOSSIP_PEERS", 12) == 0) {
+                // Gossip: request 8 peer candidates for redundant reception
+                handle_gossip_peers(from);
+            } else if (n >= 12 && memcmp(pkt, "PARENT_FAIL:", 12) == 0) {
+                // Swarm: report primary parent failure, request fast reassignment
+                handle_parent_fail((const char*)pkt, n, from);
             } else if (n >= 5 && memcmp(pkt, "TEXT:", 5) == 0) {
                 // Text channel (lyrics/chat/info)
                 handle_text((const char*)pkt, (size_t)n, from);
@@ -9199,6 +9836,9 @@ int main(int argc, char** argv) {
             } else if (n >= 8 && memcmp(pkt, "MIC_LIST", 8) == 0 && (n == 8 || pkt[8] == '\n')) {
                 // Per-device mic permission: list all devices with mic status
                 handle_mic_list(from);
+            } else if (n >= 14 && memcmp(pkt, "GLOBAL_DEVICES", 14) == 0 && (n == 14 || pkt[14] == '\n')) {
+                // Global device registry: list all DJ/Owner across all groups
+                handle_global_devices(from);
             } else if (n >= 13 && memcmp(pkt, "CASCADE_JOIN:", 13) == 0) {
                 // Cascade: downstream relay subscribes to a group
                 handle_cascade_join((const char*)pkt, (size_t)n, from);
@@ -9268,6 +9908,9 @@ int main(int argc, char** argv) {
             } else if (n >= 6 && memcmp(pkt, "ROUTE:", 6) == 0) {
                 // Path preference notification (informational)
                 handle_route((const char*)pkt, (size_t)n, from);
+            } else if (n >= 11 && memcmp(pkt, "TURN_ALLOC:", 11) == 0) {
+                // TURN fallback allocation request (OSTP v0.9.3 §5.x)
+                handle_turn_alloc((const char*)pkt, (size_t)n, from);
             } else if (g_dtls_enabled && is_dtls_packet(pkt, (size_t)n)) {
                 // DTLS record — handle handshake or decrypt SRTP
                 handle_dtls_packet(pkt, (size_t)n, from);

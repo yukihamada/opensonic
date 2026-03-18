@@ -1,5 +1,34 @@
 'use strict';
 
+// ── WASM Audio Engine (loaded lazily) ────────────────────────
+let wasmAudio = null;  // SolunaAudio instance (null = fallback to JS)
+let wasmReady = false;
+
+// Try to load WASM audio engine; fall back silently to JS if unavailable
+async function wasmInit() {
+    try {
+        if (typeof window.SolunaAudio === 'undefined') {
+            console.warn('[soluna] SolunaAudio not loaded, using JS fallback');
+            return;
+        }
+        wasmAudio = new window.SolunaAudio();
+        await wasmAudio.init(baChannels || 1, 48000);
+        wasmAudio.onStats = (s) => {
+            baPkts = s.packets;
+            const el = document.getElementById('ba-pkt-val');
+            if (el) el.textContent = s.packets;
+            const fmt = document.getElementById('ba-fmt');
+            const syncTag = s.syncLocked ? `Sync \u2713 ${s.netDelayMs.toFixed(0)}ms` : 'Syncing...';
+            if (fmt) fmt.textContent = `48.0 kHz \u00b7 ${s.txChannels}ch TX \u2192 ${baChannels === 1 ? 'Mono' : 'Stereo'} \u00b7 ${syncTag} (WASM)`;
+        };
+        wasmReady = true;
+        console.log('[soluna] WASM audio engine loaded (27KB)');
+    } catch (e) {
+        console.warn('[soluna] WASM unavailable, using JS fallback:', e.message);
+        wasmReady = false;
+    }
+}
+
 // ── Constants ────────────────────────────────────────────────
 const DEFAULT_RECEIVERS = [
     { name: 'RPi 1',  host: 'soluna-rpi.local:8400'  },
@@ -509,11 +538,11 @@ function setBadge(cls) {
 }
 
 // ── Relay mode (when no local solunad) ──────────────────────────
-// Connects to wss://soluna-relay.fly.dev/ws/audio?channel=<name>
+// Connects to wss://relay.solun.art/ws/audio?channel=<name>
 // and feeds PCM audio directly to baHandleChunk.
 let relayWs = null;
 let relayMode = false;
-const RELAY_WS_BASE = 'wss://soluna-relay.fly.dev/ws/audio';
+const RELAY_WS_BASE = 'wss://relay.solun.art/ws/audio';
 
 function isRemoteDashboard() {
     // Dashboard is served from a web server (not localhost/solunad)
@@ -524,7 +553,10 @@ function isRemoteDashboard() {
 function relayConnect(channel) {
     if (!channel) return;
     relayDisconnect();
-    const url = RELAY_WS_BASE + '?channel=' + encodeURIComponent(channel);
+    // Include device_id for identity tracking
+    const devId = localStorage.getItem('soluna-device-id') ||
+        (() => { const id = crypto.randomUUID(); localStorage.setItem('soluna-device-id', id); return id; })();
+    const url = RELAY_WS_BASE + '?channel=' + encodeURIComponent(channel) + '&device=' + encodeURIComponent(devId);
     relayWs = new WebSocket(url);
     relayWs.binaryType = 'arraybuffer';
     relayWs.onopen = () => {
@@ -534,6 +566,8 @@ function relayConnect(channel) {
         if (statusEl) { statusEl.textContent = 'Relay connected: ' + channel; statusEl.style.color = '#4a4'; }
         // Auto-start browser audio if not already
         if (!baActive) baStart();
+        // Start audio fingerprint reporting
+        setTimeout(() => { const a = (typeof baGetAnalyser === 'function') ? baGetAnalyser() : baAnalyser; if (a) _fpReporter.start(a, channel); }, 500);
     };
     relayWs.onmessage = (evt) => {
         if (evt.data instanceof ArrayBuffer) {
@@ -550,15 +584,73 @@ function relayConnect(channel) {
 }
 
 function relayDisconnect() {
+    _fpReporter.stop();
     if (relayWs) { relayWs.close(); relayWs = null; }
     relayMode = false;
+}
+
+// ── Quick Channel Switcher ─────────────────────────────────────
+function switchChannel(name) {
+    if (!name) return;
+    localStorage.setItem('soluna-channel', name);
+    // Add to recent channels
+    let recent = JSON.parse(localStorage.getItem('soluna-recent-channels') || '[]');
+    recent = [name, ...recent.filter(c => c !== name)].slice(0, 5);
+    localStorage.setItem('soluna-recent-channels', JSON.stringify(recent));
+    // Reconnect relay if in relay mode
+    if (relayMode && relayWs) {
+        relayWs.close();
+        relayConnect(name);
+    } else if (isRemoteDashboard()) {
+        relayConnect(name);
+    }
+    // Sync relay input if present
+    const relayInput = document.getElementById('relay-ch-input');
+    if (relayInput) relayInput.value = name;
+    updateChannelUI();
+}
+
+function updateChannelUI() {
+    const current = localStorage.getItem('soluna-channel') || localStorage.getItem('soluna-random-channel') || '';
+    const input = document.getElementById('qs-ch-input');
+    if (input && !input.matches(':focus')) input.value = current;
+
+    const container = document.getElementById('qs-recent');
+    if (!container) return;
+    const recent = JSON.parse(localStorage.getItem('soluna-recent-channels') || '[]');
+    container.innerHTML = recent.map(ch =>
+        `<button class="qs-chip" data-ch="${escHtml(ch)}"
+            style="padding:2px 8px;font-size:0.72rem;border-radius:10px;cursor:pointer;border:1px solid var(--border,#444);
+                   background:${ch === current ? 'var(--accent,#10b981)' : 'var(--s2,#1a1a2e)'};
+                   color:${ch === current ? '#fff' : 'var(--text2,#aaa)'}">${escHtml(ch)}</button>`
+    ).join('');
+    container.querySelectorAll('.qs-chip').forEach(btn => {
+        btn.addEventListener('click', () => switchChannel(btn.dataset.ch));
+    });
+}
+
+function initChannelSwitcher() {
+    const btn = document.getElementById('qs-switch-btn');
+    const input = document.getElementById('qs-ch-input');
+    if (!btn || !input) return;
+    btn.addEventListener('click', () => {
+        const ch = input.value.trim();
+        if (ch) switchChannel(ch);
+    });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const ch = input.value.trim();
+            if (ch) switchChannel(ch);
+        }
+    });
+    updateChannelUI();
 }
 
 // Show relay UI when dashboard is served remotely (not from solunad)
 function initRelayMode() {
     if (!isRemoteDashboard()) return;
-    // Insert relay connection card before the channel-card
-    const channelCard = document.getElementById('channel-card');
+    // Insert relay connection card after the channel-switcher
+    const channelCard = document.getElementById('channel-switcher');
     if (!channelCard) return;
     const card = document.createElement('div');
     card.className = 'audio-ctrl-card';
@@ -581,10 +673,12 @@ function initRelayMode() {
             <div id="relay-status" style="font-size:12px;margin-top:6px;color:#888"></div>
         </div>
     `;
-    channelCard.parentNode.insertBefore(card, channelCard);
+    channelCard.parentNode.insertBefore(card, channelCard.nextSibling);
 
-    // Load saved channel
-    const saved = localStorage.getItem('soluna-channel') || localStorage.getItem('soluna-random-channel');
+    // Load channel from URL hash (#channel=xxx) or localStorage
+    const hashMatch = location.hash.match(/channel=([^&]+)/);
+    const hashChannel = hashMatch ? decodeURIComponent(hashMatch[1]) : null;
+    const saved = hashChannel || localStorage.getItem('soluna-channel') || localStorage.getItem('soluna-random-channel');
     const relayInput = document.getElementById('relay-ch-input');
     if (saved && relayInput) relayInput.value = saved;
 
@@ -595,8 +689,9 @@ function initRelayMode() {
         relayConnect(ch);
     });
 
-    // Auto-connect if we have a saved channel
+    // Auto-connect if we have a channel (from hash or saved)
     if (saved) {
+        localStorage.setItem('soluna-channel', saved);
         setTimeout(() => relayConnect(saved), 1000);
     }
 }
@@ -613,7 +708,7 @@ document.querySelectorAll('.bnav').forEach(btn => {
             if (el) el.classList.remove('hidden');
         }
         if (panel === 'routing') refreshRoutes();
-        if (panel === 'stats')   refreshStats();
+        if (panel === 'stats') { refreshStats(); refreshRoutes(); }
     });
 });
 
@@ -711,6 +806,13 @@ function buildCard(idx) {
     <span class="buf-label-txt">Buf</span>
     <select class="buf-sel" id="rxc-bsel-${idx}">${buildBufOptions(20)}</select>
   </div>
+  <div class="rxc-ch-row" style="display:flex;align-items:center;gap:6px;margin-top:4px">
+    <span style="font-size:0.7rem;color:var(--text3,#666)">CH</span>
+    <input id="rxc-ch-${idx}" type="text" placeholder="default"
+           style="flex:1;font-size:0.72rem;background:var(--s2,#1a1a2e);color:var(--text,#fff);border:1px solid var(--border,#444);border-radius:3px;padding:2px 6px"
+           value="${escHtml(rx.channel || '')}">
+    <button id="rxc-chset-${idx}" style="font-size:0.68rem;padding:1px 6px;background:var(--s2,#1a1a2e);color:var(--text2,#aaa);border:1px solid var(--border,#444);border-radius:3px;cursor:pointer">Set</button>
+  </div>
   <div class="delay-bar-row" id="rxc-delay-row-${idx}" style="display:none">
     <span class="buf-label-txt">Dly</span>
     <div class="delay-bar-wrap">
@@ -740,6 +842,17 @@ function buildCard(idx) {
     bufSel.addEventListener('change', () => {
         rxSend(idx, 'rx.set_buffer', { ms: parseInt(bufSel.value, 10) });
     });
+
+    const chSetBtn = el.querySelector('#rxc-chset-' + idx);
+    const chInput  = el.querySelector('#rxc-ch-' + idx);
+    if (chSetBtn && chInput) {
+        chSetBtn.addEventListener('click', () => {
+            const ch = chInput.value.trim();
+            receivers[idx].channel = ch;
+            saveReceivers();
+            rxSend(idx, 'channel.set', { channel: ch });
+        });
+    }
 
     return el;
 }
@@ -1141,11 +1254,15 @@ if (acDeglitch) {
     });
 }
 
-// Settings expand
+// Settings expand (gear icon toggles detail section within ac-body)
 const acExpand = document.getElementById('ac-expand');
 const acDetail = document.getElementById('ac-detail');
 if (acExpand && acDetail) {
-    acExpand.addEventListener('click', () => {
+    acExpand.addEventListener('click', (e) => {
+        e.stopPropagation(); // Don't trigger header toggle
+        // Also ensure ac-body is visible when expanding detail
+        const acBody = document.getElementById('ac-body');
+        if (acBody && acBody.style.display === 'none') acBody.style.display = '';
         acDetail.style.display = acDetail.style.display === 'none' ? '' : 'none';
     });
 }
@@ -1288,7 +1405,7 @@ let baGain       = null;
 let baAnalyser   = null;
 let baActive     = false;
 let baSampleRate = 48000;
-let baChannels   = 2;
+let baChannels   = 1;  // default: mono
 let baPkts       = 0;
 let baUnderruns  = 0;
 let baVuRaf      = null;
@@ -1380,6 +1497,8 @@ async function baStart() {
     document.getElementById('ba-icon').textContent = '■';
     document.getElementById('ba-label').textContent = 'Listening…';
     document.getElementById('ba-controls').style.display = '';
+    const settingsEl = document.getElementById('ba-settings');
+    if (settingsEl) settingsEl.style.display = '';
     const urlEl = document.getElementById('ba-url');
     if (urlEl) urlEl.textContent = location.origin;
 
@@ -1401,6 +1520,8 @@ function baStop() {
     document.getElementById('ba-icon').textContent = '▶';
     document.getElementById('ba-label').textContent = 'Click to listen';
     document.getElementById('ba-controls').style.display = 'none';
+    const settingsEl2 = document.getElementById('ba-settings');
+    if (settingsEl2) settingsEl2.style.display = 'none';
     baClearCanvas();
 }
 
@@ -1415,6 +1536,13 @@ function baOnVisibility() {
 }
 
 function baHandleChunk(buf) {
+    // ── WASM path: OSTP-aware parsing + downmix + ring buffer ──
+    if (wasmReady && wasmAudio) {
+        wasmAudio.pushPacket(buf);
+        return;
+    }
+
+    // ── JS fallback: raw S16 PCM (no OSTP header parsing) ──
     if (!baWorklet || !baActive) return;
     const s16 = new Int16Array(buf);
     const n   = (s16.length / baChannels) | 0;
@@ -1439,8 +1567,18 @@ function baHandleChunk(buf) {
 
 // ── Visualization ─────────────────────────────────────────────
 
+function baGetAnalyser() {
+    // Prefer WASM analyser when active, fall back to JS analyser
+    if (wasmReady && wasmAudio) {
+        var wa = wasmAudio.getAnalyser();
+        if (wa) return wa;
+    }
+    return baAnalyser;
+}
+
 function baDrawViz() {
-    if (!baAnalyser || !baActive) return;
+    var analyser = baGetAnalyser();
+    if (!analyser || !baActive) return;
     baVizMode === 'spectrum' ? baDrawSpectrum() : baDrawVU();
     baVuRaf = requestAnimationFrame(baDrawViz);
 }
@@ -1448,12 +1586,14 @@ function baDrawViz() {
 function baDrawVU() {
     const canvas = document.getElementById('ba-vu');
     if (!canvas) return;
+    const analyser = baGetAnalyser();
+    if (!analyser) return;
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
 
     // Time-domain data → per-channel RMS
-    const td = new Uint8Array(baAnalyser.frequencyBinCount);
-    baAnalyser.getByteTimeDomainData(td);
+    const td = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteTimeDomainData(td);
     let sL = 0, sR = 0;
     for (let i = 0; i < td.length; i++) {
         const v = (td[i] - 128) / 128;
@@ -1496,11 +1636,13 @@ function baDrawVU() {
 function baDrawSpectrum() {
     const canvas = document.getElementById('ba-vu');
     if (!canvas) return;
+    const analyser = baGetAnalyser();
+    if (!analyser) return;
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
 
-    const fd = new Uint8Array(baAnalyser.frequencyBinCount);
-    baAnalyser.getByteFrequencyData(fd);
+    const fd = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(fd);
 
     ctx.clearRect(0, 0, W, H);
     // Show ~0–16kHz (first 1/3 of bins at 48kHz)
@@ -1562,6 +1704,241 @@ function baInit() {
     });
 
     baClearCanvas();
+
+    // ── Audio Settings toggles ──────────────────────────────
+    baInitSettings();
+}
+
+function baInitSettings() {
+    // Load persisted settings
+    const stored = JSON.parse(localStorage.getItem('soluna-audio-settings') || '{}');
+
+    const opusSw = document.getElementById('ba-opus-sw');
+    const syncSw = document.getElementById('ba-sync-sw');
+    const outputCh = document.getElementById('ba-output-ch');
+    const syncDelay = document.getElementById('ba-sync-delay');
+    const syncDelayVal = document.getElementById('ba-sync-delay-val');
+
+    if (stored.opus !== undefined && opusSw) opusSw.checked = stored.opus;
+    if (stored.sync !== undefined && syncSw) syncSw.checked = stored.sync;
+    if (stored.outputCh && outputCh) outputCh.value = stored.outputCh;
+    if (stored.syncDelay !== undefined && syncDelay) {
+        syncDelay.value = stored.syncDelay;
+        if (syncDelayVal) syncDelayVal.textContent = stored.syncDelay + ' ms';
+    }
+
+    function save() {
+        localStorage.setItem('soluna-audio-settings', JSON.stringify({
+            opus: opusSw ? opusSw.checked : true,
+            sync: syncSw ? syncSw.checked : true,
+            outputCh: outputCh ? outputCh.value : '1',
+            syncDelay: syncDelay ? parseInt(syncDelay.value) : 0
+        }));
+    }
+
+    function apply() {
+        if (!wasmAudio) return;
+        wasmAudio.setSyncEnabled(syncSw ? syncSw.checked : true);
+        wasmAudio.setOutputChannels(outputCh ? parseInt(outputCh.value) : 1);
+        wasmAudio.setSyncDelay(syncDelay ? parseInt(syncDelay.value) : 0);
+        // Opus bridge toggle
+        if (wasmAudio.player && wasmAudio.player.set_opus_bridge_available) {
+            wasmAudio.player.set_opus_bridge_available(opusSw && opusSw.checked ? 1 : 0);
+        }
+    }
+
+    if (opusSw) opusSw.addEventListener('change', () => { save(); apply(); });
+    if (syncSw) syncSw.addEventListener('change', () => { save(); apply(); });
+    if (outputCh) outputCh.addEventListener('change', () => { save(); apply(); });
+    if (syncDelay) syncDelay.addEventListener('input', () => {
+        if (syncDelayVal) syncDelayVal.textContent = syncDelay.value + ' ms';
+        save(); apply();
+    });
+
+    // Talk mode toggle — sends TALK:on/off to relay and enables WASM multi-source mixing
+    const talkSw = document.getElementById('ba-talk-sw');
+    const talkInfo = document.getElementById('ba-talk-info');
+    if (talkSw) {
+        talkSw.addEventListener('change', () => {
+            const on = talkSw.checked;
+            // Enable multi-source mixing in WASM player
+            if (wasmAudio && wasmAudio.player && wasmAudio.player.set_talk_mode) {
+                wasmAudio.player.set_talk_mode(on);
+            }
+            // Send TALK command to relay via WebSocket
+            if (wasmAudio && wasmAudio.ws && wasmAudio.ws.readyState === 1) {
+                wasmAudio.ws.send('TALK:' + (on ? 'on' : 'off') + '\n');
+            }
+            if (talkInfo) talkInfo.style.display = on ? 'block' : 'none';
+        });
+    }
+
+    // Apply settings when WASM becomes ready (delayed)
+    const applyWhenReady = setInterval(() => {
+        if (wasmReady) { apply(); clearInterval(applyWhenReady); }
+    }, 500);
+}
+
+// ── Browser TX (Microphone Broadcast) ─────────────────────────
+let btxActive    = false;
+let btxStream    = null;  // MediaStream from getUserMedia
+let btxCtx       = null;  // AudioContext
+let btxSource    = null;  // MediaStreamSourceNode
+let btxProcessor = null;  // ScriptProcessorNode
+let btxEncoder   = null;  // SolunaTxEncoder (WASM)
+let btxWs        = null;  // WebSocket to relay
+let btxChannel   = '';
+
+function btxGetChannel() {
+    return localStorage.getItem('soluna-channel')
+        || localStorage.getItem('soluna-random-channel')
+        || 'default';
+}
+
+async function btxStart() {
+    if (btxActive) return;
+
+    // Check WASM TX encoder availability
+    if (typeof window.SolunaTxEncoder === 'undefined') {
+        alert('WASM TX encoder not loaded. Cannot broadcast.');
+        return;
+    }
+
+    // Request microphone
+    try {
+        btxStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch (e) {
+        console.warn('[btx] Microphone access denied:', e.message);
+        alert('Microphone access is required to broadcast.');
+        return;
+    }
+
+    // Load WASM if needed (SolunaTxEncoder needs wasm loaded)
+    try {
+        // SolunaTxEncoder constructor calls wasm — ensure it is loaded via SolunaAudio init path
+        if (!wasmReady && window.SolunaAudio) {
+            const tmp = new window.SolunaAudio();
+            await tmp.init(1, 48000);
+            tmp.destroy();
+        }
+        btxEncoder = new window.SolunaTxEncoder(1, 1);
+        // Apply Opus setting from UI toggle
+        const opusSw = document.getElementById('ba-opus-sw');
+        if (btxEncoder.set_opus_enabled && opusSw) {
+            btxEncoder.set_opus_enabled(opusSw.checked);
+        }
+    } catch (e) {
+        console.warn('[btx] Failed to create TX encoder:', e.message);
+        btxCleanup();
+        return;
+    }
+
+    btxChannel = btxGetChannel();
+
+    // Connect WebSocket to relay for TX
+    const devId = localStorage.getItem('soluna-device-id') ||
+        (() => { const id = crypto.randomUUID(); localStorage.setItem('soluna-device-id', id); return id; })();
+    const wsUrl = RELAY_WS_BASE + '?channel=' + encodeURIComponent(btxChannel) + '&role=tx&device=' + encodeURIComponent(devId);
+    try {
+        btxWs = new WebSocket(wsUrl);
+        btxWs.binaryType = 'arraybuffer';
+    } catch (e) {
+        console.warn('[btx] WebSocket failed:', e.message);
+        btxCleanup();
+        return;
+    }
+
+    btxWs.onopen = () => {
+        console.log('[btx] Connected to relay, broadcasting on channel:', btxChannel);
+    };
+    btxWs.onclose = () => {
+        if (btxActive) btxStop();
+    };
+    btxWs.onerror = () => {};
+
+    // Audio capture: mic → ScriptProcessor → encode → WebSocket
+    btxCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+    if (btxCtx.state === 'suspended') await btxCtx.resume().catch(() => {});
+    btxSource = btxCtx.createMediaStreamSource(btxStream);
+
+    // ScriptProcessorNode: 960 samples = 20ms at 48kHz (Opus frame size)
+    const bufSize = 1024; // closest power-of-2 to 960
+    btxProcessor = btxCtx.createScriptProcessor(bufSize, 1, 1);
+    btxProcessor.onaudioprocess = (e) => {
+        if (!btxActive || !btxEncoder || !btxWs || btxWs.readyState !== WebSocket.OPEN) return;
+        const input = e.inputBuffer.getChannelData(0);
+        // Encode PCM → OSTP packet via WASM
+        try {
+            const packet = btxEncoder.encode_frame(input);
+            btxWs.send(packet.buffer);
+        } catch (err) {
+            // Encoding error — skip frame
+        }
+    };
+
+    btxSource.connect(btxProcessor);
+    btxProcessor.connect(btxCtx.destination); // required for onaudioprocess to fire
+
+    btxActive = true;
+    btxUpdateUI(true);
+}
+
+function btxStop() {
+    btxActive = false;
+    btxCleanup();
+    btxUpdateUI(false);
+}
+
+function btxCleanup() {
+    if (btxProcessor) { btxProcessor.disconnect(); btxProcessor = null; }
+    if (btxSource)    { btxSource.disconnect(); btxSource = null; }
+    if (btxCtx)       { btxCtx.close().catch(() => {}); btxCtx = null; }
+    if (btxStream)    { btxStream.getTracks().forEach(t => t.stop()); btxStream = null; }
+    if (btxEncoder)   { try { btxEncoder.free(); } catch(_){} btxEncoder = null; }
+    if (btxWs)        { btxWs.close(); btxWs = null; }
+}
+
+function btxUpdateUI(broadcasting) {
+    const btn = document.getElementById('btx-btn');
+    const label = document.getElementById('btx-label');
+    const icon = document.getElementById('btx-icon');
+    if (!btn) return;
+    if (broadcasting) {
+        btn.classList.add('btx-active');
+        if (icon) icon.textContent = '■';
+        if (label) label.textContent = 'Broadcasting to: ' + btxChannel;
+    } else {
+        btn.classList.remove('btx-active');
+        if (icon) icon.textContent = '🎙';
+        if (label) label.textContent = 'Click to broadcast';
+    }
+}
+
+function btxInit() {
+    // Inject Broadcast section into Browser Audio panel
+    const panelBody = document.querySelector('#panel-browser .panel-body');
+    if (!panelBody) return;
+    const section = document.createElement('div');
+    section.className = 'browser-audio-card';
+    section.style.marginTop = '12px';
+    section.innerHTML = `
+        <div class="ba-hero">
+            <button id="btx-btn" class="ba-play-btn" title="Broadcast microphone" style="background:linear-gradient(135deg,#ef4444,#f59e0b)">
+                <span id="btx-icon">🎙</span>
+            </button>
+            <div class="ba-status">
+                <div id="btx-label">Click to broadcast</div>
+                <div id="btx-fmt" class="ba-fmt">Mic → OSTP → Relay</div>
+            </div>
+        </div>
+        <div class="ba-hint">
+            <p>Captures your microphone, encodes with WASM TX encoder, and sends to the relay channel.</p>
+        </div>
+    `;
+    panelBody.appendChild(section);
+
+    const btn = document.getElementById('btx-btn');
+    if (btn) btn.addEventListener('click', () => btxActive ? btxStop() : btxStart());
 }
 
 // ── Tune / Repair / Latency card ─────────────────────────────
@@ -2820,15 +3197,29 @@ function _pSeek_value() {
     }
 })();
 
+// ── Audio Controls toggle (collapsed by default) ─────────────
+(function() {
+    const acHeaderToggle = document.getElementById('ac-header-toggle');
+    const acBody = document.getElementById('ac-body');
+    if (acHeaderToggle && acBody) {
+        acHeaderToggle.addEventListener('click', () => {
+            acBody.style.display = acBody.style.display === 'none' ? '' : 'none';
+        });
+    }
+})();
+
 initCards();
 localConnect();
 baInit();
+btxInit();
+wasmInit(); // Load WASM audio engine (async, falls back to JS)
 initPlayer();
 initRelayMode();
+initChannelSwitcher();
 
 // Stop browser audio on page unload to prevent AudioContext hanging
-window.addEventListener('pagehide', () => { if (baActive) baStop(); });
-window.addEventListener('beforeunload', () => { if (baActive) baStop(); });
+window.addEventListener('pagehide', () => { _fpReporter.stop(); if (btxActive) btxStop(); if (baActive) baStop(); if (wasmAudio) wasmAudio.destroy(); });
+window.addEventListener('beforeunload', () => { _fpReporter.stop(); if (btxActive) btxStop(); if (baActive) baStop(); if (wasmAudio) wasmAudio.destroy(); });
 
 // ── Channel Name Purchase (Web) ──────────────────────────────────
 (function initChannelUI() {
@@ -2996,4 +3387,251 @@ window.addEventListener('beforeunload', () => { if (baActive) baStop(); });
             status.style.color = '#fa0';
         }
     });
+})();
+
+// ── Audio Fingerprint Reporter ──────────────────────────────
+// Collects frequency snapshots from the existing baAnalyser,
+// computes a 64-bit perceptual hash every 30s, and POSTs it
+// to the relay server. Also computes Chromaprint-compatible
+// chroma features and optionally captures a 15s audio sample.
+const _fpReporter = (function() {
+    const SNAPSHOT_INTERVAL = 156;   // ms — ~32 snapshots per 5 seconds
+    const REPORT_INTERVAL   = 30000; // ms — report every 30 seconds
+    const BAND_EDGES = [200, 400, 800, 1600, 3200, 6400, 12800]; // 7 edges → 8 bands
+    const RELAY_FP_URL = 'https://relay.solun.art/api/fingerprint';
+
+    // Chromaprint chroma bin note frequencies (C2..B6, 12 pitch classes)
+    const CHROMA_BINS = 12;
+    const CHROMA_FRAMES = 32;  // frames per fingerprint window
+    const AUDIO_SAMPLE_DURATION = 15; // seconds
+
+    let analyser      = null;
+    let channel       = '';
+    let snapshots     = [];    // [{bands: Float32Array(8)}]
+    let chromaFrames  = [];    // [{chroma: Float32Array(12)}]
+    let snapshotTimer = null;
+    let reportTimer   = null;
+    let mediaRecorder = null;
+    let audioSampleB64 = null; // latest 15s audio sample as base64
+    let recordingStream = null;
+    let deviceId      = localStorage.getItem('fp-device-id');
+    if (!deviceId) {
+        deviceId = crypto.randomUUID();
+        localStorage.setItem('fp-device-id', deviceId);
+    }
+
+    function bandIndex(freq, sampleRate, binCount) {
+        return Math.round(freq / sampleRate * binCount * 2);
+    }
+
+    // Convert frequency bin index to pitch class (0-11, C=0)
+    function binToChroma(binIdx, sampleRate, fftSize) {
+        const freq = binIdx * sampleRate / fftSize;
+        if (freq < 65) return -1;  // below C2
+        if (freq > 2100) return -1; // above C7
+        // MIDI note number: 69 + 12*log2(freq/440)
+        const midi = 69 + 12 * Math.log2(freq / 440);
+        return Math.round(midi) % 12;
+    }
+
+    function takeSnapshot() {
+        if (!analyser) return;
+        const binCount = analyser.frequencyBinCount;
+        const freqData = new Uint8Array(binCount);
+        analyser.getByteFrequencyData(freqData);
+        const sampleRate = analyser.context ? analyser.context.sampleRate : 48000;
+        const fftSize = analyser.fftSize || 2048;
+
+        // Compute energy in 8 bands (existing 64-bit hash)
+        const bands = new Float32Array(8);
+        const edges = [0, ...BAND_EDGES, sampleRate / 2];
+        for (let b = 0; b < 8; b++) {
+            const lo = bandIndex(edges[b], sampleRate, binCount);
+            const hi = Math.min(bandIndex(edges[b + 1], sampleRate, binCount), binCount);
+            let sum = 0;
+            const count = Math.max(hi - lo, 1);
+            for (let i = lo; i < hi && i < binCount; i++) sum += freqData[i];
+            bands[b] = sum / count;
+        }
+        snapshots.push(bands);
+        if (snapshots.length > 64) snapshots.splice(0, snapshots.length - 64);
+
+        // Compute chroma features (12 pitch classes)
+        const chroma = new Float32Array(CHROMA_BINS);
+        for (let i = 1; i < binCount; i++) {
+            const pc = binToChroma(i, sampleRate, fftSize);
+            if (pc >= 0) {
+                const energy = freqData[i] / 255.0;
+                chroma[pc] += energy * energy; // squared energy
+            }
+        }
+        // Normalize chroma vector
+        let maxVal = 0;
+        for (let i = 0; i < CHROMA_BINS; i++) if (chroma[i] > maxVal) maxVal = chroma[i];
+        if (maxVal > 0) for (let i = 0; i < CHROMA_BINS; i++) chroma[i] /= maxVal;
+        chromaFrames.push(chroma);
+        if (chromaFrames.length > CHROMA_FRAMES * 2) chromaFrames.splice(0, chromaFrames.length - CHROMA_FRAMES * 2);
+    }
+
+    function computeHash() {
+        const n = snapshots.length;
+        if (n < 32) return null;
+        const recent = snapshots.slice(n - 32);
+        let hi = 0, lo = 0;
+        for (let i = 0; i < 32; i++) {
+            const b = recent[i];
+            const bit0 = (b[0] + b[2] + b[4] + b[6]) > (b[1] + b[3] + b[5] + b[7]) ? 1 : 0;
+            const bit1 = (b[0] + b[1] + b[2] + b[3]) > (b[4] + b[5] + b[6] + b[7]) ? 1 : 0;
+            if (i < 16) {
+                hi = (hi << 2) | (bit0 << 1) | bit1;
+            } else {
+                lo = (lo << 2) | (bit0 << 1) | bit1;
+            }
+        }
+        const hHex = (hi >>> 0).toString(16).padStart(8, '0');
+        const lHex = (lo >>> 0).toString(16).padStart(8, '0');
+        return hHex + lHex;
+    }
+
+    // Compute Chromaprint-compatible fingerprint from chroma frames.
+    // Quantize each chroma bin to 2 bits, pack CHROMA_FRAMES frames,
+    // and encode as base64.
+    function computeChromaprint() {
+        const n = chromaFrames.length;
+        if (n < CHROMA_FRAMES) return null;
+        const recent = chromaFrames.slice(n - CHROMA_FRAMES);
+
+        // Quantize: 12 bins x 32 frames = 384 values, 2 bits each = 96 bytes
+        const byteCount = Math.ceil(CHROMA_FRAMES * CHROMA_BINS * 2 / 8);
+        const packed = new Uint8Array(byteCount);
+        let bitPos = 0;
+        for (let f = 0; f < CHROMA_FRAMES; f++) {
+            const frame = recent[f];
+            for (let b = 0; b < CHROMA_BINS; b++) {
+                // Quantize to 2 bits: 0=[0,0.25), 1=[0.25,0.5), 2=[0.5,0.75), 3=[0.75,1.0]
+                const q = Math.min(3, Math.floor(frame[b] * 4));
+                const byteIdx = bitPos >> 3;
+                const bitOff = 6 - (bitPos & 7); // MSB first within byte
+                if (bitOff >= 0) {
+                    packed[byteIdx] |= (q << bitOff);
+                } else {
+                    // Spans two bytes
+                    packed[byteIdx] |= (q >> (-bitOff));
+                    packed[byteIdx + 1] |= (q << (8 + bitOff));
+                }
+                bitPos += 2;
+            }
+        }
+
+        // Base64 encode
+        let binary = '';
+        for (let i = 0; i < packed.length; i++) binary += String.fromCharCode(packed[i]);
+        return btoa(binary);
+    }
+
+    // Start recording a 15-second audio sample via MediaRecorder
+    function startAudioSampleCapture() {
+        if (!analyser || !analyser.context) return;
+        try {
+            const ctx = analyser.context;
+            const dest = ctx.createMediaStreamDestination();
+            // Connect the analyser output to the recording destination
+            analyser.connect(dest);
+            recordingStream = dest;
+
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4');
+
+            mediaRecorder = new MediaRecorder(dest.stream, { mimeType: mimeType });
+            const chunks = [];
+            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(chunks, { type: mimeType });
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    // Strip the data URL prefix to get pure base64
+                    const b64 = reader.result.split(',')[1] || '';
+                    audioSampleB64 = b64;
+                };
+                reader.readAsDataURL(blob);
+                // Disconnect recording tap
+                try { analyser.disconnect(dest); } catch (_) {}
+                recordingStream = null;
+            };
+            mediaRecorder.start();
+
+            // Stop after AUDIO_SAMPLE_DURATION seconds
+            setTimeout(() => {
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                }
+            }, AUDIO_SAMPLE_DURATION * 1000);
+        } catch (e) {
+            // MediaRecorder not supported or context issue — skip audio sample
+            audioSampleB64 = null;
+        }
+    }
+
+    function sendReport() {
+        const hash = computeHash();
+        if (!hash || !channel) return;
+
+        const chromaprint = computeChromaprint();
+        const payload = {
+            channel: channel,
+            device_id: deviceId,
+            fingerprint: hash,
+            timestamp: Math.floor(Date.now() / 1000)
+        };
+        if (chromaprint) {
+            payload.chromaprint = chromaprint;
+            payload.duration = AUDIO_SAMPLE_DURATION;
+        }
+        if (audioSampleB64) {
+            payload.audio_sample = audioSampleB64;
+            audioSampleB64 = null; // send once, then re-capture
+        }
+
+        fetch(RELAY_FP_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).catch(() => {}); // fire and forget
+
+        // Start capturing next audio sample for the following report
+        startAudioSampleCapture();
+    }
+
+    return {
+        start(an, ch) {
+            this.stop();
+            analyser = an;
+            channel  = ch;
+            snapshots = [];
+            chromaFrames = [];
+            audioSampleB64 = null;
+            snapshotTimer = setInterval(takeSnapshot, SNAPSHOT_INTERVAL);
+            reportTimer   = setInterval(sendReport, REPORT_INTERVAL);
+            // Start first audio sample capture immediately
+            setTimeout(() => startAudioSampleCapture(), 1000);
+        },
+        stop() {
+            if (snapshotTimer) { clearInterval(snapshotTimer); snapshotTimer = null; }
+            if (reportTimer)   { clearInterval(reportTimer);   reportTimer   = null; }
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                try { mediaRecorder.stop(); } catch (_) {}
+            }
+            if (recordingStream && analyser) {
+                try { analyser.disconnect(recordingStream); } catch (_) {}
+            }
+            mediaRecorder = null;
+            recordingStream = null;
+            audioSampleB64 = null;
+            analyser  = null;
+            channel   = '';
+            snapshots = [];
+            chromaFrames = [];
+        }
+    };
 })();

@@ -1,0 +1,191 @@
+server {
+    listen 8080;
+    root /usr/share/nginx/html;
+    index index.html landing.html;
+
+    # ── Gzip ───────────────────────────────────────────────
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types
+        text/plain text/css text/html application/javascript
+        application/json image/svg+xml application/xml;
+
+    # ── Security headers ───────────────────────────────────
+    add_header X-Content-Type-Options  "nosniff"         always;
+    add_header X-Frame-Options         "SAMEORIGIN"      always;
+    add_header Referrer-Policy         "no-referrer"     always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Permissions-Policy      "microphone=(self), camera=()" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; connect-src 'self' wss://relay.solun.art https://relay.solun.art ws://localhost:* http://localhost:*; media-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:;" always;
+
+    # ── WASM files ─────────────────────────────────────────
+    location ~* \.wasm$ {
+        types { application/wasm wasm; }
+        add_header Cache-Control "public, max-age=604800, immutable";
+    }
+
+    # ── Routes ─────────────────────────────────────────────
+
+    # Top page: ZAMNA HAWAII event
+    location = / {
+        try_files /zamna.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # Soluna landing page (moved from /)
+    location = /soluna {
+        try_files /landing.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # Next.js assets (for ZAMNA page)
+    location /_next/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # Video/audio assets
+    location /videos/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=2592000";
+    }
+    location /audio/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=2592000";
+    }
+
+    # Dashboard
+    location = /dashboard {
+        try_files /index.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # About
+    location = /about {
+        try_files /about.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # Guide
+    location = /guide {
+        try_files /guide.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # Vision
+    location = /vision {
+        try_files /vision.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # Persona pages
+    location = /for-djs {
+        try_files /for-djs.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location = /for-venues {
+        try_files /for-venues.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location = /for-events {
+        try_files /for-events.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location = /for-developers {
+        try_files /for-developers.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # ── English pages ─────────────────────────────────────
+    location = /en/ {
+        try_files /en/landing.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location = /en {
+        return 301 /en/;
+    }
+    location = /en/for-djs {
+        try_files /en/for-djs.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location = /en/for-venues {
+        try_files /en/for-venues.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location = /en/for-events {
+        try_files /en/for-events.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location = /en/for-developers {
+        try_files /en/for-developers.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location = /en/guide {
+        try_files /en/guide.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # Protocol spec
+    location = /protocol {
+        try_files /protocol.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location = /en/protocol {
+        try_files /en/protocol.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location = /en/about {
+        try_files /en/about.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location = /en/vision {
+        try_files /en/vision.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+    location = /en/soluna {
+        try_files /en/landing.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # API docs
+    location = /api-docs {
+        try_files /api-docs.html =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # Install scripts — no caching so updates are always fresh
+    location = /install.sh {
+        try_files /install.sh =404;
+        add_header Content-Type "text/plain; charset=utf-8";
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    location = /install-rx.sh {
+        try_files /install-rx.sh =404;
+        add_header Content-Type "text/plain; charset=utf-8";
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    # All other files
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    # HTML — no cache
+    location ~* \.html$ {
+        add_header Cache-Control "no-cache, must-revalidate";
+    }
+
+    # JS / CSS — aggressive cache (7 days)
+    location ~* \.(css|js)$ {
+        add_header Cache-Control "public, max-age=604800, immutable";
+    }
+
+    # Images / fonts — long cache (30 days)
+    location ~* \.(ico|png|jpg|jpeg|gif|svg|woff2|woff|ttf)$ {
+        add_header Cache-Control "public, max-age=2592000";
+    }
+}

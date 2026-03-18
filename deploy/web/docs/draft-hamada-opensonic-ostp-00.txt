@@ -1,0 +1,1472 @@
+
+
+
+
+Individual Submission                                          Y. Hamada
+Internet-Draft                                                EnablerDAO
+Intended status: Experimental                              16 March 2026
+Expires: 17 September 2026
+
+
+                  Open Sonic Transport Protocol (OSTP)
+                     draft-hamada-opensonic-ostp-00
+
+   OSTP v0.9.3: 5 critical protocol fixes applied.
+   (1) media_timestamp: 32-bit μs → ms precision (~71min rollover →
+   ~49-day capacity) with RFC 3550 §A.1 rollover detection.
+   (2) Mandatory Control/Data plane separation (ws:8400/ws vs
+   ws:8400/ws/data) to prevent TCP HOL blocking on file transfers.
+   (3) Swarm churn resistance: dual-parent reception, relay fallback
+   pre-connection, Gossip peer table (8 candidates), <80ms recovery.
+   (4) TIP fraud prevention: TIP:<amount>:<tx_sig>:<pubkey> with relay
+   Solana RPC getTransaction verification; unsigned tips denied by default.
+   (5) Symmetric NAT TURN fallback: 4-phase traversal (STUN→hole-punch
+   →TURN→cascade), ~100% connectivity guarantee.
+
+   Rev 00a: Fixed TCP/UDP sync (RTCP-based), in-band track switch
+   (RTCP APP), dynamic FEC, multicast collision avoidance, mandatory
+   TLS for Control Plane, 30s CHARGE replay window.
+
+Abstract
+
+   This document specifies the Open Sonic Transport Protocol (OSTP), a
+   UDP/RTP-based protocol for real-time, multi-room audio distribution
+   over both local area networks and the wide-area Internet.  OSTP
+   extends the Real-time Transport Protocol (RTP, RFC 3550) with an
+   8-byte header extension that carries a stream identifier, an extended
+   sequence number, and a high-resolution media timestamp.  The protocol
+   defines payload types for uncompressed PCM, 32-bit floating-point
+   PCM, and Opus-coded audio; a relay signalling protocol carried over
+   UDP text datagrams; a WebSocket-based daemon control interface; a
+   binary file-transfer sub-protocol; congestion control using RTCP
+   Receiver Reports and a bitrate ladder; Forward Error Correction (FEC)
+   via XOR parity packets; Negative Acknowledgement (NACK) based
+   retransmission; and an optional DTLS-SRTP security layer.  OSTP also
+   defines an economic layer that enables per-listen charging, tipping,
+   and royalty distribution anchored to on-chain wallets.
+
+   This document is an independent submission describing the OSTP 1.0
+   wire format as implemented in the OpenSonic/Soluna open-source
+   codebase.  It is not the product of an IETF working group.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at https://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on 17 September 2026.
+
+
+
+
+Hamada                  Expires 17 September 2026               [Page 1]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+Copyright Notice
+
+   Copyright (c) 2026 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents (https://trustee.ietf.org/
+   license-info) in effect on the date of publication of this document.
+   Please review these documents carefully, as they describe your rights
+   and restrictions with respect to this document.
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . . .   3
+     1.1.  Design Goals and Non-Goals  . . . . . . . . . . . . . . .   4
+   2.  Terminology . . . . . . . . . . . . . . . . . . . . . . . . .   4
+   3.  Protocol Architecture . . . . . . . . . . . . . . . . . . . .   5
+     3.1.  Media Plane . . . . . . . . . . . . . . . . . . . . . . .   5
+     3.2.  Control Plane . . . . . . . . . . . . . . . . . . . . . .   6
+     3.3.  Swarm Distribution Tree . . . . . . . . . . . . . . . . .   6
+   4.  OSTP Packet Format  . . . . . . . . . . . . . . . . . . . . .   7
+     4.1.  RTP Fixed Header  . . . . . . . . . . . . . . . . . . . .   7
+     4.2.  RTP Extension Header  . . . . . . . . . . . . . . . . . .   8
+     4.3.  OSTP Extension Data . . . . . . . . . . . . . . . . . . .   9
+     4.4.  Payload Types . . . . . . . . . . . . . . . . . . . . . .   9
+     4.5.  Optional CRC-32 Trailer . . . . . . . . . . . . . . . . .  10
+   5.  Channel Addressing  . . . . . . . . . . . . . . . . . . . . .  11
+   6.  Relay Signalling Protocol . . . . . . . . . . . . . . . . . .  11
+     6.1.  RSP Message Definitions . . . . . . . . . . . . . . . . .  11
+     6.2.  Relay State Machine . . . . . . . . . . . . . . . . . . .  13
+   7.  Congestion Control  . . . . . . . . . . . . . . . . . . . . .  13
+     7.1.  RTCP Receiver Reports . . . . . . . . . . . . . . . . . .  13
+     7.2.  Opus Bitrate Ladder . . . . . . . . . . . . . . . . . . .  14
+     7.3.  Forward Error Correction (FEC)  . . . . . . . . . . . . .  15
+     7.4.  Negative Acknowledgement (NACK) . . . . . . . . . . . . .  15
+   8.  File Distribution Protocol  . . . . . . . . . . . . . . . . .  16
+     8.1.  FILE_BEGIN Frame Header . . . . . . . . . . . . . . . . .  17
+     8.2.  Pre-Buffer and Playback Switching . . . . . . . . . . . .  17
+   9.  Daemon Control Protocol (DCP) . . . . . . . . . . . . . . . .  18
+     9.1.  DCP Command Reference . . . . . . . . . . . . . . . . . .  18
+     9.2.  DCP Asynchronous Events . . . . . . . . . . . . . . . . .  20
+   10. Security Considerations . . . . . . . . . . . . . . . . . . .  20
+     10.1.  DTLS-SRTP  . . . . . . . . . . . . . . . . . . . . . . .  21
+     10.2.  Session Tokens and Access Control  . . . . . . . . . . .  21
+     10.3.  Rate Limiting and Amplification  . . . . . . . . . . . .  21
+     10.4.  Economic Layer Security  . . . . . . . . . . . . . . . .  22
+     10.5.  Privacy Considerations . . . . . . . . . . . . . . . . .  22
+   11. IANA Considerations . . . . . . . . . . . . . . . . . . . . .  22
+
+
+
+Hamada                  Expires 17 September 2026               [Page 2]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+     11.1.  Port Numbers . . . . . . . . . . . . . . . . . . . . . .  22
+     11.2.  RTP Extension Profile  . . . . . . . . . . . . . . . . .  23
+     11.3.  RTP Payload Types  . . . . . . . . . . . . . . . . . . .  23
+     11.4.  IPv4 Multicast Address . . . . . . . . . . . . . . . . .  24
+   12. References  . . . . . . . . . . . . . . . . . . . . . . . . .  24
+     12.1.  Normative References . . . . . . . . . . . . . . . . . .  24
+     12.2.  Informative References . . . . . . . . . . . . . . . . .  25
+   Appendix A: Implementation Notes  . . . . . . . . . . . . . . . .  25
+     Clock Synchronisation . . . . . . . . . . . . . . . . . . . . .  25
+     Playout Buffer Design . . . . . . . . . . . . . . . . . . . . .  26
+     Embedded Receiver Considerations  . . . . . . . . . . . . . . .  26
+   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .  26
+
+1.  Introduction
+
+   Distributing high-quality audio to multiple rooms or devices over a
+   general-purpose IP network is a well-studied problem, yet existing
+   solutions present significant deployment friction.  AES67 [AES67]
+   requires IEEE 1588 PTP grand-master infrastructure and IGMP-aware
+   switching, making it unsuitable for consumer environments.  WebRTC
+   [RFC8835] provides peer-to-peer audio but is engineered for bi-
+   directional voice calls and carries heavyweight browser-oriented
+   signalling that is inappropriate for high-fidelity one-to-many
+   streaming.  RTSP [RFC7826] is a session-control protocol that relies
+   on a separate transport layer and lacks integrated relay topologies.
+
+   OSTP is designed around three primary goals:
+
+   1.  *Minimal latency on LAN.* When all participants share a subnet,
+       OSTP uses UDP multicast and achieves end-to-end audio latency
+       below 5 ms.
+
+   2.  *Transparent WAN relay.* For participants separated by NAT or the
+       wide-area Internet, OSTP defines a lightweight relay protocol
+       that routes audio datagrams through one or more relay nodes.  The
+       wire format seen by the receiver is identical whether the audio
+       arrived via multicast or relay.
+
+   3.  *Open economics.* OSTP embeds optional wallet addressing and
+       micro-payment signalling to enable creators to monetise live
+       audio without a proprietary platform intermediary.
+
+   OSTP packets are standard RTP packets ([RFC3550]) with the RTP header
+   extension bit set and the extension profile word set to 0x4F53 (ASCII
+   "OS").  Implementations that do not recognise the profile will
+   discard the extension and may attempt to render the payload according
+   to the payload type field, which provides a limited but graceful
+   degradation path.
+
+
+
+Hamada                  Expires 17 September 2026               [Page 3]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+1.1.  Design Goals and Non-Goals
+
+   OSTP is explicitly designed to:
+
+   *  Support lossless 24-bit PCM at 44.1 kHz / 48 kHz / 96 kHz stereo
+      and multichannel (up to 8 channels) on LAN.
+
+   *  Gracefully fall back to Opus at configurable bitrates (32–320
+      kbps) when bandwidth is limited.
+
+   *  Operate without infrastructure beyond a single relay process for
+      WAN deployments.
+
+   *  Be implementable on resource-constrained embedded targets (e.g.,
+      ESP32, Raspberry Pi).
+
+   OSTP does not attempt to:
+
+   *  Replace AES67 in professional broadcast facilities requiring
+      sample-accurate synchronisation across hundreds of endpoints.
+
+   *  Provide a general-purpose media signalling framework.
+
+   *  Mandate specific codec quality beyond the defined payload type
+      values.
+
+2.  Terminology
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in BCP
+   14 [RFC2119] [RFC8174] when, and only when, they appear in all
+   capitals, as shown here.
+
+   Source Node  A node that captures audio (e.g., from a sound card or
+      system audio capture interface) and transmits OSTP packets.  There
+      is exactly one active source per OSTP channel at any time.
+
+   Relay Node  A server that receives OSTP packets from an upstream
+      source or relay and re-transmits them to subscribed downstream
+      receivers.  A relay node participates in the relay signalling
+      protocol (Section 6).
+
+   Leaf Node  An end-user receiver that consumes audio packets and
+      renders them to an audio output device.  A leaf node does not
+      forward audio packets.
+
+   Channel  A named audio stream, identified by a UTF-8 string of up to
+
+
+
+Hamada                  Expires 17 September 2026               [Page 4]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+      64 bytes.  Multiple streams (e.g., stereo + surround) MAY share a
+      channel name but MUST use distinct stream_id values.
+
+   Stream ID  A 16-bit value in the OSTP extension header that
+      identifies a logical audio stream within a channel.  The upper 4
+      bits encode the transmitter channel count; the lower 12 bits are a
+      locally assigned identifier.
+
+   Swarm  A directed acyclic graph of relay nodes that distribute audio
+      packets from a single source to leaf nodes using a branching
+      factor (fanout) of up to 4.
+
+   SSRC  Synchronisation Source, as defined in [RFC3550].  Each source
+      node selects a random 32-bit SSRC.
+
+   Daemon  The solunad process that runs on the transmitting host.  It
+      exposes a WebSocket control interface on port 8400 and drives the
+      RTP transmit pipeline.
+
+   Media Timestamp  A 32-bit monotonically increasing counter in the
+      OSTP extension header, expressed in the RTP clock-rate units of
+      the payload type, providing extended temporal precision beyond the
+      standard RTP timestamp field.
+
+   Pre-buffer Level  The fraction of a receiver's playback buffer that
+      must be filled before audio playout begins, expressed as a
+      percentage of the target buffer depth.
+
+3.  Protocol Architecture
+
+   OSTP separates its functions into two planes: a _media plane_ carried
+   over UDP datagrams, and a _control plane_ carried over WebSocket
+   connections.
+
+3.1.  Media Plane
+
+   All audio data is transported as RTP packets over UDP.  OSTP does not
+   define its own framing; the RTP packet structure defined in [RFC3550]
+   is used verbatim, with the addition of the OSTP extension header (see
+   Section 4).
+
+   Three network topologies are supported:
+
+   LAN Multicast  Source nodes transmit to the IPv4 multicast group
+      239.69.0.1 on UDP port 5004.  Leaf nodes join that group.  This
+      topology provides the lowest latency (typically below 5 ms) and
+      requires no server infrastructure, but is limited to a single IP
+      subnet.
+
+
+
+Hamada                  Expires 17 September 2026               [Page 5]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   P2P Direct  For two to four peers across different subnets, a relay
+      node provides PEER hints that enable UDP hole-punching.  Once a
+      direct path is established, audio flows peer-to-peer without relay
+      involvement.
+
+   WAN Relay  All audio datagrams are forwarded by one or more relay
+      nodes.  The relay listens on UDP port 5100.  This topology
+      supports arbitrary numbers of receivers and symmetric NAT
+      environments, at the cost of additional latency proportional to
+      the relay path length.
+
+   The three topologies are not mutually exclusive.  A hybrid deployment
+   may use LAN multicast for devices on the source subnet while using
+   WAN relay for remote listeners.
+
+3.2.  Control Plane
+
+   The control plane is divided into two sub-protocols:
+
+   Daemon Control Protocol (DCP)  A WebSocket sub-protocol exposed by
+      the solunad transmitter daemon on TCP port 8400.  DCP allows local
+      applications to start and stop transmission, adjust channel
+      parameters, and perform file transfers.  See Section 9.
+
+   Relay Signalling Protocol (RSP)  A line-oriented text protocol
+      exchanged over UDP datagrams between the source node and the relay
+      node, and between the relay node and leaf nodes.  RSP handles
+      channel joining, membership management, and wallet address
+      advertisement.  See Section 6.
+
+   RTCP packets as defined in [RFC3550] are used for congestion
+   feedback.  Receiver Reports (RR) carry loss fraction, cumulative
+   loss, inter-arrival jitter, and delay statistics that the source node
+   uses for bitrate adaptation (Section 7).
+
+3.3.  Swarm Distribution Tree
+
+   For large deployments, relay nodes form a distribution tree rooted at
+   the source node.  Each relay node forwards incoming audio packets to
+   at most four downstream subscribers (fanout-4).  Downstream
+   subscribers may themselves be relay nodes, creating a tree of depth
+   proportional to log4(N) for N total leaf nodes.
+
+
+
+
+
+
+
+
+
+Hamada                  Expires 17 September 2026               [Page 6]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+               Source Node
+                    |
+              [Relay Node 0]
+             /    |    \    \
+           [R1]  [R2]  [R3]  [R4]    <- relay level 1
+          / | \  / \    |    /|\
+         L  L  L L  L   L   L L L   <- leaf nodes
+
+   Tree construction is driven by the relay; individual relay nodes are
+   unaware of the full tree topology and need only track their direct
+   upstream and up to four direct downstream peers.
+
+4.  OSTP Packet Format
+
+   An OSTP packet consists of four consecutive regions in a single UDP
+   payload:
+
+   1.  RTP Fixed Header (12 bytes)
+
+   2.  RTP Extension Header (4 bytes) — profile 0x4F53
+
+   3.  OSTP Extension Data (8 bytes)
+
+   4.  Audio Payload (variable length)
+
+   An optional CRC-32 trailer (4 bytes, IEEE 802.3 polynomial) MAY
+   follow the audio payload when the sender sets the RTP padding (P)
+   bit.  Receivers SHOULD verify the CRC when present and MUST discard
+   packets that fail CRC verification.
+
+   All multi-byte fields are in network (big-endian) byte order unless
+   otherwise noted.
+
+4.1.  RTP Fixed Header
+
+       0                   1                   2                   3
+       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |V=2|P|X|  CC   |M|     PT      |       Sequence Number         |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |                           Timestamp                           |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |           Synchronization Source (SSRC) Identifier            |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |            Contributing Source (CSRC) list (optional)         |
+      |                            . . .                              |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+
+
+
+Hamada                  Expires 17 September 2026               [Page 7]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   V (2 bits)  RTP version.  MUST be 2.
+
+   P (1 bit)  Padding.  When set to 1, indicates that a 4-byte CRC-32
+      trailer is appended after the audio payload.
+
+   X (1 bit)  Extension.  MUST be 1 in all OSTP packets; indicates that
+      an RTP extension header follows the CSRC list.
+
+   CC (4 bits)  CSRC count.  Number of CSRC identifiers that follow the
+      fixed header.  Typically 0 for OSTP.
+
+   M (1 bit)  Marker.  Set to 1 on the last packet of a talkspurt or
+      file transfer segment.
+
+   PT (7 bits)  Payload Type.  See Section 4.4.
+
+   Sequence Number (16 bits)  Increments by one for each RTP data packet
+      sent.  Used for loss detection and reordering.
+
+   Timestamp (32 bits)  Reflects the sampling instant of the first
+      sample in the packet.  The clock rate depends on the payload type
+      (48000 Hz for Opus; 44100 or 48000 Hz for PCM).
+
+   SSRC (32 bits)  Identifies the synchronisation source.  Chosen
+      randomly at session start; MUST be unique within the session.
+
+4.2.  RTP Extension Header
+
+   The four-byte RTP extension header immediately follows the CSRC list
+   and precedes the OSTP extension data:
+
+       0                   1                   2                   3
+       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |       Profile = 0x4F53        |      Length = 0x0002          |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+   Profile (16 bits)  MUST be 0x4F53 (ASCII "OS").  This value
+      identifies the extension as an OSTP extension and is used by
+      receivers to distinguish OSTP packets from other RTP streams
+      sharing the same port.
+
+   Length (16 bits)  Number of 32-bit words in the extension data that
+      follows, not including the four-byte extension header.  MUST be
+      0x0002 (indicating 8 bytes of OSTP extension data).
+
+
+
+
+
+
+Hamada                  Expires 17 September 2026               [Page 8]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+4.3.  OSTP Extension Data
+
+   The OSTP extension data is 8 bytes and immediately follows the RTP
+   extension header:
+
+       0                   1                   2                   3
+       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |C C C C|        Stream ID (12 bits)            | SeqExt (high) |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |    SeqExt (low 8 bits)        |                               |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+      |                  Media Timestamp (32 bits)                    |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+   More precisely, the 16-bit stream_id field carries both the channel
+   count and stream identifier:
+
+      Bits 15-12: TX Channel Count code (CCCC)
+      Bits 11-0:  Stream Identifier (12 bits)
+
+   TX Channel Count Code (CCCC, 4 bits)  Encodes the number of audio
+      channels produced by the transmitter.  A value of 0 is legacy and
+      indicates 2 channels (stereo).  Values 1 through 8 indicate the
+      corresponding channel count directly.  Values 9 through 15 are
+      reserved.
+
+   Stream Identifier (12 bits)  A locally assigned identifier
+      distinguishing concurrent streams within a single channel.  The
+      value 0x000 is reserved for the primary stream.
+
+   Sequence Extension (SeqExt, 16 bits)  Extends the RTP 16-bit sequence
+      number to 32 bits.  SeqExt carries the upper 16 bits; the RTP
+      Sequence Number field carries the lower 16 bits.  Receivers MUST
+      use the combined 32-bit value when ordering packets and computing
+      loss.
+
+   Media Timestamp (32 bits)  A media-time counter in the same clock
+      units as the RTP Timestamp field but starting from zero at session
+      inception rather than a random offset.  This field enables
+      receivers to compute absolute session-relative playback positions
+      without tracking the initial RTP timestamp offset.
+
+4.4.  Payload Types
+
+   OSTP defines the following dynamic payload types.  All are in the
+   dynamic range (96–127) as defined by [RFC3550].
+
+
+
+
+Hamada                  Expires 17 September 2026               [Page 9]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   +=====+=======+===================================+===========+
+   |  PT | Name  | Description                       | Clock     |
+   |     |       |                                   | Rate      |
+   +=====+=======+===================================+===========+
+   |  96 | PCM24 | Interleaved signed 24-bit integer | 44100 or  |
+   |     |       | PCM, big-endian, packed 3 bytes   | 48000 Hz  |
+   |     |       | per sample.  Sample rate is       |           |
+   |     |       | signalled in the RTP Timestamp    |           |
+   |     |       | clock rate (44100 or 48000 Hz).   |           |
+   +-----+-------+-----------------------------------+-----------+
+   |  97 | F32   | Interleaved 32-bit IEEE 754       | 44100 or  |
+   |     |       | single-precision floating-point   | 48000 Hz  |
+   |     |       | PCM, big-endian, normalised to    |           |
+   |     |       | [-1.0, +1.0].                     |           |
+   +-----+-------+-----------------------------------+-----------+
+   |  98 | OPUS  | Opus-encoded audio as defined in  | 48000 Hz  |
+   |     |       | [RFC6716].  Each RTP packet       |           |
+   |     |       | carries exactly one Opus frame.   |           |
+   +-----+-------+-----------------------------------+-----------+
+   | 126 | NACK  | Negative Acknowledgement control  | N/A       |
+   |     |       | packet.  Payload is a list of     |           |
+   |     |       | 16-bit RTP sequence numbers for   |           |
+   |     |       | which retransmission is           |           |
+   |     |       | requested.  See Section 7.4.      |           |
+   +-----+-------+-----------------------------------+-----------+
+   | 127 | FEC/  | XOR-based Forward Error           | same as   |
+   |     | XOR   | Correction parity packet covering | protected |
+   |     |       | the preceding group of N audio    | stream    |
+   |     |       | packets.  See Section 7.3.        |           |
+   +-----+-------+-----------------------------------+-----------+
+
+                Table 1: OSTP Payload Type Assignments
+
+   Implementations MUST support PT=98 (Opus) and PT=127 (FEC/XOR).
+   Support for PT=96 (PCM24), PT=97 (F32), and PT=126 (NACK) is
+   RECOMMENDED.
+
+4.5.  Optional CRC-32 Trailer
+
+   When the RTP padding (P) bit is set, the last 4 bytes of the UDP
+   payload are a CRC-32 checksum computed over the audio payload only
+   (i.e., excluding all RTP and OSTP headers, and excluding the CRC
+   field itself).  The polynomial is the IEEE 802.3 CRC-32 (0xEDB88320
+   reflected, initial value 0xFFFFFFFF, final XOR 0xFFFFFFFF).  The
+   value is stored in big-endian byte order.
+
+
+
+
+
+
+Hamada                  Expires 17 September 2026              [Page 10]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   Receivers SHOULD verify the CRC.  A receiver that encounters a CRC
+   mismatch MUST discard the packet and MAY issue a NACK (Section 7.4)
+   for retransmission.
+
+5.  Channel Addressing
+
+   An OSTP channel is identified by a human-readable name — a UTF-8
+   string of 1 to 64 bytes.  Channel names MUST NOT contain ASCII
+   control characters (U+0000–U+001F) or the characters '/' and '#'.
+   Channel names are case-sensitive.
+
+   The mapping from channel name to transport endpoints is:
+
+   LAN Multicast  The fixed multicast group address 239.69.0.1 and port
+      5004 are used for all channels.  Receivers distinguish streams by
+      SSRC and stream_id.  When multiple channels are active on the same
+      LAN, receivers MUST filter by SSRC.
+
+   WAN Relay  The channel name is used as the subscription key in the
+      relay signalling protocol (Section 6).  The relay node multiplexes
+      all channels over a single UDP port (5100) and routes audio
+      datagrams to subscribed leaf nodes by channel name.
+
+   The stream_id field in the OSTP extension header provides a second
+   level of addressing within a channel, allowing concurrent
+   transmission of multiple bitrate variants or codec alternatives from
+   a single source.  Receivers select the stream_id appropriate for
+   their capabilities and network conditions.
+
+6.  Relay Signalling Protocol
+
+   The Relay Signalling Protocol (RSP) is a line-oriented text protocol
+   carried in UDP datagrams.  Each message is a single line terminated
+   by a newline (LF, 0x0A) character.  Fields within a message are
+   separated by a single space.  All messages MUST be no longer than
+   1024 bytes including the terminating newline.
+
+   Unless otherwise noted, RSP messages are exchanged on the same UDP
+   port as OSTP audio datagrams (port 5100 for the relay node).  RSP
+   messages and OSTP audio datagrams are distinguished by inspecting the
+   first byte: RSP messages begin with an ASCII uppercase letter
+   (0x41–0x5A); OSTP packets begin with the byte 0x80 (RTP V=2, P=0,
+   X=0, CC=0) or similar values with the two high bits set to 10.
+
+6.1.  RSP Message Definitions
+
+   JOIN <channel> [<wallet>]
+
+
+
+
+Hamada                  Expires 17 September 2026              [Page 11]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+      Sent by a leaf node or relay node to the relay server to subscribe
+      to a channel.  <channel> is the channel name.  The optional
+      <wallet> field is a base58-encoded public key (e.g., a Solana
+      address) used for micropayment routing.
+
+      Upon receiving a valid JOIN, the relay MUST respond with a HELLO
+      message and begin forwarding OSTP packets for the requested
+      channel to the sender's source address.
+
+   HELLO <channel> <relay_id> <server_ts>
+      Sent by the relay server in response to a JOIN.  <relay_id> is an
+      opaque identifier for the relay node (MAY be its public IP address
+      and port in the form addr:port).  <server_ts> is the relay
+      server's current UNIX timestamp in milliseconds, used by receivers
+      for initial clock offset estimation.
+
+   MEMBERS <channel> <count> [<wallet1> ...]
+      Broadcast by the relay to all subscribers of a channel whenever
+      the membership list changes.  <count> is the current number of
+      active subscribers.  The optional wallet addresses allow the
+      source node to compute royalty splits for micropayment
+      distribution.
+
+   LEAVE <channel>
+      Sent by a subscriber to unsubscribe from a channel.  The relay
+      MUST stop forwarding audio to that subscriber within one RTT.
+
+   WALLET <channel> <wallet>
+      Sent by a source node to associate a wallet address with a channel
+      for payment collection.  The relay MUST include this wallet in
+      MEMBERS notifications to allow tipping.
+
+   PEER <channel> <addr> <port>
+      Sent by the relay to a leaf node to hint a peer's address for UDP
+      hole-punching.  After receiving a PEER hint, both nodes SHOULD
+      send a probe packet to each other's indicated address to establish
+      a direct path.
+
+   CHARGE <channel> <amount_usat> <wallet>
+      Informational message sent by the relay to the source node to
+      report a micropayment event.  <amount_usat> is the payment amount
+      in micro-satoshis (or equivalent base units for the configured
+      payment rail).
+
+   TIP <channel> <amount_usat> <from_wallet>
+      Sent by a leaf node to the relay to initiate a voluntary tip
+      payment to the channel's source wallet.  The relay SHOULD forward
+      a corresponding CHARGE notification to the source node.
+
+
+
+Hamada                  Expires 17 September 2026              [Page 12]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   PING
+      Sent by either party to verify connectivity.  The recipient MUST
+      respond with a PONG message.  Implementations SHOULD send PING
+      messages at intervals no longer than 25 seconds when no other
+      traffic has been exchanged, in order to maintain NAT bindings.
+
+   PONG
+      Response to a PING message.
+
+6.2.  Relay State Machine
+
+   A relay node MUST maintain the following state per subscribed
+   (channel, client-address) pair:
+
+   *  Channel name
+
+   *  Client UDP address and port
+
+   *  Optional wallet address
+
+   *  Timestamp of last received RSP message (for keepalive expiry)
+
+   *  Packet forwarding statistics (packets forwarded, bytes forwarded)
+
+   A subscription entry MUST be removed if no RSP or OSTP traffic has
+   been received from the client for more than 60 seconds.
+
+7.  Congestion Control
+
+   OSTP implements congestion control in accordance with the guidelines
+   in [RFC8085].  The control loop combines RTCP Receiver Reports with
+   an application-layer bitrate ladder.
+
+7.1.  RTCP Receiver Reports
+
+   Leaf nodes MUST send RTCP Receiver Reports as defined in [RFC3550],
+   Section 6.4.  The reporting interval SHOULD be between 1 and 5
+   seconds, computed using the RTCP timing algorithm.  Each Receiver
+   Report block carries:
+
+   *  Fraction lost over the most recent reporting interval
+
+   *  Cumulative number of packets lost
+
+   *  Extended highest sequence number received
+
+   *  Inter-arrival jitter
+
+
+
+
+Hamada                  Expires 17 September 2026              [Page 13]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   *  Last SR timestamp and delay since last SR (for RTT estimation)
+
+   The source node uses the fraction-lost and jitter fields as the
+   primary inputs to the bitrate adaptation algorithm described in
+   Section 7.2.
+
+7.2.  Opus Bitrate Ladder
+
+   When the active payload type is PT=98 (Opus), the source node selects
+   an encoding bitrate from the following ladder:
+
+   +================+=================+=======================+
+   | Bitrate (kbps) | Use case        | Approximate bandwidth |
+   |                |                 | per packet (20 ms)    |
+   +================+=================+=======================+
+   |             32 | Minimum quality | ~80 bytes             |
+   |                | / severe loss   |                       |
+   +----------------+-----------------+-----------------------+
+   |             64 | Low-bandwidth / | ~160 bytes            |
+   |                | mobile          |                       |
+   +----------------+-----------------+-----------------------+
+   |            128 | Near-CD quality | ~320 bytes            |
+   +----------------+-----------------+-----------------------+
+   |            192 | High quality    | ~480 bytes            |
+   +----------------+-----------------+-----------------------+
+   |            320 | Maximum quality | ~800 bytes            |
+   |                | / LAN           |                       |
+   +----------------+-----------------+-----------------------+
+
+                Table 2: OSTP Opus Bitrate Ladder
+
+   Bitrate upgrade (step up the ladder) is permitted at most once every
+   10 seconds, and only when the fraction-lost value in the most recent
+   RTCP RR is below 0.5% and inter-arrival jitter is below 20 ms.
+
+   Bitrate downgrade (step down the ladder) MUST be triggered
+   immediately when either:
+
+   *  The fraction-lost value exceeds 5% in any single reporting
+      interval, or
+
+   *  Three consecutive reporting intervals show fraction-lost above 1%.
+
+   When operating over LAN multicast or at PCM payload types (PT=96,
+   PT=97), the source node does not apply bitrate adaptation; it
+   transmits at the full sample rate and relies on FEC (Section 7.3) and
+   NACK (Section 7.4) for loss recovery.
+
+
+
+
+Hamada                  Expires 17 September 2026              [Page 14]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+7.3.  Forward Error Correction (FEC)
+
+   OSTP uses a simple XOR-parity FEC scheme to recover from single
+   packet losses within a protection group.  The scheme is similar to
+   the one described in RFC 5109 but is not wire-compatible with it.
+
+   The source node groups consecutive audio packets into blocks of N
+   packets (default N=5).  After each block, the source MUST transmit
+   one FEC parity packet (PT=127) whose payload is the byte-wise XOR of
+   all N audio payloads in the block, zero-padded to the length of the
+   longest payload.
+
+   The FEC packet carries in its RTP Timestamp field the RTP Timestamp
+   of the first packet in the block.  The OSTP stream_id and
+   sequence_ext fields mirror those of the first packet in the block.
+   The RTP Sequence Number of the FEC packet is N+1 higher than the
+   first packet in the block, i.e., it immediately follows the block in
+   sequence-number space.
+
+      Audio packets: [seq=100] [seq=101] [seq=102] [seq=103] [seq=104]
+      FEC packet:    [seq=105, PT=127, payload = XOR(100..104)]
+
+      If seq=102 is lost, the receiver can recover it:
+      payload[102] = XOR(payload[100], payload[101],
+                         payload[103], payload[104], FEC_payload)
+
+   A receiver that detects a single loss within a protection block (via
+   sequence number gap) SHOULD wait up to one inter-packet interval (the
+   packet period) for the FEC packet before concealing the loss.  If the
+   FEC packet arrives in time, the receiver MUST attempt recovery.
+   Recovery is not possible if two or more packets in the same block are
+   lost; in that case the receiver SHOULD apply packet loss concealment.
+
+   The protection block size N MAY be negotiated as part of session
+   setup via the Daemon Control Protocol.  Senders SHOULD NOT use values
+   of N below 3 or above 10.
+
+7.4.  Negative Acknowledgement (NACK)
+
+   For relay-connected streams where RTT is low enough to make
+   retransmission practical (RTT < 50 ms), receivers MAY request
+   retransmission of lost packets using NACK packets (PT=126).
+
+   A NACK packet payload consists of one or more 16-bit unsigned
+   integers in network byte order, each representing the RTP Sequence
+   Number of a lost audio packet.  A single NACK packet MUST NOT carry
+   more than 32 sequence numbers.
+
+
+
+
+Hamada                  Expires 17 September 2026              [Page 15]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+       0                   1                   2                   3
+       0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |         Lost Seq #1           |         Lost Seq #2           |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      |         Lost Seq #3           |            ...                |
+      +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+   Upon receipt of a NACK, the source node or relay node SHOULD
+   retransmit the requested packets from its transmit buffer.  The
+   retransmit buffer at the source SHOULD hold at least 200 ms of audio.
+   Retransmitted packets are sent as normal OSTP audio packets with the
+   original sequence numbers and timestamps; the RTP Marker (M) bit is
+   set to indicate that the packet is a retransmission.
+
+   Receivers SHOULD limit NACK transmission to at most one NACK per lost
+   sequence number, and SHOULD NOT send NACKs for packets that are more
+   than 500 ms old.
+
+8.  File Distribution Protocol
+
+   OSTP includes a binary file distribution sub-protocol for delivering
+   audio files, playlist metadata, and artwork to receivers.  File
+   transfers are carried over the WebSocket connection between the
+   daemon and a connected client (Section 9), using binary WebSocket
+   frames.
+
+   Each binary frame begins with a 1-byte opcode that identifies the
+   frame type:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Hamada                  Expires 17 September 2026              [Page 16]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   +========+============+========================================+
+   | Opcode | Name       | Description                            |
+   +========+============+========================================+
+   |  0xFA  | FILE_BEGIN | Begins transfer of the currently       |
+   |        | (current)  | playing file.  The frame body contains |
+   |        |            | a fixed 32-byte header followed by the |
+   |        |            | first chunk of file data.              |
+   +--------+------------+----------------------------------------+
+   |  0xFB  | FILE_DATA  | A continuation chunk for the currently |
+   |        | (current)  | playing file.  The frame body is raw   |
+   |        |            | file data.                             |
+   +--------+------------+----------------------------------------+
+   |  0xFC  | FILE_BEGIN | Pre-fetches the next track while the   |
+   |        | (next)     | current track is still playing.  Frame |
+   |        |            | structure is identical to 0xFA.        |
+   +--------+------------+----------------------------------------+
+   |  0xFD  | FILE_DATA  | Continuation chunk for the next track  |
+   |        | (next)     | pre-fetch.                             |
+   +--------+------------+----------------------------------------+
+
+               Table 3: File Distribution Frame Opcodes
+
+8.1.  FILE_BEGIN Frame Header
+
+   The 32-byte header in a FILE_BEGIN (0xFA or 0xFC) frame has the
+   following layout:
+
+      Offset  Length  Field
+      ------  ------  -----------------------------------------
+        0       1     Opcode (0xFA or 0xFC)
+        1       4     Total file size in bytes (uint32, big-endian)
+        5       1     MIME type length (N)
+        6       N     MIME type string (UTF-8, not null-terminated)
+        6+N     4     CRC-32 of complete file (uint32, big-endian)
+       10+N    (pad)  Zero-padded to 32 bytes total header length
+
+   After the 32-byte header, the remainder of the frame contains the
+   first chunk of file data.  Subsequent FILE_DATA frames contain
+   additional chunks.  The transfer is complete when the cumulative byte
+   count of all chunks equals the total file size declared in the
+   FILE_BEGIN header.
+
+8.2.  Pre-Buffer and Playback Switching
+
+   Receivers implement a dual-buffer scheme to eliminate audible gaps
+   between tracks:
+
+
+
+
+
+Hamada                  Expires 17 September 2026              [Page 17]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   1.  While the current track is playing, the receiver begins
+       accumulating data for the next track into a second buffer as soon
+       as 0xFC/0xFD frames are received.
+
+   2.  When the next-track buffer reaches 75% of its target depth (the
+       pre-buffer threshold), the receiver marks the next track as
+       "ready".
+
+   3.  At the natural track boundary (indicated by the M bit in the last
+       audio packet of the current track, or by explicit transition
+       signalling via the DCP), the receiver switches to the pre-
+       buffered next track.
+
+   4.  The switch delay from ready-to-play to actual audio output MUST
+       be less than 50 ms.
+
+   If the next-track buffer has not reached the pre-buffer threshold at
+   the track boundary, the receiver MAY introduce a short silence rather
+   than underrunning the audio pipeline.
+
+9.  Daemon Control Protocol (DCP)
+
+   The Daemon Control Protocol is a JSON-over-WebSocket protocol exposed
+   by the solunad transmitter daemon on TCP port 8400 (plain WebSocket;
+   no TLS required for loopback connections).  Remote connections MUST
+   use WSS (WebSocket over TLS).
+
+   All DCP messages are JSON objects with a mandatory "cmd" string
+   field.  Responses include a "result" field set to either "ok" or
+   "error", and an optional "msg" string field for error descriptions.
+
+9.1.  DCP Command Reference
+
+   +==============+=========================+==========================+
+   | Command      | Parameters              | Description              |
+   | ("cmd")      |                         |                          |
+   +==============+=========================+==========================+
+   | start        | channel (string), codec | Start transmitting       |
+   |              | ("pcm24"|"f32"|"opus"), | on the specified         |
+   |              | bitrate (int, kbps),    | channel.  If already     |
+   |              | sample_rate (int),      | transmitting, the        |
+   |              | channels (int, 1–8)     | existing session is      |
+   |              |                         | stopped and              |
+   |              |                         | restarted with the       |
+   |              |                         | new parameters.          |
+   +--------------+-------------------------+--------------------------+
+   | stop         | —                       | Stop the active          |
+   |              |                         | transmission             |
+
+
+
+Hamada                  Expires 17 September 2026              [Page 18]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   |              |                         | session.                 |
+   +--------------+-------------------------+--------------------------+
+   | status       | —                       | Returns current          |
+   |              |                         | session state            |
+   |              |                         | including channel        |
+   |              |                         | name, active payload     |
+   |              |                         | type, bitrate,           |
+   |              |                         | packets sent, bytes      |
+   |              |                         | sent, and connected      |
+   |              |                         | relay nodes.             |
+   +--------------+-------------------------+--------------------------+
+   | set_bitrate  | bitrate (int, kbps)     | Dynamically change       |
+   |              |                         | the Opus encoding        |
+   |              |                         | bitrate without          |
+   |              |                         | interrupting the         |
+   |              |                         | session.                 |
+   +--------------+-------------------------+--------------------------+
+   | set_fec      | enabled (bool),         | Enable or disable        |
+   |              | group_size (int, 3–10)  | FEC and set the          |
+   |              |                         | protection block         |
+   |              |                         | size.                    |
+   +--------------+-------------------------+--------------------------+
+   | relay_add    | host (string), port     | Add a relay node to      |
+   |              | (int)                   | the active session.      |
+   +--------------+-------------------------+--------------------------+
+   | relay_remove | host (string), port     | Remove a relay node      |
+   |              | (int)                   | from the active          |
+   |              |                         | session.                 |
+   +--------------+-------------------------+--------------------------+
+   | file_send    | path (string), slot     | Initiate file            |
+   |              | ("current"|"next")      | transfer of the          |
+   |              |                         | specified local file     |
+   |              |                         | path.  slot              |
+   |              |                         | determines whether       |
+   |              |                         | 0xFA/0xFB or             |
+   |              |                         | 0xFC/0xFD opcodes        |
+   |              |                         | are used.                |
+   +--------------+-------------------------+--------------------------+
+   | wallet_set   | address (string)        | Associate a wallet       |
+   |              |                         | address with the         |
+   |              |                         | active channel for       |
+   |              |                         | micropayment             |
+   |              |                         | collection.  Sends a     |
+   |              |                         | WALLET RSP message       |
+   |              |                         | to all connected         |
+   |              |                         | relay nodes.             |
+   +--------------+-------------------------+--------------------------+
+   | subscribe    | events (array of        | Subscribe to             |
+
+
+
+Hamada                  Expires 17 September 2026              [Page 19]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   |              | strings)                | asynchronous event       |
+   |              |                         | notifications.           |
+   |              |                         | Supported event          |
+   |              |                         | types:                   |
+   |              |                         | "packet_stats",          |
+   |              |                         | "member_update",         |
+   |              |                         | "payment", "rtcp".       |
+   +--------------+-------------------------+--------------------------+
+
+                           Table 4: DCP Commands
+
+9.2.  DCP Asynchronous Events
+
+   After a subscribe command, the daemon emits unsolicited JSON event
+   objects.  Each event object carries an "event" field instead of a
+   "cmd" field.  Examples:
+
+     Packet statistics event (every 1 second):
+     {
+       "event": "packet_stats",
+       "packets_sent": 2400,
+       "bytes_sent": 1920000,
+       "packets_lost_reported": 3,
+       "bitrate_kbps": 128
+     }
+
+     Member update event:
+     {
+       "event": "member_update",
+       "channel": "mystream",
+       "count": 7,
+       "wallets": ["4Zf3...", "9xKL..."]
+     }
+
+     Payment event:
+     {
+       "event": "payment",
+       "type": "tip",
+       "amount_usat": 1000000,
+       "from_wallet": "4Zf3..."
+     }
+
+10.  Security Considerations
+
+
+
+
+
+
+
+
+Hamada                  Expires 17 September 2026              [Page 20]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+10.1.  DTLS-SRTP
+
+   OSTP SHOULD be protected with DTLS-SRTP [RFC5764] when operating over
+   the public Internet and MUST use DTLS-SRTP when the stream carries
+   paid content (i.e., when a non-zero charge rate is configured via the
+   economic layer).
+
+   When DTLS-SRTP is enabled, the DTLS handshake is performed on the
+   same UDP socket used for OSTP audio and RSP signalling.
+   Implementations MUST support the cipher suite
+   TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 and SHOULD support
+   TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256.  SRTP protection profile
+   AES_128_CM_HMAC_SHA1_80 is REQUIRED.
+
+   RSP text messages sent before the DTLS handshake completes are
+   transmitted in clear text.  Implementations MUST limit pre-DTLS RSP
+   to JOIN and HELLO messages only; WALLET, CHARGE, and TIP messages
+   MUST NOT be sent before DTLS-SRTP is established.
+
+10.2.  Session Tokens and Access Control
+
+   Relay nodes MAY require a session token in the JOIN message to
+   restrict channel access.  The token is appended as an additional
+   field:
+
+     JOIN <channel> [<wallet>] [token=<base64url-token>]
+
+   Session tokens are opaque to the relay protocol and are validated by
+   the relay using implementation-specific means (e.g., HMAC-SHA256
+   signed by the channel owner's key).  A relay that requires tokens
+   MUST respond with a new DENIED RSP message and MUST NOT forward any
+   audio to unauthenticated subscribers.
+
+   Token issuance and revocation are out of scope for this
+   specification.
+
+10.3.  Rate Limiting and Amplification
+
+   Because OSTP is UDP-based, relay nodes are potential amplification
+   vectors in reflection attacks.  Relay implementations MUST enforce
+   the following mitigations:
+
+   *  The relay MUST NOT forward audio to any address that has not sent
+      at least one RSP JOIN message from that address within the last 60
+      seconds.
+
+   *  The relay MUST rate-limit RSP JOIN processing to at most 10 new
+      subscriptions per second per source IP address.
+
+
+
+Hamada                  Expires 17 September 2026              [Page 21]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   *  The relay SHOULD implement a UDP reflection check: upon receiving
+      a JOIN, the relay SHOULD send a small challenge packet to the
+      claimed source address before adding the subscriber to the
+      forwarding table.
+
+   *  The relay MUST limit the total number of simultaneous subscribers
+      per channel to a configurable maximum (default 1000).
+
+10.4.  Economic Layer Security
+
+   Wallet addresses carried in RSP messages are public keys and do not
+   constitute sensitive information.  However, implementations MUST NOT
+   process CHARGE or TIP messages from untrusted sources.  Specifically:
+
+   *  Source nodes MUST only process CHARGE notifications from relay
+      nodes they explicitly connected to.
+
+   *  Leaf nodes MUST cryptographically verify on-chain payment receipts
+      before crediting tipping confirmations.
+
+   *  Relay nodes MUST NOT relay TIP messages without verifying that the
+      claimed from_wallet address controls the funds.
+
+10.5.  Privacy Considerations
+
+   OSTP relay nodes learn the IP addresses of all subscribers to a
+   channel.  When DTLS-SRTP is not in use, the relay also has access to
+   the full audio content of the stream.  Deployments that require
+   listener privacy MUST use DTLS-SRTP and SHOULD use a relay node
+   operated by or on behalf of the channel owner.
+
+   Wallet addresses in RSP messages are permanently linkable to IP
+   addresses as observed by the relay.  Participants concerned about
+   payment privacy SHOULD use stealth addresses or zero-knowledge
+   payment schemes, which are outside the scope of this specification.
+
+11.  IANA Considerations
+
+11.1.  Port Numbers
+
+   This document uses the following UDP ports.  These ports are not
+   currently registered with IANA; the authors intend to request
+   registration if this protocol advances beyond experimental status.
+
+
+
+
+
+
+
+
+Hamada                  Expires 17 September 2026              [Page 22]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   +======+===========================================================+
+   | Port | Usage                                                     |
+   +======+===========================================================+
+   | 5004 | OSTP audio (LAN multicast and unicast).  Note: Port 5004  |
+   |      | is already registered with IANA for "rtp" (RTP media);    |
+   |      | OSTP is intended to be compatible with this registration. |
+   +------+-----------------------------------------------------------+
+   | 5100 | OSTP relay node (RSP and forwarded audio datagrams).      |
+   +------+-----------------------------------------------------------+
+   | 8400 | OSTP Daemon Control Protocol (WebSocket, TCP).            |
+   +------+-----------------------------------------------------------+
+
+                    Table 5: OSTP UDP Port Assignments
+
+11.2.  RTP Extension Profile
+
+   This document defines the RTP header extension profile value 0x4F53
+   (the ASCII string "OS") to identify OSTP extension data.  RTP
+   extension profile values are allocated from the IANA registry "RTP
+   Payload Format media types" (currently unregistered; this document
+   requests registration of 0x4F53 for the "Open Sonic Transport
+   Protocol extension").
+
+11.3.  RTP Payload Types
+
+   The following dynamic payload type values are used by OSTP.  Dynamic
+   payload types (96–127) do not require IANA registration per [RFC3550]
+   but are listed here for informational purposes.  SDP mapping for
+   these payload types follows the procedures of [RFC4566].
+
+   +=====+==============+============================+==========+
+   |  PT | Name         | Clock Rate                 | Channels |
+   +=====+==============+============================+==========+
+   |  96 | OSTP/PCM24   | 44100 or 48000             | 1–8      |
+   +-----+--------------+----------------------------+----------+
+   |  97 | OSTP/F32     | 44100 or 48000             | 1–8      |
+   +-----+--------------+----------------------------+----------+
+   |  98 | OSTP/OPUS    | 48000                      | 1–2      |
+   +-----+--------------+----------------------------+----------+
+   | 126 | OSTP/NACK    | —                          | —        |
+   +-----+--------------+----------------------------+----------+
+   | 127 | OSTP/FEC-XOR | (same as protected stream) | —        |
+   +-----+--------------+----------------------------+----------+
+
+               Table 6: OSTP RTP Payload Type Summary
+
+
+
+
+
+
+Hamada                  Expires 17 September 2026              [Page 23]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+11.4.  IPv4 Multicast Address
+
+   This document uses the IPv4 multicast address 239.69.0.1 in the
+   organisation-local scope range (239.0.0.0/8).  This address is not
+   registered with IANA and is intended for local-network use only.
+   Deployments that require a globally routable multicast address should
+   use the procedures described in [RFC6838].
+
+12.  References
+
+12.1.  Normative References
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119,
+              DOI 10.17487/RFC2119, March 1997,
+              <https://www.rfc-editor.org/info/rfc2119>.
+
+   [RFC3550]  Schulzrinne, H., Casner, S., Frederick, R., and V.
+              Jacobson, "RTP: A Transport Protocol for Real-Time
+              Applications", STD 64, RFC 3550, DOI 10.17487/RFC3550,
+              July 2003, <https://www.rfc-editor.org/info/rfc3550>.
+
+   [RFC3711]  Baugher, M., McGrew, D., Naslund, M., Carrara, E., and K.
+              Norrman, "The Secure Real-time Transport Protocol (SRTP)",
+              RFC 3711, DOI 10.17487/RFC3711, March 2004,
+              <https://www.rfc-editor.org/info/rfc3711>.
+
+   [RFC4566]  Handley, M., Jacobson, V., and C. Perkins, "SDP: Session
+              Description Protocol", RFC 4566, DOI 10.17487/RFC4566,
+              July 2006, <https://www.rfc-editor.org/info/rfc4566>.
+
+   [RFC5764]  McGrew, D. and E. Rescorla, "Datagram Transport Layer
+              Security (DTLS) Extension to Establish Keys for the Secure
+              Real-time Transport Protocol (SRTP)", RFC 5764,
+              DOI 10.17487/RFC5764, May 2010,
+              <https://www.rfc-editor.org/info/rfc5764>.
+
+   [RFC6716]  Valin, JM., Vos, K., and T. Terriberry, "Definition of the
+              Opus Audio Codec", RFC 6716, DOI 10.17487/RFC6716,
+              September 2012, <https://www.rfc-editor.org/info/rfc6716>.
+
+   [RFC8085]  Eggert, L., Fairhurst, G., and G. Shepherd, "UDP Usage
+              Guidelines", BCP 145, RFC 8085, DOI 10.17487/RFC8085,
+              March 2017, <https://www.rfc-editor.org/info/rfc8085>.
+
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
+              2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
+              May 2017, <https://www.rfc-editor.org/info/rfc8174>.
+
+
+
+Hamada                  Expires 17 September 2026              [Page 24]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+12.2.  Informative References
+
+   [RFC7826]  Schulzrinne, H., Rao, A., Lanphier, R., Westerlund, M.,
+              and M. Stiemerling, Ed., "Real-Time Streaming Protocol
+              Version 2.0", RFC 7826, DOI 10.17487/RFC7826, December
+              2016, <https://www.rfc-editor.org/info/rfc7826>.
+
+   [RFC8835]  Alvestrand, H., "Transports for WebRTC", RFC 8835,
+              DOI 10.17487/RFC8835, January 2021,
+              <https://www.rfc-editor.org/info/rfc8835>.
+
+   [RFC9000]  Iyengar, J., Ed. and M. Thomson, Ed., "QUIC: A UDP-Based
+              Multiplexed and Secure Transport", RFC 9000,
+              DOI 10.17487/RFC9000, May 2021,
+              <https://www.rfc-editor.org/info/rfc9000>.
+
+   [RFC6838]  Freed, N., Klensin, J., and T. Hansen, "Media Type
+              Specifications and Registration Procedures", BCP 13,
+              RFC 6838, DOI 10.17487/RFC6838, January 2013,
+              <https://www.rfc-editor.org/info/rfc6838>.
+
+   [AES67]    Audio Engineering Society, "AES67-2018: AES standard for
+              audio applications of networks — High-performance
+              streaming audio-over-IP interoperability", AES AES67-2018,
+              2018, <https://www.aes.org/publications/standards/
+              search.cfm?docID=96>.
+
+   [OpenSonic]
+              Hamada, Y., "OpenSonic: Open-source multi-room audio
+              distribution system", 2026,
+              <https://github.com/yukihamada/opensonic>.
+
+   [RFC5109]  Li, A., "RTP Payload Format for Generic Forward Error
+              Correction", RFC 5109, DOI 10.17487/RFC5109, December
+              2007, <https://www.rfc-editor.org/info/rfc5109>.
+
+Appendix A: Implementation Notes
+
+Clock Synchronisation
+
+   OSTP does not mandate PTP or NTP for clock synchronisation.  Instead,
+   receivers estimate the source clock offset from the relationship
+   between the RTP Timestamp and the Media Timestamp in the OSTP
+   extension.  The HELLO RSP message provides an initial wall-clock
+   anchor from the relay node, which receivers use for coarse clock
+   alignment.  Fine-grained per-packet jitter compensation is performed
+   by the receiver's playout buffer.
+
+
+
+
+Hamada                  Expires 17 September 2026              [Page 25]
+
+Internet-Draft                    OSTP                        March 2026
+
+
+   Implementations targeting sample-accurate multi-room synchronisation
+   on a LAN MAY use PTP (IEEE 1588) as a separate out-of-band mechanism;
+   the OSTP timestamps are then interpreted in the PTP time domain.
+
+Playout Buffer Design
+
+   The reference implementation uses an adaptive playout buffer with a
+   target depth of 50 ms for LAN multicast and 150 ms for WAN relay.
+   The buffer depth is adjusted based on measured inter-arrival jitter:
+   when jitter exceeds 20% of the current target depth, the target is
+   doubled (up to a maximum of 500 ms).  When jitter has been below 10%
+   of the current target depth for more than 10 seconds, the target is
+   halved (down to a minimum of 20 ms for LAN, 50 ms for WAN).
+
+Embedded Receiver Considerations
+
+   The OSTP packet parser requires only the following operations: byte-
+   order conversion, 32-bit integer arithmetic, and CRC-32 computation.
+   The minimum receive buffer to process a single OSTP packet without
+   dynamic allocation is 1500 bytes (one Ethernet MTU).  Implementations
+   on microcontrollers with less than 64 KB of RAM are feasible using
+   PT=98 (Opus) and a shallow playout buffer (20–40 ms).
+
+   The reference ESP32 implementation receives Opus-coded OSTP packets
+   from the WAN relay and decodes them using the Opus codec library
+   compiled for Xtensa LX6, achieving end-to-end latency of
+   approximately 200 ms over a Wi-Fi link.
+
+Author's Address
+
+   Yuki Hamada
+   EnablerDAO
+   Email: mail@yukihamada.jp
+   URI:   https://github.com/yukihamada/opensonic
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Hamada                  Expires 17 September 2026              [Page 26]

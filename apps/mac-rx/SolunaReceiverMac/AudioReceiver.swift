@@ -10,6 +10,7 @@ import Combine
 import Network
 import MediaPlayer
 import AVFoundation
+import AppKit
 
 /// Transport type (mirrors SolunaTransportType)
 enum LocalTransportType: String {
@@ -85,6 +86,14 @@ struct SpeakerGroup: Identifiable, Codable {
     var muted: Bool = false
 }
 
+/// A member in the relay group (parsed from MEMBERS: JSON response)
+struct GroupMember: Identifiable {
+    let deviceId: String
+    let name: String
+    let role: String
+    var id: String { deviceId }
+}
+
 /// Observable wrapper for SolunaAudioReceiver
 @MainActor
 final class AudioReceiver: ObservableObject {
@@ -145,8 +154,8 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
-    /// Jitter buffer target in ms (5–200 ms, default 100 ms)
-    @Published var bufferMs: UInt32 = 40 {
+    /// Jitter buffer target in ms (5–200 ms, default 60 ms — matched with iOS for sync)
+    @Published var bufferMs: UInt32 = 60 {
         didSet {
             receiver.bufferTargetMs = bufferMs
         }
@@ -236,6 +245,9 @@ final class AudioReceiver: ObservableObject {
     }
     @Published private(set) var relayError: String?
 
+    /// Group members from relay MEMBERS response
+    @Published private(set) var groupMembers: [GroupMember] = []
+
     /// Available local output devices (BT, AirPlay, USB, etc.)
     @Published var availableDevices: [LocalOutputDevice] = []
 
@@ -292,6 +304,12 @@ final class AudioReceiver: ObservableObject {
     private let networkMonitor = NWPathMonitor()
     private var wasPlaying = false
 
+    // MARK: - Watchdog & Stats
+    private var watchdogTimer: Timer?
+    private var statsTimer: Timer?
+    private var lastPacketCount: UInt64 = 0
+    private var staleTicks: Int = 0
+
     init() {
         receiver = SolunaAudioReceiver.sharedInstance()
         delegateHandler = DelegateHandler()
@@ -318,11 +336,13 @@ final class AudioReceiver: ObservableObject {
             }
         }
 
-        // Network auto-reconnect
+        // Network auto-reconnect (respects autoConnect / Connect Mode)
         networkMonitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 guard let self else { return }
-                if path.status == .satisfied && self.wasPlaying && !self.isPlaying {
+                let connectMode = UserDefaults.standard.object(forKey: "autoConnect") as? Bool ?? true
+                if path.status == .satisfied && self.wasPlaying && !self.isPlaying && connectMode {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000) // 3s
                     self.start()
                 } else if path.status != .satisfied && self.isPlaying {
                     self.wasPlaying = true
@@ -386,12 +406,16 @@ final class AudioReceiver: ObservableObject {
         // Setup metadata and file-sync callbacks (stored in C++ for when relay connects)
         setupMetaCallback()
 
-        // Auto-connect to WAN relay for default channel
-        let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+        // Auto-connect to WAN relay (reads channel at connect time, not capture time)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self, self.state == .receiving, self.relayState == .disconnected else { return }
+            let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
             self.connectRelay(group: ch)
         }
+
+        // Start stats polling + watchdog
+        startStatsPolling()
+        startWatchdog()
     }
 
     /// Stop receiving audio
@@ -406,6 +430,10 @@ final class AudioReceiver: ObservableObject {
             isShmTransmitting = false
         }
 
+        // Stop stats polling and watchdog
+        stopStatsPolling()
+        stopWatchdog()
+
         // Disconnect WAN relay
         disconnectRelay()
 
@@ -418,6 +446,7 @@ final class AudioReceiver: ObservableObject {
         receiver.setMetaCallback(nil)
         receiver.setFileCallback(nil)
         receiver.setSyncCallback(nil)
+        receiver.setMembersCallback(nil)
 
         state = .stopped
         receiver.stop()
@@ -436,20 +465,31 @@ final class AudioReceiver: ObservableObject {
             receiver.stopMicTransmit()
             isMicTransmitting = false
         } else {
-            // On macOS, request mic permission then start
-            if #available(macOS 14.0, *) {
-                AVAudioApplication.requestRecordPermission { [weak self] granted in
-                    Task { @MainActor in
-                        guard let self, granted else { return }
-                        if self.receiver.startMicTransmit() {
-                            self.isMicTransmitting = true
+            requestMicPermissionAndStart()
+        }
+    }
+
+    private func requestMicPermissionAndStart() {
+        AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard granted else {
+                    // Show alert directing user to System Settings
+                    let alert = NSAlert()
+                    alert.messageText = "Microphone Access Required"
+                    alert.informativeText = "Please grant microphone access in System Settings → Privacy & Security → Microphone."
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "Open System Settings")
+                    alert.addButton(withTitle: "Cancel")
+                    if alert.runModal() == .alertFirstButtonReturn {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                            NSWorkspace.shared.open(url)
                         }
                     }
+                    return
                 }
-            } else {
-                // macOS 13 and earlier: just start (permission granted by system)
-                if receiver.startMicTransmit() {
-                    isMicTransmitting = true
+                if self.receiver.startMicTransmit() {
+                    self.isMicTransmitting = true
                 }
             }
         }
@@ -504,8 +544,71 @@ final class AudioReceiver: ObservableObject {
 
     /// Disconnect from WAN relay
     func disconnectRelay() {
+        stopFileSyncPump()  // Stop file sync playback on channel switch
         receiver.disconnectRelay()
         updateRelayState()
+    }
+
+    private func startStatsPolling() {
+        statsTimer?.invalidate()
+        statsTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.updateRelayState()
+                // Auto-reconnect relay if disconnected while playing
+                // Read channel EACH time (not captured once) so channel switches work
+                if self.isPlaying && self.relayState == .disconnected {
+                    let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+                    self.connectRelay(group: ch)
+                }
+            }
+        }
+    }
+
+    private func stopStatsPolling() {
+        statsTimer?.invalidate()
+        statsTimer = nil
+    }
+
+    private func startWatchdog() {
+        stopWatchdog()
+        lastPacketCount = packetsReceived
+        staleTicks = 0
+        watchdogTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.watchdogTick() }
+        }
+    }
+
+    private func stopWatchdog() {
+        watchdogTimer?.invalidate()
+        watchdogTimer = nil
+        staleTicks = 0
+    }
+
+    @MainActor
+    private func watchdogTick() {
+        guard state == .receiving || state == .connecting else { return }
+        guard currentSyncFile == nil else { return }
+        if packetsReceived == lastPacketCount {
+            staleTicks += 1
+            // 10 ticks × 3s = 30 seconds with no packets → reconnect
+            let connectMode = UserDefaults.standard.object(forKey: "autoConnect") as? Bool ?? true
+            if staleTicks >= 10 && state == .receiving {
+                if connectMode {
+                    print("[AudioReceiver] Watchdog: no packets for \(staleTicks * 3)s — reconnecting")
+                    stop()
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 3_000_000_000) // 3s
+                        self.start()
+                    }
+                } else {
+                    print("[AudioReceiver] Watchdog: no packets for \(staleTicks * 3)s — Connect Mode off, not reconnecting")
+                }
+            }
+        } else {
+            staleTicks = 0
+            lastPacketCount = packetsReceived
+        }
     }
 
     // MARK: - Mic Permissions
@@ -530,11 +633,30 @@ final class AudioReceiver: ObservableObject {
         receiver.requestMembers()
     }
 
+    /// Send remote volume command to a device in the same group
+    func sendVolumeToDevice(_ deviceId: String, level: Int) {
+        receiver.sendVolume(toDevice: deviceId, level: Int32(level))
+    }
+
     /// Update relay state from bridge (called from stats timer)
+    private var membersRefreshCounter = 0
+
     func updateRelayState() {
         relayState = RelayState(from: receiver.relayState)
         relayGroup = receiver.relayGroup
         relayError = receiver.relayError
+
+        // Refresh group members every 5 seconds when connected
+        if relayState == .connected {
+            membersRefreshCounter += 1
+            if membersRefreshCounter >= 5 {
+                membersRefreshCounter = 0
+                requestMembers()
+            }
+        } else {
+            if !groupMembers.isEmpty { groupMembers = [] }
+            membersRefreshCounter = 0
+        }
     }
 
     // MARK: - Local Output Devices
@@ -1006,6 +1128,22 @@ final class AudioReceiver: ObservableObject {
             guard let self else { return }
             NSLog("[FileSync] SYNC received: \(syncCmd)")
             self.handleSyncCommand(syncCmd)
+        }
+
+        // MEMBERS: callback — parse group member list for remote volume control
+        receiver.setMembersCallback { [weak self] jsonStr in
+            guard let self,
+                  let data = jsonStr.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let membersArr = json["members"] as? [[String: Any]] else { return }
+            self.groupMembers = membersArr.compactMap { m in
+                guard let deviceId = m["device_id"] as? String,
+                      let name = m["device"] as? String,
+                      let role = m["role"] as? String else { return nil }
+                // Skip self
+                if deviceId == self.deviceId { return nil }
+                return GroupMember(deviceId: deviceId, name: name, role: role)
+            }
         }
         NSLog("[FileSync] Callbacks registered")
     }

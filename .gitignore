@@ -45,6 +45,12 @@ solctl
 *.tar.gz
 *.zip
 
+# Rust / WASM build
+crates/target/
+web/wasm/pkg/.gitignore
+deploy/web/wasm/pkg/.gitignore
+
 # Generated
 compile_commands.json
 .claude/worktrees/
+*.mp3

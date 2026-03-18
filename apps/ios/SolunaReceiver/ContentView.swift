@@ -24,6 +24,7 @@ struct ContentView: View {
     @State private var masterMuted    = false
     @State private var masterDelayMs: Int = 40
     @AppStorage("streamMode") private var streamMode = "sync"
+    @AppStorage("connectMode") private var connectMode = true
     @State private var groupCode     = ""
     @State private var showQR        = false
     @State private var pttPressed    = false
@@ -37,6 +38,10 @@ struct ContentView: View {
     @AppStorage("recentChannels") private var recentChannelsJSON: String = "[]"
     @StateObject private var channelStore = ChannelStore()
     @StateObject private var deviceBrowser = DeviceBrowser()
+    @StateObject private var globalRegistry = GlobalDeviceRegistry()
+    @State private var showDevicePicker = false
+    @StateObject private var auth = AuthManager.shared
+    @State private var showLogin = false
 
     private var recentChannels: [String] {
         (try? JSONDecoder().decode([String].self, from: Data(recentChannelsJSON.utf8))) ?? []
@@ -61,6 +66,16 @@ struct ContentView: View {
         // Reconnect to WAN relay with current channel
         let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
         receiver.connectRelay(group: ch)
+    }
+
+    private func connectToGlobalDevice(_ device: GlobalDevice) {
+        connectedDeviceHost = device.relayHost
+        if receiver.state == .stopped || receiver.state == .error { receiver.start() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            receiver.connectRelay(group: device.group,
+                                  host: device.relayHost,
+                                  port: device.relayPort)
+        }
     }
 
     private func deleteRecentChannel(_ name: String) {
@@ -118,6 +133,16 @@ struct ContentView: View {
                                 channel: UserDefaults.standard.string(forKey: "channel") ?? "soluna",
                                 isReceiving: true
                             )
+                            if !receiver.transcript.isEmpty {
+                                Text(receiver.transcript)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.white.opacity(0.75))
+                                    .multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(12)
+                                    .background(Color.white.opacity(0.06))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
                         }
                     } else {
                         deviceConnectedInfo
@@ -132,6 +157,12 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showDevicePicker) {
+            DevicePickerView(registry: globalRegistry) { device in
+                connectToGlobalDevice(device)
+            }
+        }
+        .sheet(isPresented: $showLogin) { EmailLoginView(auth: auth) }
         .sheet(isPresented: $showSettings) { SettingsView(receiver: receiver) }
         .sheet(isPresented: $showQR) {
             ChannelQRView(channel: UserDefaults.standard.string(forKey: "channel") ?? "soluna")
@@ -155,7 +186,7 @@ struct ContentView: View {
             speakers.audioReceiver = receiver
             playerModel.speakersController = speakers
             loadSavedSettings()
-            receiver.autoStart()
+            if connectMode { receiver.autoStart() }
             // Wire RTCP receiver reports: AudioReceiver → primary DaemonClient
             receiver.daemonClient = speakers.primaryDaemon
             Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
@@ -194,6 +225,36 @@ struct ContentView: View {
                     .foregroundColor(.secondary)
             }
             Spacer()
+            Button(action: { showLogin = true }) {
+                Group {
+                    if auth.isAuthenticated, let uname = auth.username {
+                        Text("@\(uname)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.purple)
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                    } else if auth.isAuthenticated {
+                        Image(systemName: "person.crop.circle")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.green)
+                    } else {
+                        Image(systemName: "person.badge.plus")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.gray)
+                    }
+                }
+                .frame(width: 36, height: 36)
+                .background(Color.white.opacity(0.08))
+                .clipShape(Circle())
+            }
+            Button(action: { showDevicePicker = true }) {
+                Image(systemName: "globe")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.purple.opacity(0.9))
+                    .frame(width: 36, height: 36)
+                    .background(Color.purple.opacity(0.15))
+                    .clipShape(Circle())
+            }
             Button(action: { showQR = true }) {
                 Image(systemName: "qrcode")
                     .font(.system(size: 16, weight: .medium))
@@ -389,6 +450,8 @@ struct ContentView: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(receiver.state == .receiving ? "Stop" : "Play")
+            .accessibilityHint(receiver.state == .receiving ? "Stop audio playback" : "Start audio playback")
 
             // Status + stats
             HStack(spacing: 8) {
@@ -847,6 +910,8 @@ private struct MasterRow: View {
                 }
                 Slider(value: $volume, in: 0...1)
                     .tint(.solunaGradientMid)
+                    .accessibilityLabel("Volume")
+                    .accessibilityValue("\(Int(volume * 100))%")
                     .onChange(of: volume) { v in
                         if muted { muted = false; onMute(false) }
                         onVolume(v)

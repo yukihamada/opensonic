@@ -165,6 +165,12 @@ final class DaemonClient: ObservableObject {
         return URL(string: "\(scheme)://\(bare)\(port)/api/player/upload?name=\(enc)")
     }
 
+    // MARK: - Channel
+
+    func setChannel(_ ch: String) {
+        send(#"{"id":\#(nextId()),"command":"channel.set","channel":"\#(ch)"}"#)
+    }
+
     // MARK: - Stream mode
 
     func setMode(_ mode: String) {

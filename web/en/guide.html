@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script>sessionStorage.setItem('lang-set','1')</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Soluna — Setup Guide</title>
     <meta name="description" content="Soluna Setup Guide — Start real-time audio streaming to Mac, iPhone, Raspberry Pi, and browsers in 5 minutes.">
@@ -27,6 +28,17 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="stylesheet" href="/style.css">
     <style>
+        /* Nav */
+        nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc(50% - 580px));height:60px;background:rgba(5,6,10,0.7);backdrop-filter:blur(24px) saturate(1.8);border-bottom:1px solid var(--border)}
+        .nav-logo{font-size:18px;font-weight:700;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--text)}
+        .nav-logo svg{width:24px;height:24px}
+        .nav-links{display:flex;align-items:center;gap:24px}
+        .nav-links a{color:var(--text2);text-decoration:none;font-size:14px;transition:color 0.2s}
+        .nav-links a:hover{color:var(--text)}.nav-links a.active{color:var(--text);font-weight:600}
+        .nav-cta{padding:8px 18px;background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff !important;border-radius:10px;font-weight:600;font-size:13px !important;box-shadow:0 2px 12px rgba(59,130,246,0.3)}
+        .nav-cta:hover{opacity:0.9;transform:translateY(-1px)}
+        @media(max-width:768px){.hide-sm{display:none}}
+
         /* Guide-specific overrides */
         .guide-wrap {
             max-width: 740px;
@@ -35,7 +47,7 @@
         }
         .guide-hero {
             text-align: center;
-            padding: 48px 0 32px;
+            padding: 80px 0 32px;
         }
         .guide-hero .logo {
             font-size: 2rem;
@@ -263,14 +275,20 @@
     </style>
 </head>
 <body>
-    <header>
-        <div class="header-left">
-            <span class="logo">&#9672; Soluna</span>
+    <nav>
+        <a href="/en/" class="nav-logo">
+            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+            Soluna
+        </a>
+        <div class="nav-links">
+            <a href="/en/" class="hide-sm">Home</a>
+            <a href="/en/vision" class="hide-sm">Vision</a>
+            <a href="/en/protocol" class="hide-sm">Protocol</a>
+            <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+            <a href="/guide" class="hide-sm" onclick="sessionStorage.removeItem('lang-set')" style="font-size:12px;opacity:0.6">JP</a>
+            <a href="/dashboard" class="nav-cta">Dashboard</a>
         </div>
-        <div class="header-right">
-            <a href="/dashboard" class="guide-back">&larr; Dashboard</a>
-        </div>
-    </header>
+    </nav>
 
     <div class="guide-wrap">
 
@@ -419,7 +437,7 @@ Simply set your <span class="hl">Mac</span>'s system output to <span class="hl">
                     <div class="step-body">
                         <h3>One-Command Install</h3>
                         <p>Run on your RPi / Linux machine. Handles everything from build to service registration.</p>
-                        <code>curl -fsSL https://soluna-web.fly.dev/install-rx.sh | sudo bash</code>
+                        <code>curl -fsSL https://solun.art/install-rx.sh | sudo bash</code>
                         <p>Automatically installs dependencies, builds, and registers the systemd service.</p>
                     </div>
                 </div>

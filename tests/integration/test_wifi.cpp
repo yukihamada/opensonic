@@ -21,7 +21,7 @@ TEST(WiFiIntegration, FullPathNoLoss) {
     // Setup
     OpusEncoderConfig enc_cfg;
     enc_cfg.channels = 1;
-    enc_cfg.frame_size_samples = 96;
+    enc_cfg.frame_size_samples = 480;  // 10ms — valid Opus frame size
     OpusEncoder encoder(enc_cfg);
 
     OpusDecoderConfig dec_cfg;
@@ -34,39 +34,39 @@ TEST(WiFiIntegration, FullPathNoLoss) {
     FecEncoder fec_enc(fec_cfg);
 
     JitterBufferConfig jb_cfg;
-    jb_cfg.initial_depth_ms = 4.0;
+    jb_cfg.initial_depth_ms = 20.0;
     JitterBuffer jitter(jb_cfg);
 
     // Generate and send 20 packets
     for (uint16_t i = 0; i < 20; i++) {
-        // Generate audio
-        std::vector<float> audio(96);
-        for (size_t j = 0; j < 96; j++) {
+        // Generate audio (480 samples = 10ms at 48kHz)
+        std::vector<float> audio(480);
+        for (size_t j = 0; j < 480; j++) {
             audio[j] = 0.5f * std::sin(2.0f * M_PI * 1000.0f *
-                (i * 96 + j) / 48000.0f);
+                (i * 480 + j) / 48000.0f);
         }
 
         // Encode
-        auto encoded = encoder.encode(audio.data(), 96);
+        auto encoded = encoder.encode(audio.data(), 480);
         ASSERT_TRUE(encoded.success);
 
         // FEC encode
         fec_enc.feed(encoded.data.data(), encoded.data.size());
 
         // Push to jitter buffer
-        int64_t ts = i * 2000000LL; // 2ms intervals
+        int64_t ts = i * 10000000LL; // 10ms intervals
         jitter.push(i, ts, encoded.data.data(), encoded.data.size());
     }
 
     // Receive from jitter buffer
     size_t decoded_count = 0;
-    std::vector<uint8_t> recv_buf(96 * 4 * 2); // large enough
+    std::vector<uint8_t> recv_buf(480 * 4 * 2); // large enough
 
     while (jitter.ready()) {
         size_t got = jitter.pop(recv_buf.data(), recv_buf.size());
         if (got == 0) break;
 
-        auto decoded = decoder.decode(recv_buf.data(), got, 96);
+        auto decoded = decoder.decode(recv_buf.data(), got, 480);
         EXPECT_TRUE(decoded.success);
         decoded_count++;
     }
@@ -147,20 +147,20 @@ TEST(WiFiIntegration, OpusPLC) {
     cfg.channels = 1;
     OpusDecoder decoder(cfg);
 
-    // First decode a real packet
+    // First decode a real packet (480 samples = 10ms)
     OpusEncoder encoder;
-    std::vector<float> audio(96, 0.3f);
-    auto encoded = encoder.encode(audio.data(), 96);
+    std::vector<float> audio(480, 0.3f);
+    auto encoded = encoder.encode(audio.data(), 480);
     ASSERT_TRUE(encoded.success);
 
-    auto decoded = decoder.decode(encoded.data.data(), encoded.data.size(), 96);
+    auto decoded = decoder.decode(encoded.data.data(), encoded.data.size(), 480);
     ASSERT_TRUE(decoded.success);
 
     // Then simulate packet loss — use PLC
-    auto plc = decoder.decode_plc(96);
+    auto plc = decoder.decode_plc(480);
     EXPECT_TRUE(plc.success);
     EXPECT_TRUE(plc.plc_used);
-    EXPECT_EQ(plc.frames_decoded, 96u);
+    EXPECT_EQ(plc.frames_decoded, 480u);
 }
 
 // Jitter buffer handles reordering + varying jitter

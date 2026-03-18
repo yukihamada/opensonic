@@ -18,7 +18,7 @@ struct SolunaReceiverApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(receiver: receiver, speakers: speakers)
-                .frame(minWidth: 400, minHeight: 600)
+                .frame(minWidth: 400, idealWidth: 900, minHeight: 600, idealHeight: 700)
                 .onAppear { remoteControl.start(receiver: receiver) }
         }
         .commands {

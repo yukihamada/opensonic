@@ -39,6 +39,8 @@
 		6702C8871423768AC4A68363 /* SolunaTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 783E19B517B0E637BF72F97C /* SolunaTheme.swift */; };
 		A59C8441EDE00356AB248542 /* DeviceBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8E1058C397B200E7BF8EDBF /* DeviceBrowserView.swift */; };
 		CB5801208D32 /* ChannelBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8CC19F9AA4 /* ChannelBrowserView.swift */; };
+		GD0001 /* GlobalDeviceRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = GD0002 /* GlobalDeviceRegistry.swift */; };
+		GD0003 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GD0004 /* DevicePickerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -79,6 +81,8 @@
 		7C449248739977A0EAD3366F /* EmailLoginView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EmailLoginView.swift; sourceTree = "<group>"; };
 		A8E1058C397B200E7BF8EDBF /* DeviceBrowserView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DeviceBrowserView.swift; sourceTree = "<group>"; };
 		CB8CC19F9AA4 /* ChannelBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelBrowserView.swift; sourceTree = "<group>"; };
+		GD0002 /* GlobalDeviceRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalDeviceRegistry.swift; sourceTree = "<group>"; };
+		GD0004 /* DevicePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -142,6 +146,8 @@
 				3F2066F35682EABAA8FB76C2 /* AuthManager.swift */,
 				7C449248739977A0EAD3366F /* EmailLoginView.swift */,
 				A8E1058C397B200E7BF8EDBF /* DeviceBrowserView.swift */,
+				GD0002 /* GlobalDeviceRegistry.swift */,
+				GD0004 /* DevicePickerView.swift */,
 			);
 			path = SolunaReceiver;
 			sourceTree = "<group>";
@@ -300,6 +306,8 @@
 				3676A98C2C37381755AC7AE3 /* AuthManager.swift in Sources */,
 				03A7569C9815AECE32FD72C3 /* EmailLoginView.swift in Sources */,
 				A59C8441EDE00356AB248542 /* DeviceBrowserView.swift in Sources */,
+				GD0001 /* GlobalDeviceRegistry.swift in Sources */,
+				GD0003 /* DevicePickerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -442,7 +450,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = SolunaReceiver/SolunaReceiver.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202603141620;
+				CURRENT_PROJECT_VERSION = 202603180135;
 				DEVELOPMENT_TEAM = 5BV85JW8US;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -484,7 +492,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = SolunaReceiver/SolunaReceiver.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202603141620;
+				CURRENT_PROJECT_VERSION = 202603180135;
 				DEVELOPMENT_TEAM = 5BV85JW8US;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -525,7 +533,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202603141620;
+				CURRENT_PROJECT_VERSION = 202603180135;
 				DEVELOPMENT_TEAM = 5BV85JW8US;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -549,7 +557,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 202603141620;
+				CURRENT_PROJECT_VERSION = 202603180135;
 				DEVELOPMENT_TEAM = 5BV85JW8US;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;

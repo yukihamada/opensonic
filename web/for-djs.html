@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <script>if(!sessionStorage.getItem('lang-set')&&/^en/i.test(navigator.language)){location.replace('/en/for-djs')}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Soluna for DJs — 著作権をクリアにしながら、リアルタイムで音楽を配信。自動ロイヤリティ検出、20%キャッシュバック。">
     <meta property="og:title" content="Soluna for DJs — 著作権フリーのDJプレイを。">
@@ -127,15 +128,21 @@
 <body>
 
 <nav>
-    <a href="/" class="nav-logo"><span class="diamond">&#9670;</span> Soluna</a>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
     <div class="nav-links">
-        <a href="/">ホーム</a>
-        <a href="/for-djs" class="active">DJ向け</a>
-        <a href="/for-venues">店舗向け</a>
-        <a href="/for-events">イベント向け</a>
-        <a href="/for-developers">開発者向け</a>
-        <a href="/en/for-djs" title="English">EN</a>
-        <a href="https://testflight.apple.com/join/PYbefDSE" class="nav-cta">TestFlight</a>
+        <a href="/soluna" class="hide-sm">ホーム</a>
+        <a href="/for-djs" class="hide-sm active">DJ</a>
+        <a href="/for-venues" class="hide-sm">店舗</a>
+        <a href="/for-events" class="hide-sm">イベント</a>
+        <a href="/for-developers" class="hide-sm">開発者</a>
+        <a href="/vision" class="hide-sm">ビジョン</a>
+        <a href="/protocol" class="hide-sm">プロトコル</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/en/for-djs" class="hide-sm" onclick="sessionStorage.removeItem('lang-set')" style="font-size:12px;opacity:0.6">EN</a>
+        <a href="/dashboard" class="nav-cta">ダッシュボード</a>
     </div>
 </nav>
 
@@ -163,19 +170,19 @@
     </div>
     <div class="pain-grid">
         <div class="pain-card reveal reveal-delay-1">
-            <div class="before">Before</div>
+            <div class="before">従来</div>
             <div class="icon">&#128176;</div>
             <h3>ロイヤリティ計算が複雑</h3>
             <p>JASRAC、NexTone、海外楽曲...権利者ごとに異なる料率と申請手続きに振り回される。</p>
         </div>
         <div class="pain-card reveal reveal-delay-2">
-            <div class="before">Before</div>
+            <div class="before">従来</div>
             <div class="icon">&#9888;&#65039;</div>
             <h3>無許諾使用のリスク</h3>
             <p>ライセンスなしでプレイした場合、高額な損害賠償や活動停止のリスクが常につきまとう。</p>
         </div>
         <div class="pain-card reveal reveal-delay-3">
-            <div class="before">Before</div>
+            <div class="before">従来</div>
             <div class="icon">&#128200;</div>
             <h3>使用実績の証明が困難</h3>
             <p>プレイした楽曲リストの作成・提出は手動で、ミスや漏れが頻繁に発生する。</p>
@@ -183,19 +190,19 @@
     </div>
     <div class="pain-grid" style="margin-top: 24px;">
         <div class="pain-card reveal reveal-delay-1">
-            <div class="after">After — Soluna</div>
+            <div class="after">Soluna導入後</div>
             <div class="icon">&#9989;</div>
             <h3>自動ロイヤリティ検出</h3>
             <p>音声フィンガープリントで楽曲を即座に特定。権利処理を自動で完了。</p>
         </div>
         <div class="pain-card reveal reveal-delay-2">
-            <div class="after">After — Soluna</div>
+            <div class="after">Soluna導入後</div>
             <div class="icon">&#128184;</div>
             <h3>20% キャッシュバック</h3>
             <p>Solunaネットワーク経由の配信で、ロイヤリティの20%がDJにキャッシュバックされる。</p>
         </div>
         <div class="pain-card reveal reveal-delay-3">
-            <div class="after">After — Soluna</div>
+            <div class="after">Soluna導入後</div>
             <div class="icon">&#128202;</div>
             <h3>透明な請求ダッシュボード</h3>
             <p>リアルタイムで使用楽曲・課金額・キャッシュバック残高をすべて確認可能。</p>
@@ -313,10 +320,10 @@
         </div>
         <div class="footer-col">
             <h4>活用シーン別</h4>
-            <a href="/for-djs">DJs</a>
-            <a href="/for-venues">Venues</a>
-            <a href="/for-events">Events</a>
-            <a href="/for-developers">Developers</a>
+            <a href="/for-djs">DJ</a>
+            <a href="/for-venues">店舗</a>
+            <a href="/for-events">イベント</a>
+            <a href="/for-developers">開発者</a>
         </div>
         <div class="footer-col">
             <h4>ダウンロード</h4>

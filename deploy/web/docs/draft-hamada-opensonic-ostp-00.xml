@@ -1,0 +1,1628 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE rfc [
+  <!ENTITY RFC2119 SYSTEM "https://bib.ietf.org/public/rfc/bibxml/reference.RFC.2119.xml">
+  <!ENTITY RFC3550 SYSTEM "https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3550.xml">
+  <!ENTITY RFC3711 SYSTEM "https://bib.ietf.org/public/rfc/bibxml/reference.RFC.3711.xml">
+  <!ENTITY RFC4566 SYSTEM "https://bib.ietf.org/public/rfc/bibxml/reference.RFC.4566.xml">
+  <!ENTITY RFC5764 SYSTEM "https://bib.ietf.org/public/rfc/bibxml/reference.RFC.5764.xml">
+  <!ENTITY RFC6716 SYSTEM "https://bib.ietf.org/public/rfc/bibxml/reference.RFC.6716.xml">
+  <!ENTITY RFC6838 SYSTEM "https://bib.ietf.org/public/rfc/bibxml/reference.RFC.6838.xml">
+  <!ENTITY RFC7826 SYSTEM "https://bib.ietf.org/public/rfc/bibxml/reference.RFC.7826.xml">
+  <!ENTITY RFC8085 SYSTEM "https://bib.ietf.org/public/rfc/bibxml/reference.RFC.8085.xml">
+  <!ENTITY RFC8174 SYSTEM "https://bib.ietf.org/public/rfc/bibxml/reference.RFC.8174.xml">
+  <!ENTITY RFC8835 SYSTEM "https://bib.ietf.org/public/rfc/bibxml/reference.RFC.8835.xml">
+  <!ENTITY RFC9000 SYSTEM "https://bib.ietf.org/public/rfc/bibxml/reference.RFC.9000.xml">
+]>
+<rfc xmlns:xi="http://www.w3.org/2001/XInclude"
+     category="exp"
+     docName="draft-hamada-opensonic-ostp-00"
+     ipr="trust200902"
+     submissionType="independent"
+     xml:lang="en"
+     version="3">
+
+  <!-- ============================================================ -->
+  <!--  FRONT MATTER                                                 -->
+  <!-- ============================================================ -->
+  <front>
+    <title abbrev="OSTP">Open Sonic Transport Protocol (OSTP)</title>
+
+    <seriesInfo name="Internet-Draft" value="draft-hamada-opensonic-ostp-00"/>
+
+    <author fullname="Yuki Hamada" initials="Y." surname="Hamada">
+      <organization>EnablerDAO</organization>
+      <address>
+        <email>mail@yukihamada.jp</email>
+        <uri>https://github.com/yukihamada/opensonic</uri>
+      </address>
+    </author>
+
+    <date year="2026" month="March" day="16"/>
+
+    <area>ART</area>
+    <workgroup>Individual Submission</workgroup>
+
+    <keyword>RTP</keyword>
+    <keyword>audio streaming</keyword>
+    <keyword>multi-room audio</keyword>
+    <keyword>low latency</keyword>
+    <keyword>P2P</keyword>
+    <keyword>relay</keyword>
+    <keyword>FEC</keyword>
+
+    <abstract>
+      <t>
+        This document specifies the Open Sonic Transport Protocol (OSTP),
+        a UDP/RTP-based protocol for real-time, multi-room audio distribution
+        over both local area networks and the wide-area Internet.  OSTP
+        extends the Real-time Transport Protocol (RTP, RFC 3550) with an
+        8-byte header extension that carries a stream identifier, an extended
+        sequence number, and a high-resolution media timestamp.  The protocol
+        defines payload types for uncompressed PCM, 32-bit floating-point
+        PCM, and Opus-coded audio; a relay signalling protocol carried over
+        UDP text datagrams; a WebSocket-based daemon control interface; a
+        binary file-transfer sub-protocol; congestion control using RTCP
+        Receiver Reports and a bitrate ladder; Forward Error Correction (FEC)
+        via XOR parity packets; Negative Acknowledgement (NACK) based
+        retransmission; and an optional DTLS-SRTP security layer.  OSTP also
+        defines an economic layer that enables per-listen charging, tipping,
+        and royalty distribution anchored to on-chain wallets.
+      </t>
+      <t>
+        This document is an independent submission describing the OSTP 1.0
+        wire format as implemented in the OpenSonic/Soluna open-source
+        codebase.  It is not the product of an IETF working group.
+      </t>
+    </abstract>
+  </front>
+
+  <!-- ============================================================ -->
+  <!--  MIDDLE                                                        -->
+  <!-- ============================================================ -->
+  <middle>
+
+    <!-- ————————————————————————————— -->
+    <!--  1. Introduction                                            -->
+    <!-- ————————————————————————————— -->
+    <section anchor="intro" numbered="true" toc="default">
+      <name>Introduction</name>
+
+      <t>
+        Distributing high-quality audio to multiple rooms or devices over a
+        general-purpose IP network is a well-studied problem, yet existing
+        solutions present significant deployment friction.  AES67
+        <xref target="AES67"/> requires IEEE 1588 PTP grand-master
+        infrastructure and IGMP-aware switching, making it unsuitable for
+        consumer environments.  WebRTC <xref target="RFC8835"/> provides
+        peer-to-peer audio but is engineered for bi-directional voice calls
+        and carries heavyweight browser-oriented signalling that is
+        inappropriate for high-fidelity one-to-many streaming.  RTSP
+        <xref target="RFC7826"/> is a session-control protocol that relies
+        on a separate transport layer and lacks integrated relay topologies.
+      </t>
+      <t>
+        OSTP is designed around three primary goals:
+      </t>
+      <ol spacing="normal" type="1">
+        <li>
+          <strong>Minimal latency on LAN.</strong>  When all participants
+          share a subnet, OSTP uses UDP multicast and achieves end-to-end
+          audio latency below 5 ms.
+        </li>
+        <li>
+          <strong>Transparent WAN relay.</strong>  For participants separated
+          by NAT or the wide-area Internet, OSTP defines a lightweight relay
+          protocol that routes audio datagrams through one or more relay
+          nodes.  The wire format seen by the receiver is identical whether
+          the audio arrived via multicast or relay.
+        </li>
+        <li>
+          <strong>Open economics.</strong>  OSTP embeds optional wallet
+          addressing and micro-payment signalling to enable creators to
+          monetise live audio without a proprietary platform intermediary.
+        </li>
+      </ol>
+      <t>
+        OSTP packets are standard RTP packets (<xref target="RFC3550"/>)
+        with the RTP header extension bit set and the extension profile
+        word set to 0x4F53 (ASCII "OS").  Implementations that do not
+        recognise the profile will discard the extension and may attempt
+        to render the payload according to the payload type field, which
+        provides a limited but graceful degradation path.
+      </t>
+
+      <section anchor="design-goals" numbered="true" toc="default">
+        <name>Design Goals and Non-Goals</name>
+        <t>OSTP is explicitly designed to:</t>
+        <ul spacing="normal">
+          <li>Support lossless 24-bit PCM at 44.1 kHz / 48 kHz / 96 kHz
+              stereo and multichannel (up to 8 channels) on LAN.</li>
+          <li>Gracefully fall back to Opus at configurable bitrates
+              (32–320 kbps) when bandwidth is limited.</li>
+          <li>Operate without infrastructure beyond a single relay process
+              for WAN deployments.</li>
+          <li>Be implementable on resource-constrained embedded targets
+              (e.g., ESP32, Raspberry Pi).</li>
+        </ul>
+        <t>OSTP does not attempt to:</t>
+        <ul spacing="normal">
+          <li>Replace AES67 in professional broadcast facilities requiring
+              sample-accurate synchronisation across hundreds of endpoints.</li>
+          <li>Provide a general-purpose media signalling framework.</li>
+          <li>Mandate specific codec quality beyond the defined payload
+              type values.</li>
+        </ul>
+      </section>
+    </section>
+
+    <!-- ————————————————————————————— -->
+    <!--  2. Terminology                                              -->
+    <!-- ————————————————————————————— -->
+    <section anchor="terminology" numbered="true" toc="default">
+      <name>Terminology</name>
+      <t>
+        The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+        "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+        "OPTIONAL" in this document are to be interpreted as described in
+        BCP 14 <xref target="RFC2119"/> <xref target="RFC8174"/> when, and
+        only when, they appear in all capitals, as shown here.
+      </t>
+      <dl newline="false" spacing="normal">
+        <dt>Source Node</dt>
+        <dd>
+          A node that captures audio (e.g., from a sound card or system
+          audio capture interface) and transmits OSTP packets.  There is
+          exactly one active source per OSTP channel at any time.
+        </dd>
+        <dt>Relay Node</dt>
+        <dd>
+          A server that receives OSTP packets from an upstream source or
+          relay and re-transmits them to subscribed downstream receivers.
+          A relay node participates in the relay signalling protocol
+          (Section <xref target="relay-protocol" format="counter"/>).
+        </dd>
+        <dt>Leaf Node</dt>
+        <dd>
+          An end-user receiver that consumes audio packets and renders them
+          to an audio output device.  A leaf node does not forward audio
+          packets.
+        </dd>
+        <dt>Channel</dt>
+        <dd>
+          A named audio stream, identified by a UTF-8 string of up to 64
+          bytes.  Multiple streams (e.g., stereo + surround) MAY share a
+          channel name but MUST use distinct stream_id values.
+        </dd>
+        <dt>Stream ID</dt>
+        <dd>
+          A 16-bit value in the OSTP extension header that identifies a
+          logical audio stream within a channel.  The upper 4 bits encode
+          the transmitter channel count; the lower 12 bits are a locally
+          assigned identifier.
+        </dd>
+        <dt>Swarm</dt>
+        <dd>
+          A directed acyclic graph of relay nodes that distribute audio
+          packets from a single source to leaf nodes using a branching
+          factor (fanout) of up to 4.
+        </dd>
+        <dt>SSRC</dt>
+        <dd>
+          Synchronisation Source, as defined in <xref target="RFC3550"/>.
+          Each source node selects a random 32-bit SSRC.
+        </dd>
+        <dt>Daemon</dt>
+        <dd>
+          The <tt>solunad</tt> process that runs on the transmitting host.
+          It exposes a WebSocket control interface on port 8400 and drives
+          the RTP transmit pipeline.
+        </dd>
+        <dt>Media Timestamp</dt>
+        <dd>
+          A 32-bit monotonically increasing counter in the OSTP extension
+          header, expressed in the RTP clock-rate units of the payload
+          type, providing extended temporal precision beyond the standard
+          RTP timestamp field.
+        </dd>
+        <dt>Pre-buffer Level</dt>
+        <dd>
+          The fraction of a receiver's playback buffer that must be filled
+          before audio playout begins, expressed as a percentage of the
+          target buffer depth.
+        </dd>
+      </dl>
+    </section>
+
+    <!-- ————————————————————————————— -->
+    <!--  3. Protocol Architecture                                   -->
+    <!-- ————————————————————————————— -->
+    <section anchor="architecture" numbered="true" toc="default">
+      <name>Protocol Architecture</name>
+
+      <t>
+        OSTP separates its functions into two planes: a <em>media plane</em>
+        carried over UDP datagrams, and a <em>control plane</em> carried over
+        WebSocket connections.
+      </t>
+
+      <section anchor="arch-media" numbered="true" toc="default">
+        <name>Media Plane</name>
+        <t>
+          All audio data is transported as RTP packets over UDP.  OSTP does
+          not define its own framing; the RTP packet structure defined in
+          <xref target="RFC3550"/> is used verbatim, with the addition of the
+          OSTP extension header (see Section
+          <xref target="packet-format" format="counter"/>).
+        </t>
+        <t>
+          Three network topologies are supported:
+        </t>
+        <dl newline="false" spacing="normal">
+          <dt>LAN Multicast</dt>
+          <dd>
+            Source nodes transmit to the IPv4 multicast group
+            239.69.0.1 on UDP port 5004.  Leaf nodes join that group.
+            This topology provides the lowest latency (typically below 5 ms)
+            and requires no server infrastructure, but is limited to a single
+            IP subnet.
+          </dd>
+          <dt>P2P Direct</dt>
+          <dd>
+            For two to four peers across different subnets, a relay node
+            provides PEER hints that enable UDP hole-punching.  Once a direct
+            path is established, audio flows peer-to-peer without relay
+            involvement.
+          </dd>
+          <dt>WAN Relay</dt>
+          <dd>
+            All audio datagrams are forwarded by one or more relay nodes.
+            The relay listens on UDP port 5100.  This topology supports
+            arbitrary numbers of receivers and symmetric NAT environments,
+            at the cost of additional latency proportional to the relay
+            path length.
+          </dd>
+        </dl>
+        <t>
+          The three topologies are not mutually exclusive.  A hybrid
+          deployment may use LAN multicast for devices on the source subnet
+          while using WAN relay for remote listeners.
+        </t>
+      </section>
+
+      <section anchor="arch-control" numbered="true" toc="default">
+        <name>Control Plane</name>
+        <t>
+          The control plane is divided into two sub-protocols:
+        </t>
+        <dl newline="false" spacing="normal">
+          <dt>Daemon Control Protocol (DCP)</dt>
+          <dd>
+            A WebSocket sub-protocol exposed by the <tt>solunad</tt>
+            transmitter daemon on TCP port 8400.  DCP allows local
+            applications to start and stop transmission, adjust channel
+            parameters, and perform file transfers.  See Section
+            <xref target="daemon-control" format="counter"/>.
+          </dd>
+          <dt>Relay Signalling Protocol (RSP)</dt>
+          <dd>
+            A line-oriented text protocol exchanged over UDP datagrams
+            between the source node and the relay node, and between the relay
+            node and leaf nodes.  RSP handles channel joining, membership
+            management, and wallet address advertisement.  See Section
+            <xref target="relay-protocol" format="counter"/>.
+          </dd>
+        </dl>
+        <t>
+          RTCP packets as defined in <xref target="RFC3550"/> are used for
+          congestion feedback.  Receiver Reports (RR) carry loss fraction,
+          cumulative loss, inter-arrival jitter, and delay statistics that
+          the source node uses for bitrate adaptation (Section
+          <xref target="congestion" format="counter"/>).
+        </t>
+      </section>
+
+      <section anchor="arch-topology" numbered="true" toc="default">
+        <name>Swarm Distribution Tree</name>
+        <t>
+          For large deployments, relay nodes form a distribution tree rooted
+          at the source node.  Each relay node forwards incoming audio
+          packets to at most four downstream subscribers (fanout-4).
+          Downstream subscribers may themselves be relay nodes, creating a
+          tree of depth proportional to log4(N) for N total leaf nodes.
+        </t>
+        <artwork name="" type="ascii-art" align="left" alt="">
+<![CDATA[
+            Source Node
+                 |
+           [Relay Node 0]
+          /    |    \    \
+        [R1]  [R2]  [R3]  [R4]    <- relay level 1
+       / | \  / \    |    /|\
+      L  L  L L  L   L   L L L   <- leaf nodes
+]]>
+        </artwork>
+        <t>
+          Tree construction is driven by the relay; individual relay nodes
+          are unaware of the full tree topology and need only track their
+          direct upstream and up to four direct downstream peers.
+        </t>
+      </section>
+    </section>
+
+    <!-- ————————————————————————————— -->
+    <!--  4. OSTP Packet Format                                      -->
+    <!-- ————————————————————————————— -->
+    <section anchor="packet-format" numbered="true" toc="default">
+      <name>OSTP Packet Format</name>
+
+      <t>
+        An OSTP packet consists of four consecutive regions in a single UDP
+        payload:
+      </t>
+      <ol spacing="normal" type="1">
+        <li>RTP Fixed Header (12 bytes)</li>
+        <li>RTP Extension Header (4 bytes) — profile 0x4F53</li>
+        <li>OSTP Extension Data (8 bytes)</li>
+        <li>Audio Payload (variable length)</li>
+      </ol>
+      <t>
+        An optional CRC-32 trailer (4 bytes, IEEE 802.3 polynomial) MAY
+        follow the audio payload when the sender sets the RTP padding (P)
+        bit.  Receivers SHOULD verify the CRC when present and MUST discard
+        packets that fail CRC verification.
+      </t>
+      <t>
+        All multi-byte fields are in network (big-endian) byte order unless
+        otherwise noted.
+      </t>
+
+      <section anchor="rtp-header" numbered="true" toc="default">
+        <name>RTP Fixed Header</name>
+        <artwork name="" type="ascii-art" align="left" alt="">
+<![CDATA[
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |V=2|P|X|  CC   |M|     PT      |       Sequence Number         |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                           Timestamp                           |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |           Synchronization Source (SSRC) Identifier            |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |            Contributing Source (CSRC) list (optional)         |
+   |                            . . .                              |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+]]>
+        </artwork>
+        <dl newline="false" spacing="normal">
+          <dt>V (2 bits)</dt>
+          <dd>RTP version.  MUST be 2.</dd>
+          <dt>P (1 bit)</dt>
+          <dd>
+            Padding.  When set to 1, indicates that a 4-byte CRC-32 trailer
+            is appended after the audio payload.
+          </dd>
+          <dt>X (1 bit)</dt>
+          <dd>
+            Extension.  MUST be 1 in all OSTP packets; indicates that an
+            RTP extension header follows the CSRC list.
+          </dd>
+          <dt>CC (4 bits)</dt>
+          <dd>
+            CSRC count.  Number of CSRC identifiers that follow the fixed
+            header.  Typically 0 for OSTP.
+          </dd>
+          <dt>M (1 bit)</dt>
+          <dd>
+            Marker.  Set to 1 on the last packet of a talkspurt or file
+            transfer segment.
+          </dd>
+          <dt>PT (7 bits)</dt>
+          <dd>
+            Payload Type.  See Section
+            <xref target="payload-types" format="counter"/>.
+          </dd>
+          <dt>Sequence Number (16 bits)</dt>
+          <dd>
+            Increments by one for each RTP data packet sent.  Used for
+            loss detection and reordering.
+          </dd>
+          <dt>Timestamp (32 bits)</dt>
+          <dd>
+            Reflects the sampling instant of the first sample in the packet.
+            The clock rate depends on the payload type (48000 Hz for Opus;
+            44100 or 48000 Hz for PCM).
+          </dd>
+          <dt>SSRC (32 bits)</dt>
+          <dd>
+            Identifies the synchronisation source.  Chosen randomly at
+            session start; MUST be unique within the session.
+          </dd>
+        </dl>
+      </section>
+
+      <section anchor="rtp-ext-header" numbered="true" toc="default">
+        <name>RTP Extension Header</name>
+        <t>
+          The four-byte RTP extension header immediately follows the CSRC
+          list and precedes the OSTP extension data:
+        </t>
+        <artwork name="" type="ascii-art" align="left" alt="">
+<![CDATA[
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |       Profile = 0x4F53        |      Length = 0x0002          |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+]]>
+        </artwork>
+        <dl newline="false" spacing="normal">
+          <dt>Profile (16 bits)</dt>
+          <dd>
+            MUST be 0x4F53 (ASCII "OS").  This value identifies the
+            extension as an OSTP extension and is used by receivers to
+            distinguish OSTP packets from other RTP streams sharing the
+            same port.
+          </dd>
+          <dt>Length (16 bits)</dt>
+          <dd>
+            Number of 32-bit words in the extension data that follows,
+            not including the four-byte extension header.  MUST be 0x0002
+            (indicating 8 bytes of OSTP extension data).
+          </dd>
+        </dl>
+      </section>
+
+      <section anchor="ostp-ext" numbered="true" toc="default">
+        <name>OSTP Extension Data</name>
+        <t>
+          The OSTP extension data is 8 bytes and immediately follows the
+          RTP extension header:
+        </t>
+        <artwork name="" type="ascii-art" align="left" alt="">
+<![CDATA[
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |C C C C|        Stream ID (12 bits)            | SeqExt (high) |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |    SeqExt (low 8 bits)        |                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+   |                  Media Timestamp (32 bits)                    |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+]]>
+        </artwork>
+        <t>
+          More precisely, the 16-bit <tt>stream_id</tt> field carries both
+          the channel count and stream identifier:
+        </t>
+        <artwork name="" type="ascii-art" align="left" alt="">
+<![CDATA[
+   Bits 15-12: TX Channel Count code (CCCC)
+   Bits 11-0:  Stream Identifier (12 bits)
+]]>
+        </artwork>
+        <dl newline="false" spacing="normal">
+          <dt>TX Channel Count Code (CCCC, 4 bits)</dt>
+          <dd>
+            Encodes the number of audio channels produced by the transmitter.
+            A value of 0 is legacy and indicates 2 channels (stereo).
+            Values 1 through 8 indicate the corresponding channel count
+            directly.  Values 9 through 15 are reserved.
+          </dd>
+          <dt>Stream Identifier (12 bits)</dt>
+          <dd>
+            A locally assigned identifier distinguishing concurrent streams
+            within a single channel.  The value 0x000 is reserved for
+            the primary stream.
+          </dd>
+          <dt>Sequence Extension (SeqExt, 16 bits)</dt>
+          <dd>
+            Extends the RTP 16-bit sequence number to 32 bits.  SeqExt
+            carries the upper 16 bits; the RTP Sequence Number field carries
+            the lower 16 bits.  Receivers MUST use the combined 32-bit value
+            when ordering packets and computing loss.
+          </dd>
+          <dt>Media Timestamp (32 bits)</dt>
+          <dd>
+            A media-time counter in the same clock units as the RTP
+            Timestamp field but starting from zero at session inception
+            rather than a random offset.  This field enables receivers to
+            compute absolute session-relative playback positions without
+            tracking the initial RTP timestamp offset.
+          </dd>
+        </dl>
+      </section>
+
+      <section anchor="payload-types" numbered="true" toc="default">
+        <name>Payload Types</name>
+        <t>
+          OSTP defines the following dynamic payload types.  All are in the
+          dynamic range (96–127) as defined by <xref target="RFC3550"/>.
+        </t>
+        <table align="left">
+          <name>OSTP Payload Type Assignments</name>
+          <thead>
+            <tr>
+              <th align="right">PT</th>
+              <th align="left">Name</th>
+              <th align="left">Description</th>
+              <th align="left">Clock Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td align="right">96</td>
+              <td>PCM24</td>
+              <td>
+                Interleaved signed 24-bit integer PCM, big-endian, packed
+                3 bytes per sample.  Sample rate is signalled in the RTP
+                Timestamp clock rate (44100 or 48000 Hz).
+              </td>
+              <td>44100 or 48000 Hz</td>
+            </tr>
+            <tr>
+              <td align="right">97</td>
+              <td>F32</td>
+              <td>
+                Interleaved 32-bit IEEE 754 single-precision floating-point
+                PCM, big-endian, normalised to [-1.0, +1.0].
+              </td>
+              <td>44100 or 48000 Hz</td>
+            </tr>
+            <tr>
+              <td align="right">98</td>
+              <td>OPUS</td>
+              <td>
+                Opus-encoded audio as defined in <xref target="RFC6716"/>.
+                Each RTP packet carries exactly one Opus frame.
+              </td>
+              <td>48000 Hz</td>
+            </tr>
+            <tr>
+              <td align="right">126</td>
+              <td>NACK</td>
+              <td>
+                Negative Acknowledgement control packet.  Payload is a
+                list of 16-bit RTP sequence numbers for which retransmission
+                is requested.  See Section
+                <xref target="nack" format="counter"/>.
+              </td>
+              <td>N/A</td>
+            </tr>
+            <tr>
+              <td align="right">127</td>
+              <td>FEC/XOR</td>
+              <td>
+                XOR-based Forward Error Correction parity packet covering
+                the preceding group of N audio packets.  See Section
+                <xref target="fec" format="counter"/>.
+              </td>
+              <td>same as protected stream</td>
+            </tr>
+          </tbody>
+        </table>
+        <t>
+          Implementations MUST support PT=98 (Opus) and PT=127 (FEC/XOR).
+          Support for PT=96 (PCM24), PT=97 (F32), and PT=126 (NACK) is
+          RECOMMENDED.
+        </t>
+      </section>
+
+      <section anchor="crc-trailer" numbered="true" toc="default">
+        <name>Optional CRC-32 Trailer</name>
+        <t>
+          When the RTP padding (P) bit is set, the last 4 bytes of the UDP
+          payload are a CRC-32 checksum computed over the audio payload
+          only (i.e., excluding all RTP and OSTP headers, and excluding
+          the CRC field itself).  The polynomial is the IEEE 802.3 CRC-32
+          (0xEDB88320 reflected, initial value 0xFFFFFFFF, final XOR
+          0xFFFFFFFF).  The value is stored in big-endian byte order.
+        </t>
+        <t>
+          Receivers SHOULD verify the CRC.  A receiver that encounters a
+          CRC mismatch MUST discard the packet and MAY issue a NACK (Section
+          <xref target="nack" format="counter"/>) for retransmission.
+        </t>
+      </section>
+    </section>
+
+    <!-- ————————————————————————————— -->
+    <!--  5. Channel Addressing                                      -->
+    <!-- ————————————————————————————— -->
+    <section anchor="channel-addressing" numbered="true" toc="default">
+      <name>Channel Addressing</name>
+
+      <t>
+        An OSTP channel is identified by a human-readable name — a UTF-8
+        string of 1 to 64 bytes.  Channel names MUST NOT contain ASCII
+        control characters (U+0000–U+001F) or the characters '/' and '#'.
+        Channel names are case-sensitive.
+      </t>
+      <t>
+        The mapping from channel name to transport endpoints is:
+      </t>
+      <dl newline="false" spacing="normal">
+        <dt>LAN Multicast</dt>
+        <dd>
+          The fixed multicast group address 239.69.0.1 and port 5004 are
+          used for all channels.  Receivers distinguish streams by SSRC
+          and stream_id.  When multiple channels are active on the same LAN,
+          receivers MUST filter by SSRC.
+        </dd>
+        <dt>WAN Relay</dt>
+        <dd>
+          The channel name is used as the subscription key in the relay
+          signalling protocol (Section
+          <xref target="relay-protocol" format="counter"/>).  The relay
+          node multiplexes all channels over a single UDP port (5100) and
+          routes audio datagrams to subscribed leaf nodes by channel name.
+        </dd>
+      </dl>
+      <t>
+        The stream_id field in the OSTP extension header provides a second
+        level of addressing within a channel, allowing concurrent
+        transmission of multiple bitrate variants or codec alternatives
+        from a single source.  Receivers select the stream_id appropriate
+        for their capabilities and network conditions.
+      </t>
+    </section>
+
+    <!-- ————————————————————————————— -->
+    <!--  6. Relay Protocol                                          -->
+    <!-- ————————————————————————————— -->
+    <section anchor="relay-protocol" numbered="true" toc="default">
+      <name>Relay Signalling Protocol</name>
+
+      <t>
+        The Relay Signalling Protocol (RSP) is a line-oriented text protocol
+        carried in UDP datagrams.  Each message is a single line terminated
+        by a newline (LF, 0x0A) character.  Fields within a message are
+        separated by a single space.  All messages MUST be no longer than
+        1024 bytes including the terminating newline.
+      </t>
+      <t>
+        Unless otherwise noted, RSP messages are exchanged on the same UDP
+        port as OSTP audio datagrams (port 5100 for the relay node).
+        RSP messages and OSTP audio datagrams are distinguished by inspecting
+        the first byte: RSP messages begin with an ASCII uppercase letter
+        (0x41–0x5A); OSTP packets begin with the byte 0x80 (RTP V=2, P=0,
+        X=0, CC=0) or similar values with the two high bits set to 10.
+      </t>
+
+      <section anchor="rsp-messages" numbered="true" toc="default">
+        <name>RSP Message Definitions</name>
+        <dl newline="true" spacing="normal">
+          <dt><tt>JOIN &lt;channel&gt; [&lt;wallet&gt;]</tt></dt>
+          <dd>
+            <t>
+              Sent by a leaf node or relay node to the relay server to
+              subscribe to a channel.  <tt>&lt;channel&gt;</tt> is the
+              channel name.  The optional <tt>&lt;wallet&gt;</tt> field is
+              a base58-encoded public key (e.g., a Solana address) used for
+              micropayment routing.
+            </t>
+            <t>
+              Upon receiving a valid JOIN, the relay MUST respond with a
+              HELLO message and begin forwarding OSTP packets for the
+              requested channel to the sender's source address.
+            </t>
+          </dd>
+          <dt><tt>HELLO &lt;channel&gt; &lt;relay_id&gt; &lt;server_ts&gt;</tt></dt>
+          <dd>
+            Sent by the relay server in response to a JOIN.
+            <tt>&lt;relay_id&gt;</tt> is an opaque identifier for the relay
+            node (MAY be its public IP address and port in the form
+            <tt>addr:port</tt>).  <tt>&lt;server_ts&gt;</tt> is the relay
+            server's current UNIX timestamp in milliseconds, used by
+            receivers for initial clock offset estimation.
+          </dd>
+          <dt><tt>MEMBERS &lt;channel&gt; &lt;count&gt; [&lt;wallet1&gt; ...]</tt></dt>
+          <dd>
+            Broadcast by the relay to all subscribers of a channel
+            whenever the membership list changes.  <tt>&lt;count&gt;</tt>
+            is the current number of active subscribers.  The optional
+            wallet addresses allow the source node to compute royalty
+            splits for micropayment distribution.
+          </dd>
+          <dt><tt>LEAVE &lt;channel&gt;</tt></dt>
+          <dd>
+            Sent by a subscriber to unsubscribe from a channel.  The relay
+            MUST stop forwarding audio to that subscriber within one RTT.
+          </dd>
+          <dt><tt>WALLET &lt;channel&gt; &lt;wallet&gt;</tt></dt>
+          <dd>
+            Sent by a source node to associate a wallet address with a
+            channel for payment collection.  The relay MUST include this
+            wallet in MEMBERS notifications to allow tipping.
+          </dd>
+          <dt><tt>PEER &lt;channel&gt; &lt;addr&gt; &lt;port&gt;</tt></dt>
+          <dd>
+            Sent by the relay to a leaf node to hint a peer's address for
+            UDP hole-punching.  After receiving a PEER hint, both nodes
+            SHOULD send a probe packet to each other's indicated address
+            to establish a direct path.
+          </dd>
+          <dt><tt>CHARGE &lt;channel&gt; &lt;amount_usat&gt; &lt;wallet&gt;</tt></dt>
+          <dd>
+            Informational message sent by the relay to the source node to
+            report a micropayment event.  <tt>&lt;amount_usat&gt;</tt> is
+            the payment amount in micro-satoshis (or equivalent base units
+            for the configured payment rail).
+          </dd>
+          <dt><tt>TIP &lt;channel&gt; &lt;amount_usat&gt; &lt;from_wallet&gt;</tt></dt>
+          <dd>
+            Sent by a leaf node to the relay to initiate a voluntary tip
+            payment to the channel's source wallet.  The relay SHOULD
+            forward a corresponding CHARGE notification to the source node.
+          </dd>
+          <dt><tt>PING</tt></dt>
+          <dd>
+            Sent by either party to verify connectivity.  The recipient
+            MUST respond with a <tt>PONG</tt> message.  Implementations
+            SHOULD send PING messages at intervals no longer than 25 seconds
+            when no other traffic has been exchanged, in order to maintain
+            NAT bindings.
+          </dd>
+          <dt><tt>PONG</tt></dt>
+          <dd>Response to a PING message.</dd>
+        </dl>
+      </section>
+
+      <section anchor="rsp-state" numbered="true" toc="default">
+        <name>Relay State Machine</name>
+        <t>
+          A relay node MUST maintain the following state per subscribed
+          (channel, client-address) pair:
+        </t>
+        <ul spacing="normal">
+          <li>Channel name</li>
+          <li>Client UDP address and port</li>
+          <li>Optional wallet address</li>
+          <li>Timestamp of last received RSP message (for keepalive expiry)</li>
+          <li>Packet forwarding statistics (packets forwarded, bytes forwarded)</li>
+        </ul>
+        <t>
+          A subscription entry MUST be removed if no RSP or OSTP traffic
+          has been received from the client for more than 60 seconds.
+        </t>
+      </section>
+    </section>
+
+    <!-- ————————————————————————————— -->
+    <!--  7. Congestion Control                                      -->
+    <!-- ————————————————————————————— -->
+    <section anchor="congestion" numbered="true" toc="default">
+      <name>Congestion Control</name>
+
+      <t>
+        OSTP implements congestion control in accordance with the guidelines
+        in <xref target="RFC8085"/>.  The control loop combines RTCP
+        Receiver Reports with an application-layer bitrate ladder.
+      </t>
+
+      <section anchor="rtcp" numbered="true" toc="default">
+        <name>RTCP Receiver Reports</name>
+        <t>
+          Leaf nodes MUST send RTCP Receiver Reports as defined in
+          <xref target="RFC3550"/>, Section 6.4.  The reporting interval
+          SHOULD be between 1 and 5 seconds, computed using the RTCP timing
+          algorithm.  Each Receiver Report block carries:
+        </t>
+        <ul spacing="normal">
+          <li>Fraction lost over the most recent reporting interval</li>
+          <li>Cumulative number of packets lost</li>
+          <li>Extended highest sequence number received</li>
+          <li>Inter-arrival jitter</li>
+          <li>Last SR timestamp and delay since last SR (for RTT estimation)</li>
+        </ul>
+        <t>
+          The source node uses the fraction-lost and jitter fields as the
+          primary inputs to the bitrate adaptation algorithm described in
+          Section <xref target="bitrate-ladder" format="counter"/>.
+        </t>
+      </section>
+
+      <section anchor="bitrate-ladder" numbered="true" toc="default">
+        <name>Opus Bitrate Ladder</name>
+        <t>
+          When the active payload type is PT=98 (Opus), the source node
+          selects an encoding bitrate from the following ladder:
+        </t>
+        <table align="left">
+          <name>OSTP Opus Bitrate Ladder</name>
+          <thead>
+            <tr>
+              <th align="right">Bitrate (kbps)</th>
+              <th align="left">Use case</th>
+              <th align="left">Approximate bandwidth per packet (20 ms)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td align="right">32</td><td>Minimum quality / severe loss</td><td>~80 bytes</td></tr>
+            <tr><td align="right">64</td><td>Low-bandwidth / mobile</td><td>~160 bytes</td></tr>
+            <tr><td align="right">128</td><td>Near-CD quality</td><td>~320 bytes</td></tr>
+            <tr><td align="right">192</td><td>High quality</td><td>~480 bytes</td></tr>
+            <tr><td align="right">320</td><td>Maximum quality / LAN</td><td>~800 bytes</td></tr>
+          </tbody>
+        </table>
+        <t>
+          Bitrate upgrade (step up the ladder) is permitted at most once
+          every 10 seconds, and only when the fraction-lost value in the
+          most recent RTCP RR is below 0.5% and inter-arrival jitter is
+          below 20 ms.
+        </t>
+        <t>
+          Bitrate downgrade (step down the ladder) MUST be triggered
+          immediately when either:
+        </t>
+        <ul spacing="normal">
+          <li>The fraction-lost value exceeds 5% in any single reporting
+              interval, or</li>
+          <li>Three consecutive reporting intervals show fraction-lost above
+              1%.</li>
+        </ul>
+        <t>
+          When operating over LAN multicast or at PCM payload types (PT=96,
+          PT=97), the source node does not apply bitrate adaptation; it
+          transmits at the full sample rate and relies on FEC (Section
+          <xref target="fec" format="counter"/>) and NACK (Section
+          <xref target="nack" format="counter"/>) for loss recovery.
+        </t>
+      </section>
+
+      <section anchor="fec" numbered="true" toc="default">
+        <name>Forward Error Correction (FEC)</name>
+        <t>
+          OSTP uses a simple XOR-parity FEC scheme to recover from single
+          packet losses within a protection group.  The scheme is similar
+          to the one described in RFC 5109 but is not wire-compatible with
+          it.
+        </t>
+        <t>
+          The source node groups consecutive audio packets into blocks of
+          N packets (default N=5).  After each block, the source MUST
+          transmit one FEC parity packet (PT=127) whose payload is the
+          byte-wise XOR of all N audio payloads in the block, zero-padded
+          to the length of the longest payload.
+        </t>
+        <t>
+          The FEC packet carries in its RTP Timestamp field the RTP
+          Timestamp of the first packet in the block.  The OSTP
+          stream_id and sequence_ext fields mirror those of the first
+          packet in the block.  The RTP Sequence Number of the FEC packet
+          is N+1 higher than the first packet in the block, i.e., it
+          immediately follows the block in sequence-number space.
+        </t>
+        <artwork name="" type="ascii-art" align="left" alt="">
+<![CDATA[
+   Audio packets: [seq=100] [seq=101] [seq=102] [seq=103] [seq=104]
+   FEC packet:    [seq=105, PT=127, payload = XOR(100..104)]
+
+   If seq=102 is lost, the receiver can recover it:
+   payload[102] = XOR(payload[100], payload[101],
+                      payload[103], payload[104], FEC_payload)
+]]>
+        </artwork>
+        <t>
+          A receiver that detects a single loss within a protection block
+          (via sequence number gap) SHOULD wait up to one inter-packet
+          interval (the packet period) for the FEC packet before
+          concealing the loss.  If the FEC packet arrives in time, the
+          receiver MUST attempt recovery.  Recovery is not possible if
+          two or more packets in the same block are lost; in that case the
+          receiver SHOULD apply packet loss concealment.
+        </t>
+        <t>
+          The protection block size N MAY be negotiated as part of session
+          setup via the Daemon Control Protocol.  Senders SHOULD NOT use
+          values of N below 3 or above 10.
+        </t>
+      </section>
+
+      <section anchor="nack" numbered="true" toc="default">
+        <name>Negative Acknowledgement (NACK)</name>
+        <t>
+          For relay-connected streams where RTT is low enough to make
+          retransmission practical (RTT &lt; 50 ms), receivers MAY request
+          retransmission of lost packets using NACK packets (PT=126).
+        </t>
+        <t>
+          A NACK packet payload consists of one or more 16-bit unsigned
+          integers in network byte order, each representing the RTP
+          Sequence Number of a lost audio packet.  A single NACK packet
+          MUST NOT carry more than 32 sequence numbers.
+        </t>
+        <artwork name="" type="ascii-art" align="left" alt="">
+<![CDATA[
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |         Lost Seq #1           |         Lost Seq #2           |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |         Lost Seq #3           |            ...                |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+]]>
+        </artwork>
+        <t>
+          Upon receipt of a NACK, the source node or relay node SHOULD
+          retransmit the requested packets from its transmit buffer.  The
+          retransmit buffer at the source SHOULD hold at least 200 ms of
+          audio.  Retransmitted packets are sent as normal OSTP audio
+          packets with the original sequence numbers and timestamps; the
+          RTP Marker (M) bit is set to indicate that the packet is a
+          retransmission.
+        </t>
+        <t>
+          Receivers SHOULD limit NACK transmission to at most one NACK
+          per lost sequence number, and SHOULD NOT send NACKs for packets
+          that are more than 500 ms old.
+        </t>
+      </section>
+    </section>
+
+    <!-- ————————————————————————————— -->
+    <!--  8. File Distribution Protocol                              -->
+    <!-- ————————————————————————————— -->
+    <section anchor="file-distribution" numbered="true" toc="default">
+      <name>File Distribution Protocol</name>
+
+      <t>
+        OSTP includes a binary file distribution sub-protocol for delivering
+        audio files, playlist metadata, and artwork to receivers.  File
+        transfers are carried over the WebSocket connection between the
+        daemon and a connected client (Section
+        <xref target="daemon-control" format="counter"/>), using binary
+        WebSocket frames.
+      </t>
+      <t>
+        Each binary frame begins with a 1-byte opcode that identifies the
+        frame type:
+      </t>
+      <table align="left">
+        <name>File Distribution Frame Opcodes</name>
+        <thead>
+          <tr>
+            <th align="center">Opcode</th>
+            <th align="left">Name</th>
+            <th align="left">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td align="center">0xFA</td>
+            <td>FILE_BEGIN (current)</td>
+            <td>
+              Begins transfer of the currently playing file.  The frame
+              body contains a fixed 32-byte header followed by the first
+              chunk of file data.
+            </td>
+          </tr>
+          <tr>
+            <td align="center">0xFB</td>
+            <td>FILE_DATA (current)</td>
+            <td>
+              A continuation chunk for the currently playing file.  The
+              frame body is raw file data.
+            </td>
+          </tr>
+          <tr>
+            <td align="center">0xFC</td>
+            <td>FILE_BEGIN (next)</td>
+            <td>
+              Pre-fetches the next track while the current track is still
+              playing.  Frame structure is identical to 0xFA.
+            </td>
+          </tr>
+          <tr>
+            <td align="center">0xFD</td>
+            <td>FILE_DATA (next)</td>
+            <td>
+              Continuation chunk for the next track pre-fetch.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <section anchor="file-frame-header" numbered="true" toc="default">
+        <name>FILE_BEGIN Frame Header</name>
+        <t>
+          The 32-byte header in a FILE_BEGIN (0xFA or 0xFC) frame has the
+          following layout:
+        </t>
+        <artwork name="" type="ascii-art" align="left" alt="">
+<![CDATA[
+   Offset  Length  Field
+   ------  ------  -----------------------------------------
+     0       1     Opcode (0xFA or 0xFC)
+     1       4     Total file size in bytes (uint32, big-endian)
+     5       1     MIME type length (N)
+     6       N     MIME type string (UTF-8, not null-terminated)
+     6+N     4     CRC-32 of complete file (uint32, big-endian)
+    10+N    (pad)  Zero-padded to 32 bytes total header length
+]]>
+        </artwork>
+        <t>
+          After the 32-byte header, the remainder of the frame contains
+          the first chunk of file data.  Subsequent FILE_DATA frames
+          contain additional chunks.  The transfer is complete when the
+          cumulative byte count of all chunks equals the total file size
+          declared in the FILE_BEGIN header.
+        </t>
+      </section>
+
+      <section anchor="prebuffer" numbered="true" toc="default">
+        <name>Pre-Buffer and Playback Switching</name>
+        <t>
+          Receivers implement a dual-buffer scheme to eliminate audible gaps
+          between tracks:
+        </t>
+        <ol spacing="normal" type="1">
+          <li>
+            While the current track is playing, the receiver begins
+            accumulating data for the next track into a second buffer
+            as soon as 0xFC/0xFD frames are received.
+          </li>
+          <li>
+            When the next-track buffer reaches 75% of its target depth
+            (the pre-buffer threshold), the receiver marks the next track
+            as "ready".
+          </li>
+          <li>
+            At the natural track boundary (indicated by the M bit in the
+            last audio packet of the current track, or by explicit
+            transition signalling via the DCP), the receiver switches to
+            the pre-buffered next track.
+          </li>
+          <li>
+            The switch delay from ready-to-play to actual audio output
+            MUST be less than 50 ms.
+          </li>
+        </ol>
+        <t>
+          If the next-track buffer has not reached the pre-buffer threshold
+          at the track boundary, the receiver MAY introduce a short silence
+          rather than underrunning the audio pipeline.
+        </t>
+      </section>
+    </section>
+
+    <!-- ————————————————————————————— -->
+    <!--  9. Daemon Control Protocol                                 -->
+    <!-- ————————————————————————————— -->
+    <section anchor="daemon-control" numbered="true" toc="default">
+      <name>Daemon Control Protocol (DCP)</name>
+
+      <t>
+        The Daemon Control Protocol is a JSON-over-WebSocket protocol
+        exposed by the <tt>solunad</tt> transmitter daemon on TCP port 8400
+        (plain WebSocket; no TLS required for loopback connections).
+        Remote connections MUST use WSS (WebSocket over TLS).
+      </t>
+      <t>
+        All DCP messages are JSON objects with a mandatory <tt>"cmd"</tt>
+        string field.  Responses include a <tt>"result"</tt> field set to
+        either <tt>"ok"</tt> or <tt>"error"</tt>, and an optional
+        <tt>"msg"</tt> string field for error descriptions.
+      </t>
+
+      <section anchor="dcp-commands" numbered="true" toc="default">
+        <name>DCP Command Reference</name>
+        <table align="left">
+          <name>DCP Commands</name>
+          <thead>
+            <tr>
+              <th align="left">Command (<tt>"cmd"</tt>)</th>
+              <th align="left">Parameters</th>
+              <th align="left">Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><tt>start</tt></td>
+              <td>
+                <tt>channel</tt> (string),
+                <tt>codec</tt> ("pcm24"|"f32"|"opus"),
+                <tt>bitrate</tt> (int, kbps),
+                <tt>sample_rate</tt> (int),
+                <tt>channels</tt> (int, 1–8)
+              </td>
+              <td>
+                Start transmitting on the specified channel.  If already
+                transmitting, the existing session is stopped and restarted
+                with the new parameters.
+              </td>
+            </tr>
+            <tr>
+              <td><tt>stop</tt></td>
+              <td>—</td>
+              <td>Stop the active transmission session.</td>
+            </tr>
+            <tr>
+              <td><tt>status</tt></td>
+              <td>—</td>
+              <td>
+                Returns current session state including channel name,
+                active payload type, bitrate, packets sent, bytes sent,
+                and connected relay nodes.
+              </td>
+            </tr>
+            <tr>
+              <td><tt>set_bitrate</tt></td>
+              <td><tt>bitrate</tt> (int, kbps)</td>
+              <td>
+                Dynamically change the Opus encoding bitrate without
+                interrupting the session.
+              </td>
+            </tr>
+            <tr>
+              <td><tt>set_fec</tt></td>
+              <td>
+                <tt>enabled</tt> (bool),
+                <tt>group_size</tt> (int, 3–10)
+              </td>
+              <td>Enable or disable FEC and set the protection block size.</td>
+            </tr>
+            <tr>
+              <td><tt>relay_add</tt></td>
+              <td>
+                <tt>host</tt> (string),
+                <tt>port</tt> (int)
+              </td>
+              <td>Add a relay node to the active session.</td>
+            </tr>
+            <tr>
+              <td><tt>relay_remove</tt></td>
+              <td>
+                <tt>host</tt> (string),
+                <tt>port</tt> (int)
+              </td>
+              <td>Remove a relay node from the active session.</td>
+            </tr>
+            <tr>
+              <td><tt>file_send</tt></td>
+              <td>
+                <tt>path</tt> (string),
+                <tt>slot</tt> ("current"|"next")
+              </td>
+              <td>
+                Initiate file transfer of the specified local file path.
+                <tt>slot</tt> determines whether 0xFA/0xFB or 0xFC/0xFD
+                opcodes are used.
+              </td>
+            </tr>
+            <tr>
+              <td><tt>wallet_set</tt></td>
+              <td><tt>address</tt> (string)</td>
+              <td>
+                Associate a wallet address with the active channel for
+                micropayment collection.  Sends a WALLET RSP message to
+                all connected relay nodes.
+              </td>
+            </tr>
+            <tr>
+              <td><tt>subscribe</tt></td>
+              <td>
+                <tt>events</tt> (array of strings)
+              </td>
+              <td>
+                Subscribe to asynchronous event notifications.  Supported
+                event types: <tt>"packet_stats"</tt>, <tt>"member_update"</tt>,
+                <tt>"payment"</tt>, <tt>"rtcp"</tt>.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section anchor="dcp-events" numbered="true" toc="default">
+        <name>DCP Asynchronous Events</name>
+        <t>
+          After a <tt>subscribe</tt> command, the daemon emits unsolicited
+          JSON event objects.  Each event object carries an <tt>"event"</tt>
+          field instead of a <tt>"cmd"</tt> field.  Examples:
+        </t>
+        <artwork name="" type="ascii-art" align="left" alt="">
+<![CDATA[
+  Packet statistics event (every 1 second):
+  {
+    "event": "packet_stats",
+    "packets_sent": 2400,
+    "bytes_sent": 1920000,
+    "packets_lost_reported": 3,
+    "bitrate_kbps": 128
+  }
+
+  Member update event:
+  {
+    "event": "member_update",
+    "channel": "mystream",
+    "count": 7,
+    "wallets": ["4Zf3...", "9xKL..."]
+  }
+
+  Payment event:
+  {
+    "event": "payment",
+    "type": "tip",
+    "amount_usat": 1000000,
+    "from_wallet": "4Zf3..."
+  }
+]]>
+        </artwork>
+      </section>
+    </section>
+
+    <!-- ————————————————————————————— -->
+    <!--  10. Security Considerations                                -->
+    <!-- ————————————————————————————— -->
+    <section anchor="security" numbered="true" toc="default">
+      <name>Security Considerations</name>
+
+      <section anchor="sec-dtls" numbered="true" toc="default">
+        <name>DTLS-SRTP</name>
+        <t>
+          OSTP SHOULD be protected with DTLS-SRTP <xref target="RFC5764"/>
+          when operating over the public Internet and MUST use DTLS-SRTP
+          when the stream carries paid content (i.e., when a non-zero
+          charge rate is configured via the economic layer).
+        </t>
+        <t>
+          When DTLS-SRTP is enabled, the DTLS handshake is performed on
+          the same UDP socket used for OSTP audio and RSP signalling.
+          Implementations MUST support the cipher suite
+          TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 and SHOULD support
+          TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256.  SRTP protection profile
+          AES_128_CM_HMAC_SHA1_80 is REQUIRED.
+        </t>
+        <t>
+          RSP text messages sent before the DTLS handshake completes are
+          transmitted in clear text.  Implementations MUST limit pre-DTLS
+          RSP to JOIN and HELLO messages only; WALLET, CHARGE, and TIP
+          messages MUST NOT be sent before DTLS-SRTP is established.
+        </t>
+      </section>
+
+      <section anchor="sec-session-tokens" numbered="true" toc="default">
+        <name>Session Tokens and Access Control</name>
+        <t>
+          Relay nodes MAY require a session token in the JOIN message to
+          restrict channel access.  The token is appended as an additional
+          field:
+        </t>
+        <artwork name="" type="ascii-art" align="left" alt="">
+<![CDATA[
+  JOIN <channel> [<wallet>] [token=<base64url-token>]
+]]>
+        </artwork>
+        <t>
+          Session tokens are opaque to the relay protocol and are validated
+          by the relay using implementation-specific means (e.g., HMAC-SHA256
+          signed by the channel owner's key).  A relay that requires tokens
+          MUST respond with a new <tt>DENIED</tt> RSP message and MUST NOT
+          forward any audio to unauthenticated subscribers.
+        </t>
+        <t>
+          Token issuance and revocation are out of scope for this
+          specification.
+        </t>
+      </section>
+
+      <section anchor="sec-rate-limiting" numbered="true" toc="default">
+        <name>Rate Limiting and Amplification</name>
+        <t>
+          Because OSTP is UDP-based, relay nodes are potential amplification
+          vectors in reflection attacks.  Relay implementations MUST enforce
+          the following mitigations:
+        </t>
+        <ul spacing="normal">
+          <li>
+            The relay MUST NOT forward audio to any address that has not
+            sent at least one RSP JOIN message from that address within the
+            last 60 seconds.
+          </li>
+          <li>
+            The relay MUST rate-limit RSP JOIN processing to at most 10
+            new subscriptions per second per source IP address.
+          </li>
+          <li>
+            The relay SHOULD implement a UDP reflection check: upon
+            receiving a JOIN, the relay SHOULD send a small challenge
+            packet to the claimed source address before adding the
+            subscriber to the forwarding table.
+          </li>
+          <li>
+            The relay MUST limit the total number of simultaneous
+            subscribers per channel to a configurable maximum (default 1000).
+          </li>
+        </ul>
+      </section>
+
+      <section anchor="sec-wallet" numbered="true" toc="default">
+        <name>Economic Layer Security</name>
+        <t>
+          Wallet addresses carried in RSP messages are public keys and do
+          not constitute sensitive information.  However, implementations
+          MUST NOT process CHARGE or TIP messages from untrusted sources.
+          Specifically:
+        </t>
+        <ul spacing="normal">
+          <li>
+            Source nodes MUST only process CHARGE notifications from relay
+            nodes they explicitly connected to.
+          </li>
+          <li>
+            Leaf nodes MUST cryptographically verify on-chain payment
+            receipts before crediting tipping confirmations.
+          </li>
+          <li>
+            Relay nodes MUST NOT relay TIP messages without verifying
+            that the claimed from_wallet address controls the funds.
+          </li>
+        </ul>
+      </section>
+
+      <section anchor="sec-privacy" numbered="true" toc="default">
+        <name>Privacy Considerations</name>
+        <t>
+          OSTP relay nodes learn the IP addresses of all subscribers to a
+          channel.  When DTLS-SRTP is not in use, the relay also has
+          access to the full audio content of the stream.  Deployments
+          that require listener privacy MUST use DTLS-SRTP and SHOULD
+          use a relay node operated by or on behalf of the channel owner.
+        </t>
+        <t>
+          Wallet addresses in RSP messages are permanently linkable to
+          IP addresses as observed by the relay.  Participants concerned
+          about payment privacy SHOULD use stealth addresses or zero-knowledge
+          payment schemes, which are outside the scope of this specification.
+        </t>
+      </section>
+    </section>
+
+    <!-- ————————————————————————————— -->
+    <!--  11. IANA Considerations                                    -->
+    <!-- ————————————————————————————— -->
+    <section anchor="iana" numbered="true" toc="default">
+      <name>IANA Considerations</name>
+
+      <section anchor="iana-ports" numbered="true" toc="default">
+        <name>Port Numbers</name>
+        <t>
+          This document uses the following UDP ports.  These ports are
+          not currently registered with IANA; the authors intend to
+          request registration if this protocol advances beyond experimental
+          status.
+        </t>
+        <table align="left">
+          <name>OSTP UDP Port Assignments</name>
+          <thead>
+            <tr>
+              <th align="right">Port</th>
+              <th align="left">Usage</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td align="right">5004</td>
+              <td>
+                OSTP audio (LAN multicast and unicast).  Note: Port 5004
+                is already registered with IANA for "rtp" (RTP media);
+                OSTP is intended to be compatible with this registration.
+              </td>
+            </tr>
+            <tr>
+              <td align="right">5100</td>
+              <td>
+                OSTP relay node (RSP and forwarded audio datagrams).
+              </td>
+            </tr>
+            <tr>
+              <td align="right">8400</td>
+              <td>
+                OSTP Daemon Control Protocol (WebSocket, TCP).
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section anchor="iana-rtp-profile" numbered="true" toc="default">
+        <name>RTP Extension Profile</name>
+        <t>
+          This document defines the RTP header extension profile value
+          0x4F53 (the ASCII string "OS") to identify OSTP extension data.
+          RTP extension profile values are allocated from the IANA registry
+          "RTP Payload Format media types" (currently unregistered; this
+          document requests registration of 0x4F53 for the "Open Sonic
+          Transport Protocol extension").
+        </t>
+      </section>
+
+      <section anchor="iana-payload-types" numbered="true" toc="default">
+        <name>RTP Payload Types</name>
+        <t>
+          The following dynamic payload type values are used by OSTP.
+          Dynamic payload types (96–127) do not require IANA registration
+          per <xref target="RFC3550"/> but are listed here for
+          informational purposes.  SDP mapping for these payload types
+          follows the procedures of <xref target="RFC4566"/>.
+        </t>
+        <table align="left">
+          <name>OSTP RTP Payload Type Summary</name>
+          <thead>
+            <tr>
+              <th align="right">PT</th>
+              <th align="left">Name</th>
+              <th align="left">Clock Rate</th>
+              <th align="left">Channels</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td align="right">96</td><td>OSTP/PCM24</td><td>44100 or 48000</td><td>1–8</td></tr>
+            <tr><td align="right">97</td><td>OSTP/F32</td><td>44100 or 48000</td><td>1–8</td></tr>
+            <tr><td align="right">98</td><td>OSTP/OPUS</td><td>48000</td><td>1–2</td></tr>
+            <tr><td align="right">126</td><td>OSTP/NACK</td><td>—</td><td>—</td></tr>
+            <tr><td align="right">127</td><td>OSTP/FEC-XOR</td><td>(same as protected stream)</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section anchor="iana-multicast" numbered="true" toc="default">
+        <name>IPv4 Multicast Address</name>
+        <t>
+          This document uses the IPv4 multicast address 239.69.0.1 in the
+          organisation-local scope range (239.0.0.0/8).  This address is
+          not registered with IANA and is intended for local-network use
+          only.  Deployments that require a globally routable multicast
+          address should use the procedures described in
+          <xref target="RFC6838"/>.
+        </t>
+      </section>
+    </section>
+
+  </middle>
+
+  <!-- ============================================================ -->
+  <!--  BACK MATTER                                                   -->
+  <!-- ============================================================ -->
+  <back>
+
+    <!-- ————————————————————————————— -->
+    <!--  Normative References                                       -->
+    <!-- ————————————————————————————— -->
+    <references>
+      <name>References</name>
+
+      <references>
+        <name>Normative References</name>
+
+        &RFC2119;
+        &RFC3550;
+        &RFC3711;
+        &RFC4566;
+        &RFC5764;
+        &RFC6716;
+        &RFC8085;
+        &RFC8174;
+
+      </references>
+
+      <!-- ———————————————————————————— -->
+      <!--  Informative References                                   -->
+      <!-- ———————————————————————————— -->
+      <references>
+        <name>Informative References</name>
+
+        &RFC7826;
+        &RFC8835;
+        &RFC9000;
+        &RFC6838;
+
+        <reference anchor="AES67" target="https://www.aes.org/publications/standards/search.cfm?docID=96">
+          <front>
+            <title>AES67-2018: AES standard for audio applications of networks — High-performance streaming audio-over-IP interoperability</title>
+            <author>
+              <organization>Audio Engineering Society</organization>
+            </author>
+            <date year="2018"/>
+          </front>
+          <seriesInfo name="AES" value="AES67-2018"/>
+        </reference>
+
+        <reference anchor="OpenSonic" target="https://github.com/yukihamada/opensonic">
+          <front>
+            <title>OpenSonic: Open-source multi-room audio distribution system</title>
+            <author fullname="Yuki Hamada" initials="Y." surname="Hamada"/>
+            <date year="2026"/>
+          </front>
+        </reference>
+
+        <reference anchor="RFC5109" target="https://www.rfc-editor.org/info/rfc5109">
+          <front>
+            <title>RTP Payload Format for Generic Forward Error Correction</title>
+            <author fullname="A. Li" initials="A." surname="Li"/>
+            <date year="2007" month="December"/>
+          </front>
+          <seriesInfo name="RFC" value="5109"/>
+          <seriesInfo name="DOI" value="10.17487/RFC5109"/>
+        </reference>
+
+      </references>
+    </references>
+
+    <!-- ————————————————————————————— -->
+    <!--  Appendix A: Implementation Notes                           -->
+    <!-- ————————————————————————————— -->
+    <section anchor="impl-notes" numbered="false" toc="default">
+      <name>Appendix A: Implementation Notes</name>
+
+      <section anchor="impl-clock" numbered="false" toc="default">
+        <name>Clock Synchronisation</name>
+        <t>
+          OSTP does not mandate PTP or NTP for clock synchronisation.
+          Instead, receivers estimate the source clock offset from the
+          relationship between the RTP Timestamp and the Media Timestamp
+          in the OSTP extension.  The HELLO RSP message provides an
+          initial wall-clock anchor from the relay node, which receivers
+          use for coarse clock alignment.  Fine-grained per-packet
+          jitter compensation is performed by the receiver's playout buffer.
+        </t>
+        <t>
+          Implementations targeting sample-accurate multi-room
+          synchronisation on a LAN MAY use PTP (IEEE 1588) as a separate
+          out-of-band mechanism; the OSTP timestamps are then interpreted
+          in the PTP time domain.
+        </t>
+      </section>
+
+      <section anchor="impl-buffer" numbered="false" toc="default">
+        <name>Playout Buffer Design</name>
+        <t>
+          The reference implementation uses an adaptive playout buffer
+          with a target depth of 50 ms for LAN multicast and 150 ms for
+          WAN relay.  The buffer depth is adjusted based on measured
+          inter-arrival jitter: when jitter exceeds 20% of the current
+          target depth, the target is doubled (up to a maximum of 500 ms).
+          When jitter has been below 10% of the current target depth for
+          more than 10 seconds, the target is halved (down to a minimum
+          of 20 ms for LAN, 50 ms for WAN).
+        </t>
+      </section>
+
+      <section anchor="impl-esp32" numbered="false" toc="default">
+        <name>Embedded Receiver Considerations</name>
+        <t>
+          The OSTP packet parser requires only the following operations:
+          byte-order conversion, 32-bit integer arithmetic, and CRC-32
+          computation.  The minimum receive buffer to process a single
+          OSTP packet without dynamic allocation is 1500 bytes (one
+          Ethernet MTU).  Implementations on microcontrollers with less
+          than 64 KB of RAM are feasible using PT=98 (Opus) and a shallow
+          playout buffer (20–40 ms).
+        </t>
+        <t>
+          The reference ESP32 implementation receives Opus-coded OSTP
+          packets from the WAN relay and decodes them using the Opus codec
+          library compiled for Xtensa LX6, achieving end-to-end latency of
+          approximately 200 ms over a Wi-Fi link.
+        </t>
+      </section>
+    </section>
+
+    <!-- ————————————————————————————— -->
+    <!--  Author's Address                                           -->
+    <!-- ————————————————————————————— -->
+    <section anchor="authors-addresses" numbered="false" toc="default">
+      <name>Author's Address</name>
+      <author fullname="Yuki Hamada" initials="Y." surname="Hamada">
+        <organization>EnablerDAO</organization>
+        <address>
+          <email>mail@yukihamada.jp</email>
+          <uri>https://github.com/yukihamada/opensonic</uri>
+        </address>
+      </author>
+    </section>
+
+  </back>
+</rfc>

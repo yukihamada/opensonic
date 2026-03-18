@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script>sessionStorage.setItem('lang-set','1')</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="What SOLUNA is building — reinventing the infrastructure of music experience. Events, technology, and a new economy for sound.">
+    <meta name="keywords" content="SOLUNA, OpenSonic, ZAMNA, vision, music infrastructure, P2P, audio streaming, open source">
+    <meta name="author" content="Soluna Project">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#05060a">
+    <link rel="canonical" href="https://solun.art/en/about">
+    <meta property="og:title" content="SOLUNA — Building the HTTP of Music">
+    <meta property="og:description" content="Reinventing music experience infrastructure. Replacing streaming, sync, payments, and rights management with an open-source protocol.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/en/about">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="SOLUNA — Building the HTTP of Music">
+    <meta name="twitter:description" content="Reinventing music experience infrastructure.">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <title>About SOLUNA — Building the HTTP of Music</title>
+    <style>
+        :root {
+            --bg:#05060a;--s1:#0c0e16;--s2:#12151f;--s3:#1a1e2e;
+            --border:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.12);
+            --text:#e8eaf2;--text2:#8b91a8;--text3:#50566e;
+            --blue:#3b82f6;--cyan:#06b6d4;--green:#10b981;--purple:#8b5cf6;
+            --amber:#f59e0b;--gold:#C9A962;
+            font-synthesis:none;-webkit-font-smoothing:antialiased;
+        }
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        html{scroll-behavior:smooth}
+        body{font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;background:var(--bg);color:var(--text);line-height:1.7;overflow-x:hidden}
+
+        .reveal{opacity:0;transform:translateY(30px);transition:opacity 0.7s ease,transform 0.7s ease}
+        .reveal.visible{opacity:1;transform:translateY(0)}
+        .reveal-delay-1{transition-delay:0.1s}.reveal-delay-2{transition-delay:0.2s}.reveal-delay-3{transition-delay:0.3s}
+
+        nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc(50% - 580px));height:60px;background:rgba(5,6,10,0.7);backdrop-filter:blur(24px) saturate(1.8);border-bottom:1px solid var(--border)}
+        .nav-logo{font-size:18px;font-weight:700;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--text)}
+        .nav-logo svg{width:24px;height:24px}
+        .nav-links{display:flex;align-items:center;gap:24px}
+        .nav-links a{color:var(--text2);text-decoration:none;font-size:14px;transition:color 0.2s}
+        .nav-links a:hover{color:var(--text)}.nav-links a.active{color:var(--text);font-weight:600}
+        .nav-cta{padding:8px 18px;background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff !important;border-radius:10px;font-weight:600;font-size:13px !important;box-shadow:0 2px 12px rgba(59,130,246,0.3)}
+        .nav-cta:hover{opacity:0.9;transform:translateY(-1px)}
+        @media(max-width:768px){.hide-sm{display:none}}
+
+        .section{padding:80px max(20px,calc(50% - 580px))}
+        .section-label{font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:14px;background:linear-gradient(90deg,var(--blue),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+        h1{font-size:clamp(36px,7vw,64px);font-weight:800;letter-spacing:-0.03em;line-height:1.1;margin-bottom:20px}
+        h2{font-size:clamp(24px,4vw,36px);font-weight:800;letter-spacing:-0.03em;line-height:1.15;margin-bottom:16px}
+        h3{font-size:20px;font-weight:700;margin-bottom:10px;color:var(--text)}
+        .sub{color:var(--text2);font-size:clamp(16px,2vw,20px);line-height:1.6;max-width:700px}
+        .grad{background:linear-gradient(135deg,var(--blue),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+        .gold{color:var(--gold)}
+
+        .hero{padding:140px max(20px,calc(50% - 580px)) 80px;position:relative;overflow:hidden}
+        .hero-bg{position:absolute;inset:0;pointer-events:none}
+        .hero-orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:0.3}
+        .hero-orb-1{width:400px;height:400px;background:var(--blue);top:-100px;left:-100px}
+        .hero-orb-2{width:300px;height:300px;background:var(--purple);top:50px;right:-50px}
+
+        .quote{font-size:clamp(20px,3.5vw,32px);font-weight:300;line-height:1.5;color:var(--text);padding:40px 0;border-left:3px solid var(--gold);padding-left:32px;margin:40px 0;font-style:italic}
+
+        .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;margin-top:32px}
+        .card{background:var(--s1);border:1px solid var(--border);border-radius:16px;padding:32px;transition:border-color 0.3s,transform 0.3s}
+        .card:hover{border-color:var(--border2);transform:translateY(-2px)}
+        .card-icon{font-size:32px;margin-bottom:16px}
+        .card p{color:var(--text2);font-size:14px;line-height:1.7}
+
+        .timeline{position:relative;padding-left:40px;margin-top:32px}
+        .timeline::before{content:'';position:absolute;left:15px;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,var(--blue),var(--purple),var(--green))}
+        .tl-item{position:relative;margin-bottom:40px}
+        .tl-dot{position:absolute;left:-33px;top:4px;width:12px;height:12px;border-radius:50%;border:2px solid var(--blue);background:var(--bg)}
+        .tl-item:nth-child(2) .tl-dot{border-color:var(--purple)}
+        .tl-item:nth-child(3) .tl-dot{border-color:var(--cyan)}
+        .tl-item:nth-child(4) .tl-dot{border-color:var(--green)}
+        .tl-item:nth-child(5) .tl-dot{border-color:var(--amber)}
+        .tl-label{font-size:12px;font-weight:700;letter-spacing:0.1em;color:var(--blue);margin-bottom:4px}
+        .tl-item:nth-child(2) .tl-label{color:var(--purple)}
+        .tl-item:nth-child(3) .tl-label{color:var(--cyan)}
+        .tl-item:nth-child(4) .tl-label{color:var(--green)}
+        .tl-item:nth-child(5) .tl-label{color:var(--amber)}
+
+        .compare-table{width:100%;border-collapse:collapse;margin-top:24px;font-size:14px}
+        .compare-table th{text-align:left;padding:12px 16px;font-size:12px;font-weight:700;letter-spacing:0.08em;color:var(--text3);text-transform:uppercase;border-bottom:1px solid var(--border2)}
+        .compare-table td{padding:14px 16px;border-bottom:1px solid var(--border);color:var(--text2)}
+        .compare-table td:first-child{color:var(--text);font-weight:600}
+        .compare-table td:last-child{color:var(--green);font-weight:500}
+
+        .cta-section{text-align:center;padding:100px max(20px,calc(50% - 580px))}
+        .cta-btn{display:inline-flex;align-items:center;gap:10px;padding:16px 36px;border-radius:14px;font-size:16px;font-weight:700;text-decoration:none;color:#fff;background:linear-gradient(135deg,var(--blue),var(--purple));box-shadow:0 4px 20px rgba(59,130,246,0.3);transition:transform 0.2s}
+        .cta-btn:hover{transform:translateY(-2px)}
+        .cta-btn + .cta-btn{margin-left:16px;background:transparent;border:1px solid var(--border2);box-shadow:none}
+
+        footer{padding:40px max(20px,calc(50% - 580px));border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--text3)}
+        footer a{color:var(--text2);text-decoration:none}
+        footer a:hover{color:var(--text)}
+
+        @media(max-width:600px){
+            .card-grid{grid-template-columns:1fr}
+            .cta-btn+.cta-btn{margin-left:0;margin-top:12px}
+            .compare-table{font-size:12px}
+            .compare-table th,.compare-table td{padding:10px 8px}
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/en/" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/en/" class="hide-sm">Home</a>
+        <a href="/en/vision" class="hide-sm">Vision</a>
+        <a href="/en/protocol" class="hide-sm">Protocol</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/about" class="hide-sm" onclick="sessionStorage.removeItem('lang-set')" style="font-size:12px;opacity:0.6">JP</a>
+        <a href="/dashboard" class="nav-cta">Dashboard</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+    </div>
+    <div style="position:relative;z-index:1">
+        <p class="section-label">What We Do</p>
+        <h1>Building the <span class="grad">HTTP of Music.</span></h1>
+        <p class="sub">
+            Just as HTTP democratized the delivery of web pages,<br>
+            SOLUNA reinvents music experience delivery at the protocol level.
+        </p>
+    </div>
+</section>
+
+<!-- Thesis -->
+<section class="section">
+    <div class="reveal">
+        <p class="section-label">Thesis</p>
+        <h2><span class="grad">Reinventing</span> Music Experience Infrastructure</h2>
+        <p class="sub" style="margin-bottom:24px">
+            SOLUNA is not just another music streaming service. <strong>It is a project to replace every layer between where sound is made and where it is heard — streaming, sync, payments, and rights management — with an open-source protocol.</strong>
+        </p>
+        <p style="color:var(--text2);font-size:16px;line-height:1.7">
+            Where Spotify and Apple Music treat music as "files to distribute,"
+            SOLUNA is a model for <strong style="color:var(--text)">sharing the music experience itself in real time</strong>.
+        </p>
+    </div>
+</section>
+
+<!-- ZAMNA = Showcase -->
+<section class="section" style="background:var(--s1)">
+    <div class="reveal">
+        <p class="section-label">First Showcase</p>
+        <h2><span class="gold">ZAMNA HAWAII</span> — A Protocol Demo</h2>
+        <p class="sub" style="margin-bottom:32px">
+            ZAMNA HAWAII is not a standalone event — it is the first real-world showcase of the SOLUNA protocol.
+        </p>
+    </div>
+    <div class="card-grid">
+        <div class="card reveal reveal-delay-1">
+            <div class="card-icon">🔊</div>
+            <h3>Perfectly Synced Speakers</h3>
+            <p>Every speaker at the venue is synced through SOLUNA with under 5ms latency. Zero phase drift — the same sound, no matter where you stand.</p>
+        </div>
+        <div class="card reveal reveal-delay-2">
+            <div class="card-icon">📱</div>
+            <h3>Attendees Become the Network</h3>
+            <p>Each attendee's phone becomes a node in a P2P mesh. The more people join, the stronger the network gets.</p>
+        </div>
+        <div class="card reveal reveal-delay-3">
+            <div class="card-icon">🌏</div>
+            <h3>Join from Anywhere</h3>
+            <p>People who aren't at the venue can listen to the same audio in real time via a browser or app. Distance is no longer a barrier.</p>
+        </div>
+        <div class="card reveal reveal-delay-1">
+            <div class="card-icon">💰</div>
+            <h3>Real-Time Revenue Sharing</h3>
+            <p>Micropayments are triggered by DJ plays and instantly distributed to rights holders. A transparent economy for music.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Possibilities -->
+<section class="section">
+    <div class="reveal">
+        <p class="section-label">Possibilities</p>
+        <h2>A Map of What's Possible</h2>
+    </div>
+
+    <div class="timeline">
+        <div class="tl-item reveal">
+            <div class="tl-dot"></div>
+            <div class="tl-label">EVENT x TECHNOLOGY</div>
+            <h3>Hybrid Festivals</h3>
+            <p style="color:var(--text2)">1,000 people at a physical venue + 100,000 online sharing the same DJ set with zero latency. P2P swarm delivery makes distribution costs near zero. Run a globally synced festival across Tokyo, LA, and Berlin simultaneously. Anyone with a phone can open a SOLUNA channel and turn a bar, beach, or park into a satellite venue instantly.</p>
+        </div>
+        <div class="tl-item reveal">
+            <div class="tl-dot"></div>
+            <div class="tl-label">ARTIST ECONOMY</div>
+            <h3>Beyond Subscriptions: Monetizing DJs</h3>
+            <p style="color:var(--text2)">Instead of Spotify's $0.003/play, SOLUNA offers real-time royalties based on listeners x time. If 10,000 people listen for an hour, rights holders get paid on the spot. Curation — track selection and mixing — becomes directly monetizable through three tiers: tips, support, and channel subscriptions. Artists just open a SOLUNA channel and streaming, billing, and rights management are all handled.</p>
+        </div>
+        <div class="tl-item reveal">
+            <div class="tl-dot"></div>
+            <div class="tl-label">DAILY AUDIO INFRA</div>
+            <h3>Everyday Audio Infrastructure</h3>
+            <p style="color:var(--text2)">Sync every speaker in your home with under 5ms latency — an open-source, free alternative to Sonos and AirPlay. Venues can open a SOLUNA channel with automatic copyright detection and billing, eliminating manual licensing paperwork. Anyone can launch a global "radio station" where listeners power the distribution via P2P — zero server costs to reach a million people.</p>
+        </div>
+        <div class="tl-item reveal">
+            <div class="tl-dot"></div>
+            <div class="tl-label">DISTRIBUTED DETECTION</div>
+            <h3>Listeners Power Copyright Protection</h3>
+            <p style="color:var(--text2)">Traditional music detection requires expensive centralized servers. SOLUNA flips this model: every listener device generates an audio fingerprint from the music it is already playing, and submits it to a consensus algorithm. When multiple listeners report the same fingerprint, the track is confirmed and royalties flow automatically. More listeners means higher accuracy — copyright protection that scales with the audience itself.</p>
+        </div>
+        <div class="tl-item reveal">
+            <div class="tl-dot"></div>
+            <div class="tl-label">PLATFORM STRATEGY</div>
+            <h3>Hardware Integration & Platform Growth</h3>
+            <p style="color:var(--text2)">Open source means zero adoption barriers. Speaker and DJ hardware makers can implement the SOLUNA protocol natively. Integration with Pioneer DJ and Denon lets DJs broadcast directly to the SOLUNA network from their gear. Through CarPlay and Android Auto, drivers can join real-time channels on the road.</p>
+        </div>
+        <div class="tl-item reveal">
+            <div class="tl-dot"></div>
+            <div class="tl-label">BUSINESS MODEL</div>
+            <h3>A Sustainable Revenue Structure</h3>
+            <p style="color:var(--text2)">A transparent 10% platform fee on all transactions, maximizing the share that goes to DJs and artists. Additional revenue from annual custom channel name sales, SOLUNA infrastructure licensing for events, and a certification program for SOLUNA-compatible speakers.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Why Now -->
+<section class="section" style="background:var(--s1)">
+    <div class="reveal">
+        <p class="section-label">Why Now</p>
+        <h2>Why This Is Possible <span class="grad">Now</span></h2>
+    </div>
+    <div class="reveal" style="overflow-x:auto">
+        <table class="compare-table">
+            <thead>
+                <tr><th>Past Constraints</th><th>SOLUNA's Answer</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>Server costs don't scale</td><td>P2P swarm makes distribution cost near zero</td></tr>
+                <tr><td>Latency too high for sync</td><td>OSTP: LAN 5ms, WAN 100ms</td></tr>
+                <tr><td>Rights management is too complex</td><td>Protocol-level copyright detection + auto-distribution</td></tr>
+                <tr><td>Platforms take too large a cut</td><td>Open source + transparent 10% fee</td></tr>
+                <tr><td>No innovation in music distribution</td><td>Not streaming files — sharing experiences</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+    <div class="reveal">
+        <h2 style="margin-bottom:32px">Get Involved</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center">
+            <a href="https://github.com/yukihamada/opensonic" target="_blank" class="cta-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                GitHub
+            </a>
+            <a href="/" class="cta-btn" style="background:linear-gradient(135deg,#C9A962,#8b5cf6)">ZAMNA HAWAII</a>
+            <a href="/en/vision" class="cta-btn">Read the Vision</a>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div>
+        <a href="/en/">Soluna</a> ・
+        <a href="/en/about">About</a> ・
+        <a href="/en/vision">Vision</a> ・
+        <a href="/en/protocol">Protocol</a> ・
+        <a href="/dashboard">Dashboard</a> ・
+        <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+    </div>
+    <div>OpenSonic Community License</div>
+</footer>
+
+<script>
+const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+}, { threshold: 0.1 });
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+</script>
+</body>
+</html>

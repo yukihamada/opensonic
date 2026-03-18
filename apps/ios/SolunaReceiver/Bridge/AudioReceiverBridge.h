@@ -145,6 +145,9 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 /// Request members list from relay
 - (void)requestMembers;
 
+/// Send remote volume command to a specific device in the same group
+- (void)sendVolumeToDevice:(NSString *)deviceId level:(int)level;
+
 /// Disconnect from WAN relay.
 - (void)disconnectRelay;
 

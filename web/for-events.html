@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <script>if(!sessionStorage.getItem('lang-set')&&/^en/i.test(navigator.language)){location.replace('/en/for-events')}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Soluna for Events — フェスティバル・イベントの音声配信を、P2Pスウォームで300億人規模にスケール。著作権コンプライアンスも自動。">
     <meta property="og:title" content="Soluna for Events — 大規模イベントの音声配信を革新。">
@@ -130,15 +131,21 @@
 <body>
 
 <nav>
-    <a href="/" class="nav-logo"><span class="diamond">&#9670;</span> Soluna</a>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
     <div class="nav-links">
-        <a href="/">ホーム</a>
-        <a href="/for-djs">DJ向け</a>
-        <a href="/for-venues">店舗向け</a>
-        <a href="/for-events" class="active">イベント向け</a>
-        <a href="/for-developers">開発者向け</a>
-        <a href="/en/for-events" title="English">EN</a>
-        <a href="https://testflight.apple.com/join/PYbefDSE" class="nav-cta">TestFlight</a>
+        <a href="/soluna" class="hide-sm">ホーム</a>
+        <a href="/for-djs" class="hide-sm">DJ</a>
+        <a href="/for-venues" class="hide-sm">店舗</a>
+        <a href="/for-events" class="hide-sm active">イベント</a>
+        <a href="/for-developers" class="hide-sm">開発者</a>
+        <a href="/vision" class="hide-sm">ビジョン</a>
+        <a href="/protocol" class="hide-sm">プロトコル</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/en/for-events" class="hide-sm" onclick="sessionStorage.removeItem('lang-set')" style="font-size:12px;opacity:0.6">EN</a>
+        <a href="/dashboard" class="nav-cta">ダッシュボード</a>
     </div>
 </nav>
 
@@ -304,10 +311,10 @@
         </div>
         <div class="footer-col">
             <h4>活用シーン別</h4>
-            <a href="/for-djs">DJs</a>
-            <a href="/for-venues">Venues</a>
-            <a href="/for-events">Events</a>
-            <a href="/for-developers">Developers</a>
+            <a href="/for-djs">DJ</a>
+            <a href="/for-venues">店舗</a>
+            <a href="/for-events">イベント</a>
+            <a href="/for-developers">開発者</a>
         </div>
         <div class="footer-col">
             <h4>ダウンロード</h4>

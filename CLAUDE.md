@@ -75,6 +75,32 @@ cd apps/relay && fly deploy -a soluna-relay
 # 追加リージョン: fly machine clone <id> --region lax/ams -a soluna-relay
 ```
 
+## Protocol Support
+
+| Protocol | TX | RX | Platforms | Build Flag |
+|----------|----|----|-----------|------------|
+| OSTP | ✅ | ✅ | Mac, iOS, Linux, Web | Always on |
+| AES67 | ✅ | ✅ | Mac, Linux | `SOLUNA_ENABLE_AES67=ON` (default) |
+| Ravenna | ✅ | ✅ | Mac, Linux | `SOLUNA_ENABLE_RAVENNA=ON` |
+| AirPlay 2 | ✅ | ✅ | Mac, Linux | `SOLUNA_ENABLE_AIRPLAY=ON` |
+| DLNA/UPnP | ❌ (planned) | ✅ | Mac, Linux | `SOLUNA_ENABLE_DLNA=ON` |
+| PipeWire | — | ✅ (output) | Linux only | `SOLUNA_ENABLE_PIPEWIRE=ON` |
+
+### 全プロトコル有効ビルド
+```bash
+cmake -DSOLUNA_ENABLE_AES67=ON \
+      -DSOLUNA_ENABLE_RAVENNA=ON \
+      -DSOLUNA_ENABLE_AIRPLAY=ON \
+      -DSOLUNA_ENABLE_DLNA=ON \
+      -DSOLUNA_ENABLE_PIPEWIRE=ON \
+      ..
+cmake --build build
+```
+
+### チャンネル数
+TX が OSTP stream_id ヘッダの上位4ビットでチャンネル数をエンコード。RX は自動検出。
+- 1ch (Mono), 2ch (Stereo/default), 6ch (5.1), 8ch (7.1)
+
 ## 署名 & Notarize
 
 ### コード署名ID
@@ -110,8 +136,8 @@ codesign --verify --deep --strict Soluna-mac.dmg
 | サービス | URL | 用途 |
 |---------|-----|------|
 | Web | https://soluna-web.fly.dev | Landing + Dashboard |
-| Relay | soluna-relay.fly.dev:5100 (UDP) | WAN音声リレー |
-| Relay API | https://soluna-relay.fly.dev | チャンネルページ `/c/<name>` |
+| Relay | relay.solun.art:5100 (UDP) | WAN音声リレー |
+| Relay API | https://relay.solun.art | チャンネルページ `/c/<name>` |
 | GitHub | github.com/yukihamada/opensonic | ソースコード + Releases |
 
 ### リレーリージョン
@@ -133,7 +159,7 @@ codesign --verify --deep --strict Soluna-mac.dmg
 ### iOS受信フロー
 1. アプリ起動 → `autoStart()` → `start()`
 2. オーディオ出力を即座に開始
-3. WANリレー (`soluna-relay.fly.dev`) にチャンネル名で自動接続
+3. WANリレー (`relay.solun.art`) にチャンネル名で自動接続
 4. 並行してP2Pピアスキャン（3秒）
 5. 送信者がsolunadでそのチャンネルに音を流していれば聴こえる
 
@@ -165,5 +191,5 @@ codesign --verify --deep --strict Soluna-mac.dmg
 - **Notarize失敗**: `notarytool-profile` のcredentialsが未設定。上記セットアップ手順を参照
 - **ペルソナページのリンク**: `yukihamada/opensonic` (enablerdaoではない)
 - **Webデプロイ**: `web/` を直接デプロイせず `deploy/web/` にコピーしてから `deploy/` でデプロイ
-- **リレーhost**: `soluna-relay.fly.dev` (旧: 46.225.77.119)
+- **リレーhost**: `relay.solun.art` (旧: 46.225.77.119)
 - **DMGは*.dmgが.gitignoreされない**: `.gitignore` に `*.pkg` `*.zip` あるが `*.dmg` を追加すべき

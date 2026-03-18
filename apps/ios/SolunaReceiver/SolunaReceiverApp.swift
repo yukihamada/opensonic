@@ -7,9 +7,57 @@
 
 import SwiftUI
 import AVFoundation
+import UIKit
+import UserNotifications
+
+// MARK: - AppDelegate (APNs)
+
+class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            if granted {
+                DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+            }
+        }
+        return true
+    }
+
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let tokenStr = deviceToken.map { String(format: "%02x", $0) }.joined()
+        // Save token locally
+        UserDefaults.standard.set(tokenStr, forKey: "apns_device_token")
+        // Register with relay server
+        Task {
+            guard let token = UserDefaults.standard.string(forKey: "soluna_auth_token") else { return }
+            guard let url = URL(string: "https://relay.solun.art/api/auth/register-push") else { return }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            let body: [String: Any] = [
+                "apns_token": tokenStr,
+                "device_id": UIDevice.current.identifierForVendor?.uuidString ?? ""
+            ]
+            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            try? await URLSession.shared.data(for: req)
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                 willPresent notification: UNNotification,
+                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
+    }
+}
+
+// MARK: - App
 
 @main
 struct SolunaReceiverApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var deepLink = DeepLinkManager()
 
@@ -24,18 +72,31 @@ struct SolunaReceiverApp: App {
         }
     }
 
+    @AppStorage("hasChosenChannel") private var hasChosenChannel = false
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(deepLink)
-                .onOpenURL { url in
-                    deepLink.handle(url: url)
-                }
-                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
-                    if let url = activity.webpageURL {
-                        deepLink.handle(url: url)
+            Group {
+                if hasChosenChannel {
+                    ContentView()
+                        .environmentObject(deepLink)
+                } else {
+                    ChannelOnboardingView {
+                        hasChosenChannel = true
                     }
+                    .environmentObject(deepLink)
                 }
+            }
+            .onOpenURL { url in
+                deepLink.handle(url: url)
+                hasChosenChannel = true
+            }
+            .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                if let url = activity.webpageURL {
+                    deepLink.handle(url: url)
+                    hasChosenChannel = true
+                }
+            }
         }
         .onChange(of: scenePhase) { phase in
             if phase == .background {

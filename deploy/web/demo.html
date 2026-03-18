@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OSTP Demo — Soluna Receiver</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d0d12;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #16161f;
+      border: 1px solid #2a2a3a;
+      border-radius: 16px;
+      padding: 36px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+      color: #fff;
+    }
+
+    .subtitle {
+      font-size: 0.8rem;
+      color: #555;
+      margin-bottom: 28px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #888;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: #0d0d12;
+      border: 1px solid #2a2a3a;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 0.95rem;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input[type="text"]:focus {
+      border-color: #6c63ff;
+    }
+
+    button {
+      background: #6c63ff;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 10px 20px;
+      transition: background 0.2s, opacity 0.2s;
+      white-space: nowrap;
+    }
+
+    button:hover:not(:disabled) { background: #7c74ff; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    button.disconnect {
+      background: #3a1e1e;
+      color: #ff6b6b;
+    }
+    button.disconnect:hover:not(:disabled) { background: #4a2424; }
+
+    /* Status indicator */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #0d0d12;
+      border: 1px solid #2a2a3a;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      min-height: 46px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #333;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+
+    .dot.idle     { background: #444; }
+    .dot.loading  { background: #f0a500; animation: pulse 1s infinite; }
+    .dot.live     { background: #3ecf7e; animation: pulse 2s infinite; }
+    .dot.error    { background: #ff4444; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    .status-text {
+      font-size: 0.85rem;
+      color: #aaa;
+      flex: 1;
+    }
+
+    /* Log */
+    .log-label {
+      font-size: 0.7rem;
+      font-weight: 500;
+      color: #555;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .log {
+      background: #0a0a10;
+      border: 1px solid #1e1e28;
+      border-radius: 8px;
+      padding: 10px 12px;
+      height: 140px;
+      overflow-y: auto;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.72rem;
+      color: #6a6a8a;
+    }
+
+    .log-entry { margin-bottom: 2px; line-height: 1.5; }
+    .log-entry.info  { color: #7a9aff; }
+    .log-entry.error { color: #ff6b6b; }
+    .log-entry.warn  { color: #f0a500; }
+    .log-entry.ok    { color: #3ecf7e; }
+
+    /* Info chips */
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    .chip {
+      background: #1e1e2e;
+      border: 1px solid #2a2a3a;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      color: #888;
+      padding: 4px 10px;
+    }
+
+    .chip span { color: #ccc; font-weight: 500; }
+
+    footer {
+      margin-top: 20px;
+      font-size: 0.68rem;
+      color: #444;
+      text-align: center;
+    }
+
+    footer a { color: #555; text-decoration: none; }
+    footer a:hover { color: #888; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>Soluna OSTP Receiver</h1>
+  <p class="subtitle">Open Sonic Transport Protocol — browser demo</p>
+
+  <label for="channelInput">Channel</label>
+  <div class="input-row">
+    <input
+      type="text"
+      id="channelInput"
+      placeholder="e.g. soluna/stage-a"
+      value="soluna/stage-a"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <button id="connectBtn">Listen</button>
+    <button id="disconnectBtn" class="disconnect" disabled>Stop</button>
+  </div>
+
+  <div class="status-bar">
+    <div class="dot idle" id="statusDot"></div>
+    <div class="status-text" id="statusText">Not connected</div>
+  </div>
+
+  <div class="chips" id="infoChips" style="display:none">
+    <div class="chip">Bitrate <span id="chipBitrate">—</span></div>
+    <div class="chip">Sample rate <span id="chipSampleRate">—</span></div>
+    <div class="chip">Buffer <span id="chipBuffer">—</span></div>
+    <div class="chip">Network <span id="chipNetwork">—</span></div>
+  </div>
+
+  <div class="log-label">Log</div>
+  <div class="log" id="logEl"></div>
+
+  <footer>
+    <a href="https://solun.art/" target="_blank">solun.art</a>
+    &nbsp;·&nbsp;
+    <a href="../OSTP-SPEC.md" target="_blank">OSTP-SPEC</a>
+    &nbsp;·&nbsp;
+    OSTP v0.9 draft
+  </footer>
+</div>
+
+<script type="module">
+import { SolunaReceiver } from './soluna.js';
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const channelInput  = document.getElementById('channelInput');
+const connectBtn    = document.getElementById('connectBtn');
+const disconnectBtn = document.getElementById('disconnectBtn');
+const statusDot     = document.getElementById('statusDot');
+const statusText    = document.getElementById('statusText');
+const logEl         = document.getElementById('logEl');
+const infoChips     = document.getElementById('infoChips');
+const chipBitrate   = document.getElementById('chipBitrate');
+const chipSampleRate= document.getElementById('chipSampleRate');
+const chipBuffer    = document.getElementById('chipBuffer');
+const chipNetwork   = document.getElementById('chipNetwork');
+
+// ── Log helper ────────────────────────────────────────────────────────────────
+function appendLog(msg, level = '') {
+  const el = document.createElement('div');
+  el.className = `log-entry ${level}`;
+  const ts = new Date().toISOString().slice(11, 23);
+  el.textContent = `[${ts}] ${msg}`;
+  logEl.appendChild(el);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setStatus(text, dotClass) {
+  statusText.textContent = text;
+  statusDot.className = `dot ${dotClass}`;
+}
+
+// ── Receiver ──────────────────────────────────────────────────────────────────
+let rx = null;
+
+function initReceiver() {
+  rx = new SolunaReceiver({ verbose: true });
+
+  rx.on('connected', (info) => {
+    appendLog(`Connected to "${info.channel}"`, 'ok');
+    appendLog(`Connection type: ${info.connectionType}`, 'info');
+    appendLog(`Target latency: ${info.targetLatencyMs} ms`, 'info');
+    setStatus(`Live — ${info.channel}`, 'live');
+
+    connectBtn.disabled    = true;
+    disconnectBtn.disabled = false;
+    channelInput.disabled  = true;
+
+    // Update chips
+    infoChips.style.display = 'flex';
+    chipNetwork.textContent = info.connectionType;
+    chipBuffer.textContent  = `${info.targetLatencyMs} ms`;
+
+    if (info.streamInfo) {
+      chipBitrate.textContent    = info.streamInfo.bitrate_kbps
+        ? `${info.streamInfo.bitrate_kbps} kbps` : '—';
+      chipSampleRate.textContent = info.streamInfo.sample_rate
+        ? `${info.streamInfo.sample_rate} Hz` : '—';
+    }
+  });
+
+  rx.on('disconnected', (info) => {
+    const reason = info?.reason || info?.code || 'unknown';
+    appendLog(`Disconnected (${reason})`, reason === 'client' ? '' : 'warn');
+    setStatus('Disconnected', 'idle');
+    resetButtons();
+  });
+
+  rx.on('error', (err) => {
+    appendLog(`Error [${err.type}]: ${err.message}`, 'error');
+    setStatus(`Error: ${err.message}`, 'error');
+  });
+
+  rx.on('status', (s) => {
+    const level = s.type === 'warning' ? 'warn' : (s.type === 'error' ? 'error' : 'info');
+    appendLog(s.message, level);
+    if (s.streamInfo?.bitrate_kbps) {
+      chipBitrate.textContent    = `${s.streamInfo.bitrate_kbps} kbps`;
+      chipSampleRate.textContent = `${s.streamInfo.sample_rate || 48000} Hz`;
+    }
+    if (s.message === 'Stream ended') {
+      setStatus('Stream ended', 'idle');
+      resetButtons();
+    }
+  });
+}
+
+function resetButtons() {
+  connectBtn.disabled    = false;
+  disconnectBtn.disabled = true;
+  channelInput.disabled  = false;
+}
+
+// ── Button handlers ───────────────────────────────────────────────────────────
+connectBtn.addEventListener('click', async () => {
+  const channel = channelInput.value.trim();
+  if (!channel) {
+    appendLog('Please enter a channel name.', 'warn');
+    return;
+  }
+
+  // Destroy previous receiver if any
+  if (rx) {
+    rx.disconnect();
+    rx = null;
+  }
+
+  initReceiver();
+  setStatus('Connecting…', 'loading');
+  connectBtn.disabled = true;
+  appendLog(`Connecting to channel: ${channel}`);
+
+  try {
+    await rx.connect(channel);
+  } catch (err) {
+    appendLog(`Connect failed: ${err.message}`, 'error');
+    setStatus('Connection failed', 'error');
+    resetButtons();
+  }
+});
+
+disconnectBtn.addEventListener('click', () => {
+  if (rx) {
+    rx.disconnect();
+    rx = null;
+  }
+});
+
+// Allow pressing Enter in the input to connect
+channelInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !connectBtn.disabled) connectBtn.click();
+});
+
+// ── Initial log ───────────────────────────────────────────────────────────────
+appendLog('OSTP Demo ready. Enter a channel and press Listen.', 'info');
+appendLog(`Browser: ${navigator.userAgent.split(' ').pop()}`, '');
+
+const conn = navigator.connection || navigator.mozConnection;
+if (conn) {
+  appendLog(`Network: ${conn.effectiveType || conn.type || 'unknown'}`, '');
+}
+
+if (typeof AudioDecoder !== 'undefined') {
+  appendLog('AudioDecoder API: available', 'ok');
+} else {
+  appendLog('AudioDecoder API: not available (playback limited)', 'warn');
+}
+</script>
+</body>
+</html>

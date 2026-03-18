@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna Fingerprint API Documentation — POST /api/fingerprint and GET /api/fingerprint/matches endpoints for distributed copyright detection.">
+    <meta name="author" content="Soluna Project">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#05060a">
+    <link rel="canonical" href="https://solun.art/api-docs">
+
+    <meta property="og:title" content="Fingerprint API Docs — Soluna">
+    <meta property="og:description" content="API documentation for distributed fingerprint-based copyright detection.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/api-docs">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="en_US">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Fingerprint API Docs — Soluna">
+    <meta name="twitter:description" content="API documentation for distributed fingerprint-based copyright detection.">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+    <title>Fingerprint API Docs — Soluna</title>
+
+    <style>
+        :root {
+            --bg:#05060a;--s1:#0c0e16;--s2:#12151f;--s3:#1a1e2e;
+            --border:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.12);
+            --text:#e8eaf2;--text2:#8b91a8;--text3:#50566e;
+            --blue:#3b82f6;--cyan:#06b6d4;--green:#10b981;--purple:#8b5cf6;
+            --amber:#f59e0b;--red:#ef4444;
+            font-synthesis:none;-webkit-font-smoothing:antialiased;
+        }
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        html{scroll-behavior:smooth}
+        body{font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;background:var(--bg);color:var(--text);line-height:1.7;overflow-x:hidden}
+
+        nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc(50% - 580px));height:60px;background:rgba(5,6,10,0.7);backdrop-filter:blur(24px) saturate(1.8);border-bottom:1px solid var(--border)}
+        .nav-logo{font-size:18px;font-weight:700;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--text)}
+        .nav-logo svg{width:24px;height:24px}
+        .nav-links{display:flex;align-items:center;gap:24px}
+        .nav-links a{color:var(--text2);text-decoration:none;font-size:14px;transition:color 0.2s}
+        .nav-links a:hover{color:var(--text)}.nav-links a.active{color:var(--text);font-weight:600}
+        .nav-cta{padding:8px 18px;background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff !important;border-radius:10px;font-weight:600;font-size:13px !important;box-shadow:0 2px 12px rgba(59,130,246,0.3)}
+        .nav-cta:hover{opacity:0.9;transform:translateY(-1px)}
+        @media(max-width:768px){.hide-sm{display:none}}
+
+        .wrap{max-width:800px;margin:0 auto;padding:100px 20px 80px}
+
+        h1{font-size:clamp(28px,5vw,42px);font-weight:800;letter-spacing:-0.03em;line-height:1.15;margin-bottom:12px}
+        h2{font-size:22px;font-weight:700;letter-spacing:-0.02em;margin:48px 0 16px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+        h3{font-size:16px;font-weight:600;margin:24px 0 8px;color:var(--text)}
+        .sub{color:var(--text2);font-size:16px;line-height:1.6;margin-bottom:32px}
+        .grad{background:linear-gradient(135deg,var(--blue),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+
+        .method-badge{display:inline-block;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700;font-family:'SF Mono','Fira Code',monospace;margin-right:8px;vertical-align:middle}
+        .method-post{background:rgba(16,185,129,0.15);color:var(--green)}
+        .method-get{background:rgba(59,130,246,0.15);color:var(--blue)}
+
+        .endpoint-path{font-family:'SF Mono','Fira Code',monospace;font-size:16px;font-weight:600;color:var(--text)}
+
+        .card{background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:24px;margin:16px 0}
+        .card:hover{border-color:var(--border2)}
+
+        .param-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+        .param-table th{text-align:left;padding:8px 12px;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border2)}
+        .param-table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text2);vertical-align:top}
+        .param-table td:first-child{color:var(--text);font-family:'SF Mono','Fira Code',monospace;font-size:13px;font-weight:500;white-space:nowrap}
+        .param-table .type{color:var(--purple);font-size:12px;font-family:'SF Mono','Fira Code',monospace}
+        .param-table .required{color:var(--amber);font-size:11px;font-weight:600}
+        .param-table .optional{color:var(--text3);font-size:11px;font-weight:600}
+
+        pre{background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:16px 20px;overflow-x:auto;font-family:'SF Mono','Fira Code',monospace;font-size:13px;line-height:1.7;color:var(--text2);margin:12px 0}
+        pre .key{color:var(--cyan)}
+        pre .str{color:var(--green)}
+        pre .num{color:var(--amber)}
+        pre .bool{color:var(--purple)}
+        pre .comment{color:var(--text3);font-style:italic}
+
+        .status-code{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:700;font-family:'SF Mono','Fira Code',monospace;margin-right:6px}
+        .status-2xx{background:rgba(16,185,129,0.15);color:var(--green)}
+        .status-4xx{background:rgba(245,158,11,0.15);color:var(--amber)}
+
+        .note{display:flex;gap:10px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--blue);margin:16px 0;line-height:1.6}
+
+        .arch{background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:20px 24px;font-family:'SF Mono','Fira Code',monospace;font-size:12px;color:var(--text2);line-height:2;overflow-x:auto;margin:16px 0}
+        .arch .hl{color:var(--blue)}.arch .grn{color:var(--green)}.arch .amb{color:var(--amber)}
+
+        footer{padding:40px max(20px,calc(50% - 580px));border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--text3)}
+        footer a{color:var(--text2);text-decoration:none}
+        footer a:hover{color:var(--text)}
+
+        @media(max-width:600px){
+            .param-table{font-size:12px}
+            .param-table th,.param-table td{padding:8px 6px}
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/soluna" class="hide-sm">Home</a>
+        <a href="/protocol" class="hide-sm">Protocol</a>
+        <a href="/api-docs" class="hide-sm active">API</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/dashboard" class="nav-cta">Dashboard</a>
+    </div>
+</nav>
+
+<div class="wrap">
+
+    <h1><span class="grad">Fingerprint API</span></h1>
+    <p class="sub">
+        Distributed copyright detection via listener-side audio fingerprinting.
+        Listeners compute 64-bit spectral hashes from received audio and report them to the relay server,
+        which aggregates reports and identifies tracks through consensus.
+    </p>
+
+    <!-- Architecture overview -->
+    <div class="arch">
+<span class="hl">Listener Device</span>               <span class="hl">Relay Server</span>                <span class="hl">Rights DB</span>
+  Audio RX                      POST /api/fingerprint
+  <span class="grn">FFT 8 bands x 32 windows</span>  ────────────────────→  <span class="amb">Aggregation</span>
+  <span class="grn">64-bit hash</span>                                         │
+                                                     Consensus
+                                                  (hamming ≤ 8, N ≥ 2)
+                                                         │
+                                                    <span class="amb">Match → Royalty</span>
+                                                   70% rights holder
+                                                   20% DJ cashback
+                                                   10% platform</div>
+
+    <div class="note">
+        Base URL: <code style="background:none;border:none;padding:0;color:inherit;font-size:inherit">https://relay.solun.art</code> (or your self-hosted relay)
+    </div>
+
+    <!-- POST /api/fingerprint -->
+    <h2>
+        <span class="method-badge method-post">POST</span>
+        <span class="endpoint-path">/api/fingerprint</span>
+    </h2>
+    <p style="color:var(--text2);font-size:14px;margin-bottom:16px">
+        Submit a fingerprint report from a listener device. The relay server aggregates reports
+        from multiple listeners and runs consensus every 10 seconds.
+    </p>
+
+    <h3>Request Body</h3>
+    <table class="param-table">
+        <thead>
+            <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>hash</td>
+                <td><span class="type">string</span></td>
+                <td><span class="required">required</span></td>
+                <td>64-bit fingerprint hash as hex string (16 chars)</td>
+            </tr>
+            <tr>
+                <td>channel</td>
+                <td><span class="type">string</span></td>
+                <td><span class="required">required</span></td>
+                <td>Channel / group name the listener is receiving from</td>
+            </tr>
+            <tr>
+                <td>device_id</td>
+                <td><span class="type">string</span></td>
+                <td><span class="required">required</span></td>
+                <td>Unique identifier for the reporting device</td>
+            </tr>
+            <tr>
+                <td>timestamp</td>
+                <td><span class="type">integer</span></td>
+                <td><span class="optional">optional</span></td>
+                <td>Unix timestamp (seconds). Server uses current time if omitted.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Request Example</h3>
+<pre><span class="comment">// POST /api/fingerprint</span>
+<span class="comment">// Content-Type: application/json</span>
+
+{
+  <span class="key">"hash"</span>: <span class="str">"abcdef0123456789"</span>,
+  <span class="key">"channel"</span>: <span class="str">"dj-set-tokyo"</span>,
+  <span class="key">"device_id"</span>: <span class="str">"iphone-abc123"</span>,
+  <span class="key">"timestamp"</span>: <span class="num">1710000000</span>
+}</pre>
+
+    <h3>Responses</h3>
+
+    <div class="card">
+        <p><span class="status-code status-2xx">200</span> Report accepted</p>
+<pre>{
+  <span class="key">"ok"</span>: <span class="bool">true</span>
+}</pre>
+    </div>
+
+    <div class="card">
+        <p><span class="status-code status-4xx">400</span> Missing required fields</p>
+<pre>{
+  <span class="key">"error"</span>: <span class="str">"missing required field: hash"</span>
+}</pre>
+    </div>
+
+    <h3>cURL Example</h3>
+<pre>curl -X POST https://relay.solun.art/api/fingerprint \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hash": "abcdef0123456789",
+    "channel": "dj-set-tokyo",
+    "device_id": "iphone-abc123"
+  }'</pre>
+
+    <!-- GET /api/fingerprint/matches -->
+    <h2>
+        <span class="method-badge method-get">GET</span>
+        <span class="endpoint-path">/api/fingerprint/matches</span>
+    </h2>
+    <p style="color:var(--text2);font-size:14px;margin-bottom:16px">
+        Retrieve current copyright detection matches for a channel.
+        Returns the active consensus result and matched track information.
+    </p>
+
+    <h3>Query Parameters</h3>
+    <table class="param-table">
+        <thead>
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>channel</td>
+                <td><span class="type">string</span></td>
+                <td><span class="required">required</span></td>
+                <td>Channel name to query matches for</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Request Example</h3>
+<pre><span class="comment">// GET /api/fingerprint/matches?channel=dj-set-tokyo</span></pre>
+
+    <h3>Responses</h3>
+
+    <div class="card">
+        <p><span class="status-code status-2xx">200</span> Match found</p>
+<pre>{
+  <span class="key">"channel"</span>: <span class="str">"dj-set-tokyo"</span>,
+  <span class="key">"match"</span>: <span class="bool">true</span>,
+  <span class="key">"track"</span>: {
+    <span class="key">"title"</span>: <span class="str">"Summer Vibes"</span>,
+    <span class="key">"artist"</span>: <span class="str">"DJ Example"</span>,
+    <span class="key">"isrc"</span>: <span class="str">"US-XXX-24-00001"</span>
+  },
+  <span class="key">"confidence"</span>: <span class="num">0.95</span>,
+  <span class="key">"consensus_count"</span>: <span class="num">3</span>,
+  <span class="key">"since"</span>: <span class="num">1710000000</span>
+}</pre>
+    </div>
+
+    <div class="card">
+        <p><span class="status-code status-2xx">200</span> No match</p>
+<pre>{
+  <span class="key">"channel"</span>: <span class="str">"dj-set-tokyo"</span>,
+  <span class="key">"match"</span>: <span class="bool">false</span>,
+  <span class="key">"consensus_count"</span>: <span class="num">0</span>
+}</pre>
+    </div>
+
+    <h3>cURL Example</h3>
+<pre>curl "https://relay.solun.art/api/fingerprint/matches?channel=dj-set-tokyo"</pre>
+
+    <!-- Algorithm Details -->
+    <h2>Algorithm Details</h2>
+
+    <h3>Hash Computation</h3>
+    <p style="color:var(--text2);font-size:14px;margin-bottom:12px">
+        The 64-bit fingerprint is computed from 5 seconds of audio at 48kHz:
+    </p>
+
+    <table class="param-table">
+        <thead>
+            <tr><th>Parameter</th><th>Value</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>Sample rate</td><td>48,000 Hz</td><td>Standard audio sample rate</td></tr>
+            <tr><td>Window count</td><td>32</td><td>Audio divided into 32 time windows</td></tr>
+            <tr><td>Frequency bands</td><td>8</td><td>Spectral energy split into 8 bands</td></tr>
+            <tr><td>Hash size</td><td>64 bits</td><td>8 bands x 8 comparison bits per band</td></tr>
+            <tr><td>Extract interval</td><td>5 seconds</td><td>New fingerprint every 5s</td></tr>
+        </tbody>
+    </table>
+
+    <h3>Consensus Protocol</h3>
+    <p style="color:var(--text2);font-size:14px;margin-bottom:12px">
+        The relay server aggregates fingerprint reports from multiple listeners and determines matches:
+    </p>
+
+    <table class="param-table">
+        <thead>
+            <tr><th>Parameter</th><th>Value</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>Hamming threshold</td><td>&le; 8 bits</td><td>Max bit difference to consider two hashes matching</td></tr>
+            <tr><td>Min cluster size</td><td>&ge; 2 reports</td><td>Minimum agreeing listeners for consensus</td></tr>
+            <tr><td>Window</td><td>60 seconds</td><td>Reports older than 60s are pruned</td></tr>
+            <tr><td>Check interval</td><td>10 seconds</td><td>Consensus evaluated every 10s</td></tr>
+        </tbody>
+    </table>
+
+    <h3>Revenue Split</h3>
+
+    <table class="param-table">
+        <thead>
+            <tr><th>Recipient</th><th>Share</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>Rights Holder</td><td><span style="color:var(--green);font-weight:600">70%</span></td><td>Copyright owner / label</td></tr>
+            <tr><td>DJ Cashback</td><td><span style="color:var(--blue);font-weight:600">20%</span></td><td>Incentive for the broadcaster</td></tr>
+            <tr><td>Platform</td><td><span style="color:var(--text2);font-weight:600">10%</span></td><td>Soluna operations</td></tr>
+        </tbody>
+    </table>
+
+</div>
+
+<footer>
+    <div>
+        <a href="/soluna">Soluna</a> &middot;
+        <a href="/protocol">Protocol</a> &middot;
+        <a href="/api-docs">API Docs</a> &middot;
+        <a href="/dashboard">Dashboard</a> &middot;
+        <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+    </div>
+    <div>OpenSonic by Soluna</div>
+</footer>
+
+</body>
+</html>

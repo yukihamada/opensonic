@@ -42,8 +42,9 @@ Unlike proprietary systems (Dante, AES67 hardware), OpenSonic requires no specia
 Key numbers:
 - **~20ms** end-to-end latency in Jam mode
 - **PTP-synchronized** multi-room playback in Sync mode
-- **~0%** packet loss with XOR FEC + NACK on lossy WiFi
-- **3 billion** listeners supported via 3-tier cascade + P2P swarm relay
+- **~0%** packet loss with Dynamic XOR FEC + NACK on lossy WiFi
+- **3 billion** listeners supported via 3-tier cascade + Gossip P2P swarm relay
+- **DJ dual-deck** with equal-power crossfader — broadcast directly from the app
 
 ---
 
@@ -235,24 +236,41 @@ Connection modes, auto-selected:
 | WAN Relay | relay.solun.art:5100 | 20–80ms | Any network |
 | Hybrid | P2P + relay fallback | adaptive | Automatic |
 
-Full spec: **[solun.art/protocol](https://solun.art/protocol)**  
+Full spec: **[solun.art/protocol](https://solun.art/protocol)** (OSTP v0.9.3)
 Internet-Draft: **[draft-hamada-opensonic-ostp-00](https://solun.art/docs/draft-hamada-opensonic-ostp-00.html)**
+
+### What's new in v0.9.3
+
+| Fix | Description |
+|-----|-------------|
+| `media_timestamp` ms | Was nanoseconds (4.3s rollover bug) → now milliseconds (49-day window) |
+| Dynamic FEC | Group size N auto-adjusts: 0%→off, 0-2%→N=10, 2-5%→N=5, 5-10%→N=3, >10%→N=2 |
+| RTCP jitter buffer | RFC 3550 §6.4.1 inter-arrival jitter drives `target_fill_frames` |
+| TURN fallback | `TURN_ALLOC` / `TURN_OK` for Symmetric NAT traversal |
+| Gossip + dual-parent | 8-candidate peer table; `PARENT_FAIL` for <80ms churn recovery |
+| RTCP APP SWCH | PT=204 synchronized file switch across all relay members |
+| TIP verification | Solana RPC `getTransaction` validates on-chain tx before credit |
+| Control/data HOL | File chunks → port 8401; control JSON → port 8400 (no HOL blocking) |
 
 ---
 
 ## Implementation Matrix
 
-| Platform | RX | TX | FEC | NACK | DTLS | RTCP |
-|----------|----|----|-----|------|------|------|
-| Mac (solunad) | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ |
-| iOS (Swift) | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ |
-| Android (Kotlin) | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ |
-| Windows | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ |
-| Web (Browser) | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ |
-| Linux / RPi | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ |
-| ESP32 | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ |
+| Platform | RX | TX | FEC | NACK | DTLS | RTCP | TURN | DJ Deck |
+|----------|----|----|-----|------|------|------|------|---------|
+| Mac (solunad) | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ |
+| iOS (Swift) | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ |
+| Android (Kotlin) | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ | 🔜 | 🔜 |
+| Windows | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ | 🔜 | 🔜 |
+| Web (Browser) | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ | 🔜 | 🔜 |
+| Linux / RPi | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ | 🔜 | 🔜 |
+| ESP32 | ✅ | ✅ | ✅ | ✅ | 🔜 | ✅ | — | — |
 
-✅ Implemented · 🔜 DTLS-SRTP (planned)
+✅ Implemented · 🔜 Planned · — Not applicable
+
+**FEC**: Dynamic group size (N=0–10) auto-adapts to RTCP-reported loss rate (OSTP v0.9.3 §3.7)
+**RTCP**: Drives both bitrate adaptation and jitter buffer target (RFC 3550 §6.4.1)
+**TURN**: Relay fallback when STUN hole-punch fails (OSTP v0.9.3 §5.x)
 
 ---
 
@@ -260,11 +278,12 @@ Internet-Draft: **[draft-hamada-opensonic-ostp-00](https://solun.art/docs/draft-
 
 | Component | Implementation |
 |-----------|---------------|
-| Jitter buffer | Lock-free 512-slot fixed array, zero heap allocation |
-| Clock sync | Adriaensen DLL (BW=0.01Hz, ±500ppm) |
+| Jitter buffer | Adaptive, RTCP inter-arrival jitter driven (RFC 3550 §6.4.1) |
+| Clock sync | OSTP `media_timestamp` (ms, 49-day rollover) + Adriaensen DLL |
 | Packet Loss Concealment | 4-stage: Opus FEC → Opus PLC → WSOLA → silence fade |
 | Codec | Opus 32–320 kbps (adaptive), PCM-16, PCM-24, FLAC |
-| Congestion control | RFC 8085 bitrate ladder, RTCP-driven adaptation |
+| Congestion control | RFC 8085 bitrate ladder + Dynamic FEC (N=0/10/5/3/2 by loss%) |
+| DJ dual-deck | Equal-power crossfade, ExtAudioFile decode, OSTP broadcast |
 
 ---
 
@@ -281,6 +300,13 @@ soluna-relay --origin  --port 5100
 soluna-relay --region  --upstream origin.example.com:5100
 soluna-relay --edge    --upstream region-nrt.example.com:5100 --workers 8
 ```
+
+Relay features (v0.9.3):
+- **TURN fallback** — `TURN_ALLOC` / `TURN_OK` when STUN hole-punch fails
+- **Gossip peer discovery** — `GOSSIP_PEERS` returns 8 candidates; `PARENT_FAIL` triggers <80ms re-parent
+- **RTCP APP SWCH** (PT=204) — synchronized file switch forwarded to all group members
+- **TIP on-chain verification** — Solana RPC `getTransaction` validates `tx_signature` before crediting
+- **Control/data plane** — audio WebSocket (`/ws/audio`) separate from control UDP
 
 ---
 

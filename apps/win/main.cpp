@@ -63,15 +63,22 @@
 #include <algorithm>
 
 // ── OSTP / RTP structures ─────────────────────────────────────────────────────
+// Modern format: RTP(12,X=1) + RtpExtHeader(4) + OstpExt(8) + payload + CRC(4)
+// Legacy format: RTP(12,X=0) + OstpHeaderLegacy(20:'OSTP'+fields) + payload + CRC(4)
 
 #pragma pack(push,1)
-struct RtpHeader   { uint8_t cc_x_p_v; uint8_t m_pt; uint16_t seq; uint32_t ts; uint32_t ssrc; };
-struct OstpHeader  { uint8_t magic[4]; uint16_t stream_id; uint16_t seq_ext;
-                     uint32_t device_id; uint32_t flags; uint32_t media_ts; };
+struct RtpHeader        { uint8_t cc_x_p_v; uint8_t m_pt; uint16_t seq; uint32_t ts; uint32_t ssrc; };
+struct RtpExtHeader     { uint16_t profile; uint16_t length; };  // profile=0x4F53, length=2
+struct OstpExt          { uint16_t stream_id; uint16_t seq_ext; uint32_t media_ts; };
+struct OstpHeaderLegacy { uint8_t magic[4]; uint16_t stream_id; uint16_t seq_ext;
+                          uint32_t device_id; uint32_t flags; uint32_t media_ts; };
 #pragma pack(pop)
 
-static constexpr uint32_t kOstpMagic   = 0x4F535450;
+static constexpr uint16_t kOstpProfile = 0x4F53;             // "OS" — modern RTP ext profile
+static constexpr uint32_t kOstpMagic   = 0x4F535450;         // "OSTP" — legacy magic
 static constexpr uint8_t  kPtOstp      = 96;
+static constexpr size_t   kModernHdrSize = sizeof(RtpHeader)+sizeof(RtpExtHeader)+sizeof(OstpExt); // 24
+static constexpr size_t   kLegacyHdrSize = sizeof(RtpHeader)+sizeof(OstpHeaderLegacy);             // 32
 static constexpr uint32_t kRate        = 48000;
 static constexpr uint32_t kRingCap     = 192000;
 static constexpr uint32_t kFramesPkt   = 480;
@@ -196,17 +203,24 @@ struct WasapiCap {
 // ── Build OSTP packet ─────────────────────────────────────────────────────────
 
 static size_t build_ostp(uint8_t*buf,size_t cap,uint16_t seq,uint32_t rts,uint32_t ssrc,uint32_t ch,const float*smp,uint32_t frames){
-    size_t payload=(size_t)frames*ch*4,total=sizeof(RtpHeader)+sizeof(OstpHeader)+payload+4;
+    size_t payload=(size_t)frames*ch*4,total=kModernHdrSize+payload+4;
     if(total>cap)return 0;
-    RtpHeader*rtp=(RtpHeader*)buf;rtp->cc_x_p_v=0x80;rtp->m_pt=kPtOstp;rtp->seq=htons(seq);rtp->ts=htonl(rts);rtp->ssrc=htonl(ssrc);
-    OstpHeader*oh=(OstpHeader*)(buf+sizeof(RtpHeader));
-    oh->magic[0]='O';oh->magic[1]='S';oh->magic[2]='T';oh->magic[3]='P';
-    oh->stream_id=htons((uint16_t)(ch<<12));oh->seq_ext=0;oh->device_id=htonl(ssrc);oh->flags=0;oh->media_ts=htonl((uint32_t)(now_ns()&0xFFFFFFFFu));
-    int32_t*pcm=(int32_t*)(buf+sizeof(RtpHeader)+sizeof(OstpHeader));
+    // RTP header — X=1 (extension present)
+    RtpHeader*rtp=(RtpHeader*)buf;
+    rtp->cc_x_p_v=0x90;rtp->m_pt=kPtOstp;rtp->seq=htons(seq);rtp->ts=htonl(rts);rtp->ssrc=htonl(ssrc);
+    // RTP extension header
+    RtpExtHeader*ext=(RtpExtHeader*)(buf+sizeof(RtpHeader));
+    ext->profile=htons(kOstpProfile);ext->length=htons(2);
+    // OSTP extension
+    OstpExt*oe=(OstpExt*)(buf+sizeof(RtpHeader)+sizeof(RtpExtHeader));
+    oe->stream_id=htons((uint16_t)(ch<<12));oe->seq_ext=0;oe->media_ts=htonl((uint32_t)(now_ns()&0xFFFFFFFFu));
+    // Payload
+    int32_t*pcm=(int32_t*)(buf+kModernHdrSize);
     size_t ns=(size_t)frames*ch;
     for(size_t i=0;i<ns;i++){float s=smp[i];if(s>1.f)s=1.f;if(s<-1.f)s=-1.f;pcm[i]=(int32_t)(s*kSampleScale);}
-    uint32_t crc=crc32(buf,sizeof(RtpHeader)+sizeof(OstpHeader)+payload);
-    memcpy(buf+sizeof(RtpHeader)+sizeof(OstpHeader)+payload,&crc,4);
+    // CRC over payload only (matches iOS ostp_build_packet and relay parser)
+    uint32_t crc=crc32(buf+kModernHdrSize,payload);
+    memcpy(buf+kModernHdrSize+payload,&crc,4);
     return total;
 }
 
@@ -324,10 +338,19 @@ static void recv_thread() {
         uint8_t pt=rtp->m_pt&0x7F;
         if (pt==126||pt==127) continue;
         bool is_ostp=false; size_t off=sizeof(RtpHeader);
-        if ((size_t)n >= sizeof(RtpHeader)+sizeof(OstpHeader)) {
-            OstpHeader*oh=(OstpHeader*)(pkt+sizeof(RtpHeader));
+        bool has_ext=(rtp->cc_x_p_v & 0x10)!=0;
+        if (has_ext && (size_t)n>=kModernHdrSize) {
+            // Modern OSTP: RTP extension with profile 0x4F53, length 2
+            RtpExtHeader*ext=(RtpExtHeader*)(pkt+sizeof(RtpHeader));
+            if (ntohs(ext->profile)==kOstpProfile && ntohs(ext->length)==2) {
+                is_ostp=true; off=kModernHdrSize;
+            }
+        }
+        if (!is_ostp && !has_ext && (size_t)n>=kLegacyHdrSize) {
+            // Legacy OSTP: 'OSTP' magic at offset 12
+            OstpHeaderLegacy*oh=(OstpHeaderLegacy*)(pkt+sizeof(RtpHeader));
             uint32_t magic; memcpy(&magic,oh->magic,4);
-            if (magic==htonl(kOstpMagic)){is_ostp=true;off+=sizeof(OstpHeader);}
+            if (magic==htonl(kOstpMagic)){is_ostp=true;off=kLegacyHdrSize;}
         }
         if (off>=(size_t)n) continue;
         const uint8_t*payload=pkt+off; size_t plen=(size_t)n-off; size_t frames;

@@ -5,52 +5,54 @@
     
     
       
-      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000511">
+      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000425">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="1: app_store_connect_api_key" time="0.004458">
+      <testcase classname="fastlane.lanes" name="1: app_store_connect_api_key" time="0.004168">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="2: increment_build_number" time="0.261364">
+      <testcase classname="fastlane.lanes" name="2: increment_build_number" time="0.266133">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="3: Switch to ios build_lib lane" time="0.000196">
+      <testcase classname="fastlane.lanes" name="3: Switch to ios build_lib lane" time="0.000155">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="4: mkdir -p build-ios" time="0.006132">
+      <testcase classname="fastlane.lanes" name="4: mkdir -p build-ios" time="0.005085">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="5: cmake .. -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_ARCHITECTURES=arm64" time="7.450508">
+      <testcase classname="fastlane.lanes" name="5: cmake .. -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 -DCMAKE_OSX_ARCHITECTURES=arm64" time="7.005296">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="6: xcodebuild -project soluna.xcodeproj -scheme soluna_core -configuration Release -sdk iphoneos build" time="37.02538">
+      <testcase classname="fastlane.lanes" name="6: xcodebuild -project soluna.xcodeproj -scheme soluna_core -configuration Release -sdk iphoneos build" time="3.069212">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="7: update_code_signing_settings" time="0.124099">
+      <testcase classname="fastlane.lanes" name="7: update_code_signing_settings" time="0.152949">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="8: build_app" time="43.558527">
+      <testcase classname="fastlane.lanes" name="8: build_app" time="56.156711">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="9: upload_to_testflight" time="150.4243">
+      <testcase classname="fastlane.lanes" name="9: upload_to_testflight" time="43239.721023">
+        
+          <failure message="/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/actions/actions_helper.rb:67:in `execute_action&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/runner.rb:255:in `block in execute_action&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/runner.rb:229:in `chdir&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/runner.rb:229:in `execute_action&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/runner.rb:157:in `trigger_action_by_name&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/fast_file.rb:159:in `method_missing&apos;&#10;Fastfile:71:in `block (2 levels) in parsing_binding&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/lane.rb:41:in `call&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/runner.rb:49:in `block in execute&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/runner.rb:45:in `chdir&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/runner.rb:45:in `execute&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/lane_manager.rb:46:in `cruise_lane&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/command_line_handler.rb:34:in `handle&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/commands_generator.rb:110:in `block (2 levels) in run&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/commander-4.6.0/lib/commander/command.rb:187:in `call&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/commander-4.6.0/lib/commander/command.rb:157:in `run&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/commander-4.6.0/lib/commander/runner.rb:444:in `run_active_command&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane_core/lib/fastlane_core/ui/fastlane_runner.rb:124:in `run!&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/commander-4.6.0/lib/commander/delegates.rb:18:in `run!&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/commands_generator.rb:363:in `run&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/commands_generator.rb:43:in `start&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/fastlane/lib/fastlane/cli_tools_distributor.rb:132:in `take_off&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/gems/fastlane-2.231.1/bin/fastlane:23:in `&lt;top (required)&gt;&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/bin/fastlane:25:in `load&apos;&#10;/opt/homebrew/lib/ruby/gems/3.2.0/bin/fastlane:25:in `&lt;top (required)&gt;&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/3.2.0/bundler/cli/exec.rb:59:in `load&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/3.2.0/bundler/cli/exec.rb:59:in `kernel_load&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/3.2.0/bundler/cli/exec.rb:23:in `run&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/3.2.0/bundler/cli.rb:452:in `exec&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/3.2.0/bundler/vendor/thor/lib/thor/command.rb:28:in `run&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/3.2.0/bundler/vendor/thor/lib/thor/invocation.rb:127:in `invoke_command&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/3.2.0/bundler/vendor/thor/lib/thor.rb:538:in `dispatch&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/3.2.0/bundler/cli.rb:35:in `dispatch&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/3.2.0/bundler/vendor/thor/lib/thor/base.rb:584:in `start&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/3.2.0/bundler/cli.rb:29:in `start&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/gems/3.2.0/gems/bundler-2.6.6/exe/bundle:28:in `block in &lt;top (required)&gt;&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/3.2.0/bundler/friendly_errors.rb:117:in `with_friendly_errors&apos;&#10;/opt/homebrew/Cellar/ruby@3.2/3.2.8/lib/ruby/gems/3.2.0/gems/bundler-2.6.6/exe/bundle:20:in `&lt;top (required)&gt;&apos;&#10;/opt/homebrew/opt/ruby@3.2/bin/bundle:25:in `load&apos;&#10;/opt/homebrew/opt/ruby@3.2/bin/bundle:25:in `&lt;main&gt;&apos;&#10;&#10;Failed to open TCP connection to api.appstoreconnect.apple.com:443 (getaddrinfo: nodename nor servname provided, or not known)" />
         
       </testcase>
     

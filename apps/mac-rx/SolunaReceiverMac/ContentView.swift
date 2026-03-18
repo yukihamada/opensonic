@@ -14,7 +14,7 @@ struct ContentView: View {
     @State private var groupCode       = ""
     @State private var showSettings   = false
     @State private var showAddSpeaker = false
-    @State private var addSpeakerTab  = 0     // 0 = local, 1 = network
+    @State private var addSpeakerTab  = 2     // 0 = local, 1 = network, 2 = channel
     @State private var newName        = ""
     @State private var newHost        = ""
     @State private var masterVolume: Float = 1.0
@@ -27,54 +27,116 @@ struct ContentView: View {
 
     @AppStorage("autoConnect") private var autoConnect = true
     @AppStorage("streamMode") private var streamMode = "sync"
+    @AppStorage("channel") private var channel = "soluna"
+    @AppStorage("recentChannels") private var recentChannelsData = ""
+
+    @State private var isEditingChannel = false
+    @State private var editedChannel    = ""
+    @State private var sendExpanded     = false
+    @State private var talkMode          = false
 
     @StateObject private var playerModel = PlayerModel()
+    @StateObject private var deviceBrowser = DeviceBrowser()
+    @State private var connectedDeviceHost: String? = nil
+
+    @StateObject private var globalRegistry = GlobalDeviceRegistry()
+    @State private var showDevicePicker = false
+    @State private var isPulsing = false
+
+    private func connectToDevice(_ device: SolunaLocalDevice) {
+        connectedDeviceHost = device.host
+        if !receiver.isPlaying { receiver.start() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            receiver.connectRelay(group: channel, host: device.host, port: UInt16(device.port))
+        }
+    }
+
+    private func disconnectDevice() {
+        connectedDeviceHost = nil
+        receiver.connectRelay(group: channel)
+    }
+
+    private func connectToGlobalDevice(_ device: GlobalDevice) {
+        connectedDeviceHost = device.relayHost
+        if !receiver.isPlaying { receiver.start() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            receiver.connectRelay(group: device.group, host: device.relayHost, port: device.relayPort)
+        }
+    }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                heroSection
-                wanGroupSection
-                relayBanner
-                if receiver.state == .receiving || receiver.packetsReceived > 0 {
-                    statsRow
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-                if !receiver.latencyHistory.isEmpty {
-                    LatencyGraphView(history: receiver.latencyHistory, devices: receiver.availableDevices)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-                if receiver.state == .receiving {
-                    SpectrumView(receiver: receiver)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    if receiver.channels > 2 {
-                        HStack(spacing: 4) {
-                            Image(systemName: "speaker.wave.3.fill")
-                                .font(.system(size: 10))
-                            Text(channelLayoutLabel(Int(receiver.channels)))
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        }
-                        .foregroundColor(.secondary)
-                        .transition(.opacity)
+            VStack(spacing: 16) {
+                // Device browser always visible
+                DeviceBrowserView(
+                    browser: deviceBrowser,
+                    connectedDeviceHost: connectedDeviceHost,
+                    onSelect: { connectToDevice($0) },
+                    onDisconnect: { disconnectDevice() }
+                )
+                .padding(12)
+                .background(Color.white.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                if connectedDeviceHost == nil {
+                    ChannelBrowserView(
+                        currentChannel: channel,
+                        onSelect: { switchToChannel($0) }
+                    )
+                    quickChannelBar
+                    relayBanner
+                    playSection
+                    if receiver.state == .receiving {
+                        statsRow
                     }
+                    sendSection
+                } else {
+                    // Device-connected info banner
+                    HStack(spacing: 10) {
+                        Image(systemName: "laptopcomputer.and.iphone")
+                            .foregroundColor(.solunaLive)
+                        let devName = deviceBrowser.devices.first(where: { $0.host == connectedDeviceHost })?.name ?? (connectedDeviceHost ?? "Device")
+                        Text("#\(devName)")
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                        Text("接続中 — 解除するまで同じ音声が流れます")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.5))
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(Color.solunaLive.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 speakersCard
-                playerSection
+                playerSectionCollapsible
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 32)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(LinearGradient.solunaBg)
+        .preferredColorScheme(.dark)
+        .navigationTitle("Soluna")
         .toolbar {
             ToolbarItem(placement: .automatic) {
+                Button(action: { showDevicePicker = true }) {
+                    Image(systemName: "globe")
+                        .foregroundColor(.purple)
+                }
+                .help("グローバルデバイスを選択")
+            }
+            ToolbarItem(placement: .automatic) {
                 Button(action: { showSettings = true }) {
-                    Image(systemName: "gearshape")
-                        .foregroundColor(.secondary)
+                    Image(systemName: "gearshape").foregroundColor(.secondary)
                 }
             }
         }
-        .navigationTitle("Soluna")
+        .sheet(isPresented: $showDevicePicker) {
+            GlobalDevicePickerView(registry: globalRegistry) { device in
+                connectToGlobalDevice(device)
+            }
+        }
         .sheet(isPresented: $showSettings) { SettingsView(receiver: receiver) }
         .sheet(isPresented: $showAddSpeaker, onDismiss: { newName = ""; newHost = "" }) {
             addSpeakerSheet
@@ -112,11 +174,9 @@ struct ContentView: View {
             Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
                 Task { @MainActor in
                     speakers.applyServerRxDelay()
-                    // Rebind player if current daemon disconnected
                     if !(playerModel.daemon?.isConnected ?? false) {
                         playerModel.rebindIfNeeded(speakers.primaryDaemon)
                     }
-                    // Auto-recalculate sync delays when local devices are active
                     if !receiver.activeOutputs.isEmpty {
                         speakers.recalculateAllDelays()
                         receiver.sampleLatencies()
@@ -130,23 +190,249 @@ struct ContentView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: receiver.state.rawValue)
     }
 
-    // MARK: - Player section
+    // MARK: - Play Section (hero)
 
-    private var playerSection: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Label("Music Player", systemImage: "music.note")
-                    .font(.headline)
-                Spacer()
+    private var playSection: some View {
+        VStack(spacing: 16) {
+            // Play/stop button with gradient ring
+            Button(action: togglePlayback) {
+                ZStack {
+                    GradientRing(isActive: receiver.state == .receiving)
+                        .frame(width: 88, height: 88)
+                        .opacity(receiver.state == .receiving ? 1 : 0.3)
+
+                    Circle()
+                        .fill(
+                            receiver.state == .receiving
+                                ? Color.solunaLive.opacity(0.15)
+                                : Color.white.opacity(0.06)
+                        )
+                        .frame(width: 76, height: 76)
+
+                    if receiver.state == .connecting {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                            .tint(.white)
+                    } else {
+                        Image(systemName: heroIcon)
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundColor(receiver.state == .receiving ? .solunaLive : .solunaGradientMid)
+                    }
+                }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
-            Divider().padding(.horizontal, 16)
-            PlayerView(model: playerModel)
-                .padding(.horizontal, 0)
+            .buttonStyle(.plain)
+            .opacity(receiver.state == .connecting ? (isPulsing ? 0.5 : 1.0) : 1.0)
+            .onChange(of: receiver.state) { newState in
+                if newState == .connecting {
+                    withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
+                        isPulsing = true
+                    }
+                } else {
+                    withAnimation(.default) {
+                        isPulsing = false
+                    }
+                }
+            }
+            .disabled(receiver.state == .connecting)
+
+            // Status pill
+            HStack(spacing: 6) {
+                Circle().fill(heroAccent).frame(width: 7, height: 7)
+                    .shadow(color: heroAccent.opacity(0.6), radius: 4)
+                Text(receiver.state.rawValue)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(heroAccent)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 6)
+            .background(heroAccent.opacity(0.1))
+            .clipShape(Capsule())
+
+            // Error detail (actionable message when in error state)
+            if receiver.state == .error {
+                VStack(spacing: 4) {
+                    if let msg = receiver.errorMessage, !msg.isEmpty {
+                        Text(msg)
+                            .font(.system(size: 12))
+                            .foregroundColor(.red.opacity(0.9))
+                            .multilineTextAlignment(.center)
+                    }
+                    Text("Tap the button above to retry")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .transition(.opacity)
+            }
+
+            // Spectrum (only when receiving)
+            if receiver.state == .receiving {
+                SpectrumView(receiver: receiver)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            // Volume
+            HStack(spacing: 8) {
+                Image(systemName: "speaker.fill").font(.system(size: 12)).foregroundColor(.white.opacity(0.4))
+                Slider(value: Binding(
+                    get: { masterVolume },
+                    set: { v in
+                        masterVolume = v
+                        speakers.setAllVolume(v)
+                    }
+                ), in: 0...1)
+                .tint(.solunaGradientMid)
+                Image(systemName: "speaker.wave.3.fill").font(.system(size: 12)).foregroundColor(.white.opacity(0.4))
+            }
+            .padding(.horizontal, 8)
+
+            // Remote Volume Control (group members)
+            if receiver.state == .receiving && !receiver.groupMembers.isEmpty {
+                RemoteVolumeSection(receiver: receiver)
+            }
+
+            // Talk Mode toggle
+            if receiver.state == .receiving {
+                Button(action: {
+                    talkMode.toggle()
+                    receiver.setTalkMode(talkMode)
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: talkMode ? "person.3.fill" : "person.3")
+                            .font(.system(size: 13))
+                        Text("Talk Mode")
+                            .font(.system(size: 12, weight: .medium))
+                        if talkMode {
+                            Text("ON").font(.caption2.weight(.bold))
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Color.solunaGradientStart.opacity(0.2))
+                                .foregroundColor(.solunaGradientStart)
+                                .clipShape(Capsule())
+                        }
+                    }
+                    .foregroundColor(talkMode ? .solunaGradientStart : .white.opacity(0.5))
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(talkMode ? Color.solunaGradientStart.opacity(0.1) : Color.clear)
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .padding(.vertical, 20)
+        .frame(maxWidth: .infinity)
+        .glassCard()
+    }
+
+    // MARK: - Send Section (collapsible)
+
+    private var anySending: Bool {
+        receiver.isMicTransmitting || receiver.isShmTransmitting
+    }
+
+    private var sendSection: some View {
+        VStack(spacing: 0) {
+            // Header (tap to expand)
+            Button(action: { withAnimation(.spring(response: 0.3)) { sendExpanded.toggle() } }) {
+                HStack {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .foregroundColor(anySending ? .orange : .secondary)
+                    Text("Send")
+                        .font(.headline)
+                        .foregroundColor(anySending ? .primary : .secondary)
+                    Spacer()
+                    if anySending {
+                        Text("ON").font(.caption.weight(.bold))
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.2))
+                            .foregroundColor(.orange)
+                            .clipShape(Capsule())
+                    }
+                    Image(systemName: sendExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+
+            if sendExpanded {
+                Divider().padding(.horizontal, 16)
+                VStack(spacing: 12) {
+                    // Mic + System Audio toggles
+                    HStack(spacing: 10) {
+                        sendToggle(title: "Mic", icon: "mic.fill",
+                                   active: receiver.isMicTransmitting, color: .red,
+                                   action: { receiver.toggleMic() })
+                        sendToggle(title: "System Audio", icon: "speaker.wave.2.fill",
+                                   active: receiver.isShmTransmitting, color: .orange,
+                                   action: { receiver.toggleShmTransmit() })
+                    }
+
+                    // Level meters
+                    if receiver.isMicTransmitting {
+                        MicLevelMeter(level: receiver.micInputLevel).frame(height: 6)
+                    }
+                    if receiver.isShmTransmitting {
+                        MicLevelMeter(level: receiver.shmTxLevel).frame(height: 6).tint(.orange)
+                    }
+
+                    // Sync/Jam toggle (only when sending)
+                    if anySending {
+                        Picker("", selection: $streamMode) {
+                            Text("Sync").tag("sync")
+                            Text("Jam").tag("jam")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 140)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+        }
+        .glassCard()
+        .cornerRadius(12)
+    }
+
+    private func sendToggle(title: String, icon: String, active: Bool, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: active ? icon : icon.replacingOccurrences(of: ".fill", with: ".slash.fill"))
+                    .font(.system(size: 14))
+                Text(title).font(.system(size: 12, weight: .medium))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .foregroundColor(active ? .white : .secondary)
+            .background(active ? color : Color(nsColor: .tertiaryLabelColor).opacity(0.15))
+            .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Player Section (collapsible)
+
+    @State private var playerExpanded = false
+
+    private var playerSectionCollapsible: some View {
+        VStack(spacing: 0) {
+            Button(action: { withAnimation(.spring(response: 0.3)) { playerExpanded.toggle() } }) {
+                HStack {
+                    Label("Music Player", systemImage: "music.note")
+                        .font(.headline)
+                        .foregroundColor(playerExpanded ? .primary : .secondary)
+                    Spacer()
+                    Image(systemName: playerExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+
+            if playerExpanded {
+                Divider().padding(.horizontal, 16)
+                PlayerView(model: playerModel)
+                    .padding(.horizontal, 0)
+            }
+        }
+        .glassCard()
         .cornerRadius(20)
     }
 
@@ -181,22 +467,22 @@ struct ContentView: View {
         case .direct where relay.connectedPeerCount > 0:
             HStack(spacing: 8) {
                 Image(systemName: "antenna.radiowaves.left.and.right")
-                    .foregroundColor(.green)
+                    .foregroundColor(.solunaLive)
                 Text("\(relay.connectedPeerCount) devices relaying")
                     .font(.footnote.weight(.semibold))
-                    .foregroundColor(.green)
+                    .foregroundColor(.solunaLive)
                 Spacer()
                 Text("Relay")
                     .font(.caption2)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Color.green.opacity(0.15))
-                    .foregroundColor(.green)
+                    .background(Color.solunaLive.opacity(0.15))
+                    .foregroundColor(.solunaLive)
                     .clipShape(Capsule())
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(Color.green.opacity(0.08))
+            .background(Color.solunaLive.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .transition(.move(edge: .top).combined(with: .opacity))
 
@@ -232,225 +518,136 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Hero
+    // MARK: - Quick Channel Bar
 
-    private var heroSection: some View {
-        VStack(spacing: 20) {
-            Button(action: togglePlayback) {
-                ZStack {
-                    Circle()
-                        .fill(heroAccent.opacity(0.12))
-                        .frame(width: 100, height: 100)
-                        .shadow(color: heroAccent.opacity(0.25), radius: 16, y: 4)
-
-                    if receiver.state == .connecting {
-                        ProgressView()
-                            .scaleEffect(1.3)
-                            .accentColor(heroAccent)
-                    } else {
-                        Image(systemName: heroIcon)
-                            .font(.system(size: 36, weight: .semibold))
-                            .foregroundColor(heroAccent)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .disabled(receiver.state == .connecting)
-
-            // Status pill + Mic button
-            HStack(spacing: 10) {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(heroAccent)
-                        .frame(width: 7, height: 7)
-                    Text(receiver.state.rawValue)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundColor(heroAccent)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-                .background(heroAccent.opacity(0.1))
-                .clipShape(Capsule())
-
-                if receiver.state == .receiving {
-                    Button(action: { receiver.toggleMic() }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: receiver.isMicTransmitting ? "mic.fill" : "mic.slash.fill")
-                            Text(receiver.isMicTransmitting ? "Mic ON" : "Mic OFF")
-                                .font(.caption.weight(.medium))
-                        }
-                        .foregroundColor(receiver.isMicTransmitting ? .red : .secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(receiver.isMicTransmitting ? Color.red.opacity(0.12) : Color(nsColor: .tertiaryLabelColor).opacity(0.2))
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button(action: { receiver.toggleShmTransmit() }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: receiver.isShmTransmitting ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                            Text(receiver.isShmTransmitting ? "Audio TX" : "Audio TX")
-                                .font(.caption.weight(.medium))
-                        }
-                        .foregroundColor(receiver.isShmTransmitting ? .orange : .secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(receiver.isShmTransmitting ? Color.orange.opacity(0.12) : Color(nsColor: .tertiaryLabelColor).opacity(0.2))
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .help("System audio: Soluna仮想デバイスの音声を送信")
-
-                    Button(action: { receiver.isSyncMode.toggle() }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: receiver.isSyncMode ? "metronome.fill" : "metronome")
-                            Text(receiver.isSyncMode ? "Sync" : "Fast")
-                                .font(.caption.weight(.medium))
-                        }
-                        .foregroundColor(receiver.isSyncMode ? .blue : .secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(receiver.isSyncMode ? Color.blue.opacity(0.12) : Color(nsColor: .tertiaryLabelColor).opacity(0.2))
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .help(receiver.isSyncMode ? "Sync mode: \(receiver.syncDelayMs)ms delay" : "Fast mode: minimum latency")
-                }
-            }
-
-            // Mic input level meter
-            if receiver.isMicTransmitting {
-                MicLevelMeter(level: receiver.micInputLevel)
-                    .frame(height: 6)
-                    .padding(.horizontal, 40)
-            }
-            // System audio TX level meter
-            if receiver.isShmTransmitting {
-                MicLevelMeter(level: receiver.shmTxLevel)
-                    .frame(height: 6)
-                    .padding(.horizontal, 40)
-                    .tint(.orange)
-            }
-
-            // Stream mode toggle (Sync / Jam)
-            Picker("Stream Mode", selection: $streamMode) {
-                Text("Sync").tag("sync")
-                Text("Jam").tag("jam")
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 180)
-            .help(streamMode == "sync"
-                  ? "Sync: Multi-room aligned playback (PTP)"
-                  : "Jam: Ultra-low latency (~20ms)")
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(20)
+    private var recentChannels: [String] {
+        recentChannelsData
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 
-    // MARK: - WAN Group Code
+    private func addRecentChannel(_ ch: String) {
+        var list = recentChannels.filter { $0 != ch }
+        list.insert(ch, at: 0)
+        if list.count > 5 { list = Array(list.prefix(5)) }
+        recentChannelsData = list.joined(separator: ",")
+    }
 
-    @ViewBuilder
-    private var wanGroupSection: some View {
-        if receiver.state == .receiving || receiver.relayState != .disconnected {
-            VStack(spacing: 10) {
-                switch receiver.relayState {
-                case .disconnected:
-                    HStack(spacing: 10) {
-                        Image(systemName: "globe")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.purple)
-                            .frame(width: 28, height: 28)
-                            .background(Color.purple.opacity(0.1))
-                            .clipShape(Circle())
+    private func switchToChannel(_ ch: String) {
+        let trimmed = ch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        channel = trimmed
+        groupCode = trimmed
+        addRecentChannel(trimmed)
+        // Direct channel switch: connectRelay auto-disconnects old channel
+        if receiver.state != .receiving { receiver.start() }
+        receiver.connectRelay(group: trimmed)
+    }
 
-                        TextField("Group code", text: $groupCode)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 13, design: .monospaced))
+    private var quickChannelBar: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.solunaGradientStart)
 
-                        Button("Join") {
-                            let code = groupCode.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !code.isEmpty else { return }
-                            receiver.connectRelay(group: code)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.purple)
-                        .disabled(groupCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if isEditingChannel {
+                    TextField("Channel", text: $editedChannel, onCommit: {
+                        switchToChannel(editedChannel)
+                        isEditingChannel = false
+                    })
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(maxWidth: 140)
+
+                    Button {
+                        switchToChannel(editedChannel)
+                        isEditingChannel = false
+                    } label: {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.solunaLive)
                     }
+                    .buttonStyle(.plain)
 
-                case .connecting:
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                        Text("Joining \"\(groupCode)\"...")
-                            .font(.footnote.weight(.medium))
-                            .foregroundColor(.purple)
-                        Spacer()
+                    Button {
+                        isEditingChannel = false
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
                     }
+                    .buttonStyle(.plain)
+                } else {
+                    Text(channel)
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.solunaGradientStart)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.solunaGradientStart.opacity(0.1))
+                        .clipShape(Capsule())
 
-                case .connected:
-                    HStack(spacing: 8) {
-                        Image(systemName: "globe")
-                            .foregroundColor(.green)
-                        Text(receiver.relayGroup ?? groupCode)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundColor(.green)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.green.opacity(0.12))
-                            .clipShape(Capsule())
-                        Spacer()
-                        Button("Leave") {
-                            receiver.disconnectRelay()
-                            groupCode = ""
-                        }
-                        .font(.footnote.weight(.medium))
-                        .foregroundColor(.red)
+                    Button {
+                        editedChannel = channel
+                        isEditingChannel = true
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
                     }
+                    .buttonStyle(.plain)
+                    .help("Edit channel name")
+                }
 
-                case .error:
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.red)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Connection failed")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundColor(.red)
-                            if let err = receiver.relayError {
-                                Text(err)
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
+                Spacer()
+
+                Button {
+                    editedChannel = ""
+                    isEditingChannel = true
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 10))
+                        Text("Switch")
+                            .font(.caption2.weight(.medium))
+                    }
+                    .foregroundColor(.solunaGradientStart)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.solunaGradientStart.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Recent channels chips
+            if !recentChannels.isEmpty && !isEditingChannel {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        Text("Recent:")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        ForEach(recentChannels, id: \.self) { ch in
+                            Button {
+                                switchToChannel(ch)
+                            } label: {
+                                Text(ch)
+                                    .font(.system(size: 10, weight: ch == channel ? .bold : .regular, design: .monospaced))
+                                    .foregroundColor(ch == channel ? .purple : .secondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(ch == channel ? Color.solunaGradientStart.opacity(0.12) : Color(nsColor: .tertiaryLabelColor).opacity(0.15))
+                                    .clipShape(Capsule())
                             }
+                            .buttonStyle(.plain)
                         }
-                        Spacer()
-                        Button("Retry") {
-                            let code = groupCode.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !code.isEmpty else { return }
-                            receiver.connectRelay(group: code)
-                        }
-                        .font(.footnote.weight(.medium))
-                        .foregroundColor(.purple)
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        } else if receiver.state == .stopped {
-            // Hint when not receiving
-            HStack(spacing: 8) {
-                Image(systemName: "globe")
-                    .foregroundColor(.secondary.opacity(0.5))
-                Text("Start receiving to join a group")
-                    .font(.footnote)
-                    .foregroundColor(.secondary.opacity(0.5))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .glassCard()
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Stats
@@ -598,8 +795,10 @@ struct ContentView: View {
                     Divider().padding(.horizontal, 16)
                     RemoteSpeakerRow(
                         name: speaker.name,
+                        speakerChannel: speaker.channel,
                         daemon: daemon,
-                        onRemove: { speakers.remove(speaker.id) }
+                        onRemove: { speakers.remove(speaker.id) },
+                        onChannelChange: { ch in speakers.setChannel(for: speaker.id, channel: ch) }
                     )
                 }
             }
@@ -638,7 +837,7 @@ struct ContentView: View {
                     Button(action: { showCreateGroup = true }) {
                         Label("Group", systemImage: "rectangle.3.group")
                             .font(.caption)
-                            .foregroundColor(.purple)
+                            .foregroundColor(.solunaGradientStart)
                     }
                     .buttonStyle(.plain)
                 }
@@ -646,7 +845,7 @@ struct ContentView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .glassCard()
         .cornerRadius(20)
         .sheet(isPresented: $showCreateGroup) {
             createGroupSheet
@@ -722,14 +921,42 @@ struct ContentView: View {
                 .padding(.bottom, 12)
 
             Picker("", selection: $addSpeakerTab) {
-                Text("Local Devices").tag(0)
+                Text("Channel").tag(2)
+                Text("Local").tag(0)
                 Text("Network").tag(1)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
 
-            if addSpeakerTab == 0 {
+            if addSpeakerTab == 2 {
+                // WAN Channel tab — connect by channel name only
+                VStack(spacing: 12) {
+                    Image(systemName: "globe")
+                        .font(.system(size: 32))
+                        .foregroundColor(.solunaGradientStart)
+                    Text("チャンネル名を入力するだけで\nWANリレー経由で接続できます")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    TextField("チャンネル名 (例: ambient-tokyo)", text: $groupCode)
+                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 16)
+                    Button("接続") {
+                        let code = groupCode.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !code.isEmpty else { return }
+                        if receiver.state != .receiving { receiver.start() }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            receiver.connectRelay(group: code)
+                        }
+                        showAddSpeaker = false
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.purple)
+                    .disabled(groupCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                .padding(.vertical, 16)
+            } else if addSpeakerTab == 0 {
                 // Local devices tab
                 let inactiveDevices = receiver.availableDevices.filter { !$0.isActive }
                 if inactiveDevices.isEmpty {
@@ -1209,7 +1436,7 @@ private struct LocalDeviceRow: View {
                             .foregroundColor(isMeasured ? .green : .orange)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
-                            .background((isMeasured ? Color.green : Color.orange).opacity(0.1))
+                            .background((isMeasured ? Color.solunaLive : Color.orange).opacity(0.1))
                             .clipShape(Capsule())
                     }
                     if device.nativeSampleRate > 0 && device.nativeSampleRate != 48000 {
@@ -1350,8 +1577,13 @@ private struct LocalDeviceRow: View {
 
 private struct RemoteSpeakerRow: View {
     let name: String
+    let speakerChannel: String
     @ObservedObject var daemon: DaemonClient
     let onRemove: () -> Void
+    let onChannelChange: (String) -> Void
+
+    @State private var isEditingChannel = false
+    @State private var editedChannel    = ""
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1366,10 +1598,10 @@ private struct RemoteSpeakerRow: View {
                     if daemon.measuredLatencyMs > 0 {
                         Text("\(daemon.measuredLatencyMs)ms")
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundColor(.green)
+                            .foregroundColor(.solunaLive)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
-                            .background(Color.green.opacity(0.1))
+                            .background(Color.solunaLive.opacity(0.1))
                             .clipShape(Capsule())
                     }
                     muteButton
@@ -1390,8 +1622,51 @@ private struct RemoteSpeakerRow: View {
                 .accentColor(daemon.isConnected ? .blue : .secondary)
                 .disabled(!daemon.isConnected)
 
-                HStack {
+                // Per-speaker channel
+                HStack(spacing: 6) {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                        .font(.system(size: 9))
+                        .foregroundColor(.purple.opacity(0.7))
+
+                    if isEditingChannel {
+                        TextField("channel", text: $editedChannel, onCommit: {
+                            let ch = editedChannel.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !ch.isEmpty { onChannelChange(ch) }
+                            isEditingChannel = false
+                        })
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 10, design: .monospaced))
+                        .frame(maxWidth: 100)
+
+                        Button {
+                            let ch = editedChannel.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !ch.isEmpty { onChannelChange(ch) }
+                            isEditingChannel = false
+                        } label: {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.solunaLive)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Text(speakerChannel.isEmpty ? "default" : speakerChannel)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(speakerChannel.isEmpty ? .secondary : .purple)
+
+                        Button {
+                            editedChannel = speakerChannel
+                            isEditingChannel = true
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!daemon.isConnected)
+                    }
+
                     Spacer()
+
                     Button(action: onRemove) {
                         Label("Remove", systemImage: "trash")
                             .font(.caption)
@@ -1435,9 +1710,9 @@ private func speakerIcon(systemName: String, connected: Bool) -> some View {
             .foregroundColor(connected ? .primary : Color(nsColor: .tertiaryLabelColor))
             .frame(width: 32, height: 32)
         Circle()
-            .fill(connected ? Color.green : Color(nsColor: .separatorColor))
+            .fill(connected ? Color.solunaLive : Color(nsColor: .separatorColor))
             .frame(width: 8, height: 8)
-            .overlay(Circle().stroke(Color(nsColor: .controlBackgroundColor), lineWidth: 1.5))
+            .overlay(Circle().stroke(Color.solunaSurface, lineWidth: 1.5))
     }
 }
 
@@ -1507,7 +1782,7 @@ private struct LatencyGraphView: View {
             .frame(height: 60)
         }
         .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .glassCard()
         .cornerRadius(12)
     }
 
@@ -1544,7 +1819,7 @@ private struct PresetRow: View {
             HStack {
                 Image(systemName: "list.bullet.rectangle")
                     .font(.system(size: 12))
-                    .foregroundColor(.purple)
+                    .foregroundColor(.solunaGradientStart)
                 Text("Presets")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.secondary)
@@ -1569,7 +1844,7 @@ private struct PresetRow: View {
                     Button(action: onSave) {
                         Label("Save", systemImage: "plus.circle")
                             .font(.caption.weight(.medium))
-                            .foregroundColor(.purple)
+                            .foregroundColor(.solunaGradientStart)
                     }
                     .buttonStyle(.plain)
                 }
@@ -1591,12 +1866,12 @@ private struct PresetRow: View {
                                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                                         .foregroundColor(.white)
                                         .frame(width: 16, height: 16)
-                                        .background(Color.purple)
+                                        .background(Color.solunaGradientStart)
                                         .clipShape(Circle())
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(Color.purple.opacity(0.1))
+                                .background(Color.solunaGradientStart.opacity(0.1))
                                 .clipShape(Capsule())
                             }
                             .buttonStyle(.plain)
@@ -1642,7 +1917,7 @@ private struct SpeakerGroupRow: View {
         HStack(spacing: 10) {
             Image(systemName: "rectangle.3.group.fill")
                 .font(.system(size: 14))
-                .foregroundColor(.purple)
+                .foregroundColor(.solunaGradientStart)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -1652,7 +1927,7 @@ private struct SpeakerGroupRow: View {
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(.white)
                         .frame(width: 14, height: 14)
-                        .background(Color.purple)
+                        .background(Color.solunaGradientStart)
                         .clipShape(Circle())
                     Spacer()
                     Button { muted.toggle(); onMute(muted) } label: {
@@ -1674,6 +1949,53 @@ private struct SpeakerGroupRow: View {
             }
         }
         .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Remote Volume Control
+
+private struct RemoteVolumeSection: View {
+    @ObservedObject var receiver: AudioReceiver
+    @State private var volumes: [String: Double] = [:]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Remote Volume", systemImage: "speaker.wave.2.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.white.opacity(0.5))
+                .padding(.horizontal, 8)
+            ForEach(receiver.groupMembers) { member in
+                HStack(spacing: 8) {
+                    Image(systemName: member.role == "dj" || member.role == "owner"
+                          ? "music.mic" : "iphone")
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.5))
+                        .frame(width: 14)
+                    Text(member.name)
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.7))
+                        .lineLimit(1)
+                        .frame(width: 60, alignment: .leading)
+                    Slider(
+                        value: Binding(
+                            get: { volumes[member.deviceId] ?? 80 },
+                            set: { newVal in
+                                volumes[member.deviceId] = newVal
+                                receiver.sendVolumeToDevice(member.deviceId, level: Int(newVal))
+                            }
+                        ),
+                        in: 0...100
+                    )
+                    .tint(.solunaGradientMid)
+                    Text("\(Int(volumes[member.deviceId] ?? 80))%")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.4))
+                        .frame(width: 32, alignment: .trailing)
+                }
+                .padding(.horizontal, 8)
+            }
+        }
         .padding(.vertical, 4)
     }
 }
@@ -1714,7 +2036,7 @@ private struct SpectrumView: View {
             }
         }
         .padding(16)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .glassCard()
         .cornerRadius(12)
         .onReceive(Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()) { _ in
             bands = receiver.spectrumBands()
@@ -1886,7 +2208,7 @@ private struct CrossoverControls: View {
                     if mode != 0 && !expanded {
                         Text("\(mode == 1 ? "LPF" : "HPF") \(Int(freq))Hz")
                             .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.purple)
+                            .foregroundColor(.solunaGradientStart)
                     }
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9))

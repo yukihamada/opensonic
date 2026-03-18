@@ -94,6 +94,11 @@ final class PlayerModel: ObservableObject {
     private var specTimer: Timer?
     private var specPhase: Float = 0
 
+    /// Index in queue that has been pre-fetched to the daemon (next-file buffer).
+    private var _prefetchedIndex: Int? = nil
+    /// Whether pre-fetch upload is currently in flight.
+    private var _prefetching = false
+
     /// Reference to SpeakersController for multi-speaker upload
     weak var speakersController: SpeakersController?
 
@@ -126,6 +131,9 @@ final class PlayerModel: ObservableObject {
             d.onPlayerSwitch = { [weak self] delay, pos in
                 Task { @MainActor [weak self] in self?.handleSwitch(delayMs: delay, posMs: pos) }
             }
+            d.onNextFileReceived = { [weak self] data, name in
+                Task { @MainActor [weak self] in self?.handleNextFile(data, name: name) }
+            }
             // Sync initial state
             if d.playerActive { phase = .streaming }
             trackName  = d.playerName
@@ -157,8 +165,20 @@ final class PlayerModel: ObservableObject {
 
     func nextTrack() {
         guard currentIndex + 1 < queue.count else { return }
-        currentIndex += 1
-        uploadAndPlay(item: queue[currentIndex])
+        let nextIdx = currentIndex + 1
+        currentIndex = nextIdx
+        // If this track was pre-buffered, just signal the daemon to switch
+        if _prefetchedIndex == nextIdx {
+            _prefetchedIndex = nil
+            _prefetching = false
+            trackName  = queue[nextIdx].name
+            trackFmt   = formatLabel(for: queue[nextIdx].name)
+            phase      = .switching
+            _daemon?.playerNextFileReady()
+        } else {
+            _prefetchedIndex = nil
+            uploadAndPlay(item: queue[currentIndex])
+        }
     }
 
     func previousTrack() {
@@ -296,6 +316,39 @@ final class PlayerModel: ObservableObject {
         updateNowPlaying()
     }
 
+    // MARK: - Pre-buffer (next track)
+
+    /// Triggered at 75% playback to pre-upload the next queue item.
+    private func prefetchNextIfNeeded() {
+        let nextIdx = currentIndex + 1
+        guard nextIdx < queue.count,
+              _prefetchedIndex != nextIdx,
+              !_prefetching else { return }
+        _prefetching = true
+        let item = queue[nextIdx]
+        Task { [weak self] in
+            guard let self, let d = self._daemon, d.isConnected else {
+                await MainActor.run { self?._prefetching = false }
+                return
+            }
+            await d.prefetchFile(item.data, name: item.name)
+            await MainActor.run {
+                self._prefetchedIndex = nextIdx
+                self._prefetching = false
+            }
+        }
+    }
+
+    /// Called when daemon has fully distributed the next-file buffer.
+    private func handleNextFile(_ data: Data, name: String) {
+        // Write to temp file so AVPlayer can open it on switch
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("soluna_next_\(name)")
+        try? data.write(to: tmp)
+        // Signal daemon to schedule the switch (50ms delay)
+        _daemon?.playerNextFileReady()
+    }
+
     // MARK: - File complete → player.file_ready
 
     private func handleFile(_ data: Data, name: String) {
@@ -310,8 +363,15 @@ final class PlayerModel: ObservableObject {
     // MARK: - player.switch → start AVPlayer
 
     private func handleSwitch(delayMs: UInt32, posMs: UInt64) {
-        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("soluna_\(trackName)")
+        let tmpDir  = URL(fileURLWithPath: NSTemporaryDirectory())
+        var tmp     = tmpDir.appendingPathComponent("soluna_\(trackName)")
+        // Check if file arrived via pre-buffer path (soluna_next_<name>)
+        if !FileManager.default.fileExists(atPath: tmp.path) {
+            let nextTmp = tmpDir.appendingPathComponent("soluna_next_\(trackName)")
+            if FileManager.default.fileExists(atPath: nextTmp.path) {
+                try? FileManager.default.moveItem(at: nextTmp, to: tmp)
+            }
+        }
         guard FileManager.default.fileExists(atPath: tmp.path) else { return }
 
         let item = AVPlayerItem(url: tmp)
@@ -337,11 +397,23 @@ final class PlayerModel: ObservableObject {
             }
         }
 
+        var prefetchTriggered = false
         let iv = CMTime(seconds: 0.25, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         timeObs = p.addPeriodicTimeObserver(forInterval: iv, queue: .main) { [weak self] t in
+            guard let self else { return }
             let ms = UInt64(max(0, t.seconds) * 1000)
-            self?.positionMs = ms
-            self?.updateNowPlaying()
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.positionMs = ms
+                self.updateNowPlaying()
+                // Pre-fetch next track at 75% of current track
+                if !prefetchTriggered,
+                   self.durationMs > 0,
+                   ms >= self.durationMs * 3 / 4 {
+                    prefetchTriggered = true
+                    self.prefetchNextIfNeeded()
+                }
+            }
         }
 
         // End of file → auto-advance queue (remove old observer first)

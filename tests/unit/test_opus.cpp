@@ -23,18 +23,18 @@ TEST(OpusEncoderTest, EncodeSineWave) {
     OpusEncoderConfig config;
     config.sample_rate = 48000;
     config.channels = 1;
-    config.frame_size_samples = 96;
+    config.frame_size_samples = 480;  // 10ms — valid Opus frame size
     OpusEncoder encoder(config);
 
-    // Generate 96 samples of 1kHz sine
-    std::vector<float> input(96);
+    // Generate 480 samples of 1kHz sine (10ms at 48kHz)
+    std::vector<float> input(480);
     for (size_t i = 0; i < input.size(); i++) {
         input[i] = 0.5f * std::sin(2.0f * M_PI * 1000.0f * i / 48000.0f);
     }
 
-    auto result = encoder.encode(input.data(), 96);
+    auto result = encoder.encode(input.data(), 480);
     EXPECT_TRUE(result.success);
-    EXPECT_EQ(result.frames_encoded, 96u);
+    EXPECT_EQ(result.frames_encoded, 480u);
     EXPECT_GT(result.data.size(), 0u);
 }
 
@@ -45,10 +45,10 @@ TEST(OpusEncoderTest, EncodeStereo) {
     config.bitrate = 128000;
     OpusEncoder encoder(config);
 
-    std::vector<float> input(96 * 2, 0.3f); // interleaved stereo
-    auto result = encoder.encode(input.data(), 96);
+    std::vector<float> input(480 * 2, 0.3f); // interleaved stereo, 10ms
+    auto result = encoder.encode(input.data(), 480);
     EXPECT_TRUE(result.success);
-    EXPECT_EQ(result.frames_encoded, 96u);
+    EXPECT_EQ(result.frames_encoded, 480u);
 }
 
 TEST(OpusEncoderTest, EncodeEmpty) {
@@ -88,16 +88,16 @@ TEST(OpusDecoderTest, DecodeStubData) {
     dec_config.channels = 1;
     OpusDecoder decoder(dec_config);
 
-    // Encode
-    std::vector<float> input(96, 0.5f);
-    auto encoded = encoder.encode(input.data(), 96);
+    // Encode (480 samples = 10ms, valid Opus frame size)
+    std::vector<float> input(480, 0.5f);
+    auto encoded = encoder.encode(input.data(), 480);
     ASSERT_TRUE(encoded.success);
 
     // Decode
-    auto decoded = decoder.decode(encoded.data.data(), encoded.data.size(), 96);
+    auto decoded = decoder.decode(encoded.data.data(), encoded.data.size(), 480);
     EXPECT_TRUE(decoded.success);
-    EXPECT_EQ(decoded.frames_decoded, 96u);
-    EXPECT_EQ(decoded.samples.size(), 96u);
+    EXPECT_EQ(decoded.frames_decoded, 480u);
+    EXPECT_EQ(decoded.samples.size(), 480u);
 }
 
 TEST(OpusDecoderTest, RoundtripPreservesData) {
@@ -110,20 +110,20 @@ TEST(OpusDecoderTest, RoundtripPreservesData) {
     dec_config.channels = 1;
     OpusDecoder decoder(dec_config);
 
-    std::vector<float> input(96);
-    for (size_t i = 0; i < 96; i++) {
-        input[i] = 0.5f * std::sin(2.0f * M_PI * i / 96.0f);
+    std::vector<float> input(480);
+    for (size_t i = 0; i < 480; i++) {
+        input[i] = 0.5f * std::sin(2.0f * M_PI * i / 480.0f);
     }
 
-    auto encoded = encoder.encode(input.data(), 96);
+    auto encoded = encoder.encode(input.data(), 480);
     ASSERT_TRUE(encoded.success);
 
-    auto decoded = decoder.decode(encoded.data.data(), encoded.data.size(), 96);
+    auto decoded = decoder.decode(encoded.data.data(), encoded.data.size(), 480);
     ASSERT_TRUE(decoded.success);
 
 #ifndef SOLUNA_HAS_OPUS
     // Stub mode: exact match
-    for (size_t i = 0; i < 96; i++) {
+    for (size_t i = 0; i < 480; i++) {
         EXPECT_FLOAT_EQ(decoded.samples[i], input[i]);
     }
 #endif
@@ -135,11 +135,11 @@ TEST(OpusDecoderTest, PacketLossConcealment) {
     config.channels = 1;
     OpusDecoder decoder(config);
 
-    auto result = decoder.decode_plc(96);
+    auto result = decoder.decode_plc(480);
     EXPECT_TRUE(result.success);
     EXPECT_TRUE(result.plc_used);
-    EXPECT_EQ(result.frames_decoded, 96u);
-    EXPECT_EQ(result.samples.size(), 96u);
+    EXPECT_EQ(result.frames_decoded, 480u);
+    EXPECT_EQ(result.samples.size(), 480u);
 }
 
 TEST(OpusDecoderTest, StereoDecoder) {
@@ -148,7 +148,7 @@ TEST(OpusDecoderTest, StereoDecoder) {
     config.channels = 2;
     OpusDecoder decoder(config);
 
-    auto result = decoder.decode_plc(96);
+    auto result = decoder.decode_plc(480);
     EXPECT_TRUE(result.success);
-    EXPECT_EQ(result.samples.size(), 96u * 2);
+    EXPECT_EQ(result.samples.size(), 480u * 2);
 }

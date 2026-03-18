@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <script>if(!sessionStorage.getItem('lang-set')&&/^en/i.test(navigator.language)){location.replace('/en/about')}</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SOLUNAが目指すもの — 音楽体験のインフラを再発明する。イベント、テクノロジー、エコノミーの可能性。">
+    <meta name="keywords" content="SOLUNA, OpenSonic, ZAMNA, ビジョン, 音楽インフラ, P2P, オーディオ配信, オープンソース">
+    <meta name="author" content="Soluna Project">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#05060a">
+    <link rel="canonical" href="https://solun.art/about">
+    <meta property="og:title" content="SOLUNA — 音楽のHTTPを作る">
+    <meta property="og:description" content="音楽体験のインフラを再発明する。オープンソースプロトコルで配信・同期・決済・権利管理を置き換える。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/about">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="ja_JP">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="SOLUNA — 音楽のHTTPを作る">
+    <meta name="twitter:description" content="音楽体験のインフラを再発明する。">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <title>SOLUNA — 音楽のHTTPを作る</title>
+    <style>
+        :root {
+            --bg:#05060a;--s1:#0c0e16;--s2:#12151f;--s3:#1a1e2e;
+            --border:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.12);
+            --text:#e8eaf2;--text2:#8b91a8;--text3:#50566e;
+            --blue:#3b82f6;--cyan:#06b6d4;--green:#10b981;--purple:#8b5cf6;
+            --amber:#f59e0b;--gold:#C9A962;
+            font-synthesis:none;-webkit-font-smoothing:antialiased;
+        }
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        html{scroll-behavior:smooth}
+        body{font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;background:var(--bg);color:var(--text);line-height:1.7;overflow-x:hidden}
+
+        .reveal{opacity:0;transform:translateY(30px);transition:opacity 0.7s ease,transform 0.7s ease}
+        .reveal.visible{opacity:1;transform:translateY(0)}
+        .reveal-delay-1{transition-delay:0.1s}.reveal-delay-2{transition-delay:0.2s}.reveal-delay-3{transition-delay:0.3s}
+
+        nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc(50% - 580px));height:60px;background:rgba(5,6,10,0.7);backdrop-filter:blur(24px) saturate(1.8);border-bottom:1px solid var(--border)}
+        .nav-logo{font-size:18px;font-weight:700;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--text)}
+        .nav-logo svg{width:24px;height:24px}
+        .nav-links{display:flex;align-items:center;gap:24px}
+        .nav-links a{color:var(--text2);text-decoration:none;font-size:14px;transition:color 0.2s}
+        .nav-links a:hover{color:var(--text)}.nav-links a.active{color:var(--text);font-weight:600}
+        .nav-cta{padding:8px 18px;background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff !important;border-radius:10px;font-weight:600;font-size:13px !important;box-shadow:0 2px 12px rgba(59,130,246,0.3)}
+        .nav-cta:hover{opacity:0.9;transform:translateY(-1px)}
+        @media(max-width:768px){.hide-sm{display:none}}
+
+        .section{padding:80px max(20px,calc(50% - 580px))}
+        .section-label{font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:14px;background:linear-gradient(90deg,var(--blue),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+        h1{font-size:clamp(36px,7vw,64px);font-weight:800;letter-spacing:-0.03em;line-height:1.1;margin-bottom:20px}
+        h2{font-size:clamp(24px,4vw,36px);font-weight:800;letter-spacing:-0.03em;line-height:1.15;margin-bottom:16px}
+        h3{font-size:20px;font-weight:700;margin-bottom:10px;color:var(--text)}
+        .sub{color:var(--text2);font-size:clamp(16px,2vw,20px);line-height:1.6;max-width:700px}
+        .grad{background:linear-gradient(135deg,var(--blue),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+        .gold{color:var(--gold)}
+
+        .hero{padding:140px max(20px,calc(50% - 580px)) 80px;position:relative;overflow:hidden}
+        .hero-bg{position:absolute;inset:0;pointer-events:none}
+        .hero-orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:0.3}
+        .hero-orb-1{width:400px;height:400px;background:var(--blue);top:-100px;left:-100px}
+        .hero-orb-2{width:300px;height:300px;background:var(--purple);top:50px;right:-50px}
+
+        .quote{font-size:clamp(20px,3.5vw,32px);font-weight:300;line-height:1.5;color:var(--text);padding:40px 0;border-left:3px solid var(--gold);padding-left:32px;margin:40px 0;font-style:italic}
+
+        .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;margin-top:32px}
+        .card{background:var(--s1);border:1px solid var(--border);border-radius:16px;padding:32px;transition:border-color 0.3s,transform 0.3s}
+        .card:hover{border-color:var(--border2);transform:translateY(-2px)}
+        .card-icon{font-size:32px;margin-bottom:16px}
+        .card p{color:var(--text2);font-size:14px;line-height:1.7}
+
+        .timeline{position:relative;padding-left:40px;margin-top:32px}
+        .timeline::before{content:'';position:absolute;left:15px;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,var(--blue),var(--purple),var(--green))}
+        .tl-item{position:relative;margin-bottom:40px}
+        .tl-dot{position:absolute;left:-33px;top:4px;width:12px;height:12px;border-radius:50%;border:2px solid var(--blue);background:var(--bg)}
+        .tl-item:nth-child(2) .tl-dot{border-color:var(--purple)}
+        .tl-item:nth-child(3) .tl-dot{border-color:var(--cyan)}
+        .tl-item:nth-child(4) .tl-dot{border-color:var(--green)}
+        .tl-item:nth-child(5) .tl-dot{border-color:var(--amber)}
+        .tl-label{font-size:12px;font-weight:700;letter-spacing:0.1em;color:var(--blue);margin-bottom:4px}
+        .tl-item:nth-child(2) .tl-label{color:var(--purple)}
+        .tl-item:nth-child(3) .tl-label{color:var(--cyan)}
+        .tl-item:nth-child(4) .tl-label{color:var(--green)}
+        .tl-item:nth-child(5) .tl-label{color:var(--amber)}
+
+        .compare-table{width:100%;border-collapse:collapse;margin-top:24px;font-size:14px}
+        .compare-table th{text-align:left;padding:12px 16px;font-size:12px;font-weight:700;letter-spacing:0.08em;color:var(--text3);text-transform:uppercase;border-bottom:1px solid var(--border2)}
+        .compare-table td{padding:14px 16px;border-bottom:1px solid var(--border);color:var(--text2)}
+        .compare-table td:first-child{color:var(--text);font-weight:600}
+        .compare-table td:last-child{color:var(--green);font-weight:500}
+
+        .cta-section{text-align:center;padding:100px max(20px,calc(50% - 580px))}
+        .cta-btn{display:inline-flex;align-items:center;gap:10px;padding:16px 36px;border-radius:14px;font-size:16px;font-weight:700;text-decoration:none;color:#fff;background:linear-gradient(135deg,var(--blue),var(--purple));box-shadow:0 4px 20px rgba(59,130,246,0.3);transition:transform 0.2s}
+        .cta-btn:hover{transform:translateY(-2px)}
+        .cta-btn + .cta-btn{margin-left:16px;background:transparent;border:1px solid var(--border2);box-shadow:none}
+
+        footer{padding:40px max(20px,calc(50% - 580px));border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--text3)}
+        footer a{color:var(--text2);text-decoration:none}
+        footer a:hover{color:var(--text)}
+
+        @media(max-width:600px){
+            .card-grid{grid-template-columns:1fr}
+            .cta-btn+.cta-btn{margin-left:0;margin-top:12px}
+            .compare-table{font-size:12px}
+            .compare-table th,.compare-table td{padding:10px 8px}
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/soluna" class="hide-sm">ホーム</a>
+        <a href="/vision" class="hide-sm">ビジョン</a>
+        <a href="/protocol" class="hide-sm">プロトコル</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/en/about" class="hide-sm" onclick="sessionStorage.removeItem('lang-set')" style="font-size:12px;opacity:0.6">EN</a>
+        <a href="/dashboard" class="nav-cta">ダッシュボード</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+    </div>
+    <div style="position:relative;z-index:1">
+        <p class="section-label">私たちについて</p>
+        <h1><span class="grad">音楽のHTTP</span>を作る。</h1>
+        <p class="sub">
+            HTTPがウェブページの配信を民主化したように、<br>
+            SOLUNAは音楽体験の配信をプロトコルレベルで再発明する。
+        </p>
+    </div>
+</section>
+
+<!-- Thesis -->
+<section class="section">
+    <div class="reveal">
+        <p class="section-label">テーゼ</p>
+        <h2>音楽体験のインフラを<span class="grad">再発明</span>する</h2>
+        <p class="sub" style="margin-bottom:24px">
+            SOLUNAは単なる音楽配信サービスではない。<strong>音が鳴る場所から聴く場所まで、
+            その間にある全てのレイヤー — 配信・同期・決済・権利管理 — をオープンソースのプロトコルで置き換える</strong>プロジェクト。
+        </p>
+        <p style="color:var(--text2);font-size:16px;line-height:1.7">
+            Spotify / Apple Musicが「音楽をファイルとして配る」モデルなのに対して、
+            SOLUNAは「<strong style="color:var(--text)">音楽体験そのものをリアルタイムで共有する</strong>」モデル。
+        </p>
+    </div>
+</section>
+
+<!-- ZAMNA = Showcase -->
+<section class="section" style="background:var(--s1)">
+    <div class="reveal">
+        <p class="section-label">最初のショーケース</p>
+        <h2><span class="gold">ZAMNA HAWAII</span> — プロトコルのデモ</h2>
+        <p class="sub" style="margin-bottom:32px">
+            ZAMNA HAWAIIは単独のイベントではなく、SOLUNAプロトコルの最初のショーケース。
+        </p>
+    </div>
+    <div class="card-grid">
+        <div class="card reveal reveal-delay-1">
+            <div class="card-icon">🔊</div>
+            <h3>完全同期スピーカー</h3>
+            <p>会場の全スピーカーをSOLUNA経由で5ms以下の完全同期。位相のずれなし、どこにいても同じ音。</p>
+        </div>
+        <div class="card reveal reveal-delay-2">
+            <div class="card-icon">📱</div>
+            <h3>来場者がネットワーク</h3>
+            <p>来場者のスマホがP2Pメッシュのノードに。参加者が増えるほどネットワークが強くなる。</p>
+        </div>
+        <div class="card reveal reveal-delay-3">
+            <div class="card-icon">🌏</div>
+            <h3>世界中から参加</h3>
+            <p>会場にいない人もブラウザやアプリからリアルタイムで同じ音を聴ける。距離の壁を壊す。</p>
+        </div>
+        <div class="card reveal reveal-delay-1">
+            <div class="card-icon">💰</div>
+            <h3>リアルタイム分配</h3>
+            <p>DJのプレイに対してマイクロペイメントが発生し、権利者に即時分配。透明な経済圏。</p>
+        </div>
+    </div>
+</section>
+
+<!-- Possibilities -->
+<section class="section">
+    <div class="reveal">
+        <p class="section-label">可能性</p>
+        <h2>可能性のマップ</h2>
+    </div>
+
+    <div class="timeline">
+        <div class="tl-item reveal">
+            <div class="tl-dot"></div>
+            <div class="tl-label">イベント x テクノロジー</div>
+            <h3>ハイブリッドフェス</h3>
+            <p style="color:var(--text2)">物理会場1,000人 + オンライン10万人が同じDJセットをゼロレイテンシーで共有。P2Pスウォームで配信コストはほぼゼロ。東京・LA・ベルリンの3会場で同時開催、完全同期のグローバルフェスも。スマホ1台でどこでもSOLUNAチャンネルを開設すれば、バー、ビーチ、公園が即座にサテライト会場に。</p>
+        </div>
+        <div class="tl-item reveal">
+            <div class="tl-dot"></div>
+            <div class="tl-label">アーティストエコノミー</div>
+            <h3>サブスク脱却とDJのマネタイズ</h3>
+            <p style="color:var(--text2)">Spotifyの0.003$/再生ではなく、リスナー数 x 時間のリアルタイムロイヤリティ。1万人が1時間聴けば、その場で権利者に分配。選曲とミックスという「キュレーション」に対して直接課金 — チップ、サポート、チャンネル購読の3層。アーティストがSOLUNAチャンネルを持つだけで、配信・課金・権利管理が全て完結。</p>
+        </div>
+        <div class="tl-item reveal">
+            <div class="tl-dot"></div>
+            <div class="tl-label">日常のオーディオインフラ</div>
+            <h3>日常のオーディオインフラ</h3>
+            <p style="color:var(--text2)">家中のスピーカーを5ms以下で同期 — Sonos/AirPlayの代替だがオープンソースで無料。店舗がSOLUNAチャンネルを開設すれば、著作権検出+自動課金でJASRACの申請が不要に。誰でもグローバルな「ラジオ局」を開設でき、リスナーがP2Pで配信を支えるのでサーバー代ゼロで100万人にリーチ。</p>
+        </div>
+        <div class="tl-item reveal">
+            <div class="tl-dot"></div>
+            <div class="tl-label">分散著作権検出</div>
+            <h3>リスナー側分散フィンガープリント検出</h3>
+            <p style="color:var(--text2)">リスナーのデバイスが受信中の音声から30秒ごとにフィンガープリント（64bitハッシュ）を生成し、リレーサーバーに送信。複数リスナーの合意アルゴリズムで楽曲を自動特定し、権利者にリアルタイムで分配。送信者の負荷はゼロ、リスナーが増えるほど検出精度が向上するP2P型の仕組み。中央集権的な監視サーバーではなく、ネットワーク全体で著作権を保護する — 聴くだけで著作権保護に貢献できる新しいモデル。</p>
+        </div>
+        <div class="tl-item reveal">
+            <div class="tl-dot"></div>
+            <div class="tl-label">プラットフォーム戦略</div>
+            <h3>ハードウェア統合とプラットフォーム</h3>
+            <p style="color:var(--text2)">オープンソース = 採用障壁ゼロ。スピーカー・DJ機器メーカーがSOLUNAプロトコルをネイティブ実装可能。Pioneer DJ / Denonとの統合で、DJ機器から直接SOLUNAネットワークに配信。CarPlay / Android Auto経由で、運転中もリアルタイムチャンネルに参加。</p>
+        </div>
+        <div class="tl-item reveal">
+            <div class="tl-dot"></div>
+            <div class="tl-label">ビジネスモデル</div>
+            <h3>持続可能な収益構造</h3>
+            <p style="color:var(--text2)">全トランザクションの10%がプラットフォーム手数料（DJとアーティストの取り分を最大化）。カスタムチャンネル名の年間販売、イベントへのSOLUNAインフラライセンス、SOLUNA対応スピーカーの認証プログラム。</p>
+        </div>
+    </div>
+</section>
+
+<!-- Why Now -->
+<section class="section" style="background:var(--s1)">
+    <div class="reveal">
+        <p class="section-label">なぜ今か</p>
+        <h2>なぜ<span class="grad">今</span>これが可能か</h2>
+    </div>
+    <div class="reveal" style="overflow-x:auto">
+        <table class="compare-table">
+            <thead>
+                <tr><th>過去の制約</th><th>SOLUNAの解決</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>サーバーコストがスケールしない</td><td>P2Pスウォームで配信コスト ≒ 0</td></tr>
+                <tr><td>レイテンシーが大きすぎて同期できない</td><td>OSTP: LAN 5ms, WAN 100ms</td></tr>
+                <tr><td>権利処理が複雑すぎる</td><td>プロトコルレベルで著作権検出+自動分配</td></tr>
+                <tr><td>プラットフォームが中抜きしすぎ</td><td>オープンソース + 透明な10%手数料</td></tr>
+                <tr><td>音楽配信にイノベーションがない</td><td>ストリーミングではなく「体験の共有」</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+    <div class="reveal">
+        <h2 style="margin-bottom:32px">参加する</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center">
+            <a href="https://github.com/yukihamada/opensonic" target="_blank" class="cta-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                GitHub
+            </a>
+            <a href="/" class="cta-btn" style="background:linear-gradient(135deg,#C9A962,#8b5cf6)">ZAMNA HAWAII</a>
+            <a href="/vision" class="cta-btn">ビジョン詳細</a>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div>
+        <a href="/soluna">Soluna</a> ・
+        <a href="/about">概要</a> ・
+        <a href="/vision">ビジョン</a> ・
+        <a href="/protocol">プロトコル</a> ・
+        <a href="/dashboard">ダッシュボード</a> ・
+        <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+    </div>
+    <div>OpenSonic Community License</div>
+</footer>
+
+<script>
+const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+}, { threshold: 0.1 });
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+</script>
+</body>
+</html>

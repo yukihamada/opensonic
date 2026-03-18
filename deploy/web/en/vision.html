@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script>sessionStorage.setItem('lang-set','1')</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna Vision — Turn any space into a live venue. Next-generation audio infrastructure connecting creators, listeners, and rights holders in real time.">
+    <meta name="keywords" content="Soluna, Vision, P2P, audio streaming, copyright, royalties, open source, DJ, streaming">
+    <meta name="author" content="Soluna Project">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#05060a">
+    <link rel="canonical" href="https://solun.art/en/vision">
+
+    <meta property="og:title" content="Soluna Vision — Next-Generation Audio Infrastructure">
+    <meta property="og:description" content="Turn any space into a live venue. Reinventing music with P2P swarm streaming and automated royalty distribution.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/en/vision">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="en_US">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Soluna Vision — Next-Generation Audio Infrastructure">
+    <meta name="twitter:description" content="Turn any space into a live venue. P2P swarm streaming and automated royalty distribution.">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+    <title>Soluna Vision — Turn Any Space Into a Live Venue.</title>
+
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --cyan:   #06b6d4;
+            --green:  #10b981;
+            --purple: #8b5cf6;
+            --amber:  #f59e0b;
+            --pink:   #ec4899;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ── Scroll reveal ────────────────────────────────── */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        /* ── Nav ──────────────────────────────────────── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 max(20px, calc(50% - 580px));
+            height: 60px;
+            background: rgba(5,6,10,0.7);
+            backdrop-filter: blur(24px) saturate(1.8);
+            border-bottom: 1px solid var(--border);
+            transition: background 0.3s;
+        }
+        .nav-logo {
+            font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+            display: flex; align-items: center; gap: 8px;
+            text-decoration: none; color: var(--text);
+        }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 24px; }
+        .nav-links a {
+            color: var(--text2); text-decoration: none; font-size: 14px;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--text); font-weight: 600; }
+        .nav-cta {
+            padding: 8px 18px;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            color: #fff !important;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 13px !important;
+            transition: opacity 0.2s, transform 0.2s !important;
+            box-shadow: 0 2px 12px rgba(59,130,246,0.3);
+        }
+        .nav-cta:hover { opacity: 0.9; transform: translateY(-1px) !important; }
+
+        /* ── Shared ───────────────────────────────────── */
+        .section {
+            padding: 100px max(20px, calc(50% - 580px));
+        }
+        .section-label {
+            font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; margin-bottom: 14px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        h2 {
+            font-size: clamp(28px, 5vw, 44px);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
+            margin-bottom: 16px;
+        }
+        .sub {
+            font-size: 17px; color: var(--text2); line-height: 1.7;
+            max-width: 640px; margin-bottom: 48px;
+        }
+
+        /* ── Hero ─────────────────────────────────────── */
+        .hero {
+            position: relative;
+            padding: 160px max(20px, calc(50% - 580px)) 100px;
+            overflow: hidden;
+        }
+        .hero-bg {
+            position: absolute; inset: 0; z-index: 0;
+            overflow: hidden;
+        }
+        .hero-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: 0.15;
+            animation: orb-float 20s ease-in-out infinite;
+        }
+        .hero-orb-1 {
+            width: 500px; height: 500px;
+            background: var(--blue);
+            top: -10%; right: 10%;
+            animation-delay: 0s;
+        }
+        .hero-orb-2 {
+            width: 400px; height: 400px;
+            background: var(--purple);
+            bottom: -5%; left: 5%;
+            animation-delay: -7s;
+        }
+        .hero-orb-3 {
+            width: 300px; height: 300px;
+            background: var(--cyan);
+            top: 30%; left: 40%;
+            animation-delay: -14s;
+        }
+        @keyframes orb-float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -20px) scale(1.05); }
+            66% { transform: translate(-20px, 15px) scale(0.95); }
+        }
+        .hero-content { position: relative; z-index: 1; }
+
+        h1 {
+            font-size: clamp(32px, 6vw, 64px);
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            line-height: 1.1;
+            margin-bottom: 28px;
+        }
+        .h1-grad {
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .h1-accent {
+            background: linear-gradient(135deg, var(--blue), var(--cyan), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            background-size: 200% auto;
+            animation: grad-shift 4s ease-in-out infinite;
+        }
+        @keyframes grad-shift {
+            0%, 100% { background-position: 0% center; }
+            50% { background-position: 100% center; }
+        }
+
+        .hero-sub {
+            font-size: clamp(16px, 2.5vw, 20px);
+            color: var(--text2); max-width: 680px; line-height: 1.7;
+            margin-bottom: 40px;
+        }
+
+        /* ── Mission ──────────────────────────────────── */
+        .mission-card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 48px 40px;
+            position: relative;
+            overflow: hidden;
+        }
+        .mission-card::before {
+            content: '';
+            position: absolute; inset: 0;
+            background: radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.06) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .mission-card .mission-title {
+            font-size: clamp(20px, 3vw, 26px);
+            font-weight: 700;
+            line-height: 1.4;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .mission-card p {
+            font-size: 16px;
+            color: var(--text2);
+            line-height: 1.8;
+            max-width: 720px;
+        }
+
+        /* ── Vision Cards ─────────────────────────────── */
+        .vision-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 32px;
+        }
+        .vision-card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px 36px;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .vision-card:hover {
+            border-color: var(--border2);
+            transform: translateY(-4px);
+        }
+        .vision-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .vision-card:hover::before { opacity: 1; }
+        .vision-card:nth-child(1)::before { background: linear-gradient(90deg, var(--blue), var(--cyan)); }
+        .vision-card:nth-child(2)::before { background: linear-gradient(90deg, var(--purple), var(--pink)); }
+        .vision-card:nth-child(3)::before { background: linear-gradient(90deg, var(--green), var(--amber)); }
+
+        .vision-num {
+            font-size: 64px; font-weight: 800; letter-spacing: -0.04em;
+            line-height: 1;
+            margin-bottom: 16px;
+        }
+        .vision-card:nth-child(1) .vision-num {
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .vision-card:nth-child(2) .vision-num {
+            background: linear-gradient(135deg, var(--purple), var(--pink));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .vision-card:nth-child(3) .vision-num {
+            background: linear-gradient(135deg, var(--green), var(--amber));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+
+        .vision-card h3 {
+            font-size: clamp(20px, 3vw, 26px);
+            font-weight: 700;
+            margin-bottom: 20px;
+            line-height: 1.3;
+        }
+        .vision-card p {
+            font-size: 16px;
+            color: var(--text2);
+            line-height: 1.8;
+        }
+        .vision-features {
+            margin-top: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .vision-feature {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            font-size: 15px;
+            color: var(--text2);
+            line-height: 1.6;
+        }
+        .vision-feature-icon {
+            flex-shrink: 0;
+            width: 24px; height: 24px;
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px;
+            margin-top: 2px;
+        }
+        .vision-card:nth-child(1) .vision-feature-icon {
+            background: rgba(6,182,212,0.1); color: var(--cyan);
+        }
+        .vision-card:nth-child(2) .vision-feature-icon {
+            background: rgba(139,92,246,0.1); color: var(--purple);
+        }
+        .vision-card:nth-child(3) .vision-feature-icon {
+            background: rgba(16,185,129,0.1); color: var(--green);
+        }
+
+        /* ── Revenue Split ────────────────────────────── */
+        .split-bar {
+            display: flex;
+            border-radius: 12px;
+            overflow: hidden;
+            height: 48px;
+            margin: 32px 0 16px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .split-bar > div {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            color: #fff;
+        }
+        .split-rights { background: linear-gradient(135deg, var(--green), #059669); flex: 70; }
+        .split-dj { background: linear-gradient(135deg, var(--blue), var(--cyan)); flex: 20; }
+        .split-platform { background: linear-gradient(135deg, var(--purple), var(--pink)); flex: 10; }
+        .split-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: var(--text3);
+        }
+
+        /* ── Target Audience ──────────────────────────── */
+        .audience-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+        .audience-card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px 24px;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .audience-card:hover {
+            border-color: var(--border2);
+            transform: translateY(-4px);
+        }
+        .audience-icon {
+            font-size: 36px;
+            margin-bottom: 16px;
+        }
+        .audience-card h4 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+        .audience-card p {
+            font-size: 14px;
+            color: var(--text2);
+            line-height: 1.7;
+        }
+
+        /* ── Live Channels ────────────────────────────── */
+        .channel-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+        .channel-card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px 28px;
+            transition: border-color 0.3s, transform 0.3s;
+            display: flex;
+            flex-direction: column;
+        }
+        .channel-card:hover {
+            border-color: rgba(59,130,246,0.3);
+            transform: translateY(-4px);
+        }
+        .channel-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .channel-live-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: var(--green);
+            position: relative;
+        }
+        .channel-live-dot::after {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            border-radius: 50%;
+            border: 2px solid var(--green);
+            animation: live-pulse 2s ease-in-out infinite;
+        }
+        @keyframes live-pulse {
+            0%, 100% { transform: scale(1); opacity: 0.6; }
+            50% { transform: scale(1.5); opacity: 0; }
+        }
+        .channel-name {
+            font-size: 20px;
+            font-weight: 700;
+            font-family: "SF Mono", "Fira Code", monospace;
+        }
+        .channel-desc {
+            font-size: 14px;
+            color: var(--text2);
+            line-height: 1.6;
+            margin-bottom: 24px;
+            flex: 1;
+        }
+        .channel-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 24px;
+            background: rgba(59,130,246,0.08);
+            border: 1px solid rgba(59,130,246,0.2);
+            color: #60a5fa;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 14px;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .channel-btn:hover {
+            background: rgba(59,130,246,0.15);
+            border-color: rgba(59,130,246,0.4);
+            transform: translateY(-1px);
+        }
+        .channel-btn svg {
+            width: 16px; height: 16px;
+        }
+
+        /* ── Founder ──────────────────────────────────── */
+        .founder-card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px 36px;
+            display: flex;
+            gap: 32px;
+            align-items: center;
+        }
+        .founder-info h4 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .founder-info p {
+            font-size: 15px;
+            color: var(--text2);
+            line-height: 1.7;
+            margin-bottom: 16px;
+        }
+        .founder-links {
+            display: flex;
+            gap: 16px;
+        }
+        .founder-links a {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            color: #60a5fa;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .founder-links a:hover { color: var(--cyan); }
+
+        /* ── Footer ───────────────────────────────────── */
+        .footer-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(59,130,246,0.3), var(--border), transparent);
+        }
+        footer {
+            padding: 40px max(20px, calc(50% - 580px));
+            display: flex; flex-wrap: wrap; align-items: center;
+            justify-content: space-between; gap: 16px;
+        }
+        footer .f-logo { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        footer .f-links { display: flex; gap: 24px; }
+        footer .f-links a { font-size: 13px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
+        footer .f-links a:hover { color: var(--text2); }
+        footer .f-copy { font-size: 12px; color: var(--text3); }
+
+        /* ── 1. Spectrum Visualizer (Hero) ────────────── */
+        .spectrum-visualizer {
+            position: absolute;
+            bottom: 0; left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: flex-end;
+            gap: 6px;
+            height: 120px;
+            z-index: 0;
+            opacity: 0.25;
+            pointer-events: none;
+        }
+        .spectrum-bar {
+            width: 4px;
+            border-radius: 2px;
+            background: linear-gradient(to top, var(--blue), var(--purple), var(--cyan));
+            animation: spectrum-bar 1.2s ease-in-out infinite alternate;
+        }
+        .spectrum-bar:nth-child(1)  { height: 30%; animation-delay: 0s; }
+        .spectrum-bar:nth-child(2)  { height: 55%; animation-delay: 0.1s; }
+        .spectrum-bar:nth-child(3)  { height: 40%; animation-delay: 0.2s; }
+        .spectrum-bar:nth-child(4)  { height: 70%; animation-delay: 0.15s; }
+        .spectrum-bar:nth-child(5)  { height: 50%; animation-delay: 0.3s; }
+        .spectrum-bar:nth-child(6)  { height: 85%; animation-delay: 0.05s; }
+        .spectrum-bar:nth-child(7)  { height: 60%; animation-delay: 0.25s; }
+        .spectrum-bar:nth-child(8)  { height: 95%; animation-delay: 0.35s; }
+        .spectrum-bar:nth-child(9)  { height: 65%; animation-delay: 0.12s; }
+        .spectrum-bar:nth-child(10) { height: 80%; animation-delay: 0.22s; }
+        .spectrum-bar:nth-child(11) { height: 45%; animation-delay: 0.08s; }
+        .spectrum-bar:nth-child(12) { height: 70%; animation-delay: 0.28s; }
+        .spectrum-bar:nth-child(13) { height: 35%; animation-delay: 0.18s; }
+        .spectrum-bar:nth-child(14) { height: 55%; animation-delay: 0.32s; }
+        .spectrum-bar:nth-child(15) { height: 25%; animation-delay: 0.06s; }
+        .spectrum-bar:nth-child(16) { height: 45%; animation-delay: 0.2s; }
+        @keyframes spectrum-bar {
+            0%   { transform: scaleY(0.3); opacity: 0.5; }
+            100% { transform: scaleY(1);   opacity: 1; }
+        }
+
+        /* ── 2. Sound Wave Dividers ──────────────────── */
+        .wave-divider {
+            width: 100%;
+            height: 40px;
+            overflow: hidden;
+            position: relative;
+        }
+        .wave-divider svg {
+            position: absolute;
+            width: 200%;
+            height: 100%;
+            animation: wave-scroll 8s linear infinite;
+        }
+        @keyframes wave-scroll {
+            0%   { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        /* ── 3. Pulsing Glow on Vision Cards ─────────── */
+        .vision-card::after {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 22px;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            pointer-events: none;
+            z-index: -1;
+        }
+        .vision-card:nth-child(1)::after {
+            box-shadow: 0 0 30px rgba(6,182,212,0.3), 0 0 60px rgba(59,130,246,0.15);
+        }
+        .vision-card:nth-child(2)::after {
+            box-shadow: 0 0 30px rgba(139,92,246,0.3), 0 0 60px rgba(236,72,153,0.15);
+        }
+        .vision-card:nth-child(3)::after {
+            box-shadow: 0 0 30px rgba(16,185,129,0.3), 0 0 60px rgba(245,158,11,0.15);
+        }
+        .vision-card:hover::after {
+            opacity: 1;
+            animation: speaker-pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes speaker-pulse {
+            0%, 100% { transform: scale(1); opacity: 0.7; }
+            50%      { transform: scale(1.01); opacity: 1; }
+        }
+
+        /* ── 4. Audio Waveform BG on Mission Card ────── */
+        .mission-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0.035;
+            background:
+                repeating-linear-gradient(90deg,
+                    transparent 0px,
+                    transparent 8px,
+                    var(--cyan) 8px,
+                    var(--cyan) 9px
+                ),
+                repeating-linear-gradient(90deg,
+                    transparent 0px,
+                    transparent 16px,
+                    var(--blue) 16px,
+                    var(--blue) 17px
+                );
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='80' viewBox='0 0 200 80'%3E%3Cpath d='M0 40 Q10 10,20 40 T40 40 T60 40 T80 40 T100 40 T120 40 T140 40 T160 40 T180 40 T200 40' stroke='white' stroke-width='40' fill='none'/%3E%3C/svg%3E");
+            -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='80' viewBox='0 0 200 80'%3E%3Cpath d='M0 40 Q10 10,20 40 T40 40 T60 40 T80 40 T100 40 T120 40 T140 40 T160 40 T180 40 T200 40' stroke='white' stroke-width='40' fill='none'/%3E%3C/svg%3E");
+            mask-size: 200px 80px;
+            -webkit-mask-size: 200px 80px;
+            mask-repeat: repeat;
+            -webkit-mask-repeat: repeat;
+            animation: waveform-drift 12s linear infinite;
+        }
+        @keyframes waveform-drift {
+            0%   { mask-position: 0 0; -webkit-mask-position: 0 0; }
+            100% { mask-position: 200px 0; -webkit-mask-position: 200px 0; }
+        }
+
+        /* ── 5. Mini Spectrum Bars on Channel Cards ──── */
+        .channel-mini-spectrum {
+            display: inline-flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 14px;
+            margin-left: 4px;
+        }
+        .channel-mini-spectrum .mini-bar {
+            width: 2px;
+            border-radius: 1px;
+            background: var(--green);
+            animation: mini-spectrum 0.8s ease-in-out infinite alternate;
+        }
+        .channel-mini-spectrum .mini-bar:nth-child(1) { height: 40%; animation-delay: 0s; }
+        .channel-mini-spectrum .mini-bar:nth-child(2) { height: 70%; animation-delay: 0.15s; }
+        .channel-mini-spectrum .mini-bar:nth-child(3) { height: 50%; animation-delay: 0.3s; }
+        .channel-mini-spectrum .mini-bar:nth-child(4) { height: 90%; animation-delay: 0.1s; }
+        .channel-mini-spectrum .mini-bar:nth-child(5) { height: 60%; animation-delay: 0.25s; }
+        @keyframes mini-spectrum {
+            0%   { transform: scaleY(0.3); }
+            100% { transform: scaleY(1); }
+        }
+
+        /* ── Responsive ───────────────────────────────── */
+        @media (max-width: 768px) {
+            .nav-links .hide-sm { display: none; }
+            .audience-grid { grid-template-columns: 1fr; }
+            .channel-grid { grid-template-columns: 1fr; }
+            .founder-card { flex-direction: column; text-align: center; }
+            .founder-links { justify-content: center; }
+            .mission-card { padding: 32px 24px; }
+            .vision-card { padding: 32px 24px; }
+            .split-bar { font-size: 11px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+    <a href="/en/" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/en/" class="hide-sm">Home</a>
+        <a href="/en/vision" class="hide-sm active">Vision</a>
+        <a href="/en/protocol" class="hide-sm">Protocol</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/vision" class="hide-sm" onclick="sessionStorage.removeItem('lang-set')" style="font-size:12px;opacity:0.6">JP</a>
+        <a href="/dashboard" class="nav-cta">Dashboard</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero" style="position:relative;overflow:hidden">
+    <img src="/images/vision-hero.png" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.4;z-index:0;pointer-events:none">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+        <div class="hero-orb hero-orb-3"></div>
+    </div>
+    <div class="spectrum-visualizer">
+        <div class="spectrum-bar"></div><div class="spectrum-bar"></div><div class="spectrum-bar"></div><div class="spectrum-bar"></div>
+        <div class="spectrum-bar"></div><div class="spectrum-bar"></div><div class="spectrum-bar"></div><div class="spectrum-bar"></div>
+        <div class="spectrum-bar"></div><div class="spectrum-bar"></div><div class="spectrum-bar"></div><div class="spectrum-bar"></div>
+        <div class="spectrum-bar"></div><div class="spectrum-bar"></div><div class="spectrum-bar"></div><div class="spectrum-bar"></div>
+    </div>
+    <div class="hero-content" style="position:relative;z-index:1">
+        <h1>
+            <span class="h1-grad">Turn Any Space Into</span><br>
+            <span class="h1-accent">a Live Venue.</span>
+        </h1>
+        <p class="hero-sub">
+            Next-generation audio infrastructure connecting creators, listeners, and rights holders in real time.<br>
+            OpenSonic reinvents every layer of music distribution at the protocol level.
+        </p>
+    </div>
+</section>
+
+<!-- Wave Divider -->
+<div class="wave-divider">
+    <svg viewBox="0 0 1200 40" preserveAspectRatio="none"><path d="M0 20 Q30 5,60 20 T120 20 T180 20 T240 20 T300 20 T360 20 T420 20 T480 20 T540 20 T600 20 T660 20 T720 20 T780 20 T840 20 T900 20 T960 20 T1020 20 T1080 20 T1140 20 T1200 20" fill="none" stroke="rgba(59,130,246,0.15)" stroke-width="1.5"/><path d="M0 20 Q30 35,60 20 T120 20 T180 20 T240 20 T300 20 T360 20 T420 20 T480 20 T540 20 T600 20 T660 20 T720 20 T780 20 T840 20 T900 20 T960 20 T1020 20 T1080 20 T1140 20 T1200 20" fill="none" stroke="rgba(139,92,246,0.1)" stroke-width="1"/></svg>
+</div>
+
+<!-- Mission -->
+<section class="section">
+    <div class="reveal">
+        <div class="section-label">Mission</div>
+        <div class="mission-card">
+            <div class="mission-title">Eliminate the physical and economic bottlenecks of audio distribution,<br>and create a fair, infinitely scalable music experience.</div>
+            <p>
+                Today's music streaming and live broadcasting are held back by centralized servers with massive bandwidth costs, multi-second latency, and opaque, slow-moving royalty payments.
+                OpenSonic solves all of this at the protocol level.
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- 3 Core Visions -->
+<section class="section" style="padding-top:0">
+    <div class="section-label reveal">3 Core Visions</div>
+    <h2 class="reveal" style="margin-bottom:40px">
+        <span class="h1-grad">Fundamentally Transforming</span><br>
+        <span class="h1-accent">the Music Experience</span>
+    </h2>
+    <div class="vision-grid">
+        <!-- Vision 1 -->
+        <div class="vision-card reveal">
+            <img src="/images/vision-sync.png" alt="Perfect Sync" style="width:100%;border-radius:12px;margin-bottom:20px;opacity:0.85">
+            <div class="vision-num">01</div>
+            <h3>Perfect Sync: Eliminating Distance and Latency</h3>
+            <p>From home audio to global radio, we seamlessly unify every listening experience. A new audio protocol that merges streaming with P2P file sharing makes distance irrelevant.</p>
+            <div class="vision-features">
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#9889;</div>
+                    <span>Sub-5ms LAN latency &#8212; perfect sync as if you're in the same room</span>
+                </div>
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#127760;</div>
+                    <span>Global P2P swarm delivery reaches listeners worldwide in real time</span>
+                </div>
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#127968;</div>
+                    <span>Seamless transition from home audio (a Sonos alternative) to global radio</span>
+                </div>
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#128257;</div>
+                    <span>Next-gen protocol fusing streaming with P2P file sharing</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vision 2 -->
+        <div class="vision-card reveal reveal-delay-1">
+            <img src="/images/vision-p2p.png" alt="P2P Swarm" style="width:100%;border-radius:12px;margin-bottom:20px;opacity:0.85">
+            <div class="vision-num">02</div>
+            <h3>P2P Swarm Delivery: Redefining Server Costs</h3>
+            <p>WiFi-connected listeners become micro-relays in a P2P tree structure, making the network stronger as the audience grows. Mobile users are automatically assigned as leaf nodes, with redundant parents and instant relay failover ensuring zero dropouts.</p>
+            <div class="vision-features">
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#128279;</div>
+                    <span>WiFi listeners serve as micro-relays in a P2P tree structure</span>
+                </div>
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#128241;</div>
+                    <span>Mobile connections auto-detected as leaf-only &#8212; preventing cascade failures</span>
+                </div>
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#9734;</div>
+                    <span>Redundant parents + instant relay failover for zero-dropout audio</span>
+                </div>
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#127911;</div>
+                    <span>Any solo DJ can build a world-scale broadcasting platform</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vision 3 -->
+        <div class="vision-card reveal reveal-delay-2">
+            <img src="/images/vision-economy.png" alt="Layered Economy" style="width:100%;border-radius:12px;margin-bottom:20px;opacity:0.85">
+            <div class="vision-num">03</div>
+            <h3>Layered Economy</h3>
+            <p>Audio delivery (transport layer) and economic logic (application layer) are cleanly separated. Wallets and payments are handled via secure HTTPS APIs, and copyright detection is delegated to external APIs, enabling safe scaling. Listeners need no subscription; artists receive royalties instantly.</p>
+            <div class="vision-features">
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#128270;</div>
+                    <span>Copyright detection delegated to external APIs &#8212; relay CPUs stay focused on audio</span>
+                </div>
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#128274;</div>
+                    <span>Financial operations run over TLS-encrypted HTTPS APIs &#8212; never over UDP</span>
+                </div>
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#128176;</div>
+                    <span>Micropayments execute automatically with every play</span>
+                </div>
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#9940;</div>
+                    <span>No subscription required for listeners</span>
+                </div>
+                <div class="vision-feature">
+                    <div class="vision-feature-icon">&#127911;</div>
+                    <span>Listeners become the copyright network — devices generate audio fingerprints that collectively identify tracks through distributed consensus</span>
+                </div>
+            </div>
+
+            <!-- Revenue Split Bar -->
+            <div class="split-bar">
+                <div class="split-rights">Rights Holders 70%</div>
+                <div class="split-dj">DJ 20%</div>
+                <div class="split-platform">PF 10%</div>
+            </div>
+            <div class="split-labels">
+                <span>Artists &amp; Labels</span>
+                <span>DJ Cashback</span>
+                <span>Platform</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Wave Divider -->
+<div class="wave-divider">
+    <svg viewBox="0 0 1200 40" preserveAspectRatio="none"><path d="M0 20 Q30 5,60 20 T120 20 T180 20 T240 20 T300 20 T360 20 T420 20 T480 20 T540 20 T600 20 T660 20 T720 20 T780 20 T840 20 T900 20 T960 20 T1020 20 T1080 20 T1140 20 T1200 20" fill="none" stroke="rgba(6,182,212,0.15)" stroke-width="1.5"/><path d="M0 20 Q30 35,60 20 T120 20 T180 20 T240 20 T300 20 T360 20 T420 20 T480 20 T540 20 T600 20 T660 20 T720 20 T780 20 T840 20 T900 20 T960 20 T1020 20 T1080 20 T1140 20 T1200 20" fill="none" stroke="rgba(59,130,246,0.1)" stroke-width="1"/></svg>
+</div>
+
+<!-- Target Audience -->
+<section class="section" style="padding-top:0">
+    <div class="section-label reveal">Who Benefits</div>
+    <h2 class="reveal" style="margin-bottom:40px">
+        <span class="h1-grad">Delivering Value to</span>
+        <span class="h1-accent">Every Player</span>
+    </h2>
+    <div class="audience-grid">
+        <div class="audience-card reveal">
+            <div class="audience-icon">&#127911;</div>
+            <h4>DJs &amp; Creators</h4>
+            <p>Broadcast your DJ sets to the world legally without worrying about copyright. Earn directly from listener tips. Zero server costs &#8212; your playlist reaches the globe.</p>
+        </div>
+        <div class="audience-card reveal reveal-delay-1">
+            <div class="audience-icon">&#127927;</div>
+            <h4>Listeners</h4>
+            <p>No subscriptions, no ads, no latency or dropouts. Reclaim the listening experience the way it was always meant to be &#8212; pure focus on the music.</p>
+        </div>
+        <div class="audience-card reveal reveal-delay-2">
+            <div class="audience-icon">&#127932;</div>
+            <h4>Artists &amp; Labels</h4>
+            <p>Receive royalties instantly through a transparent ledger. Rights processing runs in real time with every play &#8212; no opaque middleman margins.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Founder -->
+<section class="section" style="padding-top:0">
+    <div class="section-label reveal">Founder & Open Source</div>
+    <div class="founder-card reveal">
+        <div class="founder-info">
+            <h4>Created by Yuki Hamada</h4>
+            <p>OpenSonic is developed entirely as open source under the MIT License. All code is publicly available on GitHub &#8212; anyone can fork, improve, and distribute it.</p>
+            <div class="founder-links">
+                <a href="https://yukihamada.jp" target="_blank">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    yukihamada.jp
+                </a>
+                <a href="https://github.com/yukihamada/opensonic" target="_blank">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    GitHub (MIT License)
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Wave Divider -->
+<div class="wave-divider">
+    <svg viewBox="0 0 1200 40" preserveAspectRatio="none"><path d="M0 20 Q30 5,60 20 T120 20 T180 20 T240 20 T300 20 T360 20 T420 20 T480 20 T540 20 T600 20 T660 20 T720 20 T780 20 T840 20 T900 20 T960 20 T1020 20 T1080 20 T1140 20 T1200 20" fill="none" stroke="rgba(139,92,246,0.15)" stroke-width="1.5"/><path d="M0 20 Q30 35,60 20 T120 20 T180 20 T240 20 T300 20 T360 20 T420 20 T480 20 T540 20 T600 20 T660 20 T720 20 T780 20 T840 20 T900 20 T960 20 T1020 20 T1080 20 T1140 20 T1200 20" fill="none" stroke="rgba(16,185,129,0.1)" stroke-width="1"/></svg>
+</div>
+
+<!-- Live Channels -->
+<section class="section" style="padding-top:0">
+    <div class="section-label reveal">Live Channels</div>
+    <h2 class="reveal" style="margin-bottom:16px">
+        <span class="h1-grad">Start</span>
+        <span class="h1-accent">Listening Now</span>
+    </h2>
+    <p class="sub reveal">Live channels streaming on the OpenSonic relay. Just click to listen instantly from your browser.</p>
+    <div class="channel-grid">
+        <div class="channel-card reveal">
+            <div class="channel-header">
+                <div class="channel-live-dot"></div>
+                <div class="channel-mini-spectrum"><div class="mini-bar"></div><div class="mini-bar"></div><div class="mini-bar"></div><div class="mini-bar"></div><div class="mini-bar"></div></div>
+                <div class="channel-name">soluna</div>
+            </div>
+            <p class="channel-desc">Main channel &#8212; Soluna's official curated music stream.</p>
+            <a href="https://relay.solun.art/c/soluna" target="_blank" class="channel-btn">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                Listen
+            </a>
+        </div>
+        <div class="channel-card reveal reveal-delay-1">
+            <div class="channel-header">
+                <div class="channel-live-dot"></div>
+                <div class="channel-mini-spectrum"><div class="mini-bar"></div><div class="mini-bar"></div><div class="mini-bar"></div><div class="mini-bar"></div><div class="mini-bar"></div></div>
+                <div class="channel-name">yuki</div>
+            </div>
+            <p class="channel-desc">Yuki's personal mix &#8212; from electronica to ambient.</p>
+            <a href="https://relay.solun.art/c/yuki" target="_blank" class="channel-btn">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                Listen
+            </a>
+        </div>
+        <div class="channel-card reveal reveal-delay-2">
+            <div class="channel-header">
+                <div class="channel-live-dot"></div>
+                <div class="channel-mini-spectrum"><div class="mini-bar"></div><div class="mini-bar"></div><div class="mini-bar"></div><div class="mini-bar"></div><div class="mini-bar"></div></div>
+                <div class="channel-name">yukihamada</div>
+            </div>
+            <p class="channel-desc">yukihamada.jp DJ set &#8212; live DJ session broadcasts.</p>
+            <a href="https://relay.solun.art/c/yukihamada" target="_blank" class="channel-btn">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                Listen
+            </a>
+        </div>
+    </div>
+</section>
+
+<div class="footer-divider"></div>
+
+<!-- Footer -->
+<footer style="flex-direction:column;align-items:stretch;gap:32px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:32px">
+        <div>
+            <div class="f-logo" style="margin-bottom:12px">&#9670; Soluna</div>
+            <p style="font-size:13px;color:var(--text3);line-height:1.6;max-width:240px">
+                Open-source network audio. Your music, on every speaker in the world.
+            </p>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">Product</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg">Mac Download</a>
+                <a href="https://testflight.apple.com/join/PYbefDSE">iOS TestFlight</a>
+                <a href="/dashboard">Dashboard</a>
+                <a href="/en/guide">Setup Guide</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">Use Cases</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="/en/for-djs">For DJs</a>
+                <a href="/en/for-venues">For Venues &amp; Restaurants</a>
+                <a href="/en/for-events">For Events &amp; Festivals</a>
+                <a href="/en/for-developers">For Developers</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">Resources</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+                <a href="https://github.com/yukihamada/opensonic/releases" target="_blank">Release Notes</a>
+                <a href="/en/protocol" target="_blank">Protocol Spec (OSTP)</a>
+                <a href="https://github.com/yukihamada/opensonic/blob/main/LICENSE" target="_blank">MIT License</a>
+            </div>
+        </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-top:1px solid var(--border);padding-top:24px">
+        <div class="f-copy">&copy; 2024-2026 Soluna Project &middot; MIT License &middot; Open Source</div>
+        <div style="display:flex;gap:16px;align-items:center">
+            <a href="https://github.com/yukihamada/opensonic" target="_blank" style="color:var(--text3);transition:color 0.2s" title="GitHub">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            </a>
+        </div>
+    </div>
+</footer>
+
+<script>
+/* ── Scroll reveal ──────────────────────────────────── */
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+        if (e.isIntersecting) {
+            e.target.classList.add('visible');
+            observer.unobserve(e.target);
+        }
+    });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+/* ── Nav scroll effect ──────────────────────────────── */
+window.addEventListener('scroll', () => {
+    const nav = document.querySelector('nav');
+    if (window.scrollY > 80) {
+        nav.style.background = 'rgba(5,6,10,0.92)';
+    } else {
+        nav.style.background = 'rgba(5,6,10,0.7)';
+    }
+}, { passive: true });
+</script>
+</body>
+</html>

@@ -49,8 +49,10 @@ final class DaemonClient: ObservableObject {
     @Published private(set) var playerPosMs:      UInt64 = 0
     @Published private(set) var fileXferProgress: Double = 0
 
-    /// Called with (fileData, fileName) when the full file has been received.
+    /// Called with (fileData, fileName) when the full current-file has been received.
     var onFileReceived: ((Data, String) -> Void)?
+    /// Called with (fileData, fileName) when the pre-buffered next-file has been received.
+    var onNextFileReceived: ((Data, String) -> Void)?
     /// Called with (delayMs, posMs) on player.switch event.
     var onPlayerSwitch: ((UInt32, UInt64) -> Void)?
 
@@ -68,10 +70,15 @@ final class DaemonClient: ObservableObject {
     private(set) var lastHost  = ""
     private var pingStartTime: Date?
 
-    // file accumulation for player
+    // file accumulation for current track
     private var _fileBuf      = Data()
     private var _fileExpected = 0
     private var _fileName     = ""
+
+    // pre-buffer for next track
+    private var _nextFileBuf      = Data()
+    private var _nextFileExpected = 0
+    private var _nextFileName     = ""
 
     // MARK: - Connection
 
@@ -128,6 +135,26 @@ final class DaemonClient: ObservableObject {
         send(#"{"id":\#(nextId()),"command":"rx.set_global_delay","ms":\#(ms)}"#)
     }
 
+    // MARK: - RTCP Receiver Report (RFC 3550 §6.4.2 / OSTP congestion control)
+
+    func sendReceiverReport(ssrc: UInt32,
+                            packetsReceived: UInt64,
+                            packetsLost: UInt32,
+                            lossRatePct: Float,
+                            jitterMs: Float,
+                            lastSeq: UInt32,
+                            rttMs: Float) {
+        let msg = "{\"id\":\(nextId()),\"command\":\"rx.receiver_report\""
+            + ",\"ssrc\":\(ssrc)"
+            + ",\"packets_received\":\(packetsReceived)"
+            + ",\"packets_lost\":\(packetsLost)"
+            + ",\"loss_rate_pct\":\(String(format:"%.2f",lossRatePct))"
+            + ",\"jitter_ms\":\(String(format:"%.2f",jitterMs))"
+            + ",\"last_seq\":\(lastSeq)"
+            + ",\"rtt_ms\":\(String(format:"%.2f",rttMs))}"
+        send(msg)
+    }
+
     // MARK: - Player Commands
 
     func playerPlay()      { send(#"{"id":\#(nextId()),"command":"player.play"}"#) }
@@ -137,6 +164,21 @@ final class DaemonClient: ObservableObject {
     func playerStatus()    { send(#"{"id":\#(nextId()),"command":"player.status"}"#) }
     func playerSeek(ms: UInt64) {
         send(#"{"id":\#(nextId()),"command":"player.seek","pos_ms":\#(ms)}"#)
+    }
+
+    func playerNextFileReady() { send(#"{"id":\#(nextId()),"command":"player.next_file_ready"}"#) }
+
+    /// Upload the next track as a pre-buffered file (does not interrupt playback).
+    func prefetchFile(_ data: Data, name: String, onProgress: ((Double) -> Void)? = nil) async {
+        guard let url = httpUploadURL(name: name, mode: "next") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 120
+        let delegate = UploadDelegate()
+        delegate.onProgress = onProgress
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        _ = try? await session.upload(for: req, from: data)
     }
 
     func uploadFile(_ data: Data, name: String, onProgress: ((Double) -> Void)? = nil) async {
@@ -151,7 +193,7 @@ final class DaemonClient: ObservableObject {
         _ = try? await session.upload(for: req, from: data)
     }
 
-    private func httpUploadURL(name: String) -> URL? {
+    private func httpUploadURL(name: String, mode: String? = nil) -> URL? {
         let h = lastHost.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !h.isEmpty else { return nil }
         let stripped = h.hasPrefix("ws://")  ? String(h.dropFirst(5)) :
@@ -162,7 +204,9 @@ final class DaemonClient: ObservableObject {
         let scheme  = isLocal ? "http" : "https"
         let port    = isLocal ? ":8400" : ""
         let enc     = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
-        return URL(string: "\(scheme)://\(bare)\(port)/api/player/upload?name=\(enc)")
+        var qs      = "name=\(enc)"
+        if let mode { qs += "&mode=\(mode)" }
+        return URL(string: "\(scheme)://\(bare)\(port)/api/player/upload?\(qs)")
     }
 
     // MARK: - Channel control (WAN relay group)
@@ -291,13 +335,16 @@ final class DaemonClient: ObservableObject {
 
     @MainActor private func handleBinary(_ data: Data) {
         guard data.count >= 2 else { return }
+        let payload = data.count > 4 ? data[4...] : Data()
         if data[0] == 0xFA && data[1] == 0xFB {
-            // File chunk: [0xFA, 0xFB, size_hi, size_lo, payload…]
-            let payload = data.count > 4 ? data[4...] : Data()
+            // Current-file chunk: [0xFA, 0xFB, size_hi, size_lo, payload…]
             _fileBuf.append(payload)
             if _fileExpected > 0 {
                 fileXferProgress = min(1.0, Double(_fileBuf.count) / Double(_fileExpected))
             }
+        } else if data[0] == 0xFC && data[1] == 0xFD {
+            // Next-file chunk (pre-buffer): [0xFC, 0xFD, size_hi, size_lo, payload…]
+            _nextFileBuf.append(payload)
         }
         // Other binary frames (PCM audio) handled by AudioReceiver via RTP
     }
@@ -328,6 +375,14 @@ final class DaemonClient: ObservableObject {
             let delay = UInt32((json["switch_delay_ms"] as? Int) ?? 2000)
             let pos   = UInt64((json["file_pos_ms"]     as? Int) ?? 0)
             onPlayerSwitch?(delay, pos)
+
+        case "player.next_file_start":
+            _nextFileName    = json["name"] as? String ?? ""
+            _nextFileExpected = (json["size"] as? Int) ?? 0
+            _nextFileBuf.removeAll()
+
+        case "player.next_file_done":
+            onNextFileReceived?(_nextFileBuf, _nextFileName)
 
         case "player.done", "player.stopped":
             playerActive = false

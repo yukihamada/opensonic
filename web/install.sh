@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Soluna install script — Mac (Apple Silicon / Intel)
-# Usage: curl -fsSL https://soluna-web.fly.dev/install.sh | bash
+# Usage: curl -fsSL https://solun.art/install.sh | bash
 set -euo pipefail
 
 REPO="https://github.com/yukihamada/opensonic.git"

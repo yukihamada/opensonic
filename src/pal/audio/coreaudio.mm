@@ -372,6 +372,20 @@ private:
             return false;
         }
 
+#if TARGET_OS_IPHONE
+        // Read back actual format to verify iOS honored our request
+        {
+            AudioStreamBasicDescription actual = {};
+            UInt32 sz = sizeof(actual);
+            AudioUnitGetProperty(audio_unit_, kAudioUnitProperty_StreamFormat,
+                                 scope, element, &actual, &sz);
+            NSLog(@"[CoreAudio] iOS stream format: rate=%.0f ch=%u bpf=%u flags=0x%x nonInterleaved=%d",
+                  actual.mSampleRate, (unsigned)actual.mChannelsPerFrame,
+                  (unsigned)actual.mBytesPerFrame, (unsigned)actual.mFormatFlags,
+                  (actual.mFormatFlags & kAudioFormatFlagIsNonInterleaved) ? 1 : 0);
+        }
+#endif
+
         // Set buffer size on the AudioUnit
         UInt32 buffer_frames = config.frames_per_buffer;
         status = AudioUnitSetProperty(audio_unit_,
@@ -537,16 +551,50 @@ private:
         (void)inBusNumber;
 
         auto* device = static_cast<CoreAudioDevice*>(inRefCon);
-        auto* dst = static_cast<float*>(ioData->mBuffers[0].mData);
-        const size_t total_samples = inNumberFrames * device->config_.channels;
+        const uint32_t ch = device->config_.channels;
+        const size_t total_samples = inNumberFrames * ch;
+
+        // Log format once for diagnostics (using NSLog so it's captured by device console)
+        if (device->render_log_count_++ == 0) {
+#if TARGET_OS_IPHONE
+            NSLog(@"[CoreAudio] render_callback: nBuffers=%u nFrames=%u channels=%u buf0size=%u buf0ch=%u",
+                    (unsigned)ioData->mNumberBuffers, (unsigned)inNumberFrames, ch,
+                    (unsigned)ioData->mBuffers[0].mDataByteSize,
+                    (unsigned)ioData->mBuffers[0].mNumberChannels);
+#else
+            fprintf(stderr, "[CoreAudio] render_callback: nBuffers=%u nFrames=%u channels=%u buf0size=%u\n",
+                    (unsigned)ioData->mNumberBuffers, (unsigned)inNumberFrames, ch,
+                    (unsigned)ioData->mBuffers[0].mDataByteSize);
+#endif
+        }
 
         if (!device->running_.load() || !device->callback_) {
-            std::memset(dst, 0, total_samples * sizeof(float));
+            for (UInt32 b = 0; b < ioData->mNumberBuffers; b++) {
+                if (ioData->mBuffers[b].mData)
+                    std::memset(ioData->mBuffers[b].mData, 0, ioData->mBuffers[b].mDataByteSize);
+            }
             return noErr;
         }
 
-        // Interleaved: single buffer, write directly
-        device->callback_(dst, inNumberFrames);
+        if (ioData->mNumberBuffers == 1) {
+            // Interleaved: single buffer, write directly
+            device->callback_(static_cast<float*>(ioData->mBuffers[0].mData), inNumberFrames);
+        } else {
+            // Non-interleaved: write to temp buffer then de-interleave
+            if (device->conversion_buffer_.size() < total_samples)
+                device->conversion_buffer_.resize(total_samples);
+            device->callback_(device->conversion_buffer_.data(), inNumberFrames);
+            for (UInt32 b = 0; b < ioData->mNumberBuffers && b < ch; b++) {
+                auto* dst = static_cast<float*>(ioData->mBuffers[b].mData);
+                if (!dst) continue;
+                const uint32_t buf_ch = ioData->mBuffers[b].mNumberChannels;
+                for (UInt32 i = 0; i < inNumberFrames; i++) {
+                    for (uint32_t c = 0; c < buf_ch && (b * buf_ch + c) < ch; c++) {
+                        dst[i * buf_ch + c] = device->conversion_buffer_[i * ch + b * buf_ch + c];
+                    }
+                }
+            }
+        }
         return noErr;
     }
 
@@ -606,6 +654,7 @@ private:
     bool is_capture_ = false;
     std::vector<float> conversion_buffer_;
     std::atomic<int> render_err_count_{0};
+    std::atomic<int> render_log_count_{0};
 };
 
 std::vector<AudioDeviceInfo> AudioDevice::enumerate() {

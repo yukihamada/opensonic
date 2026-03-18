@@ -26,6 +26,15 @@
 #include <soluna/transport/packet_scheduler.h>
 #include <soluna/transport/transport_manager.h>
 #include <soluna/transport/aes67.h>
+#ifdef SOLUNA_HAS_RAVENNA
+#include <soluna/transport/ravenna.h>
+#endif
+#ifdef SOLUNA_HAS_DLNA
+#include <soluna/transport/dlna.h>
+#endif
+#ifdef SOLUNA_HAS_AIRPLAY
+#include <soluna/transport/airplay.h>
+#endif
 #include <soluna/config/config.h>
 #include <soluna/control/websocket_server.h>
 #include <soluna/util/wav_writer.h>
@@ -384,6 +393,10 @@ static std::mutex            g_player_mutex;
 static std::string           g_player_file_path;
 static std::string           g_player_file_name;
 static uint32_t              g_player_file_size = 0;
+// Pre-buffered next song (no interruption of current playback)
+static std::string           g_player_next_file_path;
+static std::string           g_player_next_file_name;
+static uint32_t              g_player_next_file_size = 0;
 // Duration reported back to UI
 static std::atomic<uint64_t> g_player_duration_ms{0};
 // Player thread handle
@@ -394,6 +407,8 @@ static uint32_t g_cfg_channels    = 1;
 static uint32_t g_cfg_sample_rate = 48000;
 static uint16_t g_cfg_port        = 5004;
 static char     g_cfg_multicast[64] = "239.69.0.1";
+static std::atomic<uint32_t> g_tx_ssrc{0x4F534E43};        // TX SSRC ("OSNC")
+static std::atomic<uint32_t> g_tx_rtp_timestamp{0};         // current TX RTP timestamp
 
 // ── Monitor (TX-only local playback) ──────────────────────────────────────────
 static std::atomic<bool>     g_mon_supported{false};
@@ -429,6 +444,9 @@ static std::atomic<bool> g_input_stop_req{false};
 // ── Browser audio streaming ───────────────────────────────────────────────────
 static std::atomic<bool>     g_audio_streaming{false};
 static soluna::control::WebSocketServer* g_ws_server_ptr = nullptr;
+
+// ── Data WebSocket server (port 8401) — file streaming, no HOL blocking ──────
+static soluna::control::WebSocketServer g_data_ws_server;
 
 // ── Monitor speaker underrun counter ─────────────────────────────────────────
 static std::atomic<uint64_t> g_mon_underruns{0};
@@ -474,10 +492,24 @@ static std::vector<RelayPeer> g_relay_peers;
 static int g_relay_sock = -1;
 static std::atomic<bool> g_relay_running{false};
 
+// Replay buffer: last N packets for burst-sending to new peers
+static constexpr size_t kReplayMaxPackets = 50;  // ~500ms at 10ms/pkt
+struct ReplayEntry {
+    std::vector<uint8_t> data;
+};
+static std::vector<ReplayEntry> g_replay_buffer;
+
 static void relay_forward(const uint8_t* data, size_t len) {
     if (g_relay_sock < 0) return;
     auto now = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> lock(g_relay_mutex);
+
+    // Store in replay buffer
+    if (g_replay_buffer.size() >= kReplayMaxPackets) {
+        g_replay_buffer.erase(g_replay_buffer.begin());
+    }
+    g_replay_buffer.push_back(ReplayEntry{std::vector<uint8_t>(data, data + len)});
+
     // Remove stale peers (>15s no heartbeat)
     g_relay_peers.erase(
         std::remove_if(g_relay_peers.begin(), g_relay_peers.end(),
@@ -517,8 +549,14 @@ static void relay_listener_thread() {
         if (!found) {
             char ip[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &from.sin_addr, ip, sizeof(ip));
-            fprintf(stderr, "[relay] New peer: %s:%u\n", ip, ntohs(from.sin_port));
+            fprintf(stderr, "[relay] New peer: %s:%u — bursting %zu buffered packets\n",
+                    ip, ntohs(from.sin_port), g_replay_buffer.size());
             g_relay_peers.push_back({from, now});
+            // Burst-send replay buffer so new peer can prefill immediately
+            for (const auto& pkt : g_replay_buffer) {
+                sendto(g_relay_sock, pkt.data.data(), pkt.data.size(), 0,
+                       (const sockaddr*)&from, sizeof(from));
+            }
         }
     }
 }
@@ -533,7 +571,7 @@ static std::vector<sockaddr_in> g_wan_peers;
 
 // Current WAN relay config (for channel.get / channel.set)
 static std::mutex g_wan_cfg_mutex;
-static std::string g_wan_cfg_host = "soluna-relay.fly.dev";
+static std::string g_wan_cfg_host = "relay.solun.art";
 static uint16_t    g_wan_cfg_port = 5100;
 static std::string g_wan_cfg_group = "default";
 static std::string g_wan_cfg_password;
@@ -580,9 +618,14 @@ static void wan_relay_init(const std::string& host, uint16_t port,
         freeaddrinfo(res);
     }
 
-    // Send JOIN message
+    // Send JOIN message with device name for global device registry
+    char _hn[256] = {};
+    gethostname(_hn, sizeof(_hn));
+    std::string device_display_name(_hn);
     std::string join_msg = "JOIN:" + group;
     if (!password.empty()) join_msg += ":" + password;
+    else join_msg += ":";
+    join_msg += ":" + device_display_name;
     join_msg += "\n";
     sendto(g_wan_relay_sock, join_msg.c_str(), join_msg.size(), 0,
            (const sockaddr*)&g_wan_relay_addr, sizeof(g_wan_relay_addr));
@@ -592,6 +635,23 @@ static void wan_relay_init(const std::string& host, uint16_t port,
 
     fprintf(stderr, "[wan-relay] Connected to %s:%u group='%s'\n",
             host.c_str(), port, group.c_str());
+}
+
+// Standalone heartbeat thread — keeps relay membership alive even when TX is silent
+static void wan_relay_heartbeat_thread() {
+    while (g_running.load()) {
+        std::this_thread::sleep_for(std::chrono::seconds(4));
+        if (g_wan_relay_sock < 0 || !g_wan_relay_running.load()) continue;
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+            now - g_wan_relay_last_hello).count();
+        if (elapsed >= 4) {
+            const char hello[] = "HELLO\n";
+            sendto(g_wan_relay_sock, hello, strlen(hello), 0,
+                   (const sockaddr*)&g_wan_relay_addr, sizeof(g_wan_relay_addr));
+            g_wan_relay_last_hello = now;
+        }
+    }
 }
 
 static void wan_relay_forward(const uint8_t* data, size_t len) {
@@ -619,6 +679,26 @@ static void wan_relay_forward(const uint8_t* data, size_t len) {
                (const sockaddr*)&g_wan_relay_addr, sizeof(g_wan_relay_addr));
         g_wan_relay_last_hello = now;
     }
+}
+
+// Send RTCP APP (PT=204) "SWCH" to relay — triggers synchronized file switch on all receivers
+// switch_at_rtp_ts: absolute RTP timestamp when all receivers should switch (~500ms ahead)
+// OSTP v0.9.3 §5.4 (player.switch via RTCP APP SWCH)
+static void send_rtcp_app_swch(uint32_t ssrc, uint32_t switch_at_rtp_ts) {
+    if (g_wan_relay_sock < 0 || !g_wan_relay_running.load()) return;
+    // RTCP APP: V=2, P=0, subtype=0, PT=204, length=3 (3*4=12 bytes payload)
+    // Total = 4(header) + 4(ssrc) + 4(name) + 4(switch_at) = 16 bytes
+    uint8_t pkt[16] = {};
+    pkt[0] = 0x80;   // V=2, P=0, subtype=0
+    pkt[1] = 204;    // PT=204 (APP)
+    uint16_t length_be = htons(3); // (total_bytes/4) - 1 = 16/4-1 = 3
+    std::memcpy(pkt + 2, &length_be, 2);
+    uint32_t ssrc_be = htonl(ssrc);
+    std::memcpy(pkt + 4, &ssrc_be, 4);
+    pkt[8]  = 'S'; pkt[9]  = 'W'; pkt[10] = 'C'; pkt[11] = 'H';
+    uint32_t ts_be = htonl(switch_at_rtp_ts);
+    std::memcpy(pkt + 12, &ts_be, 4);
+    wan_relay_forward(pkt, sizeof(pkt));
 }
 
 static void wan_relay_shutdown() {
@@ -818,6 +898,39 @@ static std::atomic<uint32_t> g_lat_tx_ring_frames{0};  // TX ring buffer fill
 static std::atomic<uint32_t> g_lat_spk_ring_frames{0}; // Speaker ring buffer fill
 static std::atomic<uint32_t> g_lat_mon_ring_frames{0}; // Monitor ring buffer fill
 static std::atomic<uint32_t> g_lat_rx_ring_frames{0};  // RX ring buffer fill
+
+// ── Congestion control — aggregated receiver reports (RFC 8085 / OSTP §10) ──
+static std::atomic<float>    g_cc_avg_loss_pct{0.0f};  // weighted avg loss % across clients
+static std::atomic<float>    g_cc_avg_jitter_ms{0.0f}; // weighted avg jitter ms
+static std::atomic<uint32_t> g_cc_client_count{0};     // clients reporting
+static std::atomic<uint32_t> g_cc_opus_bitrate{128000}; // current Opus bitrate (adaptive)
+// Bitrate ladder (Tier 0–4):  32k, 64k, 128k, 192k, 320k
+static constexpr uint32_t kBitrateLadder[] = {32000, 64000, 128000, 192000, 320000};
+static std::atomic<int>      g_cc_bitrate_tier{2};      // default Tier 2 = 128 kbps
+static std::atomic<uint32_t> g_cc_high_loss_seconds{0}; // consecutive seconds > 3% loss
+static std::mutex            g_cc_mutex;
+
+// Adjust Opus tier based on aggregated loss reports (called from WS handler).
+static void cc_adjust_bitrate() {
+    float loss = g_cc_avg_loss_pct.load();
+    int tier = g_cc_bitrate_tier.load();
+    if (loss > 10.0f) {
+        // Severe loss: step down two tiers
+        tier = std::max(0, tier - 2);
+    } else if (loss > 3.0f) {
+        uint32_t hi = g_cc_high_loss_seconds.fetch_add(1) + 1;
+        if (hi >= 30) { // 30 consecutive seconds > 3%
+            tier = std::max(0, tier - 1);
+            g_cc_high_loss_seconds.store(0);
+        }
+    } else if (loss < 0.5f) {
+        // Good conditions: try stepping up (max every 60s via caller throttle)
+        tier = std::min(4, tier + 1);
+        g_cc_high_loss_seconds.store(0);
+    }
+    g_cc_bitrate_tier.store(tier);
+    g_cc_opus_bitrate.store(kBitrateLadder[tier]);
+}
 
 // ── Persistent config (~/.config/solunad/config.json) ────────────────────────
 
@@ -1160,6 +1273,33 @@ static std::string ws_handle(const std::string& msg) {
         }
         pos += snprintf(devbuf + pos, sizeof(devbuf) - pos, "]");
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"%s\"}", id, devbuf);
+    // ── Congestion control: receiver report (RFC 8085 / OSTP §10.1) ────────
+    } else if (cmd == "rx.receiver_report") {
+        // Parse key fields — use simple string search (JSON parser not available here)
+        auto parse_float = [&](const char* key, float def) -> float {
+            auto pos2 = msg.find(key);
+            if (pos2 == std::string::npos) return def;
+            pos2 += strlen(key);
+            try { return std::stof(msg.substr(pos2)); } catch (...) { return def; }
+        };
+        float loss_pct  = parse_float("\"loss_rate_pct\":", 0.0f);
+        float jitter_ms = parse_float("\"jitter_ms\":", 0.0f);
+        {
+            std::lock_guard<std::mutex> lk(g_cc_mutex);
+            uint32_t n = g_cc_client_count.load();
+            // Exponential moving average (α = 1/(n+1) with min α = 0.1)
+            float alpha = std::max(0.1f, 1.0f / (float)(n + 1));
+            g_cc_avg_loss_pct.store(g_cc_avg_loss_pct.load() * (1.0f - alpha) + loss_pct  * alpha);
+            g_cc_avg_jitter_ms.store(g_cc_avg_jitter_ms.load() * (1.0f - alpha) + jitter_ms * alpha);
+            g_cc_client_count.store(n + 1 > 100 ? 100 : n + 1); // cap at 100 for alpha calc
+            cc_adjust_bitrate();
+        }
+        snprintf(buf, sizeof(buf),
+            "{\"id\":%d,\"success\":true,\"data\":"
+            "\"{\\\"ack\\\":true,\\\"bitrate_kbps\\\":%u,"
+            "\\\"tier\\\":%d,\\\"avg_loss_pct\\\":%.2f}\"}",
+            id, g_cc_opus_bitrate.load() / 1000,
+            g_cc_bitrate_tier.load(), g_cc_avg_loss_pct.load());
     // ── Browser audio streaming ─────────────────────────────────────────────
     } else if (cmd == "audio.subscribe") {
         g_audio_streaming.store(true);
@@ -1629,14 +1769,16 @@ static std::string ws_handle(const std::string& msg) {
     } else if (cmd == "player.play") {
         bool ok = false;
         { std::lock_guard<std::mutex> lk(g_player_mutex); ok = !g_player_file_path.empty(); }
-        if (ok && !g_player_active.load()) {
+        if (ok) {
+            // Stop previous playback immediately and wait for thread to finish
+            g_player_active.store(false);
+            if (g_player_thread.joinable()) g_player_thread.join();
             g_player_active.store(true);
             g_player_paused.store(false);
             g_player_frame_pos.store(0);
             // Player thread is started by start_ws_server caller (run_rx/run_tx)
             // via the player_start_fn callback; if ring is set, start directly.
             if (g_player_ring_ptr) {
-                if (g_player_thread.joinable()) g_player_thread.join();
                 g_player_thread = std::thread([]() {
                     using namespace soluna::pipeline;
                     FileSource src;
@@ -1698,7 +1840,7 @@ static std::string ws_handle(const std::string& msg) {
                                 if (n == 0) break;
                                 chunk[2] = (uint8_t)((n >> 8) & 0xFF);
                                 chunk[3] = (uint8_t)(n & 0xFF);
-                                g_ws_server_ptr->broadcast_binary(chunk.data(), n + 4);
+                                g_data_ws_server.broadcast_binary(chunk.data(), n + 4);
                                 // Small throttle to avoid flooding WebSocket
                                 std::this_thread::sleep_for(std::chrono::microseconds(200));
                             }
@@ -1786,14 +1928,57 @@ static std::string ws_handle(const std::string& msg) {
         if (g_cfg_sample_rate > 0)
             g_player_frame_pos.store((int64_t)(pos_ms * g_cfg_sample_rate / 1000));
         snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
-    } else if (cmd == "player.file_ready") {
-        // Browser has received the complete file — send switch command
-        // Current position + 2s switch delay
+    } else if (cmd == "player.next_file_ready") {
+        // iOS has received the pre-buffered next song — promote it to current.
+        // Since clients already have the file, switch delay can be minimal (50ms).
+        {
+            std::lock_guard<std::mutex> lk(g_player_mutex);
+            if (!g_player_next_file_path.empty()) {
+                g_player_file_path = g_player_next_file_path;
+                g_player_file_name = g_player_next_file_name;
+                g_player_file_size = g_player_next_file_size;
+                g_player_next_file_path.clear();
+                g_player_next_file_name.clear();
+                g_player_next_file_size = 0;
+            }
+        }
         uint64_t pos_ms = 0;
         if (g_cfg_sample_rate > 0)
             pos_ms = (uint64_t)(g_player_frame_pos.load() * 1000 / g_cfg_sample_rate);
-        const uint32_t switch_delay_ms = 2000;
+        const uint32_t switch_delay_ms = 50;  // already distributed — near-instant
         uint64_t switch_pos_ms = pos_ms + switch_delay_ms;
+        // OSTP v0.9.3 §5.4: send RTCP APP SWCH for relay-synchronized switch
+        {
+            uint32_t cur_rtp = g_tx_rtp_timestamp.load(std::memory_order_relaxed);
+            uint32_t switch_at_rtp = cur_rtp + static_cast<uint32_t>(switch_delay_ms * 48); // ms→samples @48kHz
+            send_rtcp_app_swch(g_tx_ssrc.load(), switch_at_rtp);
+        }
+        if (g_ws_server_ptr) {
+            char ev[256];
+            snprintf(ev, sizeof(ev),
+                "{\"event\":\"player.switch\","
+                "\"switch_delay_ms\":%u,"
+                "\"file_pos_ms\":%llu}",
+                switch_delay_ms,
+                (unsigned long long)switch_pos_ms);
+            g_ws_server_ptr->broadcast(ev);
+        }
+        snprintf(buf, sizeof(buf), "{\"id\":%d,\"success\":true,\"data\":\"\"}", id);
+
+    } else if (cmd == "player.file_ready") {
+        // Browser has received the complete file — send switch command
+        // Current position + 200ms switch delay
+        uint64_t pos_ms = 0;
+        if (g_cfg_sample_rate > 0)
+            pos_ms = (uint64_t)(g_player_frame_pos.load() * 1000 / g_cfg_sample_rate);
+        const uint32_t switch_delay_ms = 200;
+        uint64_t switch_pos_ms = pos_ms + switch_delay_ms;
+        // OSTP v0.9.3 §5.4: RTCP APP SWCH for WAN-relay synchronized switch
+        {
+            uint32_t cur_rtp = g_tx_rtp_timestamp.load(std::memory_order_relaxed);
+            uint32_t switch_at_rtp = cur_rtp + static_cast<uint32_t>(switch_delay_ms * 48);
+            send_rtcp_app_swch(g_tx_ssrc.load(), switch_at_rtp);
+        }
         if (g_ws_server_ptr) {
             char ev[256];
             snprintf(ev, sizeof(ev),
@@ -1876,8 +2061,9 @@ static void start_ws_server(soluna::control::WebSocketServer& srv,
     srv.set_http_post_handler([](const std::string& path,
                                  const std::vector<uint8_t>& body,
                                  std::string& out_ct) -> std::string {
-        // path may include query string: /api/player/upload?name=...
+        // path may include query string: /api/player/upload?name=...&mode=next
         if (path.rfind("/api/player/upload", 0) != 0 || body.empty()) return "";
+        bool is_prefetch = (path.find("mode=next") != std::string::npos);
         out_ct = "application/json";
 
         // Detect format from magic bytes
@@ -1904,12 +2090,10 @@ static void start_ws_server(soluna::control::WebSocketServer& srv,
             }
         }
 
-        // Stop any current playback
-        g_player_active.store(false);
-        if (g_player_thread.joinable()) g_player_thread.join();
-
-        // Write to temp file
-        std::string tmp_path = "/tmp/soluna_player_" + name;
+        // Write to temp file (prefix differs for pre-buffer mode)
+        std::string tmp_path = is_prefetch
+            ? "/tmp/soluna_player_next_" + name
+            : "/tmp/soluna_player_" + name;
         {
             std::ofstream out(tmp_path, std::ios::binary | std::ios::trunc);
             if (!out || !out.write(reinterpret_cast<const char*>(body.data()), body.size())) {
@@ -1917,28 +2101,65 @@ static void start_ws_server(soluna::control::WebSocketServer& srv,
             }
         }
 
-        {
-            std::lock_guard<std::mutex> lk(g_player_mutex);
-            g_player_file_path = tmp_path;
-            g_player_file_name = name;
-            g_player_file_size = (uint32_t)body.size();
-        }
-        g_player_frame_pos.store(0);
-
         // Probe duration
+        uint64_t dur_ms = 0;
         {
             soluna::pipeline::FileSource probe;
-            if (probe.open(tmp_path, g_cfg_sample_rate, g_cfg_channels)) {
-                g_player_duration_ms.store(probe.duration_ms());
+            if (probe.open(tmp_path, g_cfg_sample_rate, g_cfg_channels))
+                dur_ms = probe.duration_ms();
+        }
+
+        if (is_prefetch) {
+            // Pre-buffer mode: store as next song, DO NOT interrupt current playback.
+            // Send file to all WS clients via 0xFC/0xFD chunks so they cache it locally.
+            {
+                std::lock_guard<std::mutex> lk(g_player_mutex);
+                g_player_next_file_path = tmp_path;
+                g_player_next_file_name = name;
+                g_player_next_file_size = (uint32_t)body.size();
             }
+            if (g_ws_server_ptr) {
+                char ev[256];
+                snprintf(ev, sizeof(ev),
+                    "{\"event\":\"player.next_file_start\",\"name\":\"%s\",\"size\":%u,\"dur_ms\":%llu}",
+                    name.c_str(), (uint32_t)body.size(), (unsigned long long)dur_ms);
+                g_ws_server_ptr->broadcast(ev);
+
+                constexpr size_t kChunk = 32768;
+                std::ifstream ffile(tmp_path, std::ios::binary);
+                std::vector<uint8_t> chunk(kChunk + 4);
+                chunk[0] = 0xFC; chunk[1] = 0xFD;  // next-file magic
+                while (ffile) {
+                    ffile.read(reinterpret_cast<char*>(chunk.data() + 4), kChunk);
+                    size_t n = (size_t)ffile.gcount();
+                    if (n == 0) break;
+                    chunk[2] = (uint8_t)((n >> 8) & 0xFF);
+                    chunk[3] = (uint8_t)(n & 0xFF);
+                    g_data_ws_server.broadcast_binary(chunk.data(), n + 4);
+                    std::this_thread::sleep_for(std::chrono::microseconds(200));
+                }
+                g_ws_server_ptr->broadcast("{\"event\":\"player.next_file_done\"}");
+            }
+        } else {
+            // Normal mode: stop current playback and switch to this file
+            g_player_active.store(false);
+            if (g_player_thread.joinable()) g_player_thread.join();
+            {
+                std::lock_guard<std::mutex> lk(g_player_mutex);
+                g_player_file_path = tmp_path;
+                g_player_file_name = name;
+                g_player_file_size = (uint32_t)body.size();
+            }
+            g_player_frame_pos.store(0);
+            g_player_duration_ms.store(dur_ms);
         }
 
         char resp[256];
         snprintf(resp, sizeof(resp),
-            "{\"ok\":true,\"name\":\"%s\",\"size\":%u,\"dur_ms\":%llu,\"fmt\":\"%s\"}",
-            name.c_str(), (uint32_t)body.size(),
-            (unsigned long long)g_player_duration_ms.load(),
-            (ext == "mp3" ? "MP3" : "WAV"));
+            "{\"ok\":true,\"name\":\"%s\",\"size\":%u,\"dur_ms\":%llu,\"fmt\":\"%s\",\"mode\":\"%s\"}",
+            name.c_str(), (uint32_t)body.size(), (unsigned long long)dur_ms,
+            (ext == "mp3" ? "MP3" : "WAV"),
+            is_prefetch ? "next" : "current");
         return resp;
     });
 
@@ -1951,6 +2172,11 @@ static void start_ws_server(soluna::control::WebSocketServer& srv,
     if (srv.start(8400)) {
         const char* proto = https_enabled ? "https" : "http";
         printf("Web UI: %s://localhost:8400\n", proto);
+    }
+
+    // Start data WebSocket server on port 8401 (file transfer, no HOL blocking)
+    if (g_data_ws_server.start(8401)) {
+        fprintf(stderr, "[daemon] Data WS: ws://localhost:8401\n");
     }
 }
 
@@ -2043,6 +2269,9 @@ struct DaemonConfig {
     bool tx_mode = false;
     bool rx_mode = false;
     bool aes67_mode = false;
+    bool ravenna_mode = false;  // Ravenna implies aes67_mode
+    bool airplay_mode = false;  // AirPlay 2 receiver mode
+    bool airplay_tx = false;    // AirPlay TX: forward audio to local AirPlay speakers
     bool tunnel = false;  // start cloudflared/ngrok tunnel
     bool low_latency = false; // AES67/Dante-grade low latency (wired LAN only)
     LatencyProfile latency_profile = LatencyProfile::Auto;
@@ -2082,6 +2311,10 @@ struct DaemonConfig {
     uint16_t    wan_relay_port = 5100;
     std::string wan_relay_group = "default";
     std::string wan_relay_password;
+
+    // DLNA/UPnP Media Renderer
+    bool dlna_enabled = false;
+    std::string dlna_friendly_name = "Soluna";
 
     // HTTPS/TLS for WebSocket server
     bool https_enabled = false;
@@ -2123,6 +2356,9 @@ static void print_usage(const char* prog) {
         "  --tx              Transmit mode (capture → network)\n"
         "  --rx              Receive mode (network → playback)\n"
         "  --aes67-mode      Use AES67-compatible RTP (no OSTP extensions)\n"
+        "  --ravenna         Enable Ravenna mode (AES67 + mDNS _ravenna._tcp)\n"
+        "  --airplay         Enable AirPlay 2 receiver (RTSP on port 7000)\n"
+        "  --airplay-tx      Forward received audio to local AirPlay speakers\n"
         "  --device DEV      Audio device (e.g., hw:0, default, soluna)\n"
         "  --speaker DEV     Local speaker device for --device soluna (default: \"\")\n"
         "  --dest IP:PORT    Destination (TX mode, default: 239.69.0.1:5004)\n"
@@ -2148,6 +2384,8 @@ static void print_usage(const char* prog) {
         "  --record-dir DIR  Multi-track recording directory (tx + monitor WAVs)\n"
         "  --auto-tune       Enable mic-based auto buffer tuning (default: on)\n"
         "  --no-auto-tune    Disable mic-based auto buffer tuning\n"
+        "  --dlna            Enable DLNA/UPnP Media Renderer (requires SOLUNA_HAS_DLNA)\n"
+        "  --dlna-name NAME  DLNA friendly name (default: Soluna)\n"
         "  --list-devices    List available audio devices\n"
         "  --generate-config Print default configuration to stdout\n"
         "  --help            Show this help\n",
@@ -2163,6 +2401,14 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
             cfg.rx_mode = true;
         } else if (arg == "--aes67-mode") {
             cfg.aes67_mode = true;
+        } else if (arg == "--ravenna") {
+            cfg.ravenna_mode = true;
+            cfg.aes67_mode = true;  // Ravenna implies AES67
+        } else if (arg == "--airplay") {
+            cfg.airplay_mode = true;
+            cfg.rx_mode = true;  // AirPlay is a receive mode
+        } else if (arg == "--airplay-tx") {
+            cfg.airplay_tx = true;
         } else if (arg == "--ultra-low") {
             cfg.low_latency = true;
             cfg.latency_profile = LatencyProfile::UltraLow;
@@ -2177,6 +2423,10 @@ static bool parse_args(int argc, char** argv, DaemonConfig& cfg) {
             cfg.auto_tune = false;
         } else if (arg == "--tunnel") {
             cfg.tunnel = true;
+        } else if (arg == "--dlna") {
+            cfg.dlna_enabled = true;
+        } else if (arg == "--dlna-name" && i + 1 < argc) {
+            cfg.dlna_friendly_name = argv[++i];
         } else if (arg == "--https") {
             cfg.https_enabled = true;
         } else if (arg == "--dtls") {
@@ -2906,8 +3156,18 @@ static void wsola_plc(const int32_t* prev, int32_t* out,
 }
 
 // ── FEC constants for daemon integration ─────────────────────────────────────
-static constexpr uint8_t  kFecGroupSize = 4;   // 4 data packets per FEC group
+static constexpr uint8_t  kFecGroupSize = 5;   // default group size (dynamic FEC overwrites)
 static constexpr uint16_t kNackPort     = 5005; // NACK feedback port = RTP + 1
+
+// Dynamic FEC: map loss% → group_size per OSTP v0.9.3 §3.7
+// N=0 = FEC off, smaller N = more redundancy
+inline uint8_t dynamic_fec_group_size(float loss_pct) {
+    if (loss_pct <= 0.0f) return 0;   // 0%: disable FEC
+    if (loss_pct <  2.0f) return 10;  // 0–2%: light (1 parity / 10 data)
+    if (loss_pct <  5.0f) return 5;   // 2–5%: moderate
+    if (loss_pct < 10.0f) return 3;   // 5–10%: aggressive
+    return 2;                          // >10%: maximum (1 parity / 2 data)
+}
 
 // ── TX packet cache for NACK retransmission ──────────────────────────────────
 struct TxPacketCache {
@@ -2948,6 +3208,11 @@ static int run_tx(DaemonConfig cfg) {
     cfg.low_latency = (cfg.latency_profile == LatencyProfile::LowLatency ||
                        cfg.latency_profile == LatencyProfile::UltraLow);
 
+    // Encode channel count in stream_id upper 4 bits: [4bit ch][12bit stream]
+    // 0x0xxx = legacy (assume 2ch for backward compat)
+    // 0x1xxx = 1ch, 0x2xxx = 2ch, 0x6xxx = 5.1ch, 0x8xxx = 7.1ch
+    cfg.stream_id = static_cast<uint16_t>((cfg.channels << 12) | (cfg.stream_id & 0x0FFF));
+
     // Expose config so ws_handle can use it for monitor
     g_cfg_channels    = cfg.channels;
     g_cfg_sample_rate = cfg.sample_rate;
@@ -2981,6 +3246,20 @@ static int run_tx(DaemonConfig cfg) {
     start_soluna_volume_listener();
 #endif
 
+#ifdef SOLUNA_HAS_RAVENNA
+    if (cfg.ravenna_mode) {
+        soluna::transport::RavennaSession rav_session;
+        rav_session.session_name = "Soluna TX";
+        rav_session.origin_address = cfg.dest_ip;
+        rav_session.multicast_group = cfg.dest_ip;
+        rav_session.rtp_port = cfg.dest_port;
+        rav_session.sample_rate = cfg.sample_rate;
+        rav_session.channels = cfg.channels;
+        rav_session.device_name = "Soluna";
+        soluna::transport::ravenna_start_mdns(rav_session);
+    }
+#endif
+
     // ── Start unicast relay for P2P peers ──
     std::thread relay_thread;
     if (cfg.relay_enabled) {
@@ -3012,6 +3291,8 @@ static int run_tx(DaemonConfig cfg) {
     if (!cfg.wan_relay_host.empty()) {
         wan_relay_init(cfg.wan_relay_host, cfg.wan_relay_port,
                        cfg.wan_relay_group, cfg.wan_relay_password);
+        // Standalone heartbeat keeps relay membership alive even during silence
+        std::thread(wan_relay_heartbeat_thread).detach();
     }
 
     // Apply latency profile
@@ -3423,7 +3704,7 @@ static int run_tx(DaemonConfig cfg) {
     uint32_t rtp_timestamp = 0;
     uint32_t media_ts = 0;
 
-    const char* mode_str = cfg.aes67_mode ? "AES67" : "OSTP";
+    const char* mode_str = cfg.ravenna_mode ? "Ravenna" : (cfg.aes67_mode ? "AES67" : "OSTP");
     const char* security_str = cfg.security.dtls_enabled ? " [DTLS]" : "";
     if (!use_shm) {
         printf("solunad TX (%s%s): %s → %s:%u (%uHz, %uch)\n",
@@ -3436,13 +3717,15 @@ static int run_tx(DaemonConfig cfg) {
     const bool wifi_mode = (cfg.latency_profile == LatencyProfile::WiFi ||
                             cfg.latency_profile == LatencyProfile::Default);
 
-    // FEC encoder (XOR parity, group_size=4)
+    // FEC encoder (XOR parity, dynamic group_size per OSTP v0.9.3 §3.7)
+    uint8_t current_fec_n = kFecGroupSize;
     wifi::FecConfig fec_cfg;
     fec_cfg.mode = wifi::FecMode::XorParity;
-    fec_cfg.group_size = kFecGroupSize;
+    fec_cfg.group_size = current_fec_n;
     fec_cfg.parity_count = 1;
     fec_cfg.max_packet_size = kMaxPayloadSize;
     wifi::FecEncoder fec_encoder(fec_cfg);
+    uint64_t fec_adapt_counter = 0;
 
     // TX packet cache for NACK retransmission
     TxPacketCache tx_cache;
@@ -3490,6 +3773,9 @@ static int run_tx(DaemonConfig cfg) {
         fprintf(stderr, "[wifi] Duplicate TX + FEC(XOR,k=%u) + NACK enabled\n", kFecGroupSize);
     }
 
+    // Expose SSRC globally for RTCP APP SWCH dispatch
+    g_tx_ssrc.store(cfg.ssrc, std::memory_order_relaxed);
+
     // Set RT priority on TX thread in low-latency mode
     if (cfg.low_latency) {
         pal::Thread::set_realtime_priority();
@@ -3512,7 +3798,8 @@ static int run_tx(DaemonConfig cfg) {
         if (ptp && ptp->sync_info().synchronized) {
             int64_t ptp_ns = ptp->get_media_clock_ns();
             rtp_timestamp = sync::PtpEngine::media_clock_to_rtp_timestamp(ptp_ns, cfg.sample_rate);
-            media_ts = static_cast<uint32_t>(ptp_ns & 0xFFFFFFFF);
+            // Convert PTP ns to ms per OSTP v0.9.3 §4.2
+            media_ts = static_cast<uint32_t>((static_cast<uint64_t>(ptp_ns) / 1'000'000ULL) & 0xFFFFFFFF);
         }
 
         size_t pkt_size = 0;
@@ -3594,10 +3881,26 @@ static int run_tx(DaemonConfig cfg) {
                     tx_cache.store(static_cast<uint32_t>(sequence), packet_buf.data(), pkt_size);
                 }
 
-                // ── FEC: send parity every kFecGroupSize packets ──
+                // ── FEC: dynamic group_size from RTCP loss feedback (OSTP v0.9.3 §3.7) ──
                 if (g_wifi_fec.load(std::memory_order_relaxed)) {
+                    // Re-evaluate FEC N every 200 packets (~4 seconds at 50pps)
+                    if (++fec_adapt_counter % 200 == 0) {
+                        uint8_t target_n = dynamic_fec_group_size(g_cc_avg_loss_pct.load());
+                        if (target_n != current_fec_n) {
+                            // Rebuild encoder at group boundary
+                            wifi::FecConfig new_cfg;
+                            new_cfg.mode = wifi::FecMode::XorParity;
+                            new_cfg.group_size = (target_n == 0) ? 5 : target_n; // 0 = off, keep cfg valid
+                            new_cfg.parity_count = 1;
+                            new_cfg.max_packet_size = kMaxPayloadSize;
+                            fec_encoder = wifi::FecEncoder(new_cfg);
+                            current_fec_n = target_n;
+                            fprintf(stderr, "[fec] Dynamic FEC: loss=%.1f%% → N=%u\n",
+                                    g_cc_avg_loss_pct.load(), (unsigned)target_n);
+                        }
+                    }
                     size_t audio_payload_size = kFramesPerPacket * frame_size;
-                    if (fec_encoder.feed(audio_buf.data(), audio_payload_size)) {
+                    if (current_fec_n > 0 && fec_encoder.feed(audio_buf.data(), audio_payload_size)) {
                         for (const auto& parity : fec_encoder.get_parity()) {
                             uint32_t fec_group = parity.fec_group_id;
                             size_t hdr = 6;
@@ -3618,15 +3921,17 @@ static int run_tx(DaemonConfig cfg) {
         }
 
         sequence++;
+        g_tx_rtp_timestamp.store(rtp_timestamp, std::memory_order_relaxed);
         // Only manually increment timestamps when PTP is not driving them
         if (!(ptp && ptp->sync_info().synchronized)) {
             rtp_timestamp += kFramesPerPacket;
-            // Use wall-clock nanoseconds for media_timestamp
-            // This enables NTP-based synchronized playback across all receivers
+            // Use wall-clock milliseconds for media_timestamp (OSTP v0.9.3 §4.2)
+            // ms gives 49-day rollover window (was ns = ~4.3s rollover bug)
             struct timespec wall_ts;
             clock_gettime(CLOCK_REALTIME, &wall_ts);
             media_ts = static_cast<uint32_t>(
-                (static_cast<uint64_t>(wall_ts.tv_sec) * 1'000'000'000ULL + wall_ts.tv_nsec)
+                (static_cast<uint64_t>(wall_ts.tv_sec) * 1000ULL +
+                 static_cast<uint64_t>(wall_ts.tv_nsec) / 1'000'000ULL)
                 & 0xFFFFFFFF);
         }
 
@@ -3710,6 +4015,20 @@ static int run_rx(DaemonConfig cfg) {
     start_mdns_advertisement();
 #endif
 
+#ifdef SOLUNA_HAS_RAVENNA
+    if (cfg.ravenna_mode) {
+        soluna::transport::RavennaSession rav_session;
+        rav_session.session_name = "Soluna RX";
+        rav_session.origin_address = cfg.dest_ip;
+        rav_session.multicast_group = cfg.dest_ip;
+        rav_session.rtp_port = cfg.listen_port;
+        rav_session.sample_rate = cfg.sample_rate;
+        rav_session.channels = cfg.channels;
+        rav_session.device_name = "Soluna";
+        soluna::transport::ravenna_start_mdns(rav_session);
+    }
+#endif
+
     // Apply latency profile
     const auto lp = get_latency_params(cfg.latency_profile);
     const uint32_t kFramesPerPacket = lp.frames_per_packet;
@@ -3726,6 +4045,89 @@ static int run_rx(DaemonConfig cfg) {
     RingBuffer ring(kFramesPerPacket * kRingPackets, frame_size);
     g_player_ring_ptr = &ring;   // expose to file player
     std::atomic<bool> prefilled{false};
+
+#ifdef SOLUNA_HAS_DLNA
+    std::unique_ptr<soluna::transport::DlnaRenderer> dlna_renderer;
+    if (cfg.dlna_enabled) {
+        dlna_renderer = std::make_unique<soluna::transport::DlnaRenderer>();
+        soluna::transport::DlnaRenderer::Config dlna_cfg;
+        dlna_cfg.friendly_name = cfg.dlna_friendly_name;
+        dlna_cfg.sample_rate = cfg.sample_rate;
+        dlna_cfg.channels = cfg.channels;
+        auto* ring_ptr = &ring;
+        auto dlna_audio_cb = [ring_ptr](const int32_t* samples, size_t frames,
+                                         uint32_t /*channels*/, uint32_t /*rate*/) {
+            ring_ptr->write(samples, frames);
+        };
+        if (dlna_renderer->start(dlna_cfg, dlna_audio_cb)) {
+            fprintf(stderr, "[rx] DLNA renderer started on port %u\n",
+                    dlna_renderer->http_port());
+        } else {
+            fprintf(stderr, "[rx] Failed to start DLNA renderer\n");
+            dlna_renderer.reset();
+        }
+    }
+#endif
+
+#ifdef SOLUNA_HAS_AIRPLAY
+    // AirPlay 2 receiver — feeds decoded audio into the ring buffer
+    std::unique_ptr<soluna::transport::AirPlayReceiver> airplay_rx;
+    if (cfg.airplay_mode) {
+        airplay_rx = std::make_unique<soluna::transport::AirPlayReceiver>();
+        airplay_rx->set_device_name("Soluna");
+        airplay_rx->set_audio_callback(
+            [&ring, &prefilled, &cfg](const int16_t* pcm, uint32_t frames,
+                                       uint8_t channels, uint32_t sample_rate) {
+                // Convert int16 PCM from AirPlay (44100Hz typically) to int32
+                // and write into the ring buffer used by the audio pipeline.
+                (void)sample_rate; // TODO: resample if sample_rate != cfg.sample_rate
+                const size_t ch = cfg.channels;
+                std::vector<int32_t> buf(frames * ch);
+                if (channels == ch) {
+                    for (uint32_t i = 0; i < frames * channels; i++) {
+                        buf[i] = static_cast<int32_t>(pcm[i]) << 16;
+                    }
+                } else if (channels == 1 && ch == 2) {
+                    for (uint32_t i = 0; i < frames; i++) {
+                        int32_t s = static_cast<int32_t>(pcm[i]) << 16;
+                        buf[i * 2 + 0] = s;
+                        buf[i * 2 + 1] = s;
+                    }
+                } else if (channels == 2 && ch == 1) {
+                    for (uint32_t i = 0; i < frames; i++) {
+                        buf[i] = (static_cast<int32_t>(pcm[i * 2]) + pcm[i * 2 + 1]) << 15;
+                    }
+                } else {
+                    for (uint32_t i = 0; i < frames * channels && i < frames * ch; i++) {
+                        buf[i] = static_cast<int32_t>(pcm[i]) << 16;
+                    }
+                }
+                ring.write(buf.data(), frames * ch * sizeof(int32_t));
+                if (!prefilled.load()) prefilled.store(true);
+            });
+        if (!airplay_rx->start(7000)) {
+            fprintf(stderr, "[rx] Failed to start AirPlay receiver\n");
+            airplay_rx.reset();
+        }
+    }
+
+    // AirPlay TX — forward received audio to local AirPlay speakers
+    std::unique_ptr<soluna::transport::AirPlaySender> airplay_tx;
+    if (cfg.airplay_tx) {
+        airplay_tx = std::make_unique<soluna::transport::AirPlaySender>();
+        if (!airplay_tx->start()) {
+            fprintf(stderr, "[rx] Failed to start AirPlay TX sender\n");
+            airplay_tx.reset();
+        } else {
+            fprintf(stderr, "[rx] AirPlay TX sender started — audio will be forwarded to discovered speakers\n");
+        }
+    }
+#else
+    std::unique_ptr<int> airplay_tx; // placeholder to avoid #ifdef in audio callback
+    if (cfg.airplay_tx) {
+        fprintf(stderr, "[rx] AirPlay TX support not compiled in (build with -DSOLUNA_ENABLE_AIRPLAY=ON)\n");
+    }
+#endif
 
     // Opus decoder (RX) — lazily initialized on first Opus packet
 #ifdef SOLUNA_HAS_OPUS
@@ -4119,6 +4521,23 @@ static int run_rx(DaemonConfig cfg) {
         // Save good buffer for PLC (only when we had real audio)
         if (consecutive_underruns == 0)
             std::memcpy(prev_good_buf.data(), buffer, samples * sizeof(float));
+
+#ifdef SOLUNA_HAS_AIRPLAY
+        // AirPlay TX: forward final mixed audio to local AirPlay speakers
+        if (airplay_tx && airplay_tx->is_running() && consecutive_underruns == 0) {
+            thread_local std::vector<int16_t> ap_tx_buf;
+            ap_tx_buf.resize(samples);
+            for (size_t i = 0; i < samples; i++) {
+                float v = buffer[i] * 32767.0f;
+                if (v > 32767.0f) v = 32767.0f;
+                else if (v < -32768.0f) v = -32768.0f;
+                ap_tx_buf[i] = static_cast<int16_t>(v);
+            }
+            airplay_tx->send_audio(ap_tx_buf.data(), frame_count,
+                                   static_cast<uint8_t>(cfg.channels),
+                                   cfg.sample_rate);
+        }
+#endif
     });
 
     // Create transport manager for optional DTLS
@@ -4144,7 +4563,7 @@ static int run_rx(DaemonConfig cfg) {
                        cfg.wan_relay_group, cfg.wan_relay_password);
     }
 
-    const char* mode_str = cfg.aes67_mode ? "AES67" : "Auto";
+    const char* mode_str = cfg.ravenna_mode ? "Ravenna" : (cfg.aes67_mode ? "AES67" : "Auto");
     const char* ll_str = cfg.low_latency ? " [LOW-LATENCY]" : "";
     const char* security_str = cfg.security.dtls_enabled ? " [DTLS]" : "";
     printf("solunad RX (%s%s%s): %s:%u → %s (%uHz, %uch)\n",
@@ -4654,6 +5073,25 @@ static int run_rx(DaemonConfig cfg) {
         static_cast<unsigned long>(duplicate_drops),
         static_cast<unsigned long>(fec_recoveries));
     g_dsp_chain_ptr = nullptr;
+
+#ifdef SOLUNA_HAS_DLNA
+    if (dlna_renderer) {
+        dlna_renderer->stop();
+        dlna_renderer.reset();
+    }
+#endif
+
+#ifdef SOLUNA_HAS_AIRPLAY
+    if (airplay_rx) {
+        airplay_rx->stop();
+        airplay_rx.reset();
+    }
+    if (airplay_tx) {
+        airplay_tx->stop();
+        airplay_tx.reset();
+    }
+#endif
+
     return 0;
 }
 

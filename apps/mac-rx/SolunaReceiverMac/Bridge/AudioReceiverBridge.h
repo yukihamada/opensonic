@@ -269,6 +269,9 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 /// Request members list from relay
 - (void)requestMembers;
 
+/// Send remote volume command to a specific device in the same group
+- (void)sendVolumeToDevice:(NSString *)deviceId level:(int)level;
+
 /// Disconnect from WAN relay
 - (void)disconnectRelay;
 
@@ -291,6 +294,9 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 
 /// Set callback for SYNC: messages (file-sync mode).
 - (void)setSyncCallback:(nullable void(^)(NSString * _Nonnull syncCmd))callback;
+
+/// Set callback for MEMBERS: responses (group member list JSON).
+- (void)setMembersCallback:(nullable void(^)(NSString * _Nonnull membersJson))callback;
 
 /// Send READY notification to relay after file download completes.
 - (void)sendReady:(NSString * _Nonnull)filename;

@@ -1489,10 +1489,12 @@ Authorization: Bearer &lt;token&gt;
                 <th>プラットフォーム</th>
                 <th>受信 RX</th>
                 <th>送信 TX</th>
-                <th>FEC</th>
+                <th>FEC (動的)</th>
                 <th>NACK</th>
                 <th>DTLS</th>
                 <th>RTCP</th>
+                <th>TURN</th>
+                <th>DJ Deck</th>
               </tr>
             </thead>
             <tbody>
@@ -1504,6 +1506,8 @@ Authorization: Bearer &lt;token&gt;
                 <td class="check">✅</td>
                 <td class="pending">🔜</td>
                 <td class="check">✅</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
               </tr>
               <tr>
                 <td><strong>iOS (Swift)</strong></td>
@@ -1512,6 +1516,8 @@ Authorization: Bearer &lt;token&gt;
                 <td class="check">✅</td>
                 <td class="check">✅</td>
                 <td class="pending">🔜</td>
+                <td class="check">✅</td>
+                <td class="check">✅</td>
                 <td class="check">✅</td>
               </tr>
               <tr>
@@ -1522,6 +1528,8 @@ Authorization: Bearer &lt;token&gt;
                 <td class="check">✅</td>
                 <td class="pending">🔜</td>
                 <td class="check">✅</td>
+                <td class="pending">🔜</td>
+                <td class="pending">🔜</td>
               </tr>
               <tr>
                 <td><strong>Windows</strong></td>
@@ -1531,6 +1539,8 @@ Authorization: Bearer &lt;token&gt;
                 <td class="check">✅</td>
                 <td class="pending">🔜</td>
                 <td class="check">✅</td>
+                <td class="pending">🔜</td>
+                <td class="pending">🔜</td>
               </tr>
               <tr>
                 <td><strong>Web (Browser)</strong></td>
@@ -1540,6 +1550,8 @@ Authorization: Bearer &lt;token&gt;
                 <td class="check">✅</td>
                 <td class="pending">🔜</td>
                 <td class="check">✅</td>
+                <td class="pending">🔜</td>
+                <td class="pending">🔜</td>
               </tr>
               <tr>
                 <td><strong>Linux / RPi</strong></td>
@@ -1549,6 +1561,8 @@ Authorization: Bearer &lt;token&gt;
                 <td class="check">✅</td>
                 <td class="pending">🔜</td>
                 <td class="check">✅</td>
+                <td class="pending">🔜</td>
+                <td class="pending">🔜</td>
               </tr>
               <tr>
                 <td><strong>ESP32</strong></td>
@@ -1558,13 +1572,38 @@ Authorization: Bearer &lt;token&gt;
                 <td class="check">✅</td>
                 <td class="pending">🔜</td>
                 <td class="check">✅</td>
+                <td class="na">—</td>
+                <td class="na">—</td>
               </tr>
             </tbody>
           </table>
         </div>
 
         <div class="note" style="margin-top:24px;">
-          <strong>凡例:</strong> ✅ = 実装済みかつテスト済み / 🔜 = DTLS-SRTP (実装計画あり)
+          <strong>凡例:</strong> ✅ = 実装済みかつテスト済み / 🔜 = 実装計画あり / — = 対象外<br>
+          <strong>FEC (動的)</strong>: loss率に応じ N=0/10/5/3/2 を自動切替 (OSTP v0.9.3 §3.7)<br>
+          <strong>RTCP</strong>: ビットレート適応 + RFC 3550 §6.4.1 ジッタバッファ駆動<br>
+          <strong>TURN</strong>: Symmetric NAT フォールバック — <code>TURN_ALLOC</code> / <code>TURN_OK</code> (OSTP v0.9.3 §5.x)
+        </div>
+
+        <!-- v0.9.3 変更ログ -->
+        <h3 style="margin-top:40px;">v0.9.3 実装済み修正</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>修正</th><th>詳細</th><th>影響</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>media_timestamp</code> ms化</td><td>ナノ秒 (4.3秒ロールオーバー) → ミリ秒 (49日ウィンドウ)</td><td>全プラットフォーム同期修正</td></tr>
+              <tr><td>Dynamic FEC</td><td>RTCP loss% → N自動調整 (0/10/5/3/2)</td><td>WiFi損失への適応</td></tr>
+              <tr><td>RTCP → ジッタバッファ</td><td>RFC 3550 inter-arrival jitter → <code>target_fill_frames</code></td><td>iOS バッファ精度向上</td></tr>
+              <tr><td>TURN フォールバック</td><td><code>TURN_ALLOC</code> / <code>TURN_OK</code> リレー確認</td><td>Symmetric NAT 対応</td></tr>
+              <tr><td>Gossip + dual-parent</td><td><code>GOSSIP_PEERS</code> 8候補 / <code>PARENT_FAIL</code> &lt;80ms 再接続</td><td>スワームチャーン耐性</td></tr>
+              <tr><td>RTCP APP SWCH</td><td>PT=204 同期ファイル切替をリレー経由で全員転送</td><td>player.switch 精度</td></tr>
+              <tr><td>TIP on-chain検証</td><td>Solana RPC <code>getTransaction</code> で tx_signature 確認</td><td>不正チップ防止</td></tr>
+              <tr><td>Control/Data HOL解消</td><td>ファイルチャンク port 8401 / コントロール JSON port 8400</td><td>大容量ファイル中の遅延防止</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>

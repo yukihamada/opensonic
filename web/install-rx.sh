@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Soluna RX installer — Raspberry Pi / Linux
-# Usage: curl -fsSL https://soluna-web.fly.dev/install-rx.sh | sudo bash
+# Usage: curl -fsSL https://solun.art/install-rx.sh | sudo bash
 set -euo pipefail
 
 REPO="https://github.com/yukihamada/opensonic.git"
@@ -89,14 +89,16 @@ Wants=network-online.target
 Type=simple
 User=soluna
 Environment=SOLUNA_DEVICE=default
+Environment=SOLUNA_RELAY=relay.solun.art:5100
+Environment=SOLUNA_CHANNEL=soluna
 Environment=SOLUNA_GROUP=239.69.0.1
 Environment=SOLUNA_PORT=5004
 Environment=SOLUNA_CHANNELS=2
 ExecStart=/usr/local/bin/soluna \
     --output alsa \
     --device ${SOLUNA_DEVICE} \
-    --group ${SOLUNA_GROUP} \
-    --port ${SOLUNA_PORT} \
+    --relay ${SOLUNA_RELAY} \
+    --group-name ${SOLUNA_CHANNEL} \
     --channels ${SOLUNA_CHANNELS}
 Restart=always
 RestartSec=3
@@ -119,7 +121,7 @@ cat > /etc/avahi/services/soluna-rx.service << 'AVAHI'
     <port>8400</port>
     <txt-record>platform=linux</txt-record>
     <txt-record>mode=rx</txt-record>
-    <txt-record>version=0.3.1</txt-record>
+    <txt-record>version=0.3.6</txt-record>
   </service>
 </service-group>
 AVAHI
@@ -137,19 +139,23 @@ echo ""
 echo -e "${GREEN}${BOLD}✔ インストール完了！${NC}"
 echo ""
 echo "  soluna はバックグラウンドで起動しました。"
-echo "  同じネットワーク上の Mac から Soluna で音声を送信してください。"
+echo "  Mac/iPhone と同じチャンネルに接続して音声を受信します。"
 echo ""
 echo "  設定:"
-echo "    マルチキャスト: 239.69.0.1:5004 (デフォルト)"
-echo "    ALSA デバイス:  default"
-echo "    制御サーバー:   ws://<this-host>:8400/ws"
-echo "    mDNS:           _soluna._tcp (iPhone/Mac から自動検出)"
+echo "    WANリレー:     relay.solun.art:5100"
+echo "    チャンネル:    soluna (デフォルト)"
+echo "    ALSA デバイス: default"
+echo "    mDNS:          _soluna._tcp (iPhone/Mac から自動検出)"
 echo ""
 echo "  コマンド:"
 echo "    ステータス: systemctl status $SERVICE_ID"
 echo "    ログ:       journalctl -fu $SERVICE_ID"
 echo "    停止:       systemctl stop $SERVICE_ID"
 echo "    無効化:     systemctl disable $SERVICE_ID"
+echo ""
+echo "  チャンネルを変更する場合:"
+echo "    sudo systemctl edit $SERVICE_ID"
+echo "    → Environment=SOLUNA_CHANNEL=my-channel"
 echo ""
 echo "  ALSA デバイスを変更する場合:"
 echo "    sudo systemctl edit $SERVICE_ID"

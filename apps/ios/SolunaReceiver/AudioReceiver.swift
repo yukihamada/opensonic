@@ -11,6 +11,7 @@ import AVFoundation
 import UIKit
 import Network
 import Darwin
+import Speech
 
 /// Observable wrapper for SolunaAudioReceiver
 @MainActor
@@ -129,6 +130,14 @@ final class AudioReceiver: ObservableObject {
     /// Debug log from C++ bridge (on-screen diagnostics)
     @Published private(set) var debugLog: String = ""
 
+    // ── Auto Recording ───────────────────────────────────────────────────
+    @Published private(set) var isRecording = false
+    private var recordingURL: URL?
+
+    // ── Transcription ────────────────────────────────────────────────────
+    @Published var transcript: String = ""
+    @Published var isTranscribing = false
+
     // ── WAN Relay ────────────────────────────────────────────────────────
     enum RelayState: String {
         case disconnected = "Disconnected"
@@ -200,6 +209,12 @@ final class AudioReceiver: ObservableObject {
     private let delegateHandler: DelegateHandler
     private let networkMonitor = NWPathMonitor()
     private var wasPlayingBeforeDisconnect = false
+
+    // Speech recognition
+    private var speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "ja-JP"))
+    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var recognitionTask: SFSpeechRecognitionTask?
+    private var transcriptTimer: Timer?
     private var suppressInterruption = false
     private var interruptionObserver: Any?
     private var routeChangeObserver: Any?
@@ -276,6 +291,12 @@ final class AudioReceiver: ObservableObject {
         startStatsPolling()
         setupMetaCallback()
         setupFingerprintTap(channel: ch)
+        startTranscription()
+
+        // Auto-recording
+        if UserDefaults.standard.bool(forKey: "autoRecordEnabled") {
+            startAutoRecording()
+        }
 
         // Connect to relay — use manual host if set, else auto-discover
         let manualHost = UserDefaults.standard.string(forKey: "relayHost") ?? ""
@@ -377,9 +398,17 @@ final class AudioReceiver: ObservableObject {
 
         // Download
         URLSession.shared.downloadTask(with: url) { [weak self] tempURL, response, error in
-            guard let self, let tempURL else { return }
+            guard let self, let tempURL else {
+                if let error {
+                    print("[AudioReceiver] download error: \(error.localizedDescription)")
+                }
+                return
+            }
             let httpCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard httpCode == 200 else { return }
+            guard (200...299).contains(httpCode) else {
+                print("[AudioReceiver] download failed: HTTP \(httpCode) for \(url.lastPathComponent)")
+                return
+            }
             try? FileManager.default.moveItem(at: tempURL, to: localFile)
             DispatchQueue.main.async {
                 self.prepareAudioFile(url: localFile)
@@ -592,6 +621,8 @@ final class AudioReceiver: ObservableObject {
         pendingSyncCmd = nil
         receiver.filesyncNetworkDisabled = false
         if isDJActive { stopDJBroadcast() }
+        stopTranscription()
+        if isRecording { _ = stopAutoRecording() }
         nowPlayingTitle = nil
         nowPlayingArtist = nil
         nowPlayingArtwork = nil
@@ -827,6 +858,11 @@ final class AudioReceiver: ObservableObject {
         receiver.requestMembers()
     }
 
+    /// Send remote volume command to a device in the same group
+    func sendVolumeToDevice(_ deviceId: String, level: Int) {
+        receiver.sendVolume(toDevice: deviceId, level: Int32(level))
+    }
+
     // MARK: - WAN Relay
 
     func connectRelay(group: String, password: String = "",
@@ -943,6 +979,12 @@ final class AudioReceiver: ObservableObject {
                 self.packetLossPercent = self.receiver.packetLossPercent
                 // Send NACKs for any newly detected gaps
                 self.checkAndSendNack()
+                // Auto-reconnect relay if dropped while playing
+                self.updateRelayState()
+                let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+                if self.isPlaying && self.relayState == .disconnected {
+                    self.connectRelay(group: ch)
+                }
             }
         }
         // Level meter at ~30fps for smooth visualization
@@ -1134,12 +1176,21 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
-    /// Reconnect: stop then start with a brief delay
+    /// Whether Connect Mode is enabled (auto-connect on launch + auto-reconnect)
+    private var isConnectModeEnabled: Bool {
+        UserDefaults.standard.object(forKey: "connectMode") as? Bool ?? true
+    }
+
+    /// Reconnect: stop then start with a brief delay (respects Connect Mode)
     private func reconnect() {
+        guard isConnectModeEnabled else {
+            print("[AudioReceiver] Connect Mode off — skipping auto-reconnect")
+            return
+        }
         stop()
-        Task {
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1s
-            start()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3s
+            self.start()
         }
     }
 
@@ -1149,11 +1200,11 @@ final class AudioReceiver: ObservableObject {
         networkMonitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 guard let self else { return }
-                if path.status == .satisfied && self.wasPlayingBeforeDisconnect {
+                if path.status == .satisfied && self.wasPlayingBeforeDisconnect && self.isConnectModeEnabled {
                     print("[AudioReceiver] Network restored — reconnecting")
                     self.wasPlayingBeforeDisconnect = false
                     // Brief delay for WiFi to stabilize
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
                     self.start()
                 } else if path.status != .satisfied && self.isPlaying {
                     print("[AudioReceiver] Network lost — will reconnect when available")
@@ -1221,6 +1272,105 @@ final class AudioReceiver: ObservableObject {
         receiver.outputLatencyMs = latencyMs
         let routeName = session.currentRoute.outputs.first?.portType.rawValue ?? "unknown"
         print("[AudioReceiver] Output route: \(routeName), latency: \(String(format: "%.1f", latencyMs)) ms")
+    }
+
+    // MARK: - Auto Recording
+
+    func startAutoRecording() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let filename = "soluna_\(formatter.string(from: Date())).caf"
+        let url = docs.appendingPathComponent(filename)
+        recordingURL = url
+        receiver.startRecording(toFile: url.path)
+        isRecording = true
+    }
+
+    @discardableResult
+    func stopAutoRecording() -> URL? {
+        guard isRecording else { return nil }
+        receiver.stopRecording()
+        isRecording = false
+        let url = recordingURL
+        recordingURL = nil
+        return url
+    }
+
+    // MARK: - Transcription
+
+    func startTranscription() {
+        guard UserDefaults.standard.bool(forKey: "autoTranscribeEnabled") else { return }
+        SFSpeechRecognizer.requestAuthorization { [weak self] status in
+            guard status == .authorized else { return }
+            Task { @MainActor in
+                self?.beginRecognitionSession()
+            }
+        }
+    }
+
+    @MainActor
+    private func beginRecognitionSession() {
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
+        guard let request = recognitionRequest else { return }
+        request.shouldReportPartialResults = true
+        isTranscribing = true
+
+        // Set sample tap to feed audio to speech recognizer
+        // Note: this overrides the fingerprint tap; fingerprint is restored in stopTranscription()
+        receiver.setSampleTapCallback { [weak self] samples, sampleCount, channels in
+            guard let self, let request = self.recognitionRequest else { return }
+            let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1)!
+            let ch = Int(channels)
+            let frames = Int(sampleCount) / max(1, ch)
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)) else { return }
+            buffer.frameLength = AVAudioFrameCount(frames)
+            if let channelData = buffer.floatChannelData?[0] {
+                for i in 0..<frames {
+                    var sum: Float = 0
+                    for c in 0..<ch { sum += samples[i * ch + c] }
+                    channelData[i] = sum / Float(max(1, ch))
+                }
+            }
+            request.append(buffer)
+        }
+
+        recognitionTask = speechRecognizer?.recognitionTask(with: request) { [weak self] result, error in
+            Task { @MainActor in
+                if let result {
+                    self?.transcript = result.bestTranscription.formattedString
+                }
+                if error != nil || result?.isFinal == true {
+                    self?.recognitionRequest = nil
+                    self?.recognitionTask = nil
+                    self?.isTranscribing = false
+                    // Auto-restart after 1s for continuous transcription
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    if self?.isPlaying == true { self?.beginRecognitionSession() }
+                }
+            }
+        }
+
+        // Restart every 55s (Speech framework limit is 60s)
+        transcriptTimer?.invalidate()
+        transcriptTimer = Timer.scheduledTimer(withTimeInterval: 55, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.recognitionRequest?.endAudio()
+            }
+        }
+    }
+
+    func stopTranscription() {
+        transcriptTimer?.invalidate()
+        recognitionRequest?.endAudio()
+        recognitionTask?.cancel()
+        recognitionRequest = nil
+        recognitionTask = nil
+        isTranscribing = false
+        // Restore fingerprint tap
+        receiver.setSampleTapCallback(nil)
     }
 
     // MARK: - Audio Fingerprinting

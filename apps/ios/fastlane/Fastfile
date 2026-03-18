@@ -4,7 +4,7 @@ platform :ios do
   # プロジェクトルートへのパス
   PROJECT_ROOT = File.expand_path("../../..", __dir__)
   APP_IDENTIFIER = "com.soluna.SolunaReceiver"
-  APP_NAME = "Soluna Rx"
+  APP_NAME = "Soluna"
 
   desc "Build iOS library (soluna_core)"
   lane :build_lib do

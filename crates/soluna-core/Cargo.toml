@@ -1,0 +1,10 @@
+[package]
+name = "soluna-core"
+version = "0.1.0"
+edition = "2021"
+description = "Soluna OSTP protocol parser, ring buffer, and audio utilities"
+
+[features]
+default = []
+
+[dependencies]
