@@ -3310,7 +3310,13 @@ private:
                         sync_mode_.load() ? " [SYNC]" : "");
                 last_log_pkts = st.packets_received;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            // When relay mode (network disabled), audio arrives via inject_raw_packet
+            // on the relay thread — this loop only does sync/stats, so sleep longer.
+            if (is_network_disabled()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            } else {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
         }
     }
 
@@ -3638,8 +3644,10 @@ private:
             primary_level_peak_.store(peak > prev_peak ? peak : prev_peak * 0.95f, std::memory_order_relaxed);
         }
 
-        // Spectrum analyzer: feed rendered samples
-        spectrum_.feed(buffer, frame_count, channels_);
+        // Spectrum analyzer: feed every 4th callback (~60Hz visual update rate)
+        if ((audio_cb_count_.load(std::memory_order_relaxed) & 3) == 0) {
+            spectrum_.feed(buffer, frame_count, channels_);
+        }
 
         // Recording: write rendered samples
         {

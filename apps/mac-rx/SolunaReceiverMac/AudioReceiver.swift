@@ -655,9 +655,8 @@ final class AudioReceiver: ObservableObject {
         let isRelayUp = relayState == .connected
         if isRelayUp {
             membersRefreshCounter += 1
-            if membersRefreshCounter >= 5 {
+            if membersRefreshCounter >= 10 {
                 membersRefreshCounter = 0
-                NSLog("[Members] Requesting members (relayState=\(relayState.rawValue))")
                 requestMembers()
             }
         } else {
