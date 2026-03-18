@@ -40,6 +40,7 @@ struct ContentView: View {
     @StateObject private var deviceBrowser = DeviceBrowser()
     @StateObject private var globalRegistry = GlobalDeviceRegistry()
     @State private var showDevicePicker = false
+    @State private var showFestivalMode = false
     @StateObject private var auth = AuthManager.shared
     @State private var showLogin = false
 
@@ -160,6 +161,9 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showLogin) { EmailLoginView(auth: auth) }
+        .fullScreenCover(isPresented: $showFestivalMode) {
+            FestivalModeView(receiver: receiver)
+        }
         .sheet(isPresented: $showSettings) { SettingsView(receiver: receiver) }
         .sheet(isPresented: $showQR) {
             ChannelQRView(channel: UserDefaults.standard.string(forKey: "channel") ?? "soluna")
@@ -254,6 +258,14 @@ struct ContentView: View {
             }
             Button(action: { showQR = true }) {
                 Image(systemName: "qrcode")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(width: 36, height: 36)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(Circle())
+            }
+            Button(action: { showFestivalMode = true }) {
+                Image(systemName: "sparkles")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.white.opacity(0.7))
                     .frame(width: 36, height: 36)

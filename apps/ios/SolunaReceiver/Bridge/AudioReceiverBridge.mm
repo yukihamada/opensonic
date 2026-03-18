@@ -926,6 +926,26 @@ private:
                     std::lock_guard<std::mutex> lk(cb_mutex_);
                     if (volume_callback_) volume_callback_(vol);
                 }
+                // SWARM_ASSIGN: relay tells us to forward audio to child nodes (P2P mesh)
+                else if (n >= 13 && memcmp(buf, "SWARM_ASSIGN:", 13) == 0) {
+                    std::string payload((const char*)buf + 13, n - 13);
+                    while (!payload.empty() && (payload.back() == '\n' || payload.back() == '\r'))
+                        payload.pop_back();
+                    auto colon = payload.rfind(':');
+                    if (colon != std::string::npos && colon > 0) {
+                        std::string ip = payload.substr(0, colon);
+                        uint16_t cport = (uint16_t)atoi(payload.substr(colon + 1).c_str());
+                        sockaddr_in child{};
+                        child.sin_family = AF_INET;
+                        child.sin_port = htons(cport);
+                        inet_pton(AF_INET, ip.c_str(), &child.sin_addr);
+                        std::lock_guard<std::mutex> lk(children_mutex_);
+                        if (swarm_children_.size() < 4) {
+                            swarm_children_.push_back(child);
+                            NSLog(@"[swarm] Assigned child: %s:%u (total: %zu)", ip.c_str(), cport, swarm_children_.size());
+                        }
+                    }
+                }
                 // YOUR_ADDR: relay reports our external IP:port (§6.6, NAT traversal)
                 else if (n >= 11 && memcmp(buf, "YOUR_ADDR:", 10) == 0) {
                     std::string addr((const char*)buf + 10, n - 10);
@@ -1015,6 +1035,14 @@ private:
                         // Non-OSTP RTP (legacy): pass through unchanged
                         std::lock_guard<std::mutex> lk(cb_mutex_);
                         if (rx_callback_) rx_callback_(buf, static_cast<size_t>(n));
+                    }
+                    // P2P mesh: forward audio to swarm children
+                    if (!swarm_children_.empty()) {
+                        std::lock_guard<std::mutex> lk(children_mutex_);
+                        for (const auto& child : swarm_children_) {
+                            ::sendto(udp_sock_, buf, n, 0,
+                                     (const sockaddr*)&child, sizeof(child));
+                        }
                     }
                 }
                 // OK:joined or other control
@@ -1272,6 +1300,8 @@ private:
     VolumeCallback volume_callback_;
     std::mutex peers_mutex_;
     std::vector<sockaddr_in> peers_;
+    std::mutex children_mutex_;
+    std::vector<sockaddr_in> swarm_children_;  // P2P mesh: forward audio to these nodes
     mutable std::mutex debug_mutex_;
     std::string debug_log_;
     // Clock sync state:

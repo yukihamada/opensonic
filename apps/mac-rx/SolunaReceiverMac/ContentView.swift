@@ -13,6 +13,7 @@ struct ContentView: View {
     @StateObject private var relay    = PeerRelayManager.shared
     @State private var groupCode       = ""
     @State private var showSettings   = false
+    @State private var showFestivalMode = false
     @State private var showAddSpeaker = false
     @State private var addSpeakerTab  = 2     // 0 = local, 1 = network, 2 = channel
     @State private var newName        = ""
@@ -127,6 +128,12 @@ struct ContentView: View {
                 .help("グローバルデバイスを選択")
             }
             ToolbarItem(placement: .automatic) {
+                Button(action: { showFestivalMode = true }) {
+                    Image(systemName: "sparkles").foregroundColor(.secondary)
+                }
+                .help("Festival Mode")
+            }
+            ToolbarItem(placement: .automatic) {
                 Button(action: { showSettings = true }) {
                     Image(systemName: "gearshape").foregroundColor(.secondary)
                 }
@@ -138,6 +145,10 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showSettings) { SettingsView(receiver: receiver) }
+        .sheet(isPresented: $showFestivalMode) {
+            FestivalModeView(receiver: receiver)
+                .frame(minWidth: 600, minHeight: 400)
+        }
         .sheet(isPresented: $showAddSpeaker, onDismiss: { newName = ""; newHost = "" }) {
             addSpeakerSheet
         }
@@ -2366,4 +2377,87 @@ private struct LevelMeter: View {
 
 #Preview {
     ContentView(receiver: AudioReceiver(), speakers: SpeakersController())
+}
+import SwiftUI
+
+struct FestivalModeView: View {
+    @ObservedObject var receiver: AudioReceiver
+    @Environment(\.dismiss) private var dismiss
+    @State private var pulse: CGFloat = 1.0
+    @State private var hue: Double = 0.6
+    @State private var level: Float = 0.0
+    @State private var timer: Timer?
+
+    private var channel: String {
+        UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+    }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(hue: hue, saturation: 0.85, brightness: max(0.15, Double(level) * 0.9)),
+                    Color(hue: hue + 0.15, saturation: 0.9, brightness: max(0.05, Double(level) * 0.6))
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .scaleEffect(pulse)
+
+            VStack(spacing: 24) {
+                Spacer()
+
+                Circle()
+                    .fill(.white.opacity(Double(level) * 0.9 + 0.1))
+                    .frame(width: 160, height: 160)
+                    .scaleEffect(pulse)
+                    .shadow(color: .white.opacity(0.4), radius: 30)
+
+                Text(channel)
+                    .font(.system(size: 64, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.6), radius: 10)
+
+                if !receiver.groupMembers.isEmpty {
+                    Text("\(receiver.groupMembers.count + 1) listeners")
+                        .font(.title3.weight(.medium))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+
+                Spacer()
+            }
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(20)
+                }
+                Spacer()
+            }
+        }
+        .onAppear {
+            timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+                // Use spectrum bands average as energy level
+                let bands = receiver.spectrumBands()
+                let avg = bands.isEmpty ? Float(0) : bands.reduce(0, +) / Float(bands.count)
+                Task { @MainActor in
+                    level = avg
+                    withAnimation(.easeOut(duration: 0.06)) {
+                        pulse = 1.0 + CGFloat(avg) * 0.4
+                        hue = 0.55 + Double(avg) * 0.35
+                    }
+                }
+            }
+        }
+        .onDisappear {
+            timer?.invalidate()
+            timer = nil
+        }
+    }
 }
