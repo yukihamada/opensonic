@@ -518,11 +518,51 @@ Copyright Notice
    | 112 | Opus  | 48000     | 1        | Mono Opus                |
    | 113 | FLAC  | 48000     | 2        | Stereo FLAC (OPTIONAL)   |
    | 114 | FLAC  | 48000     | 1        | Mono FLAC (OPTIONAL)     |
+   | 115 | ADPCM | 48000     | 2        | IMA-ADPCM stereo (4:1)   |
+   | 116 | ADPCM | 48000     | 1        | IMA-ADPCM mono (4:1)     |
+   | 125 | OSTP  | N/A       | N/A      | Clock sync (NTP-like)    |
    | 127 | OSTP  | N/A       | N/A      | OSTP control frames      |
 
    PT=127 (OSTP control) is used for out-of-band control messages
    delivered via the same UDP socket as audio. These include compressed
    fingerprint reports (see Section 8.4).
+
+### 4.9. Raw First Strategy (Instant-Start with ADPCM Transition)
+
+   The "Raw First" strategy enables zero-latency audio startup while
+   achieving 4:1 bandwidth reduction via IMA-ADPCM after the first
+   packet. This exploits a key property of ADPCM: it requires an
+   initial predictor value (valprev) to begin accurate decoding.
+
+   **Protocol sequence:**
+
+   ```
+   Time 0ms:   TX sends PT=96 (raw S24_LE PCM), max 480 samples
+               RX plays immediately via DMA — zero decode latency
+               RX captures last sample as ADPCM valprev initializer
+
+   Time 10ms+: TX switches to PT=115/116 (IMA-ADPCM)
+               RX decodes from initialized valprev — no startup noise
+               Bandwidth drops to 25% of raw PCM
+   ```
+
+   **Constraints:**
+   - The initial raw PCM packet MUST fit within a single UDP datagram
+     (max 480 samples × 3 bytes × 2ch = 2880 bytes; mono = 1440 bytes).
+     For safety across all MTUs, 240 samples (720 bytes mono) is
+     RECOMMENDED.
+   - TX MUST NOT send ADPCM packets until at least one raw PCM packet
+     has been sent for the current stream (identified by SSRC).
+   - RX SHOULD use the last sample of the raw PCM packet as the ADPCM
+     predictor initial value (valprev). If no raw packet was received,
+     RX sets valprev = 0 (may produce a brief click).
+
+   **Rationale:** On resource-constrained devices (ESP32, Raspberry Pi),
+   raw PCM can be fed directly to I2S DMA with zero CPU overhead. The
+   ADPCM transition then reduces network bandwidth by 75% while
+   maintaining artifact-free decoding thanks to the pre-seeded
+   predictor value. This is particularly valuable for battery-powered
+   festival devices where both latency and bandwidth matter.
 
 ---
 
@@ -906,6 +946,48 @@ Copyright Notice
 
    Implementations MUST implement Phase 3 (TURN). Phase 2 alone is
    insufficient for commercial-grade connectivity.
+
+### 6.9. Acoustic Delay Tower (Physical Speaker Synchronization)
+
+   When OSTP is used for live events with physical speaker arrays
+   (festivals, venues), speakers at different distances from the stage
+   must compensate for the speed of sound in air (343 m/s at 20°C).
+
+   **Principle:** A speaker N meters from the stage MUST DELAY playback
+   by N/343 seconds to align with the physical sound wave arriving
+   from the main PA system.
+
+   ```
+   Example: Festival with delay towers at 50m, 100m, 150m
+
+   Stage PA:  plays at T=0
+   50m tower: plays at T + 145ms  (50/343 = 0.1458s)
+   100m tower: plays at T + 291ms (100/343 = 0.2915s)
+   150m tower: plays at T + 437ms (150/343 = 0.4373s)
+
+   Result: audience at any position hears ONE coherent wavefront
+   ```
+
+   **Protocol support:**
+
+   - `STAGE_DELAY:<distance_m>:<propagation_ms>\n` — sent by the
+     channel owner to configure per-device acoustic delay.
+   - Each device's `sync_delay_ms` is adjusted by adding the acoustic
+     propagation time: `total_delay = network_sync_delay + acoustic_delay`.
+   - The relay's MAXDELAY broadcast accounts for acoustic delay:
+     devices further from the stage have higher total delay, and
+     MAXDELAY ensures all devices (including phones in the audience)
+     play at the time of the SLOWEST device.
+
+   **Implementation notes:**
+   - Phones in the audience: acoustic delay = 0 (they ARE the speaker)
+   - Dedicated speaker towers: set distance via app or API
+   - GPS-based auto-calculation: if device reports GPS coordinates
+     and stage coordinates are known, delay = distance / 343.0
+
+   WARNING: Speakers must be DELAYED (not advanced). Playing audio
+   BEFORE the physical sound wave arrives creates destructive
+   interference and echo, not reinforcement.
 
 ---
 
