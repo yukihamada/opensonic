@@ -108,7 +108,10 @@
 
   // ── Audio context ────────────────────────────────────────────
   function ensureAudioContext() {
-    if (audioCtx) return;
+    if (audioCtx) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      return;
+    }
     audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
 
     gainNode = audioCtx.createGain();
@@ -128,7 +131,6 @@
   function startAudioOutput() {
     if (scriptNode) return;
     ensureAudioContext();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
 
     const bufSize = 2048;
     scriptNode = audioCtx.createScriptProcessor(bufSize, 1, 1);
@@ -298,18 +300,8 @@
   }
 
   function fetchListenerCount() {
-    // Relay API may not have CORS headers; use no-cors fallback
-    fetch(`https://relay.solun.art/api/channels/${encodeURIComponent(currentChannel)}`, { mode: 'cors' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data && data.listeners !== undefined) {
-          listenerCount.textContent = data.listeners;
-        }
-      })
-      .catch(() => {
-        // CORS blocked — show "--" (listener count unavailable from browser)
-        listenerCount.textContent = '--';
-      });
+    // Relay API lacks CORS headers — skip fetch entirely to avoid console errors
+    listenerCount.textContent = '--';
   }
 
   // ── Visualizer ───────────────────────────────────────────────
@@ -424,27 +416,8 @@
     renderChannels();
     updateChannelUI();
 
-    // On desktop, try auto-play (will work if AudioContext policy allows it)
-    // On mobile, the tap overlay handles the user gesture requirement.
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (!isMobile) {
-      // Desktop: hide overlay and auto-play
-      tapOverlay.classList.add('hidden');
-      // Small delay to ensure page is loaded
-      setTimeout(() => {
-        try {
-          ensureAudioContext();
-          if (audioCtx.state !== 'suspended') {
-            play();
-          } else {
-            // AudioContext suspended — show overlay
-            tapOverlay.classList.remove('hidden');
-          }
-        } catch (_) {
-          tapOverlay.classList.remove('hidden');
-        }
-      }, 100);
-    }
+    // Always show overlay — AudioContext requires user gesture on all browsers
+    tapOverlay.classList.remove('hidden');
   }
 
   init();
