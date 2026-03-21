@@ -276,10 +276,7 @@ struct ContentView: View {
                 tabBar
             }
             // Reaction overlay — floats above everything
-            GeometryReader { geo in
-                ReactionOverlayView(manager: reactionManager, screenWidth: geo.size.width)
-            }
-            .ignoresSafeArea()
+            ReactionOverlayView()
         }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showDevicePicker) { DevicePickerView(registry: globalRegistry) { connectToGlobalDevice($0) } }
