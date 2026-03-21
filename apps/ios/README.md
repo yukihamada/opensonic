@@ -36,15 +36,15 @@ xcodebuild -project soluna.xcodeproj -scheme soluna_core \
 
 ```bash
 cd apps/ios
-open SolunaReceiver.xcodeproj
+open Soluna.xcodeproj
 # Xcode でターゲットデバイスを選択してビルド & 実行
 ```
 
 コマンドラインでのビルド確認:
 
 ```bash
-xcodebuild -project SolunaReceiver.xcodeproj \
-  -scheme SolunaReceiver \
+xcodebuild -project Soluna.xcodeproj \
+  -scheme Soluna \
   -destination 'generic/platform=iOS' \
   -configuration Debug build
 ```
@@ -118,8 +118,24 @@ bundle exec fastlane build_local
 
 ## アーキテクチャ
 
+### リレー音声 (WAN) — SDKAudioReceiver (純 Swift)
 ```
-[LAN multicast / WAN P2P / Relay]
+[relay.solun.art:5100 UDP]    ← AWS Tokyo (sole relay)
+           ↓
+[SDKAudioReceiver.swift]      ← SolunaSDK (sdk/swift/) を使用
+    ├── AVAudioSourceNode     — pull-based オーディオスレッド直結
+    ├── Lock-free SPSC Ring   — 192K Float mono (4秒 @ 48kHz)
+    ├── S24-in-S32LE decode   — scale 1.0/2^23 → Float
+    └── 100ms prefill         — バッファ蓄積後に再生開始
+           ↓
+[AVAudioEngine]               — システム音声出力
+           ↓
+[ContentView.swift]           — SwiftUI UI
+```
+
+### LAN マルチキャスト — C++ ブリッジ (レガシー)
+```
+[LAN multicast / WAN P2P]
            ↓
 [SolunaAudioReceiver (C++)]  ← AudioReceiverBridge.mm
     ├── SimpleRtpReceiver    — RTP/OSTP パケット受信・デコード
@@ -130,8 +146,6 @@ bundle exec fastlane build_local
            ↓ (コールバック)
 [AudioReceiver.swift]         — @Published stats → SwiftUI
     └── AVAudioEngine        — システム音声出力
-           ↓
-[ContentView.swift]           — SwiftUI UI (グループコード入力 + マイクボタン)
 ```
 
 ## ライセンス

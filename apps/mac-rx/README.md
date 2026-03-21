@@ -1,6 +1,9 @@
 # Soluna for Mac
 
+(旧名: SolunaReceiverMac)
+
 macOS 用ネットワークオーディオアプリ。**これ 1 つで送信・受信・WAN 接続すべてに対応。solunad は不要。**
+リレー音声の受信には SDKAudioReceiver (純 Swift、SolunaSDK) を使用。C++ ブリッジは LAN マルチキャスト用にのみ残存。
 
 ```
 ┌─ Soluna アプリ ─────────────────────────────────────────────┐

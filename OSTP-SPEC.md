@@ -5,8 +5,8 @@
 
 Network Working Group                                         Open Sonic
 Request for Comments: OSTP-1                                  Workgroup
-Category: Experimental                                   Version: 0.9.3
-                                                           2026-03-14
+Category: Experimental                                   Version: 0.10.0
+                                                           2026-03-19
 
               Open Sonic Transport Protocol (OSTP)
               =====================================
@@ -28,16 +28,21 @@ Copyright Notice
 
 ## Abstract
 
-   The Open Sonic Transport Protocol (OSTP) is a UDP-based audio
-   transport protocol designed for large-scale, one-to-many live audio
-   distribution. OSTP extends RTP [RFC 3550] with three orthogonal
+   The Open Sonic Transport Protocol (OSTP) is an audio transport
+   protocol designed for large-scale, one-to-many live audio
+   distribution. OSTP extends RTP [RFC 3550] with five orthogonal
    innovations: (1) a swarm distribution layer that allows listeners to
    optionally serve as relay nodes, reducing infrastructure cost at
    scale; (2) a protocol-level economic layer supporting micropayment
    charges, royalty distribution, and copyright fingerprinting without
-   an application-layer intermediary; and (3) a simple channel-name
+   an application-layer intermediary; (3) a simple channel-name
    addressing scheme compatible with both LAN multicast and WAN peer-
-   to-peer operation.
+   to-peer operation; (4) QUIC transport [RFC 9000] with Unreliable
+   Datagrams [RFC 9221] for encrypted WAN audio with connection
+   migration; and (5) Proof of Listen (PoL), a cryptographic proof
+   system that enables trustless play-count verification, relay mining
+   rewards, and listener micro-ownership of content (Stream-to-Own)
+   via on-chain Solana smart contracts.
 
    OSTP is NOT a replacement for WebRTC or AES67. It is complementary:
    WebRTC targets small-group bidirectional conferencing; AES67 targets
@@ -48,6 +53,27 @@ Copyright Notice
 ---
 
 ## Changelog
+
+### v0.10.0 (2026-03-19) — "Proof of Listen"
+- New: QUIC transport (RFC 9000) with Unreliable Datagrams (RFC 9221)
+       for WAN relay connections. TLS 1.3 encryption, connection migration,
+       NAT traversal without STUN/TURN. UDP multicast preserved for LAN.
+- New: Proof of Listen (PoL) — cryptographic proof that a listener received
+       a specific audio stream. SHA-256 hash chain over (seq, timestamp,
+       ssrc, crc32) tuples, Merkle root submitted to Solana for verification.
+       Eliminates need for trusted third-party play count reporting.
+- New: Relay Mining — bandwidth contribution tracking per QUIC connection.
+       Relay nodes earn ENAI tokens proportional to bytes forwarded.
+       Four tiers: Origin (1.0x), Region (0.5x), Edge (0.25x), Swarm (0.1x).
+       Anti-fraud: per-connection rate limits, PoL cross-validation.
+- New: Stream-to-Own — listeners accumulate micro-ownership of tracks
+       based on verified listen count (via PoL). 100 listens = 0.01%,
+       1000 = 0.1%, 10000+ = 1% royalty share. On-chain Solana program.
+- New: soluna-quic-bridge binary — QUIC-to-UDP bridge that runs alongside
+       existing C++ relay. Zero changes to relay; QUIC on :5101, UDP on :5100.
+- New: Solana program (FFpQXWd6U1h86PZ39UoCwMPi7i9TXL6EVE41x1PqHnCi)
+       with 6 instructions: Initialize, SubmitProof, RegisterRelay,
+       ClaimRelayReward, RegisterTrack, UpdateOwnership.
 
 ### v0.9.3 (2026-03-16)
 - Fix: media_timestamp changed from μs to ms precision (32-bit ms = ~49 days)
@@ -127,6 +153,24 @@ Copyright Notice
        10.3. FEC and Packet Recovery
    11. Security Considerations
        11.1. DTLS-SRTP
+   12. QUIC Transport (v0.10)
+       12.1. QUIC Unreliable Datagrams for Audio
+       12.2. QUIC Reliable Streams for Control
+       12.3. QUIC-to-UDP Bridge Architecture
+       12.4. Connection Migration
+   13. Proof of Listen (PoL)
+       13.1. Hash Chain Construction
+       13.2. Merkle Tree and Root
+       13.3. On-Chain Submission
+       13.4. Verification
+   14. Relay Mining
+       14.1. Traffic Metering
+       14.2. Tier-Based Rewards
+       14.3. Anti-Fraud Measures
+   15. Stream-to-Own
+       15.1. Ownership Thresholds
+       15.2. Track Registration
+       15.3. Royalty Distribution
        11.2. Session Tokens
        11.3. Rate Limiting
        11.4. Economic Security
@@ -514,6 +558,7 @@ Copyright Notice
 
    | PT  | Codec | Clock Rate | Channels | Description              |
    |-----|-------|-----------|----------|--------------------------|
+   | 96  | Raw   | 48000     | 1/2      | S24-in-S32LE PCM (24-bit audio in 32-bit int container, NOT packed 24-bit). Used by soluna-radio-cpp and Raw First strategy. Scale: 1.0/2^23 |
    | 111 | Opus  | 48000     | 2        | Stereo Opus (RECOMMENDED)|
    | 112 | Opus  | 48000     | 1        | Mono Opus                |
    | 113 | FLAC  | 48000     | 2        | Stereo FLAC (OPTIONAL)   |
@@ -537,7 +582,8 @@ Copyright Notice
    **Protocol sequence:**
 
    ```
-   Time 0ms:   TX sends PT=96 (raw S24_LE PCM), max 480 samples
+   Time 0ms:   TX sends PT=96 (raw S24-in-S32LE PCM), max 480 samples
+               24-bit audio in 32-bit int container (NOT packed 24-bit)
                RX plays immediately via DMA — zero decode latency
                RX captures last sample as ADPCM valprev initializer
 
@@ -2835,6 +2881,184 @@ Copyright Notice
 
 ---
 
+## 12. QUIC Transport
+
+### 12.1. QUIC Unreliable Datagrams for Audio
+
+   OSTP v0.10 adds QUIC (RFC 9000) as an alternative WAN transport.
+   Audio packets are carried as QUIC Unreliable Datagrams (RFC 9221),
+   preserving the fire-and-forget semantics of UDP. Late packets are
+   not retransmitted, matching real-time audio requirements.
+
+   ```
+   QUIC Connection (TLS 1.3, 0-RTT resumption)
+   ├── Datagram (unreliable) → OSTP/RTP audio packets (same format as UDP)
+   ├── Stream 0 (reliable)   → Control: JOIN, HELLO, META, TEXT, etc.
+   └── Stream N (reliable)   → File transfers, bulk data
+   ```
+
+   The OSTP packet format inside QUIC datagrams is identical to UDP:
+   RTP Header (12B) + Extension (4B) + OSTP Header (8B) + Payload + CRC-32.
+
+### 12.2. QUIC Reliable Streams for Control
+
+   Control messages (JOIN, HELLO, META, SYNC, etc.) are sent as QUIC
+   unidirectional streams. Each message is a single stream, opened and
+   finished immediately. This provides guaranteed delivery without
+   head-of-line blocking between independent messages.
+
+### 12.3. QUIC-to-UDP Bridge Architecture
+
+   To avoid modifying the existing relay server, a QUIC bridge process
+   runs alongside it:
+
+   ```
+   QUIC Client ←→ [soluna-quic-bridge :5101] ←UDP→ [soluna-relay :5100]
+   UDP  Client ←→ [soluna-relay :5100]          (unchanged)
+   ```
+
+   The bridge allocates a dedicated UDP socket per QUIC connection,
+   ensuring relay responses are routed to the correct client. Audio
+   datagrams are forwarded as-is; control messages are extracted from
+   QUIC streams and sent as UDP packets.
+
+### 12.4. Connection Migration
+
+   QUIC connection IDs allow seamless migration between networks
+   (e.g., Wi-Fi → cellular). The audio stream continues without
+   interruption, unlike UDP where a new NAT binding requires
+   re-establishing the relay connection.
+
+---
+
+## 13. Proof of Listen (PoL)
+
+### 13.1. Hash Chain Construction
+
+   Each received OSTP packet contributes to a cryptographic hash chain:
+
+   ```
+   genesis = SHA-256("soluna:pol:v1:" || channel_name)
+   tip[0]  = genesis
+   tip[n]  = SHA-256(tip[n-1] || record[n])
+
+   record[n] = seq(2B) || timestamp(4B) || ssrc(4B) ||
+               payload_crc(4B) || received_at_ms(8B)    [22 bytes]
+   ```
+
+   The hash chain is append-only and order-dependent. Two listeners
+   receiving the same packets in the same order produce identical chains.
+   Different reception order (packet reordering) produces different chains,
+   allowing detection of fabricated proofs.
+
+### 13.2. Merkle Tree and Root
+
+   Leaf hashes (each tip[n]) are accumulated and periodically combined
+   into a Merkle tree. The root is a 32-byte summary of all received
+   packets in the period.
+
+   Merkle proofs allow verifying individual records without revealing
+   the entire listening history (privacy-preserving).
+
+### 13.3. On-Chain Submission
+
+   The Merkle root is submitted to Solana via the `SubmitProof` instruction:
+
+   ```
+   Account: ListenProof PDA ["pol", listener_pubkey, channel_bytes]
+   Data: merkle_root(32B) || chain_tip(32B) || record_count(8B) || channel(32B)
+   ```
+
+   Submission frequency: recommended once per hour. At ~0.000005 SOL per
+   transaction, 24 submissions/day costs ~0.00012 SOL/day (~$0.02/day).
+
+### 13.4. Verification
+
+   Artists submit their own hash chains (from the sender side). A verifier
+   compares sender and receiver Merkle roots. Matching roots prove the
+   listener received the authentic stream.
+
+---
+
+## 14. Relay Mining
+
+### 14.1. Traffic Metering
+
+   The QUIC bridge tracks per-connection statistics:
+   - `audio_bytes`: total QUIC datagram bytes forwarded
+   - `control_bytes`: total QUIC stream bytes forwarded
+   - `unique_packets`: deduplicated packet count (by SSRC + seq)
+   - `uptime_secs`: connection duration
+
+### 14.2. Tier-Based Rewards
+
+   Relay operators earn ENAI tokens proportional to bytes forwarded:
+
+   ```
+   reward = bytes_relayed × 1e-9 × tier_multiplier  [ENAI]
+
+   Tier         Multiplier   Example (1 hour, 170MB)
+   Origin       1.0x         0.17 ENAI
+   Region       0.5x         0.085 ENAI
+   Edge         0.25x        0.0425 ENAI
+   P2P Swarm    0.1x         0.017 ENAI
+   ```
+
+   Maximum reward: 10 ENAI per connection per hour (anti-abuse).
+
+### 14.3. Anti-Fraud Measures
+
+   1. Per-connection rate limiting (max 10 ENAI/hour)
+   2. SSRC deduplication (same packet counted once)
+   3. PoL cross-validation (claimed bytes must have corresponding PoL proofs)
+   4. Minimum 1-hour interval between on-chain reward claims
+
+---
+
+## 15. Stream-to-Own
+
+### 15.1. Ownership Thresholds
+
+   Listeners accumulate micro-ownership based on verified listen count:
+
+   ```
+   Listens        Ownership (basis points, 10000 = 100%)
+   < 100          0
+   100 – 999      1   (0.01%)
+   1000 – 9999    10  (0.1%)
+   10000+         100 (1.0%, capped)
+   ```
+
+   Ownership is tracked on-chain in the `ListenProof` account and
+   aggregated in the `TrackRegistry` account.
+
+### 15.2. Track Registration
+
+   Artists register tracks via the `RegisterTrack` instruction:
+
+   ```
+   Account: TrackRegistry PDA ["track", content_hash]
+   Data: content_hash(32B)
+   ```
+
+   The `content_hash` is SHA-256 of the original audio file, linking
+   the on-chain record to the off-chain content.
+
+### 15.3. Royalty Distribution
+
+   When royalties are deposited into the track's pool, they are
+   distributed proportionally to all ownership shareholders:
+
+   ```
+   listener_share = ownership_bps / total_ownership_bps × pool_amount
+   ```
+
+   This creates aligned incentives: early and dedicated listeners earn
+   more, artists benefit from wider distribution, and the system
+   operates without a centralized intermediary.
+
+---
+
 ## Appendix C. Channel Naming Grammar
 
    Channel names MUST conform to the following ABNF grammar (RFC 5234):
@@ -2866,4 +3090,4 @@ Copyright Notice
 ---
 
 *End of OSTP-SPEC.md*
-*Revision: 0.9.3 DRAFT — Not for production deployment without review*
+*Revision: 0.10.0 DRAFT — Not for production deployment without review*

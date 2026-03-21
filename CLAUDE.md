@@ -9,9 +9,12 @@ OSTプロトコル（RTPベース）でP2Pメッシュ + WANリレー。
 | コンポーネント | パス | 言語 | デプロイ先 |
 |-------------|------|------|----------|
 | **solunad** (TX daemon) | `apps/daemon/main.cpp` | C++ | Mac ローカル |
-| **soluna-relay** (WAN relay) | `apps/relay/main.cpp` | C++ | Fly.io `soluna-relay` |
-| **Soluna.app** (Mac GUI) | `apps/mac-rx/` | Swift | .pkg/.dmg/.app |
+| **soluna-relay** (WAN relay) | `apps/relay/main.cpp` | C++ | AWS Tokyo (relay.solun.art:5100 UDP) |
+| **soluna-quic-bridge** | `crates/soluna-quic-relay/` | Rust | AWS Tokyo (alongside relay) |
+| **soluna-radio-cpp** (自動配信) | `apps/radio/` | C++ | AWS Tokyo (7 channels) |
+| **Soluna** (Mac GUI) | `apps/mac-rx/` | Swift | .pkg/.dmg/.app |
 | **SolunaReceiver** (iOS) | `apps/ios/` | Swift | TestFlight / App Store |
+| **SolunaSDK** | `sdk/swift/` | Swift (SPM) | iOS / macOS shared library (57+ sources) |
 | **Web** (landing + dashboard) | `web/`, `deploy/` | HTML/JS | Fly.io `soluna-web` |
 | **Core library** | `CMakeLists.txt` | C++ | 全プラットフォーム共有 |
 
@@ -69,10 +72,11 @@ cp -r web/* deploy/web/
 cd deploy && fly deploy -a soluna-web
 ```
 
-### Relay デプロイ（3リージョン）
+### Relay デプロイ（AWS Tokyo）
 ```bash
-cd apps/relay && fly deploy -a soluna-relay
-# 追加リージョン: fly machine clone <id> --region lax/ams -a soluna-relay
+# Relay is on AWS Tokyo (relay.solun.art:5100 UDP)
+# Hetzner VPS: DELETED. Fly.io relay: STOPPED. AWS is sole relay.
+ssh ubuntu@relay.solun.art  # manage relay + radio processes
 ```
 
 ## Protocol Support
@@ -98,8 +102,13 @@ cmake --build build
 ```
 
 ### チャンネル数
-TX が OSTP stream_id ヘッダの上位4ビットでチャンネル数をエンコード。RX は自動検出。
-- 1ch (Mono), 2ch (Stereo/default), 6ch (5.1), 8ch (7.1)
+TX が OSTP stream_id ヘッダ bits[11:8] でチャンネル数をエンコード。RX は自動検出。
+- 0=1ch (Mono), 1=2ch (Stereo/default), 2=6ch (5.1), 3=8ch (7.1)
+
+### プロトコル要点
+- **OSTP/RTP**: PT=96 for S24-in-S32LE (24-bit audio in 32-bit int container, NOT packed 24-bit)
+- **CRC-32 trailer** (4 bytes) at end of every packet
+- **OSTP extension profile**: 0x4F53 ("OS") with stream_id for channel count
 
 ## 署名 & Notarize
 
@@ -140,10 +149,10 @@ codesign --verify --deep --strict Soluna-mac.dmg
 | Relay API | https://relay.solun.art | チャンネルページ `/c/<name>` |
 | GitHub | github.com/yukihamada/opensonic | ソースコード + Releases |
 
-### リレーリージョン
-- **nrt** (Tokyo) — primary
-- **lax** (Los Angeles)
-- **ams** (Amsterdam)
+### リレーインフラ
+- **AWS Tokyo** — sole relay (relay.solun.art:5100 UDP)
+- Hetzner VPS: DELETED
+- Fly.io relay: STOPPED
 
 ## 収益分配
 - 権利者: 70%
@@ -185,11 +194,54 @@ codesign --verify --deep --strict Soluna-mac.dmg
 | `/for-events` | `for-events.html` | `location = /for-events` |
 | `/for-developers` | `for-developers.html` | `location = /for-developers` |
 
+## ラジオ配信インフラ (AWS Tokyo)
+
+本番の音声配信は **AWS Tokyo** (relay.solun.art) で稼働。C++ バイナリ `soluna-radio-cpp` が各チャンネルを配信。
+
+### プロセス構成
+```
+soluna-relay (port 5100)        ← WAN リレーサーバ本体
+  ↑ localhost UDP
+soluna-radio-cpp × 7            ← 各チャンネルの自動配信 (S24 PT=96)
+  ↑ ffmpeg (MP3 → s32le 48kHz mono)
+/data/music/{genre}/*.mp3       ← 音源ファイル
+```
+
+### チャンネル一覧（全て kFreeNames — 誰でも DJ ロール取得可）
+| チャンネル | 音源ディレクトリ |
+|-----------|----------------|
+| bjj | `/data/music/bjj/` |
+| soluna | `/data/music/soluna/` |
+| jazz | `/data/music/jazz/` |
+| chill | `/data/music/chill/` |
+| lofi | `/data/music/lofi/` |
+| dance | `/data/music/dance/` |
+| yuki | `/data/music/yuki/` |
+
+### 起動
+- `soluna-radio-all.sh` が全チャンネルを一括起動
+- 各 `soluna-radio-cpp --dir <dir> --relay 127.0.0.1:5100 --channel <name>`
+
+### 注意
+- 音源追加は AWS の `/data/music/<genre>/` に MP3 を置くだけ
+- YouTube からの直接DL機能はない（Mac solunad のシステム音声キャプチャか、ローカルMP3再生）
+
+## 音声再生アーキテクチャ (iOS/Mac)
+
+iOS/Mac アプリはリレー音声の再生に **SDKAudioReceiver** (純 Swift) を使用。旧 C++ ブリッジは廃止。
+
+### SDKAudioReceiver の設計
+- **AVAudioSourceNode** (pull-based) でオーディオスレッドから直接サンプル供給
+- **Lock-free SPSC mono ring buffer**: 192K Float (4秒 @ 48kHz)
+- **S24-in-S32LE デコード**: 24-bit 音声が 32-bit int コンテナに格納。スケール `1.0 / 2^23`
+- **100ms prefill threshold**: バッファが 100ms 分溜まるまで無音出力、その後再生開始
+- C++ AudioReceiverBridge は LAN マルチキャスト用に残存
+
 ## よくあるミス
 - **x86_64ビルドのopusリンクエラー**: arm64ビルドのみで回避
 - **PKG署名なし → Gatekeeper拒否**: `build-pkg.sh` はデフォルトで署名する
 - **Notarize失敗**: `notarytool-profile` のcredentialsが未設定。上記セットアップ手順を参照
 - **ペルソナページのリンク**: `yukihamada/opensonic` (enablerdaoではない)
 - **Webデプロイ**: `web/` を直接デプロイせず `deploy/web/` にコピーしてから `deploy/` でデプロイ
-- **リレーhost**: `relay.solun.art` (旧: 46.225.77.119)
+- **リレーhost**: `relay.solun.art` (AWS Tokyo。旧 Hetzner/Fly.io は廃止)
 - **DMGは*.dmgが.gitignoreされない**: `.gitignore` に `*.pkg` `*.zip` あるが `*.dmg` を追加すべき
