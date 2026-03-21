@@ -142,6 +142,17 @@ struct ContentView: View {
             receiver.toggleMic()
         }
     }
+    private let channelOrder = ["soluna", "jazz", "lofi", "chill", "dance", "bjj", "yuki"]
+    private func switchNextChannel() {
+        if let idx = channelOrder.firstIndex(of: currentChannelName) {
+            switchChannel(channelOrder[(idx + 1) % channelOrder.count])
+        }
+    }
+    private func switchPrevChannel() {
+        if let idx = channelOrder.firstIndex(of: currentChannelName) {
+            switchChannel(channelOrder[(idx - 1 + channelOrder.count) % channelOrder.count])
+        }
+    }
     private func loadSavedSettings() {
         let d = UserDefaults.standard
         if let g = d.string(forKey: "multicastGroup"), !g.isEmpty { receiver.multicastGroup = g }
@@ -552,53 +563,36 @@ struct ContentView: View {
                         Text("Tap a channel to start").font(.subheadline).foregroundColor(.white.opacity(0.25))
                     }
                 }
-                if isPlaying {
-                    HStack(spacing: 16) {
-                        ZStack {
-                            Circle().fill(RadialGradient(colors: [.solunaSol.opacity(0.6), .solunaLuna.opacity(0.3), .clear],
-                                                         center: .center, startRadius: 5, endRadius: 40))
-                                .frame(width: 72, height: 72)
-                            if let url = receiver.nowPlayingArtwork {
-                                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: {
-                                    Image(systemName: "music.note").font(.system(size: 24)).foregroundColor(.white.opacity(0.5))
-                                }.frame(width: 60, height: 60).clipShape(Circle())
-                            } else {
-                                Image(systemName: "music.note").font(.system(size: 24)).foregroundColor(.white.opacity(0.6))
-                            }
-                        }.shadow(color: .black.opacity(0.3), radius: 8)
-                        WaveformVisualizer(level: receiver.outputLevel).frame(height: 100).opacity(0.8)
-                    }.padding(.horizontal, 20)
-                }
+                // Compact: no large artwork or waveform when playing
             }.clipShape(RoundedRectangle(cornerRadius: 20))
 
-            VStack(spacing: 4) {
+            VStack(spacing: 2) {
                 Text(receiver.nowPlayingTitle ?? currentChannelName.capitalized)
-                    .font(.system(size: 22, weight: .bold)).foregroundColor(.white).lineLimit(1)
-                Text(receiver.nowPlayingArtist ?? (isPlaying ? "Now streaming" : "Ready to play"))
-                    .font(.system(size: 15)).foregroundColor(.white.opacity(0.5)).lineLimit(1)
+                    .font(.system(size: 17, weight: .bold)).foregroundColor(.white).lineLimit(1)
+                Text(receiver.nowPlayingArtist ?? (isPlaying ? "Streaming" : "Ready"))
+                    .font(.system(size: 13)).foregroundColor(.white.opacity(0.5)).lineLimit(1)
             }
             if isPlaying {
                 AudioVisualizerView(barCount: 32, isPlaying: isPlaying)
                     .frame(height: 30)
                     .padding(.horizontal, 8)
             }
-            HStack(spacing: 32) {
-                Button {} label: { Image(systemName: "backward.fill").font(.system(size: 20)).foregroundColor(.white.opacity(0.4)) }
+            HStack(spacing: 24) {
+                Button { switchPrevChannel() } label: { Image(systemName: "backward.fill").font(.system(size: 16)).foregroundColor(.white.opacity(0.4)) }
                 Button(action: togglePlayback) {
                     ZStack {
                         if receiver.state == .connecting {
-                            ProgressView().tint(.white).scaleEffect(1.2).frame(width: 72, height: 72)
+                            ProgressView().tint(.white).scaleEffect(1.0).frame(width: 52, height: 52)
                         } else {
                             Circle().fill(isPlaying ? LinearGradient.solGradient : LinearGradient.lunaGradient)
-                                .frame(width: 72, height: 72)
-                                .shadow(color: isPlaying ? .solunaSol.opacity(0.4) : .solunaLuna.opacity(0.4), radius: 12, y: 4)
+                                .frame(width: 52, height: 52)
                             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 28, weight: .bold)).foregroundColor(.white)
+                                .font(.system(size: 22, weight: .bold)).foregroundColor(.white)
                                 .offset(x: isPlaying ? 0 : 2)
                         }
                     }
                 }.buttonStyle(.plain)
-                Button {} label: { Image(systemName: "forward.fill").font(.system(size: 20)).foregroundColor(.white.opacity(0.4)) }
+                Button { switchNextChannel() } label: { Image(systemName: "forward.fill").font(.system(size: 16)).foregroundColor(.white.opacity(0.4)) }
             }
             if isPlaying {
                 HStack(spacing: 6) {
