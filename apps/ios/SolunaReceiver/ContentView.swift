@@ -463,7 +463,83 @@ struct ContentView: View {
             nowPlayingArea.padding(.horizontal, 16)
             volumeControl.padding(.horizontal, 16)
             quickActions.padding(.horizontal, 16)
+            if isPlaying { liveFeed.padding(.horizontal, 16) }
         }.padding(.bottom, 16)
+    }
+
+    // MARK: - Live Feed (bottom card — the "wow" factor)
+
+    private var liveFeed: some View {
+        VStack(spacing: 8) {
+            // Live visualizer bar
+            AudioVisualizerView(barCount: 48, isPlaying: isPlaying)
+                .frame(height: 24)
+
+            // Social presence
+            HStack(spacing: 6) {
+                // Animated listening dots
+                HStack(spacing: -6) {
+                    ForEach(0..<min(5, max(1, socialListening.count(for: currentChannelName))), id: \.self) { i in
+                        Circle()
+                            .fill(Color(hue: Double(i) * 0.15, saturation: 0.6, brightness: 0.9))
+                            .frame(width: 20, height: 20)
+                            .overlay(Circle().stroke(Color.black, lineWidth: 1.5))
+                    }
+                }
+                let count = socialListening.count(for: currentChannelName)
+                if count > 0 {
+                    Text("\(count) listening now")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                } else {
+                    Text("You're the first here")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                Spacer()
+                // Sync indicator
+                HStack(spacing: 3) {
+                    Circle().fill(.green).frame(width: 4, height: 4)
+                    Text("SYNC")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(.green.opacity(0.7))
+                }
+            }
+
+            // Last chat message preview
+            if let lastMsg = chatManager.messages.last {
+                HStack(spacing: 6) {
+                    Image(systemName: "bubble.left.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.3))
+                    Text("\(lastMsg.sender): \(lastMsg.text)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.5))
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .onTapGesture { showChat = true }
+            }
+
+            // Stats bar
+            HStack(spacing: 16) {
+                HStack(spacing: 4) {
+                    Image(systemName: "waveform").font(.system(size: 9))
+                    Text("48kHz").font(.system(size: 10, design: .monospaced))
+                }.foregroundColor(.white.opacity(0.25))
+                HStack(spacing: 4) {
+                    Image(systemName: "clock").font(.system(size: 9))
+                    Text("\(receiver.sdkReceiver?.bufferFillMs ?? 0)ms").font(.system(size: 10, design: .monospaced))
+                }.foregroundColor(.white.opacity(0.25))
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.down").font(.system(size: 9))
+                    Text("\(receiver.sdkReceiver?.packetsPerSec ?? 0)pps").font(.system(size: 10, design: .monospaced))
+                }.foregroundColor(.white.opacity(0.25))
+                Spacer()
+            }
+        }
+        .padding(12)
+        .glassCard()
     }
 
     // MARK: - Channel Grid
