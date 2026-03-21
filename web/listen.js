@@ -165,23 +165,41 @@
     stopVisualizer();
   }
 
-  // ── Decode S24-in-S32LE → Float32 ───────────────────────────
-  function decodeS24inS32LE(data) {
-    // Each sample is 4 bytes (32-bit int), but only 24 bits are significant.
-    // S24-in-S32LE: the 24-bit sample is stored in the upper 24 bits of the 32-bit word,
-    // OR in some implementations in the lower 24 bits. We handle the standard case:
-    // bits [31:8] contain the 24-bit audio, bits [7:0] are zero padding.
-    // However, the relay sends samples where the 24-bit value occupies bits [23:0].
+  // ── Decode OSTP/RTP packet → Float32 (matches iOS SDKAudioReceiver) ──
+  function decodeOSTPPacket(data) {
+    const bytes = new Uint8Array(data);
+    const n = bytes.length;
+    if (n < 12) return;
+
+    // RTP version check
+    if ((bytes[0] & 0xC0) !== 0x80) return;
+
+    // Only handle PT=96 (S24-in-S32LE)
+    const pt = bytes[1] & 0x7F;
+    if (pt !== 96) return;
+
+    // Parse extension header offset
+    let off = 12;
+    if ((bytes[0] & 0x10) !== 0 && n >= 16) {
+      const extLen = (bytes[14] << 8 | bytes[15]) * 4;
+      off = 16 + extLen;
+      if (off >= n) return;
+    }
+
+    // Strip CRC-32 trailer (last 4 bytes)
+    const end = n - 4;
+    if (end <= off) return;
+
+    // Decode S24-in-S32LE samples
     const view = new DataView(data);
-    const sampleCount = Math.floor(data.byteLength / 4);
-    const scale = 1.0 / 8388608.0; // 1 / 2^23
+    const scale = 1.0 / 8388608.0;
+    const sampleCount = Math.floor((end - off) / 4);
+    if (sampleCount <= 0) return;
 
     const samples = new Float32Array(sampleCount);
     for (let i = 0; i < sampleCount; i++) {
-      let val = view.getInt32(i * 4, true);
-      if (val > 8388607) val -= 16777216;
-      if (val < -8388608) val = -8388608;
-      samples[i] = Math.max(-1.0, Math.min(1.0, val * scale));
+      const val = view.getInt32(off + i * 4, true);
+      samples[i] = val * scale;
     }
 
     // Send to AudioWorklet processor
@@ -228,7 +246,7 @@
 
     ws.onmessage = function (event) {
       if (event.data instanceof ArrayBuffer && event.data.byteLength > 0) {
-        decodeS24inS32LE(event.data);
+        decodeOSTPPacket(event.data);
       } else if (typeof event.data === 'string') {
         // Possibly JSON control message (listener count, etc.)
         try {
