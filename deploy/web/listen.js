@@ -129,42 +129,33 @@
     analyser.connect(audioCtx.destination);
   }
 
-  // ── ScriptProcessorNode for audio output ─────────────────────
-  // (AudioWorklet would be preferred but requires HTTPS + separate file)
-  let scriptNode = null;
+  // ── AudioWorklet for audio output ────────────────────────────
+  let workletNode = null;
+  let workletReady = false;
 
-  function startAudioOutput() {
-    if (scriptNode) return;
+  async function startAudioOutput() {
+    if (workletNode) return;
     ensureAudioContext();
+    if (!audioCtx) return;
 
-    const bufSize = 2048;
-    scriptNode = audioCtx.createScriptProcessor(bufSize, 1, 1);
-    scriptNode.onaudioprocess = function (e) {
-      const output = e.outputBuffer.getChannelData(0);
-      if (!prefillReached) {
-        // Output silence while buffering
-        output.fill(0);
-        return;
+    try {
+      if (!workletReady) {
+        await audioCtx.audioWorklet.addModule('/soluna-worklet.js');
+        workletReady = true;
       }
-      for (let i = 0; i < output.length; i++) {
-        if (bufferedSamples > 0) {
-          output[i] = ringBuffer[readPos];
-          readPos = (readPos + 1) % ringBuffer.length;
-          bufferedSamples--;
-        } else {
-          output[i] = 0;
-        }
-      }
-    };
-    scriptNode.connect(gainNode);
+      workletNode = new AudioWorkletNode(audioCtx, 'soluna-processor', {
+        outputChannelCount: [1]
+      });
+      workletNode.connect(gainNode);
     audioStarted = true;
     startVisualizer();
   }
 
   function stopAudioOutput() {
-    if (scriptNode) {
-      scriptNode.disconnect();
-      scriptNode = null;
+    if (workletNode) {
+      workletNode.port.postMessage({ type: 'reset' });
+      workletNode.disconnect();
+      workletNode = null;
     }
     audioStarted = false;
     stopVisualizer();
@@ -181,27 +172,24 @@
     const sampleCount = Math.floor(data.byteLength / 4);
     const scale = 1.0 / 8388608.0; // 1 / 2^23
 
+    const samples = new Float32Array(sampleCount);
     for (let i = 0; i < sampleCount; i++) {
-      // Read as signed 32-bit LE, then extract 24-bit value
-      let val = view.getInt32(i * 4, true); // little-endian
-      // If the value is in lower 24 bits (common for S24-in-S32LE from OSTP):
-      // Sign-extend from 24 bits
+      let val = view.getInt32(i * 4, true);
       if (val > 8388607) val -= 16777216;
       if (val < -8388608) val = -8388608;
-      const sample = val * scale;
-
-      ringBuffer[writePos] = Math.max(-1.0, Math.min(1.0, sample));
-      writePos = (writePos + 1) % ringBuffer.length;
-      bufferedSamples++;
+      samples[i] = Math.max(-1.0, Math.min(1.0, val * scale));
     }
 
-    // Cap buffer to avoid overflow
+    // Send to AudioWorklet processor
+    if (workletNode) {
+      workletNode.port.postMessage({ type: 'samples', samples: samples });
+    }
+
+    bufferedSamples += sampleCount;
     if (bufferedSamples > ringBuffer.length) {
       bufferedSamples = ringBuffer.length;
-      readPos = (writePos + 1) % ringBuffer.length;
     }
 
-    // Check prefill
     if (!prefillReached && bufferedSamples >= PREFILL_SAMPLES) {
       prefillReached = true;
       bufferStatus.textContent = 'Playing';
@@ -268,6 +256,7 @@
     prefillReached = false;
     bufferStatus.textContent = 'Buffering...';
     bufferFill.style.width = '0%';
+    if (workletNode) workletNode.port.postMessage({ type: 'reset' });
   }
 
   function setStatus(state) {
@@ -305,8 +294,14 @@
   }
 
   function fetchListenerCount() {
-    // Relay API lacks CORS headers — skip fetch entirely to avoid console errors
-    listenerCount.textContent = '--';
+    fetch(`https://relay.solun.art/api/channels/${encodeURIComponent(currentChannel)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && data.listeners !== undefined) {
+          listenerCount.textContent = data.listeners;
+        }
+      })
+      .catch(() => { listenerCount.textContent = '--'; });
   }
 
   // ── Visualizer ───────────────────────────────────────────────
@@ -358,11 +353,11 @@
   }
 
   // ── Play / Stop toggle ───────────────────────────────────────
-  function play() {
+  async function play() {
     if (isPlaying) return;
     isPlaying = true;
     ensureAudioContext();
-    startAudioOutput();
+    await startAudioOutput();
     connectWS();
     startListenerPoll();
     iconPlay.style.display = 'none';
