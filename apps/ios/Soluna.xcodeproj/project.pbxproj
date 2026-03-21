@@ -50,6 +50,10 @@
 		GD0001 /* GlobalDeviceRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = GD0002 /* GlobalDeviceRegistry.swift */; };
 		GD0003 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GD0004 /* DevicePickerView.swift */; };
 		SDK0001 /* SDKAudioReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = SDK0002 /* SDKAudioReceiver.swift */; };
+		SI0001 /* SolunaAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = SI0002 /* SolunaAppIntents.swift */; };
+		SP0001 /* SolunaSharePlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = SP0002 /* SolunaSharePlay.swift */; };
+		LA0001 /* SolunaLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = LA0002 /* SolunaLiveActivity.swift */; };
+		WD0001 /* SolunaWidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = WD0002 /* SolunaWidgetData.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -100,6 +104,10 @@
 		GD0002 /* GlobalDeviceRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalDeviceRegistry.swift; sourceTree = "<group>"; };
 		GD0004 /* DevicePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerView.swift; sourceTree = "<group>"; };
 		SDK0002 /* SDKAudioReceiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SDKAudioReceiver.swift; sourceTree = "<group>"; };
+		SI0002 /* SolunaAppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaAppIntents.swift; sourceTree = "<group>"; };
+		SP0002 /* SolunaSharePlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaSharePlay.swift; sourceTree = "<group>"; };
+		LA0002 /* SolunaLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaLiveActivity.swift; sourceTree = "<group>"; };
+		WD0002 /* SolunaWidgetData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaWidgetData.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -174,6 +182,10 @@
 				3912EE0272B3745D632C8F76 /* Localizable.strings */,
 				B166E631689F90681DD54AF6 /* Localizable.strings */,
 				87F680EAEE236C3DDDD1629D /* DebugOverlayView.swift */,
+				SI0002 /* SolunaAppIntents.swift */,
+				LA0002 /* SolunaLiveActivity.swift */,
+				WD0002 /* SolunaWidgetData.swift */,
+							SP0002 /* SolunaSharePlay.swift */,
 			);
 			path = SolunaReceiver;
 			sourceTree = "<group>";
@@ -348,6 +360,10 @@
 				72B3F903C8DFA302D5966538 /* FanRankView.swift in Sources */,
 				6C78037D978889FF7F06E378 /* SubscriptionView.swift in Sources */,
 				686442C6CC0867389F0F0E70 /* DebugOverlayView.swift in Sources */,
+				SI0001 /* SolunaAppIntents.swift in Sources */,
+				LA0001 /* SolunaLiveActivity.swift in Sources */,
+				WD0001 /* SolunaWidgetData.swift in Sources */,
+				SP0001 /* SolunaSharePlay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

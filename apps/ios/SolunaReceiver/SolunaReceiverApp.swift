@@ -97,6 +97,12 @@ struct SolunaReceiverApp: App {
                     hasChosenChannel = true
                 }
             }
+            .onContinueUserActivity("art.solun.channel") { activity in
+                if let ch = activity.userInfo?["channel"] as? String, !ch.isEmpty {
+                    deepLink.pendingChannel = ch
+                    hasChosenChannel = true
+                }
+            }
         }
         .onChange(of: scenePhase) { phase in
             switch phase {

@@ -6,6 +6,8 @@ import SwiftUI
 import MultipeerConnectivity
 import UniformTypeIdentifiers
 import MediaPlayer
+import ActivityKit
+import GroupActivities
 
 enum SolunaTab: String, CaseIterable {
     case listen, mic, profile
@@ -57,6 +59,7 @@ struct ContentView: View {
     @State private var selectedTab: SolunaTab = .listen
     @State private var micChannel: String = ""
     @State private var micMode: Int = 0  // 0=Local(LAN), 1=Global(Relay), 2=Karaoke(ローカルミックス)
+    @ObservedObject private var sharePlayManager = SharePlayManager.shared
 
     private var recentChannels: [String] {
         (try? JSONDecoder().decode([String].self, from: Data(recentChannelsJSON.utf8))) ?? []
@@ -95,10 +98,17 @@ struct ContentView: View {
         if receiver.state == .stopped || receiver.state == .error { receiver.start() }
         else { receiver.connectRelay(group: ch) }
         updateNowPlaying()
+        updateLiveActivity()
+        updateWidgetData()
+        SharePlayManager.shared.sendChannelChange(ch)
     }
     private func togglePlayback() {
         if receiver.state == .receiving { receiver.stop() } else { receiver.start() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { updateNowPlaying() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            updateNowPlaying()
+            updateLiveActivity()
+            updateWidgetData()
+        }
     }
     private func toggleMic() {
         if receiver.state == .stopped || receiver.state == .error { receiver.start() }
@@ -170,6 +180,50 @@ struct ContentView: View {
         MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
     }
 
+    // MARK: - Live Activity & Widget
+
+    private var channelEmoji: String {
+        let emojis: [String: String] = [
+            "soluna": "☀️", "jazz": "🎹", "lofi": "🎧",
+            "chill": "🍃", "dance": "⚡", "bjj": "🥋", "yuki": "❄️"
+        ]
+        return emojis[currentChannelName] ?? "📻"
+    }
+
+    private func updateLiveActivity() {
+        if #available(iOS 16.2, *) {
+            let mgr = LiveActivityManager.shared
+            if isPlaying {
+                if mgr.isSupported {
+                    mgr.start(channel: currentChannelName, emoji: channelEmoji)
+                }
+                mgr.update(
+                    channel: currentChannelName,
+                    isPlaying: true,
+                    packets: receiver.packetsReceived
+                )
+            } else {
+                mgr.stop()
+            }
+        }
+    }
+
+    private func updateWidgetData() {
+        let wd = SolunaWidgetData.shared
+        if isPlaying {
+            wd.update(
+                channel: currentChannelName,
+                emoji: channelEmoji,
+                isPlaying: true,
+                packetsReceived: receiver.packetsReceived,
+                trackTitle: receiver.nowPlayingTitle,
+                trackArtist: receiver.nowPlayingArtist
+            )
+        } else {
+            wd.clear()
+        }
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -218,6 +272,9 @@ struct ContentView: View {
 
             // Now Playing + media keys (AirPods, lock screen, Control Center)
             setupNowPlaying()
+
+            // SharePlay session observer
+            SharePlayManager.shared.observeSessions()
             Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
                 Task { @MainActor in
                     speakers.applyServerRxDelay()
@@ -227,6 +284,9 @@ struct ContentView: View {
                         lastListenRecordTime = Date()
                         FanRankManager.shared.recordListen(channel: UserDefaults.standard.string(forKey: "channel") ?? "soluna")
                     }
+                    // Periodic Live Activity & Widget data refresh
+                    updateLiveActivity()
+                    updateWidgetData()
                 }
             }
             playerModel.daemon = speakers.primaryDaemon
@@ -236,6 +296,34 @@ struct ContentView: View {
             guard let ch, !ch.isEmpty else { return }; deepLink.pendingChannel = nil; switchChannel(ch)
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: receiver.state.rawValue)
+        // MARK: - Siri Intent Observers
+        .onReceive(NotificationCenter.default.publisher(for: .solunaIntentPlay)) { notification in
+            if let ch = notification.userInfo?["channel"] as? String {
+                switchChannel(ch)
+            } else if receiver.state == .stopped || receiver.state == .error {
+                receiver.start()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .solunaIntentStop)) { _ in
+            if receiver.state == .receiving { receiver.stop() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .solunaIntentSwitchChannel)) { notification in
+            if let ch = notification.userInfo?["channel"] as? String {
+                switchChannel(ch)
+            }
+        }
+        // MARK: - SharePlay Channel Sync
+        .onReceive(NotificationCenter.default.publisher(for: .solunaChannelChanged)) { notification in
+            if let ch = notification.userInfo?["channel"] as? String {
+                switchChannel(ch)
+            }
+        }
+        // MARK: - Handoff Activity
+        .userActivity("art.solun.channel") { activity in
+            activity.title = "Listening to \(currentChannelName.capitalized)"
+            activity.userInfo = ["channel": currentChannelName]
+            activity.isEligibleForHandoff = true
+        }
     }
 
     // MARK: - Header
@@ -463,6 +551,20 @@ struct ContentView: View {
             Button { showPlayer = true } label: {
                 Image(systemName: "music.note.list").font(.system(size: 14)).foregroundColor(.solunaLuna)
                     .frame(width: 36, height: 36).background(Color.solunaLuna.opacity(0.12)).clipShape(Circle())
+            }
+            Button {
+                if sharePlayManager.isSharePlaying {
+                    sharePlayManager.leave()
+                } else {
+                    Task { await sharePlayManager.startSharing(channel: currentChannelName) }
+                }
+            } label: {
+                Image(systemName: sharePlayManager.isSharePlaying ? "shareplay" : "shareplay")
+                    .font(.system(size: 14))
+                    .foregroundColor(sharePlayManager.isSharePlaying ? .white : .green)
+                    .frame(width: 36, height: 36)
+                    .background(sharePlayManager.isSharePlaying ? Color.green : Color.green.opacity(0.12))
+                    .clipShape(Circle())
             }
             Spacer()
             if channelStore.currentPlan == .free {

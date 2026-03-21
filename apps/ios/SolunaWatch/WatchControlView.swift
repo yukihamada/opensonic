@@ -4,6 +4,22 @@ import WatchConnectivity
 struct WatchControlView: View {
     @StateObject private var connector = WatchConnector()
 
+    private struct RadioChannel: Identifiable {
+        let id: String
+        let name: String
+        let emoji: String
+    }
+
+    private static let allChannels: [RadioChannel] = [
+        RadioChannel(id: "soluna", name: "Soluna", emoji: "🌀"),
+        RadioChannel(id: "jazz",   name: "Jazz",   emoji: "🎷"),
+        RadioChannel(id: "lofi",   name: "Lo-Fi",  emoji: "📻"),
+        RadioChannel(id: "chill",  name: "Chill",  emoji: "🌅"),
+        RadioChannel(id: "dance",  name: "Dance",  emoji: "💃"),
+        RadioChannel(id: "bjj",    name: "BJJ",    emoji: "🥋"),
+        RadioChannel(id: "yuki",   name: "Yuki",   emoji: "❄️"),
+    ]
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
@@ -76,25 +92,23 @@ struct WatchControlView: View {
                     }
                 }
 
-                // Channel switcher
-                if !connector.recentChannels.isEmpty {
-                    Divider()
-                    Text("Channels")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    ForEach(connector.recentChannels, id: \.self) { ch in
-                        Button {
-                            connector.sendCommand("channel:\(ch)")
-                        } label: {
-                            HStack {
-                                Text(ch)
-                                    .font(.caption)
-                                Spacer()
-                                if ch == connector.channel {
-                                    Image(systemName: "checkmark")
-                                        .font(.caption2)
-                                        .foregroundColor(.blue)
-                                }
+                // Channel switcher (all 7 radio channels)
+                Divider()
+                Text("Channels")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                ForEach(Self.allChannels, id: \.id) { ch in
+                    Button {
+                        connector.sendCommand("channel:\(ch.id)")
+                    } label: {
+                        HStack {
+                            Text("\(ch.emoji) \(ch.name)")
+                                .font(.caption)
+                            Spacer()
+                            if ch.id == connector.channel {
+                                Image(systemName: "checkmark")
+                                    .font(.caption2)
+                                    .foregroundColor(.blue)
                             }
                         }
                     }

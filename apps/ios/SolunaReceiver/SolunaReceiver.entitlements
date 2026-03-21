@@ -8,5 +8,8 @@
         <string>applinks:solun.art</string>
         <string>webcredentials:relay.solun.art</string>
     </array>
+    <!-- Group Activities entitlement: enable in App Store Connect before release -->
+    <!-- <key>com.apple.developer.group-session</key>
+    <true/> -->
 </dict>
 </plist>

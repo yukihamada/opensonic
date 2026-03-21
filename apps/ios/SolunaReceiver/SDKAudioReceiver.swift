@@ -10,6 +10,7 @@ import Foundation
 import AVFoundation
 import UIKit
 import Darwin
+import CoreMotion
 
 // MARK: - SDKAudioReceiver
 
@@ -34,13 +35,23 @@ final class SDKAudioReceiver: ObservableObject {
         didSet { audioEngine?.mainMixerNode.outputVolume = volume }
     }
 
+    /// Spatial audio toggle (persisted via UserDefaults "spatialAudioEnabled")
+    @Published var spatialAudioEnabled: Bool = UserDefaults.standard.bool(forKey: "spatialAudioEnabled") {
+        didSet {
+            UserDefaults.standard.set(spatialAudioEnabled, forKey: "spatialAudioEnabled")
+            if spatialAudioEnabled { startHeadTracking() } else { stopHeadTracking() }
+        }
+    }
+
     var isPlaying: Bool { state == .receiving || state == .connecting }
 
     // MARK: - Audio Engine
 
     private var audioEngine: AVAudioEngine?
     private var sourceNode: AVAudioSourceNode?
+    private var environmentNode: AVAudioEnvironmentNode?
     private let playbackFormat: AVAudioFormat
+    private var headphoneMotionManager: CMHeadphoneMotionManager?
 
     // MARK: - Ring Buffer (lock-free SPSC, 4s @ 48 kHz mono)
 
@@ -208,7 +219,29 @@ final class SDKAudioReceiver: ObservableObject {
         }
 
         engine.attach(node)
-        engine.connect(node, to: engine.mainMixerNode, format: playbackFormat)
+
+        // Spatial audio: insert AVAudioEnvironmentNode when enabled
+        if spatialAudioEnabled {
+            let envNode = AVAudioEnvironmentNode()
+            engine.attach(envNode)
+            // Source positioned 2m in front of the listener
+            envNode.listenerPosition = AVAudio3DPoint(x: 0, y: 0, z: 0)
+            // Mono format for the source node → environment node connection
+            let monoFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 48000,
+                channels: 1,
+                interleaved: false
+            )!
+            engine.connect(node, to: envNode, format: monoFormat)
+            engine.connect(envNode, to: engine.mainMixerNode, format: playbackFormat)
+            self.environmentNode = envNode
+            startHeadTracking()
+        } else {
+            engine.connect(node, to: engine.mainMixerNode, format: playbackFormat)
+            self.environmentNode = nil
+        }
+
         engine.mainMixerNode.outputVolume = volume
 
         do {
@@ -223,9 +256,12 @@ final class SDKAudioReceiver: ObservableObject {
     }
 
     private func stopAudioEngine() {
+        stopHeadTracking()
         if let engine = audioEngine, engine.isRunning { engine.stop() }
         if let node = sourceNode, let engine = audioEngine { engine.detach(node) }
+        if let envNode = environmentNode, let engine = audioEngine { engine.detach(envNode) }
         sourceNode = nil
+        environmentNode = nil
         audioEngine = nil
     }
 
@@ -237,10 +273,45 @@ final class SDKAudioReceiver: ObservableObject {
             try session.setCategory(.playback, mode: .default,
                                     options: [.defaultToSpeaker, .mixWithOthers, .allowBluetooth])
             try session.setPreferredSampleRate(48000)
+            // Enable spatial audio / multichannel content rendering on compatible headphones
+            if #available(iOS 15.0, *) {
+                try session.setSupportsMultichannelContent(true)
+            }
             try session.setActive(true)
         } catch {
             print("[SDKAudioReceiver] AudioSession error: \(error)")
         }
+    }
+
+    // MARK: - Head Tracking (Spatial Audio with AirPods Pro)
+
+    private func startHeadTracking() {
+        guard spatialAudioEnabled else { return }
+        guard headphoneMotionManager == nil else { return }
+
+        let manager = CMHeadphoneMotionManager()
+        guard manager.isDeviceMotionAvailable else {
+            print("[SDKAudioReceiver] Head tracking not available on this device")
+            return
+        }
+        headphoneMotionManager = manager
+        manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, error in
+            guard let self, let motion, let envNode = self.environmentNode else { return }
+            // Map head rotation to listener orientation
+            let yaw = Float(motion.attitude.yaw)
+            let pitch = Float(motion.attitude.pitch)
+            envNode.listenerAngularOrientation = AVAudio3DAngularOrientation(
+                yaw: yaw * 180.0 / .pi,
+                pitch: pitch * 180.0 / .pi,
+                roll: 0
+            )
+        }
+        print("[SDKAudioReceiver] Head tracking started")
+    }
+
+    private func stopHeadTracking() {
+        headphoneMotionManager?.stopDeviceMotionUpdates()
+        headphoneMotionManager = nil
     }
 
     // MARK: - UDP Relay Connection
