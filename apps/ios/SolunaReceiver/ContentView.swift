@@ -80,7 +80,7 @@ struct ContentView: View {
         (try? JSONDecoder().decode([String].self, from: Data(recentChannelsJSON.utf8))) ?? []
     }
     private var currentChannelName: String { UserDefaults.standard.string(forKey: "channel") ?? "soluna" }
-    private var isPlaying: Bool { receiver.state == .receiving }
+    private var isPlaying: Bool { receiver.state == .receiving || (receiver.sdkReceiver?.isReceivingAudio ?? false) }
     private var isMicActive: Bool { receiver.isMicTransmitting || receiver.isMicMonitoring }
 
     /// Current DJ from social listening (first member with role "dj")
