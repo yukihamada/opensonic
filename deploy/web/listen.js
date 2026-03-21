@@ -147,6 +147,10 @@
         outputChannelCount: [1]
       });
       workletNode.connect(gainNode);
+    } catch (e) {
+      console.warn('[Soluna] AudioWorklet failed, audio may not play:', e);
+      return;
+    }
     audioStarted = true;
     startVisualizer();
   }
