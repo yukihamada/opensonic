@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <script>if(!sessionStorage.getItem('lang-set')&&/^en/i.test(navigator.language)){location.replace('/en/')}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Soluna — Mac の音楽を iPhone・スピーカー・ブラウザへ即届け。DJ セット・イベント・お店の BGM をワンクリックで配信。プライベート利用は完全無料。オープンソース (MIT)。">
-    <meta name="keywords" content="Soluna, ネットワークオーディオ, リアルタイム音声配信, P2P, メッシュ中継, DJ, BGM, オープンソース, Mac, iPhone, Raspberry Pi, AES67, 著作権, ロイヤリティ">
+    <meta name="description" content="Soluna — あなたの音楽が、みんなに届く。DJセット、お店のBGM、フェスの音楽をワンタップで配信。聴くほどファンランクが上がる。月額500円。">
+    <meta name="keywords" content="Soluna, 音楽配信, DJ, BGM, フェスティバル, ライブ配信, ファンランク, お店BGM, USEN代替, リアルタイム">
     <meta name="author" content="Soluna Project">
     <meta name="robots" content="index, follow">
     <meta name="theme-color" content="#05060a">
@@ -15,8 +15,8 @@
     <link rel="alternate" hreflang="x-default" href="https://solun.art/">
 
     <!-- Open Graph -->
-    <meta property="og:title" content="Soluna — Mac の音楽を、iPhone・スピーカーへ即届け。">
-    <meta property="og:description" content="DJ セット・イベント・お店の BGM をワンクリックで iPhone・ブラウザへ配信。プライベート利用は完全無料。オープンソース。">
+    <meta property="og:title" content="Soluna — あなたの音楽が、みんなに届く。">
+    <meta property="og:description" content="DJセット、お店のBGM、フェスの音楽をワンタップで全員に配信。聴くほどファンランクが上がる。月額500円。">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://solun.art/">
     <meta property="og:image" content="https://solun.art/og-image.png">
@@ -27,15 +27,15 @@
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Soluna — Mac の音楽を、iPhone・スピーカーへ即届け。">
-    <meta name="twitter:description" content="DJ・イベント・お店のBGM — 著作権をクリアにしながら、どこでもリアルタイム配信。">
+    <meta name="twitter:title" content="Soluna — あなたの音楽が、みんなに届く。">
+    <meta name="twitter:description" content="DJセット、お店のBGM、フェスの音楽をワンタップで全員に。聴くほどファンランクUP。月額500円。">
     <meta name="twitter:image" content="https://solun.art/og-image.png">
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-    <title>Soluna — Mac の音楽を、iPhone・スピーカーへ即届け。</title>
+    <title>Soluna — あなたの音楽が、みんなに届く。</title>
 
     <!-- Structured Data -->
     <script type="application/ld+json">
@@ -46,10 +46,10 @@
       "applicationCategory": "MultimediaApplication",
       "operatingSystem": "macOS, iOS, Android, Linux",
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-      "description": "Mac の音楽を iPhone・Raspberry Pi・ブラウザへリアルタイム配信。DJ セット・イベント・お店の BGM に。プライベート利用は完全無料。オープンソース (MIT)。",
+      "description": "あなたの音楽をみんなに届ける。フェス・お店・世界中へリアルタイム配信。プライベート利用は完全無料。オープンソース (MIT)。",
       "url": "https://solun.art/",
       "downloadUrl": "https://github.com/yukihamada/opensonic/releases/latest",
-      "softwareVersion": "0.3",
+      "softwareVersion": "0.10.0",
       "license": "https://opensource.org/licenses/MIT",
       "author": { "@type": "Organization", "name": "Soluna Project", "url": "https://github.com/yukihamada/opensonic" }
     }
@@ -825,9 +825,10 @@
         Soluna
     </a>
     <div class="nav-links">
-        <a href="/soluna" class="hide-sm active">ホーム</a>
-        <a href="/vision" class="hide-sm">ビジョン</a>
-        <a href="/protocol" class="hide-sm">プロトコル</a>
+        <a href="/app" class="hide-sm">App</a>
+        <a href="/sdk" class="hide-sm">SDK</a>
+        <a href="/demo" class="hide-sm">Demo</a>
+        <a href="/for-developers" class="hide-sm">Developers</a>
         <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
         <a href="/en/" class="hide-sm" onclick="sessionStorage.removeItem('lang-set')" style="font-size:12px;opacity:0.6">EN</a>
         <a href="/dashboard" class="nav-cta">ダッシュボード</a>
@@ -842,43 +843,38 @@
         <div class="hero-orb hero-orb-3"></div>
     </div>
     <div class="hero-content">
-        <div class="hero-badge"><span class="dot"></span> オープンソース &middot; MIT ライセンス</div>
+        <div class="hero-badge"><span class="dot"></span> ZAMNA Hawaii 2026.9.4 配信決定</div>
         <h1>
-            <span class="h1-grad">あなたの音楽を、</span><br>
+            <span class="h1-grad">あなたの音楽が、</span><br>
             <span class="h1-accent" id="hero-typing"></span><span class="typewriter" id="hero-cursor"></span>
         </h1>
         <p class="hero-sub">
-            Mac の音楽を、iPhone・スピーカー・ブラウザへ即届け。<br>
-            家でも、フェスでも、世界規模でも。プライベート利用は完全無料。
+            DJセット、お店のBGM、フェスの熱狂 ——<br>
+            ワンタップで、そこにいる全員に届く。
         </p>
         <div class="hero-actions" id="hero-dl">
-            <a href="https://github.com/yukihamada/opensonic/releases/latest/download/Soluna-mac.pkg" class="btn-primary" id="hero-dl-primary">ダウンロード</a>
-            <a href="/dashboard" class="btn-secondary">ブラウザで聴く →</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE" class="btn-primary" id="hero-dl-primary">iPhone で試す</a>
+            <a href="/dashboard" class="btn-secondary">ブラウザで聴く</a>
         </div>
-        <p class="hero-note" id="hero-dl-note">macOS 13+ &middot; iOS 16+ &middot; Android (Beta) &middot; Linux &middot; 無料 &middot; オープンソース</p>
+        <p class="hero-note" id="hero-dl-note">iOS 16+ &middot; macOS 13+ &middot; Android (Beta) &middot; ブラウザ &middot; 月額 500 円から</p>
         <div id="hero-dl-others" style="margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center"></div>
 
-        <!-- Architecture diagram -->
-        <div class="arch-wrap reveal">
-            <div class="arch-flow">
-                <div class="arch-node hub">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="10" stroke="#60a5fa" stroke-width="1.5"/>
-                        <path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="#60a5fa" stroke-width="1.5" fill="rgba(59,130,246,0.15)"/>
-                    </svg>
-                    <div class="arch-node-label">Soluna.app</div>
-                </div>
-                <div class="arch-connector">
-                    <div class="arch-line"></div>
-                    <div class="arch-tag">Audio TX / Mic TX / WAN P2P</div>
-                </div>
-                <div class="arch-receivers">
-                    <div class="arch-rx"><span class="dot"></span> iPhone</div>
-                    <div class="arch-rx"><span class="dot"></span> Raspberry Pi</div>
-                    <div class="arch-rx"><span class="dot"></span> Browser</div>
-                    <div class="arch-rx"><span class="dot" style="background:var(--blue)"></span> Mac Speaker</div>
-                    <div class="arch-rx"><span class="dot" style="background:var(--purple)"></span> WAN Group</div>
-                </div>
+        <!-- 3 personas -->
+        <div class="reveal" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:48px;max-width:720px;width:100%">
+            <div style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:16px;padding:20px;text-align:center">
+                <div style="font-size:2.2em">&#127911;</div>
+                <div style="font-weight:600;margin:8px 0 4px">リスナー</div>
+                <div style="font-size:13px;color:var(--text2)">アプリを開くだけ。<br>聴くほどファンランクUP。</div>
+            </div>
+            <div style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.15);border-radius:16px;padding:20px;text-align:center">
+                <div style="font-size:2.2em">&#127926;</div>
+                <div style="font-weight:600;margin:8px 0 4px">DJ / アーティスト</div>
+                <div style="font-size:13px;color:var(--text2)">Macで流すだけ。<br>収益は全て公開。</div>
+            </div>
+            <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:16px;padding:20px;text-align:center">
+                <div style="font-size:2.2em">&#127978;</div>
+                <div style="font-weight:600;margin:8px 0 4px">お店</div>
+                <div style="font-size:13px;color:var(--text2)">USENの半額以下。<br>来客のスマホにも届く。</div>
             </div>
         </div>
     </div>
@@ -1059,6 +1055,106 @@
 
 <hr>
 
+<!-- Premium Features -->
+<section class="section" id="premium">
+    <div class="section-label reveal" style="color:var(--pink)">NEW</div>
+    <h2 class="reveal">全てが入った、最高のラジオ体験。</h2>
+    <p class="sub reveal">Apple生態系とフルに統合。他のラジオアプリにはない機能。</p>
+    <div class="features-grid">
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap" style="background:linear-gradient(135deg,rgba(236,72,153,0.15),rgba(139,92,246,0.15))">
+                <span style="font-size:28px">&#127911;</span>
+            </div>
+            <h4>サイレントディスコ</h4>
+            <p>QRコードをスキャンするだけで全員が同じ音楽に。フェス、ジム、カフェ、パーティーで。スピーカー不要。</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap" style="background:linear-gradient(135deg,rgba(16,185,129,0.15),rgba(6,182,212,0.15))">
+                <span style="font-size:28px">&#128101;</span>
+            </div>
+            <h4>ソーシャルリスニング</h4>
+            <p>「今Jazz に5人いる」リアルタイムリスナー数表示。同じ瞬間を共有している仲間が見える。</p>
+        </div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap" style="background:linear-gradient(135deg,rgba(59,130,246,0.15),rgba(16,185,129,0.15))">
+                <span style="font-size:28px">&#129302;</span>
+            </div>
+            <h4>AI オートチャンネル</h4>
+            <p>朝はChill、ランニング中はDance、夜はJazz。加速度計+時間帯で自動切替。考えなくていい音楽。</p>
+        </div>
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap" style="background:linear-gradient(135deg,rgba(245,158,11,0.15),rgba(236,72,153,0.15))">
+                <span style="font-size:28px">&#127752;</span>
+            </div>
+            <h4>チャンネルクロスフェード</h4>
+            <p>切り替え時にDJのようにスムーズにミックス。ブツッと切れない。音楽が途切れない。</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap" style="background:linear-gradient(135deg,rgba(139,92,246,0.15),rgba(59,130,246,0.15))">
+                <span style="font-size:28px">&#127769;</span>
+            </div>
+            <h4>スリープタイマー &amp; アラーム</h4>
+            <p>音楽とともに眠り、音楽とともに目覚める。最後の30秒はフェードアウト。穏やかな毎日を。</p>
+        </div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap" style="background:linear-gradient(135deg,rgba(6,182,212,0.15),rgba(139,92,246,0.15))">
+                <span style="font-size:28px">&#127926;</span>
+            </div>
+            <h4>リアルタイムビジュアライザー</h4>
+            <p>音に合わせて32バンドのスペクトラムが踊る。SNSでシェアしたくなる美しさ。</p>
+        </div>
+    </div>
+
+    <!-- Apple Integration row -->
+    <h3 class="reveal" style="margin-top:56px;text-align:center;color:var(--text2);font-size:15px;letter-spacing:0.08em;text-transform:uppercase">Apple 深層統合</h3>
+    <div class="features-grid" style="margin-top:24px">
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap" style="background:linear-gradient(135deg,rgba(59,130,246,0.15),rgba(6,182,212,0.15))">
+                <span style="font-size:28px">&#128227;</span>
+            </div>
+            <h4>Siri ショートカット</h4>
+            <p>「Hey Siri、SolunaでJazz流して」で即再生。手ぶらで操作。</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap" style="background:linear-gradient(135deg,rgba(16,185,129,0.15),rgba(59,130,246,0.15))">
+                <span style="font-size:28px">&#128241;</span>
+            </div>
+            <h4>Dynamic Island</h4>
+            <p>iPhone 14 Pro以降でロック画面にリアルタイム表示。常にチャンネルが見える。</p>
+        </div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap" style="background:linear-gradient(135deg,rgba(236,72,153,0.15),rgba(245,158,11,0.15))">
+                <span style="font-size:28px">&#127916;</span>
+            </div>
+            <h4>SharePlay</h4>
+            <p>FaceTime中に友達と同じチャンネルを同期再生。離れていても同じ音楽体験。</p>
+        </div>
+        <div class="feat reveal reveal-delay-1">
+            <div class="feat-icon-wrap" style="background:linear-gradient(135deg,rgba(139,92,246,0.15),rgba(236,72,153,0.15))">
+                <span style="font-size:28px">&#127911;</span>
+            </div>
+            <h4>Spatial Audio</h4>
+            <p>AirPods Proのヘッドトラッキングで3Dオーディオ。頭を動かすと音源が定位する。</p>
+        </div>
+        <div class="feat reveal reveal-delay-2">
+            <div class="feat-icon-wrap" style="background:linear-gradient(135deg,rgba(6,182,212,0.15),rgba(16,185,129,0.15))">
+                <span style="font-size:28px">&#9196;</span>
+            </div>
+            <h4>Handoff</h4>
+            <p>Macで聴いていた音楽をiPhoneにシームレス引き継ぎ。デバイスを超えて途切れない。</p>
+        </div>
+        <div class="feat reveal reveal-delay-3">
+            <div class="feat-icon-wrap" style="background:linear-gradient(135deg,rgba(245,158,11,0.15),rgba(139,92,246,0.15))">
+                <span style="font-size:28px">&#9201;</span>
+            </div>
+            <h4>Apple Watch</h4>
+            <p>手首からチャンネル切替、音量調整、再生/停止。iPhoneを出さなくていい。</p>
+        </div>
+    </div>
+</section>
+
+<hr>
+
 <!-- Install -->
 <section class="section" id="install">
     <div class="section-label reveal">インストール</div>
@@ -1118,8 +1214,8 @@
                     <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
                     TestFlight でベータ版を入手
                 </a>
-                <a href="https://apps.apple.com/app/soluna-receiver/idXXXXXXXXXX" style="display:inline-flex;align-items:center;gap:8px;background:var(--s3);color:var(--text2);font-size:14px;font-weight:600;padding:12px 24px;border-radius:12px;text-decoration:none;border:1px solid var(--border2);transition:opacity 0.2s">
-                    App Store（準備中）
+                <a href="https://apps.apple.com/app/soluna/id6759962263" style="display:inline-flex;align-items:center;gap:8px;background:var(--s3);color:var(--text2);font-size:14px;font-weight:600;padding:12px 24px;border-radius:12px;text-decoration:none;border:1px solid var(--border2);transition:opacity 0.2s">
+                    App Store で入手
                 </a>
             </div>
             <p style="font-size:12px;color:var(--text3);margin-top:8px">iOS 16+ / iPhone・iPad 対応</p>
@@ -1476,29 +1572,23 @@
 <section class="section">
     <div class="section-label reveal">比較</div>
     <h2 class="reveal">Soluna を選ぶ理由。</h2>
-    <p class="sub reveal">有償製品と同等以上の機能をオープンソースで。</p>
+    <p class="sub reveal">リアルタイム配信とファン特典を、圧倒的なコストで。</p>
     <div class="table-wrap reveal">
         <table>
             <thead>
                 <tr class="hl-col">
-                    <th>機能</th><th>&#9670; Soluna</th><th>Dante</th><th>AES67</th><th>BlackHole</th>
+                    <th>項目</th><th>&#9670; Soluna Pro</th><th>USEN</th><th>Spotify</th>
                 </tr>
             </thead>
             <tbody>
-                <tr class="hl-col"><td>ライセンス</td><td class="yes">MIT 無料</td><td class="no">有償</td><td class="no">標準規格</td><td class="no">手動設定</td></tr>
-                <tr class="hl-col"><td>P2P メッシュ中継</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
-                <tr class="hl-col"><td>iPhone 受信</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
-                <tr class="hl-col"><td>ブラウザ受信</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
-                <tr class="hl-col"><td>WiFi 対応</td><td class="yes">&#10003;</td><td class="no">限定的</td><td class="no">&#10005;</td><td class="no">&#8212;</td></tr>
-                <tr class="hl-col"><td>自動遅延同期</td><td class="yes">&#10003;</td><td class="no">手動</td><td class="no">手動</td><td class="no">&#10005;</td></tr>
-                <tr class="hl-col"><td>デバイスヘルス管理</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
-                <tr class="hl-col"><td>Web UI</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
-                <tr class="hl-col"><td>ワンコマンドインストール</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
-                <tr class="hl-col"><td>アプリ1つで TX+RX+WAN</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
-                <tr class="hl-col"><td>30億人スケール</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
-                <tr class="hl-col"><td>P2P スウォーム配信</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
-                <tr class="hl-col"><td>著作権検出 + ロイヤリティ</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
-                <tr class="hl-col"><td>DJウォレット &amp; 投げ銭</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>月額料金</td><td class="yes">&yen;500</td><td class="no">&yen;5,000</td><td class="no">&yen;980</td></tr>
+                <tr class="hl-col"><td>リアルタイム配信</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>ファンランク特典</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>収益の公開・還元</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>店舗BGM利用</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">規約違反</td></tr>
+                <tr class="hl-col"><td>オンデマンド再生</td><td class="yes">&#10003;</td><td class="no">チャンネルのみ</td><td class="yes">&#10003;</td></tr>
+                <tr class="hl-col"><td>チャンネル作成</td><td class="yes">&#10003;</td><td class="no">&#10005;</td><td class="no">&#10005;</td></tr>
+                <tr class="hl-col"><td>iPhone / ブラウザ対応</td><td class="yes">&#10003;</td><td class="no">専用端末</td><td class="yes">&#10003;</td></tr>
             </tbody>
         </table>
     </div>
@@ -1761,6 +1851,102 @@
 
 <hr>
 
+<!-- Fan Rank -->
+<section class="section" id="fan-rank">
+    <div class="section-label reveal">ファンランク</div>
+    <h2 class="reveal" style="text-align:center;margin-bottom:0.5em;"><span class="h1-accent">聴くほど、特別になる。</span></h2>
+    <p class="sub reveal" style="text-align:center;max-width:640px;margin:0 auto 2em;">お気に入りのチャンネルを聴き続けるだけで、ファンランクが自動で上がります。ランクに応じた限定特典をアンロック。</p>
+
+    <div class="reveal" style="display:flex;flex-direction:column;gap:12px;max-width:640px;margin:0 auto;">
+        <div style="display:flex;align-items:center;gap:16px;background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:18px 24px;">
+            <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#cd7f32,#a0522d);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">&#9670;</div>
+            <div style="flex:1">
+                <div style="font-weight:600;font-size:15px;margin-bottom:2px;">Bronze<span style="font-size:12px;color:var(--text3);margin-left:8px;">10回再生</span></div>
+                <div style="font-size:13px;color:var(--text2);">バッジ表示</div>
+            </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:18px 24px;">
+            <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#c0c0c0,#808080);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">&#9670;</div>
+            <div style="flex:1">
+                <div style="font-weight:600;font-size:15px;margin-bottom:2px;">Silver<span style="font-size:12px;color:var(--text3);margin-left:8px;">100回再生</span></div>
+                <div style="font-size:13px;color:var(--text2);">限定チャンネルアクセス</div>
+            </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;background:var(--s1);border:1px solid rgba(245,158,11,0.2);border-radius:14px;padding:18px 24px;">
+            <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#ffd700,#daa520);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">&#9670;</div>
+            <div style="flex:1">
+                <div style="font-weight:600;font-size:15px;margin-bottom:2px;color:var(--amber);">Gold<span style="font-size:12px;color:var(--text3);margin-left:8px;">1,000回再生</span></div>
+                <div style="font-size:13px;color:var(--text2);">新曲の先行配信</div>
+            </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;background:var(--s1);border:1px solid rgba(139,92,246,0.2);border-radius:14px;padding:18px 24px;">
+            <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#e5e4e2,#8b8589);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">&#9670;</div>
+            <div style="flex:1">
+                <div style="font-weight:600;font-size:15px;margin-bottom:2px;color:var(--purple);">Platinum<span style="font-size:12px;color:var(--text3);margin-left:8px;">10,000回再生</span></div>
+                <div style="font-size:13px;color:var(--text2);">アーティストとのDMチャンネル</div>
+            </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;background:rgba(6,182,212,0.04);border:1px solid rgba(6,182,212,0.2);border-radius:14px;padding:18px 24px;">
+            <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--cyan),var(--blue));display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">&#9670;</div>
+            <div style="flex:1">
+                <div style="font-weight:600;font-size:15px;margin-bottom:2px;color:var(--cyan);">Diamond<span style="font-size:12px;color:var(--text3);margin-left:8px;">100,000回再生</span></div>
+                <div style="font-size:13px;color:var(--text2);">ライブイベント優先入場</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<hr>
+
+<!-- Pricing -->
+<section class="section" id="pricing">
+    <div class="section-label reveal">料金プラン</div>
+    <h2 class="reveal" style="text-align:center;margin-bottom:0.5em;"><span class="h1-accent">シンプルな料金。</span></h2>
+    <p class="sub reveal" style="text-align:center;max-width:540px;margin:0 auto 2em;">まずは無料で体験。プロ機能が必要になったらアップグレード。</p>
+
+    <div class="reveal" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;max-width:840px;margin:0 auto 3rem;">
+        <!-- Free -->
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:16px;padding:2rem;display:flex;flex-direction:column;">
+            <div style="font-size:13px;font-weight:700;color:var(--text3);letter-spacing:0.06em;margin-bottom:8px;">FREE</div>
+            <div style="font-size:36px;font-weight:800;margin-bottom:4px;">&yen;0</div>
+            <div style="font-size:13px;color:var(--text3);margin-bottom:1.5rem;">ずっと無料</div>
+            <ul style="list-style:none;font-size:14px;color:var(--text2);line-height:2;flex:1;">
+                <li>&#10003;&ensp;月10時間まで再生</li>
+                <li>&#10003;&ensp;3チャンネルまで視聴</li>
+                <li>&#10003;&ensp;ファンランク対応</li>
+            </ul>
+            <a href="/dashboard" style="display:block;text-align:center;padding:12px;border-radius:10px;border:1px solid var(--border2);color:var(--text);font-weight:600;font-size:14px;text-decoration:none;margin-top:1.5rem;transition:background 0.2s;" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background='transparent'">無料で始める</a>
+        </div>
+        <!-- Pro -->
+        <div style="background:var(--s1);border:2px solid rgba(59,130,246,0.4);border-radius:16px;padding:2rem;display:flex;flex-direction:column;position:relative;">
+            <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;letter-spacing:0.04em;">POPULAR</div>
+            <div style="font-size:13px;font-weight:700;color:var(--blue);letter-spacing:0.06em;margin-bottom:8px;">PRO</div>
+            <div style="font-size:36px;font-weight:800;margin-bottom:4px;">&yen;500<span style="font-size:15px;font-weight:400;color:var(--text3);">/月</span></div>
+            <div style="font-size:13px;color:var(--text3);margin-bottom:1.5rem;">リスナー向け</div>
+            <ul style="list-style:none;font-size:14px;color:var(--text2);line-height:2;flex:1;">
+                <li>&#10003;&ensp;無制限再生</li>
+                <li>&#10003;&ensp;チャンネル作成</li>
+                <li>&#10003;&ensp;高音質 (48kHz/24bit)</li>
+                <li>&#10003;&ensp;ファンランク全特典</li>
+            </ul>
+            <a href="/dashboard" style="display:block;text-align:center;padding:12px;border-radius:10px;background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff;font-weight:600;font-size:14px;text-decoration:none;margin-top:1.5rem;transition:opacity 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">Pro を始める</a>
+        </div>
+        <!-- Studio -->
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:16px;padding:2rem;display:flex;flex-direction:column;">
+            <div style="font-size:13px;font-weight:700;color:var(--amber);letter-spacing:0.06em;margin-bottom:8px;">STUDIO</div>
+            <div style="font-size:36px;font-weight:800;margin-bottom:4px;">&yen;2,000<span style="font-size:15px;font-weight:400;color:var(--text3);">/月</span></div>
+            <div style="font-size:13px;color:var(--text3);margin-bottom:1.5rem;">配信者・店舗向け</div>
+            <ul style="list-style:none;font-size:14px;color:var(--text2);line-height:2;flex:1;">
+                <li>&#10003;&ensp;Pro の全機能</li>
+                <li>&#10003;&ensp;配信者ダッシュボード</li>
+                <li>&#10003;&ensp;アナリティクス</li>
+                <li>&#10003;&ensp;優先サポート</li>
+            </ul>
+            <a href="/dashboard" style="display:block;text-align:center;padding:12px;border-radius:10px;border:1px solid var(--border2);color:var(--text);font-weight:600;font-size:14px;text-decoration:none;margin-top:1.5rem;transition:background 0.2s;" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background='transparent'">Studio を始める</a>
+        </div>
+    </div>
+</section>
+
 <!-- CTA -->
 <section class="cta-section">
     <h2 class="reveal"><span class="h1-accent">今すぐ始めよう。</span></h2>
@@ -1795,9 +1981,9 @@
         <div>
             <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">ユースケース</div>
             <div class="f-links" style="flex-direction:column;gap:8px">
-                <a href="/for-djs">DJ向け</a>
-                <a href="/for-venues">店舗・飲食店向け</a>
-                <a href="/for-events">イベント・フェス向け</a>
+                <a href="/app">App</a>
+                <a href="/sdk">SDK</a>
+                <a href="/demo">Demo</a>
                 <a href="/for-developers">開発者向け</a>
             </div>
         </div>
@@ -1806,8 +1992,15 @@
             <div class="f-links" style="flex-direction:column;gap:8px">
                 <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
                 <a href="https://github.com/yukihamada/opensonic/releases" target="_blank">リリースノート</a>
-                <a href="/protocol">プロトコル仕様 (OSTP)</a>
                 <a href="https://github.com/yukihamada/opensonic/blob/main/LICENSE" target="_blank">MIT ライセンス</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">Technology</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="/protocol">OSTP プロトコル仕様</a>
+                <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+                <a href="https://github.com/yukihamada/opensonic/blob/main/docs/whitepaper.md" target="_blank">Whitepaper</a>
             </div>
         </div>
     </div>
@@ -1835,7 +2028,7 @@ const observer = new IntersectionObserver((entries) => {
 document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
 /* ── Typewriter ─────────────────────────────────────── */
-const phrases = ['世界中のスピーカーへ。', 'フェスの会場へ。', '30億人のリスナーへ。', 'バーのBGMへ。', 'ホームパーティーへ。', 'どこへでも。'];
+const phrases = ['みんなに届く。', 'フェスに届く。', 'お店に届く。', '世界に届く。'];
 const typingEl = document.getElementById('hero-typing');
 const cursorEl = document.getElementById('hero-cursor');
 let phraseIdx = 0, charIdx = 0, deleting = false;
