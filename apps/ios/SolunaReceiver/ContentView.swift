@@ -69,6 +69,7 @@ struct ContentView: View {
     @State private var showChat = false
     @StateObject private var chatManager = ChatManager.shared
     @State private var showTipping = false
+    @State private var showBroadcast = false
     @StateObject private var tipManager = TipManager.shared
 
     private var recentChannels: [String] {
@@ -293,6 +294,7 @@ struct ContentView: View {
                                 activeChannel: Binding(get: { currentChannelName }, set: { switchChannel($0) }))
         }
         .sheet(isPresented: $showDJDeckView) { DJDeckView(receiver: receiver) }
+        .sheet(isPresented: $showBroadcast) { BroadcastView() }
         .confirmationDialog("Sleep Timer", isPresented: $showSleepPicker, titleVisibility: .visible) {
             Button("15 min") { sleepTimer.start(minutes: 15) }
             Button("30 min") { sleepTimer.start(minutes: 30) }
@@ -671,6 +673,10 @@ struct ContentView: View {
                     .frame(width: 36, height: 36)
                     .background(sharePlayManager.isSharePlaying ? Color.green : Color.green.opacity(0.12))
                     .clipShape(Circle())
+            }
+            Button { showBroadcast = true } label: {
+                Image(systemName: "antenna.radiowaves.left.and.right").font(.system(size: 14)).foregroundColor(.solunaSol)
+                    .frame(width: 36, height: 36).background(Color.solunaSol.opacity(0.12)).clipShape(Circle())
             }
             // Sleep Timer
             if sleepTimer.isActive {

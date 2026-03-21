@@ -47,6 +47,7 @@ final class SDKAudioReceiver: ObservableObject {
     @Published private(set) var packetsDropped: UInt64 = 0
     @Published private(set) var bufferFillMs: Int = 0      // ring buffer fill in ms
     @Published private(set) var packetsPerSec: Int = 0     // recv rate
+    @Published private(set) var syncOffsetMs: Double = 0   // NTP sync offset
 
     // MARK: - Audio Engine
 
@@ -84,6 +85,7 @@ final class SDKAudioReceiver: ObservableObject {
     private var lastPacketCount: UInt64 = 0
     private var staleTicks = 0
     private var _packetsReceivedAtomic: Int64 = 0
+    private var _lastRtpTimestamp: UInt32 = 0
 
     // Heartbeat timer (DispatchSource on recv queue for thread safety)
     private var heartbeatSource: DispatchSourceTimer?
@@ -125,10 +127,12 @@ final class SDKAudioReceiver: ObservableObject {
         stopStatsPolling()
         disconnectRelay()
         stopAudioEngine()
+        ClockSync.shared.reset()
 
         state = .stopped
         isReceivingAudio = false
         relayState = "disconnected"
+        syncOffsetMs = 0
     }
 
     func toggle() {
@@ -338,6 +342,15 @@ final class SDKAudioReceiver: ObservableObject {
             guard (buf[0] & 0xC0) == 0x80 else { continue }  // RTP version=2
             guard (buf[1] & 0x7F) == 96 else { continue }    // PT=96 (S24)
 
+            // Extract RTP timestamp (bytes 4-7, big-endian uint32)
+            let rtpTs = UInt32(buf[4]) << 24 | UInt32(buf[5]) << 16 | UInt32(buf[6]) << 8 | UInt32(buf[7])
+
+            // Set clock reference on first packet
+            if !ClockSync.shared.hasReference {
+                ClockSync.shared.setReference(rtpTimestamp: rtpTs, wallClockNs: ClockSync.shared.wallClockNs)
+            }
+            self._lastRtpTimestamp = rtpTs
+
             // Parse extension header offset
             var off = 12
             if buf[0] & 0x10 != 0 && n >= 16 {
@@ -387,6 +400,7 @@ final class SDKAudioReceiver: ObservableObject {
                 self._lastPktCount = current
                 self.packetsReceived = UInt64(current)
                 self.bufferFillMs = self.ringAvailable() * 1000 / 48000  // samples → ms
+                self.syncOffsetMs = ClockSync.shared.offsetMs(currentRtpTimestamp: self._lastRtpTimestamp)
             }
         }
     }

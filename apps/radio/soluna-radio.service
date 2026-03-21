@@ -1,0 +1,38 @@
+[Unit]
+Description=Soluna Multi-Channel Radio Streamer
+Documentation=https://github.com/yukihamada/opensonic
+After=network.target soluna-relay.service
+Requires=soluna-relay.service
+
+[Service]
+Type=simple
+User=soluna
+Group=audio
+ExecStart=/usr/local/bin/soluna-radio-cpp --config /etc/soluna-radio.json --relay 127.0.0.1:5100
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+
+# Performance tuning for real-time audio
+Nice=-5
+LimitRTPRIO=99
+LimitMEMLOCK=infinity
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadOnlyPaths=/data/music /etc/soluna-radio.json
+
+# Network capability
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=soluna-radio
+
+[Install]
+WantedBy=multi-user.target

@@ -42,6 +42,7 @@
 		GD0010 /* GlobalDeviceRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = GD0011 /* GlobalDeviceRegistry.swift */; };
 		GD0012 /* GlobalDevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GD0013 /* GlobalDevicePickerView.swift */; };
 		DB0002 /* DashboardServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB0001 /* DashboardServer.swift */; };
+		CS0001 /* ClockSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = CS0002 /* ClockSync.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -85,6 +86,7 @@
 		GD0011 /* GlobalDeviceRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GlobalDeviceRegistry.swift; sourceTree = "<group>"; };
 		GD0013 /* GlobalDevicePickerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GlobalDevicePickerView.swift; sourceTree = "<group>"; };
 		DB0001 /* DashboardServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardServer.swift; sourceTree = "<group>"; };
+		CS0002 /* ClockSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClockSync.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -121,6 +123,7 @@
 				2A0008 /* SettingsView.swift */,
 				2A0003 /* AudioReceiver.swift */,
 				SD0001 /* SDKAudioReceiver.swift */,
+				CS0002 /* ClockSync.swift */,
 				2A0020 /* DaemonClient.swift */,
 				2A0030 /* SpeakersController.swift */,
 				2A0040 /* PeerRelayManager.swift */,
@@ -266,6 +269,7 @@
 				1A0052 /* PlayerView.swift in Sources */,
 				1A0004 /* AudioReceiverBridge.mm in Sources */,
 				SD0002 /* SDKAudioReceiver.swift in Sources */,
+				CS0001 /* ClockSync.swift in Sources */,
 				1A0070 /* SystemAudioCapture.swift in Sources */,
 				1A0071 /* MultiChannelConfig.swift in Sources */,
 				1A0072 /* DJModeView.swift in Sources */,

@@ -32,6 +32,7 @@ final class SDKAudioReceiver: ObservableObject {
     @Published private(set) var packetsReceived: UInt64 = 0
     @Published private(set) var bufferFillMs: Int = 0
     @Published private(set) var packetsPerSec: Int = 0
+    @Published private(set) var syncOffsetMs: Double = 0
     @Published var channel: String = "soluna"
     @Published var volume: Float = 1.0 {
         didSet { audioEngine?.mainMixerNode.outputVolume = volume }
@@ -151,10 +152,12 @@ final class SDKAudioReceiver: ObservableObject {
         }
 
         stopAudioEngine()
+        ClockSync.shared.reset()
 
         state = .stopped
         isConnected = false
         isReceivingAudio = false
+        syncOffsetMs = 0
 
         UIApplication.shared.isIdleTimerDisabled = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -202,6 +205,7 @@ final class SDKAudioReceiver: ObservableObject {
         // Flush ring buffer for clean start
         flushRing()
         firstPacketReceived.set(false)
+        ClockSync.shared.reset()
 
         // Update channel
         DispatchQueue.main.async { [weak self] in
@@ -568,6 +572,14 @@ final class SDKAudioReceiver: ObservableObject {
             guard (buf[0] & 0xC0) == 0x80 else { continue }  // RTP version=2
             guard (buf[1] & 0x7F) == 96 else { continue }    // PT=96 (S24)
 
+            // Extract RTP timestamp (bytes 4-7, big-endian uint32)
+            let rtpTs = UInt32(buf[4]) << 24 | UInt32(buf[5]) << 16 | UInt32(buf[6]) << 8 | UInt32(buf[7])
+
+            // Set clock reference on first packet
+            if !ClockSync.shared.hasReference {
+                ClockSync.shared.setReference(rtpTimestamp: rtpTs, wallClockNs: ClockSync.shared.wallClockNs)
+            }
+
             // Extension header offset
             var off = 12
             if buf[0] & 0x10 != 0 && n >= 16 {
@@ -604,10 +616,12 @@ final class SDKAudioReceiver: ObservableObject {
 
             if pktCount % 100 == 0 {
                 let bufMs = self.ringAvailable() * 1000 / 48000
+                let offsetMs = ClockSync.shared.offsetMs(currentRtpTimestamp: rtpTs)
                 DispatchQueue.main.async { [weak self] in
                     self?.packetsReceived = UInt64(pktCount)
                     self?.bufferFillMs = bufMs
                     self?.packetsPerSec = 500  // ~500 pkt/s at 48kHz/96samples
+                    self?.syncOffsetMs = offsetMs
                 }
             }
         }

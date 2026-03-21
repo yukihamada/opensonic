@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		03A7569C9815AECE32FD72C3 /* EmailLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C449248739977A0EAD3366F /* EmailLoginView.swift */; };
-		SD0001 /* SilentDiscoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SD0002 /* SilentDiscoView.swift */; };
 		1A0001 /* SolunaReceiverApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0001 /* SolunaReceiverApp.swift */; };
 		1A0002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0002 /* ContentView.swift */; };
 		1A0003 /* AudioReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0003 /* AudioReceiver.swift */; };
@@ -38,6 +37,7 @@
 		1AW003 /* WatchConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AW003 /* WatchConnector.swift */; };
 		3676A98C2C37381755AC7AE3 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F2066F35682EABAA8FB76C2 /* AuthManager.swift */; };
 		4512D7A8DADA1DF0202DC2ED /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = B166E631689F90681DD54AF6 /* Localizable.strings */; };
+		653A035213B5BA2E1A1D0CDF /* MusicBroadcast.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B50007B84737D4022AEE16 /* MusicBroadcast.swift */; };
 		6702C8871423768AC4A68363 /* SolunaTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 783E19B517B0E637BF72F97C /* SolunaTheme.swift */; };
 		673750F3F550AA2144BED0FC /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 3912EE0272B3745D632C8F76 /* Localizable.strings */; };
 		686442C6CC0867389F0F0E70 /* DebugOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87F680EAEE236C3DDDD1629D /* DebugOverlayView.swift */; };
@@ -47,23 +47,26 @@
 		A20AE62822D246F7C131EA5F /* FanRankManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 555663CDDA00D4DFE97203E3 /* FanRankManager.swift */; };
 		A2B7ABCB4FB204650AA946CB /* FestivalModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59329DF8E0EB42C8613875FB /* FestivalModeView.swift */; };
 		A59C8441EDE00356AB248542 /* DeviceBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8E1058C397B200E7BF8EDBF /* DeviceBrowserView.swift */; };
-		CB5801208D32 /* ChannelBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8CC19F9AA4 /* ChannelBrowserView.swift */; };
-		GD0001 /* GlobalDeviceRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = GD0002 /* GlobalDeviceRegistry.swift */; };
-		GD0003 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GD0004 /* DevicePickerView.swift */; };
-		SDK0001 /* SDKAudioReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = SDK0002 /* SDKAudioReceiver.swift */; };
-		SI0001 /* SolunaAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = SI0002 /* SolunaAppIntents.swift */; };
-		SP0001 /* SolunaSharePlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = SP0002 /* SolunaSharePlay.swift */; };
-		LA0001 /* SolunaLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = LA0002 /* SolunaLiveActivity.swift */; };
-		WD0001 /* SolunaWidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = WD0002 /* SolunaWidgetData.swift */; };
-		SL0001 /* SocialListening.swift in Sources */ = {isa = PBXBuildFile; fileRef = SL0002 /* SocialListening.swift */; };
 		AI0001 /* AIAutoChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AI0002 /* AIAutoChannel.swift */; };
-		ST0001 /* SleepTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = ST0002 /* SleepTimer.swift */; };
 		AL0001 /* SolunaAlarm.swift in Sources */ = {isa = PBXBuildFile; fileRef = AL0002 /* SolunaAlarm.swift */; };
 		AV0001 /* AudioVisualizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AV0002 /* AudioVisualizer.swift */; };
+		C5B3FF236C6ED46B9014D2B2 /* BroadcastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B3ADF1A6F6812139F27297C /* BroadcastView.swift */; };
+		CB5801208D32 /* ChannelBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB8CC19F9AA4 /* ChannelBrowserView.swift */; };
 		CM0001 /* ChatManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CM0002 /* ChatManager.swift */; };
 		CV0001 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CV0002 /* ChatView.swift */; };
+		GD0001 /* GlobalDeviceRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = GD0002 /* GlobalDeviceRegistry.swift */; };
+		GD0003 /* DevicePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GD0004 /* DevicePickerView.swift */; };
+		LA0001 /* SolunaLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = LA0002 /* SolunaLiveActivity.swift */; };
+		SD0001 /* SilentDiscoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SD0002 /* SilentDiscoView.swift */; };
+		SDK0001 /* SDKAudioReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = SDK0002 /* SDKAudioReceiver.swift */; };
+		SI0001 /* SolunaAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = SI0002 /* SolunaAppIntents.swift */; };
+		SL0001 /* SocialListening.swift in Sources */ = {isa = PBXBuildFile; fileRef = SL0002 /* SocialListening.swift */; };
+		SP0001 /* SolunaSharePlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = SP0002 /* SolunaSharePlay.swift */; };
+		ST0001 /* SleepTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = ST0002 /* SleepTimer.swift */; };
 		TM0001 /* TipManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = TM0002 /* TipManager.swift */; };
 		TV0001 /* TippingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TV0002 /* TippingView.swift */; };
+		WD0001 /* SolunaWidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = WD0002 /* SolunaWidgetData.swift */; };
+		CS0001 /* ClockSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = CS0002 /* ClockSync.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -104,30 +107,33 @@
 		555663CDDA00D4DFE97203E3 /* FanRankManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FanRankManager.swift; sourceTree = "<group>"; };
 		59329DF8E0EB42C8613875FB /* FestivalModeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FestivalModeView.swift; sourceTree = "<group>"; };
 		599A5E8E9DDAFE166A3CF2B9 /* SubscriptionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SubscriptionView.swift; sourceTree = "<group>"; };
+		6B3ADF1A6F6812139F27297C /* BroadcastView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BroadcastView.swift; sourceTree = "<group>"; };
 		783E19B517B0E637BF72F97C /* SolunaTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SolunaTheme.swift; sourceTree = "<group>"; };
 		7C449248739977A0EAD3366F /* EmailLoginView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EmailLoginView.swift; sourceTree = "<group>"; };
 		87F680EAEE236C3DDDD1629D /* DebugOverlayView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DebugOverlayView.swift; sourceTree = "<group>"; };
+		96B50007B84737D4022AEE16 /* MusicBroadcast.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MusicBroadcast.swift; sourceTree = "<group>"; };
 		A8E1058C397B200E7BF8EDBF /* DeviceBrowserView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DeviceBrowserView.swift; sourceTree = "<group>"; };
+		AI0002 /* AIAutoChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIAutoChannel.swift; sourceTree = "<group>"; };
+		AL0002 /* SolunaAlarm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaAlarm.swift; sourceTree = "<group>"; };
+		AV0002 /* AudioVisualizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioVisualizer.swift; sourceTree = "<group>"; };
 		B166E631689F90681DD54AF6 /* Localizable.strings */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = Localizable.strings; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
 		CB8CC19F9AA4 /* ChannelBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelBrowserView.swift; sourceTree = "<group>"; };
+		CM0002 /* ChatManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatManager.swift; sourceTree = "<group>"; };
+		CV0002 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		D86366D77E275E17632364DD /* FanRankView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FanRankView.swift; sourceTree = "<group>"; };
 		GD0002 /* GlobalDeviceRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalDeviceRegistry.swift; sourceTree = "<group>"; };
 		GD0004 /* DevicePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePickerView.swift; sourceTree = "<group>"; };
+		LA0002 /* SolunaLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaLiveActivity.swift; sourceTree = "<group>"; };
 		SD0002 /* SilentDiscoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SilentDiscoView.swift; sourceTree = "<group>"; };
 		SDK0002 /* SDKAudioReceiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SDKAudioReceiver.swift; sourceTree = "<group>"; };
 		SI0002 /* SolunaAppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaAppIntents.swift; sourceTree = "<group>"; };
-		SP0002 /* SolunaSharePlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaSharePlay.swift; sourceTree = "<group>"; };
-		LA0002 /* SolunaLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaLiveActivity.swift; sourceTree = "<group>"; };
-		WD0002 /* SolunaWidgetData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaWidgetData.swift; sourceTree = "<group>"; };
 		SL0002 /* SocialListening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialListening.swift; sourceTree = "<group>"; };
-		AI0002 /* AIAutoChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIAutoChannel.swift; sourceTree = "<group>"; };
+		SP0002 /* SolunaSharePlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaSharePlay.swift; sourceTree = "<group>"; };
 		ST0002 /* SleepTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimer.swift; sourceTree = "<group>"; };
-		AL0002 /* SolunaAlarm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaAlarm.swift; sourceTree = "<group>"; };
-		AV0002 /* AudioVisualizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioVisualizer.swift; sourceTree = "<group>"; };
-		CM0002 /* ChatManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatManager.swift; sourceTree = "<group>"; };
-		CV0002 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		TM0002 /* TipManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipManager.swift; sourceTree = "<group>"; };
 		TV0002 /* TippingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TippingView.swift; sourceTree = "<group>"; };
+		WD0002 /* SolunaWidgetData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaWidgetData.swift; sourceTree = "<group>"; };
+		CS0002 /* ClockSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClockSync.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -172,6 +178,7 @@
 				2A0008 /* SettingsView.swift */,
 				2A0003 /* AudioReceiver.swift */,
 				SDK0002 /* SDKAudioReceiver.swift */,
+				CS0002 /* ClockSync.swift */,
 				SD0002 /* SilentDiscoView.swift */,
 				2A0020 /* DaemonClient.swift */,
 				2A0030 /* SpeakersController.swift */,
@@ -206,7 +213,7 @@
 				SI0002 /* SolunaAppIntents.swift */,
 				LA0002 /* SolunaLiveActivity.swift */,
 				WD0002 /* SolunaWidgetData.swift */,
-							SP0002 /* SolunaSharePlay.swift */,
+				SP0002 /* SolunaSharePlay.swift */,
 				SL0002 /* SocialListening.swift */,
 				AI0002 /* AIAutoChannel.swift */,
 				ST0002 /* SleepTimer.swift */,
@@ -216,6 +223,8 @@
 				CV0002 /* ChatView.swift */,
 				TM0002 /* TipManager.swift */,
 				TV0002 /* TippingView.swift */,
+				96B50007B84737D4022AEE16 /* MusicBroadcast.swift */,
+				6B3ADF1A6F6812139F27297C /* BroadcastView.swift */,
 			);
 			path = SolunaReceiver;
 			sourceTree = "<group>";
@@ -365,6 +374,7 @@
 				1A0005 /* SettingsView.swift in Sources */,
 				1A0003 /* AudioReceiver.swift in Sources */,
 				SDK0001 /* SDKAudioReceiver.swift in Sources */,
+				CS0001 /* ClockSync.swift in Sources */,
 				SD0001 /* SilentDiscoView.swift in Sources */,
 				1A0020 /* DaemonClient.swift in Sources */,
 				1A0030 /* SpeakersController.swift in Sources */,
@@ -404,6 +414,8 @@
 				CV0001 /* ChatView.swift in Sources */,
 				TM0001 /* TipManager.swift in Sources */,
 				TV0001 /* TippingView.swift in Sources */,
+				653A035213B5BA2E1A1D0CDF /* MusicBroadcast.swift in Sources */,
+				C5B3FF236C6ED46B9014D2B2 /* BroadcastView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

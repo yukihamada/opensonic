@@ -1,0 +1,11 @@
+{
+  "channels": [
+    {"name": "bjj",    "dir": "/data/music/bjj/"},
+    {"name": "chill",  "dir": "/data/music/chill/"},
+    {"name": "dance",  "dir": "/data/music/dance/"},
+    {"name": "jazz",   "dir": "/data/music/jazz/"},
+    {"name": "lofi",   "dir": "/data/music/lofi/"},
+    {"name": "soluna", "dir": "/data/music/soluna/"},
+    {"name": "yuki",   "dir": "/data/music/yuki/"}
+  ]
+}
