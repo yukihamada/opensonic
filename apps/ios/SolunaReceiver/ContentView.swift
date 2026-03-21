@@ -146,6 +146,20 @@ struct ContentView: View {
             receiver.toggleMic()
         }
     }
+    // MARK: - My Channels (channels I created — only these can broadcast)
+    private static let myChannelsKey = "soluna_my_channels"
+    private var myChannels: [String] {
+        UserDefaults.standard.stringArray(forKey: Self.myChannelsKey) ?? []
+    }
+    private func saveMyChannel(_ name: String) {
+        var list = myChannels
+        if !list.contains(name) { list.append(name) }
+        UserDefaults.standard.set(list, forKey: Self.myChannelsKey)
+    }
+    private func isMyChannel(_ name: String) -> Bool {
+        myChannels.contains(name)
+    }
+
     private let channelOrder = ["soluna", "jazz", "lofi", "chill", "dance", "bjj", "yuki"]
     private func switchNextChannel() {
         if let idx = channelOrder.firstIndex(of: currentChannelName) {
@@ -327,12 +341,13 @@ struct ContentView: View {
                     .autocorrectionDisabled()
                 Button("Create") {
                     let name = quickCreateName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                    if !name.isEmpty { switchChannel(name) }
+                    if !name.isEmpty { saveMyChannel(name); switchChannel(name) }
                 }
             } else {
                 Button("Create Random Channel") {
                     let id = String("abcdefghijklmnopqrstuvwxyz0123456789".shuffled().prefix(6))
-                    switchChannel("radio-\(id)")
+                    let name = "radio-\(id)"
+                    saveMyChannel(name); switchChannel(name)
                 }
                 Button("Upgrade to PRO") { showSubscription = true }
             }

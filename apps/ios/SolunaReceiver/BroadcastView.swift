@@ -79,21 +79,40 @@ struct BroadcastView: View {
                             .glassCard()
                         }
 
-                        // MARK: - Channel Input
+                        // MARK: - Channel Picker (only my channels)
                         VStack(spacing: 8) {
-                            Text("Channel")
+                            Text("Broadcast to")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundColor(.white.opacity(0.4))
 
-                            TextField("Channel name", text: $channel)
-                                .font(.system(size: 16, weight: .medium, design: .monospaced))
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
-                                .background(Color.white.opacity(0.06))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                .disabled(manager.isBroadcasting)
-                                .opacity(manager.isBroadcasting ? 0.5 : 1.0)
+                            let myChannels = UserDefaults.standard.stringArray(forKey: "soluna_my_channels") ?? []
+                            if myChannels.isEmpty {
+                                Text("Create a channel first from the Listen tab")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.white.opacity(0.3))
+                                    .multilineTextAlignment(.center)
+                                    .padding(.vertical, 8)
+                            } else {
+                                ForEach(myChannels, id: \.self) { ch in
+                                    Button {
+                                        channel = ch
+                                    } label: {
+                                        HStack {
+                                            Text(ch)
+                                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                                .foregroundColor(channel == ch ? .white : .white.opacity(0.6))
+                                            Spacer()
+                                            if channel == ch {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .foregroundColor(.solunaSol)
+                                            }
+                                        }
+                                        .padding(.horizontal, 12).padding(.vertical, 8)
+                                        .background(channel == ch ? Color.white.opacity(0.1) : Color.clear)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    }
+                                }
+                            }
                         }
                         .padding(16)
                         .glassCard()
