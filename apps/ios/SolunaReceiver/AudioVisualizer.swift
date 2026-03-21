@@ -25,7 +25,7 @@ struct AudioVisualizerView: View {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(barGradient(for: i))
                     .frame(width: max(2, (UIScreen.main.bounds.width - 40) / CGFloat(barCount) - 2),
-                           height: levels[i] * 80)
+                           height: levels[i] * 30)
             }
         }
         .frame(height: 80)

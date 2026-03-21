@@ -579,6 +579,7 @@ struct ContentView: View {
             }
             if isPlaying {
                 AudioVisualizerView(barCount: 32, isPlaying: isPlaying)
+                    .frame(height: 30)
                     .padding(.horizontal, 8)
             }
             HStack(spacing: 32) {
@@ -600,14 +601,15 @@ struct ContentView: View {
                 Button {} label: { Image(systemName: "forward.fill").font(.system(size: 20)).foregroundColor(.white.opacity(0.4)) }
             }
             if isPlaying {
-                HStack(spacing: 8) {
-                    Circle().fill(Color.solunaLive).frame(width: 6, height: 6).shadow(color: .solunaLive.opacity(0.6), radius: 4)
-                    Text("Listening").font(.system(size: 13, weight: .medium)).foregroundColor(.solunaLive)
-                    Text("--").foregroundColor(.white.opacity(0.3))
-                    Text(String(format: "%.0fms", receiver.networkLatencyMs))
-                        .font(.system(size: 12, weight: .medium, design: .monospaced)).foregroundColor(.white.opacity(0.4))
-                }
-                NowPlayingView(channel: currentChannelName, isReceiving: true)
+                HStack(spacing: 6) {
+                    Circle().fill(Color.solunaLive).frame(width: 5, height: 5)
+                    Text("LIVE").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundColor(.solunaLive)
+                    Spacer()
+                    Text("\(receiver.sdkReceiver?.bufferFillMs ?? 0)ms")
+                        .font(.system(size: 10, design: .monospaced)).foregroundColor(.white.opacity(0.3))
+                    Text("\(receiver.sdkReceiver?.packetsPerSec ?? 0)pps")
+                        .font(.system(size: 10, design: .monospaced)).foregroundColor(.white.opacity(0.3))
+                }.padding(.horizontal, 4)
             }
         }.padding(16).glassCard()
     }
