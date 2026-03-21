@@ -1,6 +1,6 @@
 //
 //  AudioReceiver.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Swift wrapper for the Objective-C++ audio receiver bridge
 //
@@ -60,6 +60,7 @@ final class AudioReceiver: ObservableObject {
         didSet {
             if !isMuted {
                 receiver.volume = volume
+                sdkReceiver?.volume = volume
             }
         }
     }
@@ -67,7 +68,9 @@ final class AudioReceiver: ObservableObject {
     /// Mute state — preserves volume level
     @Published var isMuted: Bool = false {
         didSet {
-            receiver.volume = isMuted ? 0 : volume
+            let v: Float = isMuted ? 0 : volume
+            receiver.volume = v
+            sdkReceiver?.volume = v
         }
     }
 
@@ -210,6 +213,14 @@ final class AudioReceiver: ObservableObject {
     private let networkMonitor = NWPathMonitor()
     private var wasPlayingBeforeDisconnect = false
 
+    // MARK: - SDK Audio Receiver (pure-Swift relay playback)
+    /// When true, SDKAudioReceiver handles relay audio instead of the C++ bridge.
+    private let useSDKReceiver = true
+    private var sdkReceiver: SDKAudioReceiver?
+    private var sdkStateSink: AnyCancellable?
+    private var sdkPacketsSink: AnyCancellable?
+    private var sdkReceivingSink: AnyCancellable?
+
     // Speech recognition
     private var speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "ja-JP"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -261,11 +272,14 @@ final class AudioReceiver: ObservableObject {
         errorMessage = nil
         state = .connecting   // visual feedback
 
-        // Configure audio session for reliable background playback
+        // Start with .playback (like Koe app — proven to work on iPhone).
+        // Switch to .playAndRecord only when mic is actually enabled.
+        // Using .voiceChat from start causes voice processing to suppress music audio.
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.duckOthers])
-            try session.setPreferredIOBufferDuration(0.005) // 5ms — low latency with 1ch mono
+            try session.setCategory(.playback, mode: .default,
+                                    options: [.defaultToSpeaker, .mixWithOthers, .allowBluetooth])
+            try session.setPreferredSampleRate(48000)
             try session.setActive(true)
         } catch {
             print("[AudioReceiver] AVAudioSession error: \(error)")
@@ -280,11 +294,25 @@ final class AudioReceiver: ObservableObject {
             receiver.channels = 2
         }
 
-        // Start audio output immediately — no waiting for peer scan
-        let ok = receiver.start()
-        if !ok { return }
+        // Relay-only mode: skip multicast receive (matches Koe app behavior)
+        receiver.networkDisabled = true
+
+        // When using SDKAudioReceiver, skip C++ bridge audio engine start
+        // to avoid two AVAudioEngine instances competing for the audio session.
+        // The C++ bridge is still available for mic TX when needed.
+        let manualHost = UserDefaults.standard.string(forKey: "relayHost") ?? ""
+        if !(useSDKReceiver && manualHost.isEmpty) {
+            let ok = receiver.start()
+            if !ok { return }
+        }
 
         let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+
+        // SDK receiver: skip C++ bridge setup entirely — just start pure-Swift relay
+        if useSDKReceiver && manualHost.isEmpty {
+            startSDKReceiver(channel: ch)
+            return
+        }
 
         // Start watchdog, stats, meta callback, and audio fingerprinting
         startWatchdog()
@@ -298,15 +326,15 @@ final class AudioReceiver: ObservableObject {
             startAutoRecording()
         }
 
-        // Connect to relay — use manual host if set, else auto-discover
-        let manualHost = UserDefaults.standard.string(forKey: "relayHost") ?? ""
+        // Connect to relay
         if !manualHost.isEmpty {
             connectRelay(group: ch, host: manualHost, port: 5099)
         } else {
-            connectRelay(group: ch)
-            // WAN relay: just stay connected. Don't disconnect/retry —
-            // the relay is the source of truth for remote channels.
-            // The watchdog (30s no-packet timeout) handles real failures.
+            // Fallback: C++ bridge relay
+            let devId = deviceId
+            receiver.connect(toRelay: "relay.solun.art", port: 5100,
+                             group: ch, password: "", deviceId: devId)
+            updateRelayState()
         }
 
         // P2P peer scan only when using manual/LAN host.
@@ -626,11 +654,81 @@ final class AudioReceiver: ObservableObject {
         nowPlayingTitle = nil
         nowPlayingArtist = nil
         nowPlayingArtwork = nil
+        stopSDKReceiver()
         state = .stopped
         receiver.stop()
         PeerRelayManager.shared.stop()
         UIApplication.shared.isIdleTimerDisabled = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    // MARK: - SDKAudioReceiver Integration
+
+    /// Start the pure-Swift SDK receiver for relay audio playback.
+    /// SDKAudioReceiver uses mono ring buffer + AVAudioSourceNode (pull-based),
+    /// S24 decode, 100ms prefill, mono->stereo duplication, .playback session, 5ms recv timeout.
+    private func startSDKReceiver(channel: String) {
+        stopSDKReceiver()
+
+        let sdk = SDKAudioReceiver()
+        sdk.volume = isMuted ? 0 : volume
+
+        // Forward SDKAudioReceiver state -> AudioReceiver published properties
+        sdkStateSink = sdk.$state.receive(on: DispatchQueue.main).sink { [weak self] sdkState in
+            guard let self else { return }
+            switch sdkState {
+            case .stopped:   self.state = .stopped
+            case .connecting: self.state = .connecting
+            case .receiving: self.state = .receiving
+            case .error:     self.state = .error
+            }
+        }
+
+        sdkPacketsSink = sdk.$packetsReceived.receive(on: DispatchQueue.main).sink { [weak self] count in
+            self?.packetsReceived = count
+        }
+
+        sdkReceivingSink = sdk.$isReceivingAudio.receive(on: DispatchQueue.main).sink { [weak self] receiving in
+            guard let self, receiving else { return }
+            self.relayState = .connected
+            self.relayGroup = channel
+        }
+
+        sdkReceiver = sdk
+        sdk.start(channel: channel)
+    }
+
+    /// Stop the SDK receiver and clean up Combine subscriptions.
+    private func stopSDKReceiver() {
+        sdkStateSink?.cancel()
+        sdkStateSink = nil
+        sdkPacketsSink?.cancel()
+        sdkPacketsSink = nil
+        sdkReceivingSink?.cancel()
+        sdkReceivingSink = nil
+        sdkReceiver?.stop()
+        sdkReceiver = nil
+    }
+
+    /// Set mic to global (relay) or local (LAN multicast)
+    var micGlobal: Bool {
+        get { receiver.micGlobal }
+        set { receiver.micGlobal = newValue }
+    }
+
+    /// Karaoke mode: mic audio mixed locally into speaker output (no relay)
+    @Published private(set) var isMicMonitoring: Bool = false
+
+    func toggleMicMonitor() {
+        if isMicMonitoring {
+            receiver.stopMicMonitor()
+            isMicMonitoring = false
+        } else {
+            // Session is already .playAndRecord from start() — no switch needed
+            if receiver.startMicMonitor() {
+                isMicMonitoring = true
+            }
+        }
     }
 
     /// Toggle microphone transmit on/off
@@ -639,38 +737,56 @@ final class AudioReceiver: ObservableObject {
             suppressInterruption = true
             receiver.stopMicTransmit()
             isMicTransmitting = false
-            // Restore playback-only session
-            do {
-                let session = AVAudioSession.sharedInstance()
-                try session.setCategory(.playback, mode: .default, options: [.duckOthers])
-                try session.setActive(true)
-            } catch {
-                print("[AudioReceiver] Session restore error: \(error)")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-                self?.suppressInterruption = false
+            // Restore on background to avoid blocking
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self else { return }
+                self.receiver.flushRingBuffer()
+                do {
+                    let session = AVAudioSession.sharedInstance()
+                    try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowBluetooth])
+                    try session.setActive(true)
+                } catch {
+                    print("[AudioReceiver] Session restore error: \(error)")
+                }
+                Thread.sleep(forTimeInterval: 0.3)
+                Task { @MainActor in
+                    self.suppressInterruption = false
+                }
             }
         } else {
             AVAudioSession.sharedInstance().requestRecordPermission { [weak self] granted in
-                Task { @MainActor in
-                    guard let self, granted else { return }
+                guard let self, granted else { return }
+                // Run on background queue to avoid blocking main thread
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    guard let self else { return }
                     // Switch to playAndRecord BEFORE starting mic
-                    self.suppressInterruption = true
+                    Task { @MainActor in self.suppressInterruption = true }
                     do {
                         let session = AVAudioSession.sharedInstance()
                         try session.setCategory(.playAndRecord, mode: .default,
-                                                options: [.defaultToSpeaker, .allowBluetooth])
+                                                options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
+                        try session.setPreferredIOBufferDuration(0.01) // 10ms for mic
                         try session.setActive(true)
                     } catch {
                         print("[AudioReceiver] Session error: \(error)")
-                        self.suppressInterruption = false
+                        Task { @MainActor in self.suppressInterruption = false }
                         return
                     }
-                    if self.receiver.startMicTransmit() {
-                        self.isMicTransmitting = true
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-                        self?.suppressInterruption = false
+                    // Small delay to let audio session stabilize
+                    Thread.sleep(forTimeInterval: 0.3)
+                    // Flush ring buffer
+                    self.receiver.flushRingBuffer()
+                    let micOk = self.receiver.startMicTransmit()
+                    print("[AudioReceiver] startMicTransmit returned: \(micOk)")
+                    Task { @MainActor in
+                        if micOk {
+                            self.isMicTransmitting = true
+                        } else {
+                            self.debugLog += "\nMIC FAILED: startMicTransmit returned NO"
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                            self?.suppressInterruption = false
+                        }
                     }
                 }
             }
@@ -868,6 +984,17 @@ final class AudioReceiver: ObservableObject {
     func connectRelay(group: String, password: String = "",
                       host: String = "relay.solun.art", port: UInt16 = 5100) {
         guard state == .connecting || state == .receiving else { return }
+
+        // When SDK receiver is active and connecting to default relay, use it
+        if useSDKReceiver && host == "relay.solun.art" && port == 5100 {
+            if let sdk = sdkReceiver {
+                sdk.setChannel(group)
+            } else {
+                startSDKReceiver(channel: group)
+            }
+            return
+        }
+
         let devId = deviceId
         // Track relay target for NACK sending
         setNackTarget(host: host, port: port)
@@ -942,6 +1069,7 @@ final class AudioReceiver: ObservableObject {
     func disconnectRelay() {
         lanBrowser?.cancel()
         lanBrowser = nil
+        stopSDKReceiver()
         receiver.disconnectRelay()
         updateRelayState()
     }

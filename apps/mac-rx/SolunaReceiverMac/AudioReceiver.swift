@@ -142,7 +142,8 @@ final class AudioReceiver: ObservableObject {
     @Published var volume: Float = 1.0 {
         didSet {
             if !isMuted {
-                receiver.volume = volume
+                receiver.volume = 0  // C++ bridge muted; SDK handles playback
+                SDKAudioReceiver.shared.volume = volume
             }
         }
     }
@@ -150,7 +151,9 @@ final class AudioReceiver: ObservableObject {
     /// Mute state — preserves volume level
     @Published var isMuted: Bool = false {
         didSet {
-            receiver.volume = isMuted ? 0 : volume
+            receiver.volume = 0  // C++ bridge always muted
+            SDKAudioReceiver.shared.volume = isMuted ? 0 : volume
+            SDKAudioReceiver.shared.isMuted = isMuted
         }
     }
 
@@ -398,6 +401,9 @@ final class AudioReceiver: ObservableObject {
         let ok = receiver.start()
         if !ok { return } // bridge sets state -> .error via delegate
 
+        // Mute C++ bridge audio — SDKAudioReceiver handles playback
+        receiver.volume = 0
+
         // Restore previously active local devices
         refreshDevices()
         restoreSavedDevices()
@@ -406,10 +412,17 @@ final class AudioReceiver: ObservableObject {
         // Setup metadata and file-sync callbacks (stored in C++ for when relay connects)
         setupMetaCallback()
 
-        // Auto-connect to WAN relay (reads channel at connect time, not capture time)
+        // Start SDK audio player immediately (mono ring buffer + AVAudioSourceNode)
+        let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+        let sdk = SDKAudioReceiver.shared
+        sdk.channel = ch
+        sdk.relayHost = "relay.solun.art"
+        sdk.volume = isMuted ? 0 : volume
+        sdk.start()
+
+        // Also auto-connect C++ bridge relay (for mic TX, members, etc.)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            guard let self, self.state == .receiving, self.relayState == .disconnected else { return }
-            let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+            guard let self, self.relayState == .disconnected else { return }
             self.connectRelay(group: ch)
         }
 
@@ -447,6 +460,9 @@ final class AudioReceiver: ObservableObject {
         receiver.setFileCallback(nil)
         receiver.setSyncCallback(nil)
         receiver.setMembersCallback(nil)
+
+        // Stop SDK audio player
+        SDKAudioReceiver.shared.stop()
 
         state = .stopped
         receiver.stop()
@@ -529,6 +545,10 @@ final class AudioReceiver: ObservableObject {
         }
         relayState = .connecting
         relayError = nil
+
+        // Sync SDK audio player to new channel
+        let sdk = SDKAudioReceiver.shared
+        sdk.setChannel(group)
 
         // Run connection on background to avoid blocking UI during DNS/JOIN
         let devId = deviceId
