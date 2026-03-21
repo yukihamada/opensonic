@@ -26,49 +26,19 @@ fi
 CONSOLE_UID=$(id -u "$CONSOLE_USER")
 CONSOLE_HOME=$(/usr/bin/dscl . -read "/Users/$CONSOLE_USER" NFSHomeDirectory | awk '{print $2}')
 
-# ── 4. LaunchAgent インストール ──────────────────────────────
+# ── 4. solunad LaunchAgent — DISABLED ─────────────────────────
+# solunad is no longer needed for normal operation.
+# SDKAudioReceiver handles relay audio directly.
+# If a user needs TX (system audio capture), they can start solunad manually.
 LAUNCH_AGENTS="$CONSOLE_HOME/Library/LaunchAgents"
-mkdir -p "$LAUNCH_AGENTS"
-chown "$CONSOLE_USER:staff" "$LAUNCH_AGENTS"
-
-cat > "$LAUNCH_AGENTS/$SERVICE_ID.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>${SERVICE_ID}</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/local/bin/solunad</string>
-        <string>--tx</string>
-        <string>--device</string>
-        <string>soluna</string>
-        <string>--speaker</string>
-        <string>auto</string>
-        <string>--channels</string>
-        <string>2</string>
-        <string>--low-latency</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/solunad.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/solunad.log</string>
-</dict>
-</plist>
-PLIST
-
-chown "$CONSOLE_USER:staff" "$LAUNCH_AGENTS/$SERVICE_ID.plist"
-
-# ── 5. LaunchAgent 登録 ─────────────────────────────────────
-launchctl bootout "gui/$CONSOLE_UID/$SERVICE_ID" 2>/dev/null || true
-sleep 1
-launchctl bootstrap "gui/$CONSOLE_UID" "$LAUNCH_AGENTS/$SERVICE_ID.plist" 2>/dev/null || true
+# Remove any existing solunad LaunchAgents to prevent auto-start
+for PLIST_NAME in "io.soluna.daemon" "com.soluna.tx"; do
+    PLIST_PATH="$LAUNCH_AGENTS/$PLIST_NAME.plist"
+    if [ -f "$PLIST_PATH" ]; then
+        launchctl bootout "gui/$CONSOLE_UID/$PLIST_NAME" 2>/dev/null || true
+        rm -f "$PLIST_PATH"
+    fi
+done
 
 # ── 6. Soluna.app を起動 ────────────────────────────────────
 if [ -d "/Applications/Soluna.app" ]; then
