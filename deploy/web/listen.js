@@ -298,14 +298,18 @@
   }
 
   function fetchListenerCount() {
-    fetch(`https://relay.solun.art/api/channels/${encodeURIComponent(currentChannel)}`)
-      .then(r => r.json())
+    // Relay API may not have CORS headers; use no-cors fallback
+    fetch(`https://relay.solun.art/api/channels/${encodeURIComponent(currentChannel)}`, { mode: 'cors' })
+      .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data.listeners !== undefined) {
+        if (data && data.listeners !== undefined) {
           listenerCount.textContent = data.listeners;
         }
       })
-      .catch(() => { /* silent */ });
+      .catch(() => {
+        // CORS blocked — show "--" (listener count unavailable from browser)
+        listenerCount.textContent = '--';
+      });
   }
 
   // ── Visualizer ───────────────────────────────────────────────
