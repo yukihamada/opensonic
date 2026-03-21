@@ -45,6 +45,8 @@ final class SDKAudioReceiver: ObservableObject {
     @Published private(set) var activeOutputs: Set<UInt32> = []
     @Published private(set) var relayState: String = "disconnected"
     @Published private(set) var packetsDropped: UInt64 = 0
+    @Published private(set) var bufferFillMs: Int = 0      // ring buffer fill in ms
+    @Published private(set) var packetsPerSec: Int = 0     // recv rate
 
     // MARK: - Audio Engine
 
@@ -374,11 +376,17 @@ final class SDKAudioReceiver: ObservableObject {
 
     // MARK: - Stats & Watchdog
 
+    private var _lastPktCount: Int64 = 0
+
     private func startStatsPolling() {
         statsTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                self.packetsReceived = UInt64(OSAtomicAdd64(0, &self._packetsReceivedAtomic))
+                let current = OSAtomicAdd64(0, &self._packetsReceivedAtomic)
+                self.packetsPerSec = Int(current - self._lastPktCount)
+                self._lastPktCount = current
+                self.packetsReceived = UInt64(current)
+                self.bufferFillMs = self.ringAvailable() * 1000 / 48000  // samples → ms
             }
         }
     }

@@ -30,6 +30,8 @@ final class SDKAudioReceiver: ObservableObject {
     @Published private(set) var isConnected = false
     @Published private(set) var isReceivingAudio = false
     @Published private(set) var packetsReceived: UInt64 = 0
+    @Published private(set) var bufferFillMs: Int = 0
+    @Published private(set) var packetsPerSec: Int = 0
     @Published var channel: String = "soluna"
     @Published var volume: Float = 1.0 {
         didSet { audioEngine?.mainMixerNode.outputVolume = volume }
@@ -601,8 +603,11 @@ final class SDKAudioReceiver: ObservableObject {
             }
 
             if pktCount % 100 == 0 {
+                let bufMs = self.ringAvailable() * 1000 / 48000
                 DispatchQueue.main.async { [weak self] in
                     self?.packetsReceived = UInt64(pktCount)
+                    self?.bufferFillMs = bufMs
+                    self?.packetsPerSec = 500  // ~500 pkt/s at 48kHz/96samples
                 }
             }
         }
