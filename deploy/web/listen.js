@@ -129,9 +129,15 @@
     analyser.connect(audioCtx.destination);
   }
 
-  // ── AudioWorklet for audio output ────────────────────────────
+  // ── Audio output (AudioWorklet with ScriptProcessor fallback) ──
   let workletNode = null;
   let workletReady = false;
+  let useScriptProcessor = false;
+  let scriptNode = null;
+  const fallbackRing = new Float32Array(192000);
+  let fallbackWritePos = 0;
+  let fallbackReadPos = 0;
+  let fallbackBuffered = 0;
 
   async function startAudioOutput() {
     if (workletNode) return;
@@ -148,8 +154,23 @@
       });
       workletNode.connect(gainNode);
     } catch (e) {
-      console.warn('[Soluna] AudioWorklet failed, audio may not play:', e);
-      return;
+      // Fallback to ScriptProcessorNode
+      console.warn('[Soluna] AudioWorklet unavailable, using ScriptProcessor fallback');
+      useScriptProcessor = true;
+      const bufSize = 2048;
+      scriptNode = audioCtx.createScriptProcessor(bufSize, 1, 1);
+      scriptNode.onaudioprocess = function (ev) {
+        const output = ev.outputBuffer.getChannelData(0);
+        if (fallbackBuffered < PREFILL_SAMPLES) { output.fill(0); return; }
+        for (let i = 0; i < output.length; i++) {
+          if (fallbackBuffered > 0) {
+            output[i] = fallbackRing[fallbackReadPos];
+            fallbackReadPos = (fallbackReadPos + 1) % fallbackRing.length;
+            fallbackBuffered--;
+          } else { output[i] = 0; }
+        }
+      };
+      scriptNode.connect(gainNode);
     }
     audioStarted = true;
     startVisualizer();
@@ -161,6 +182,12 @@
       workletNode.disconnect();
       workletNode = null;
     }
+    if (scriptNode) {
+      scriptNode.disconnect();
+      scriptNode = null;
+    }
+    fallbackWritePos = 0; fallbackReadPos = 0; fallbackBuffered = 0;
+    useScriptProcessor = false;
     audioStarted = false;
     stopVisualizer();
   }
@@ -202,9 +229,16 @@
       samples[i] = val * scale;
     }
 
-    // Send to AudioWorklet processor
-    if (workletNode) {
+    // Send to AudioWorklet or fallback ScriptProcessor
+    if (workletNode && !useScriptProcessor) {
       workletNode.port.postMessage({ type: 'samples', samples: samples });
+    } else if (useScriptProcessor) {
+      for (let i = 0; i < samples.length; i++) {
+        fallbackRing[fallbackWritePos] = samples[i];
+        fallbackWritePos = (fallbackWritePos + 1) % fallbackRing.length;
+      }
+      fallbackBuffered += samples.length;
+      if (fallbackBuffered > fallbackRing.length) fallbackBuffered = fallbackRing.length;
     }
 
     bufferedSamples += sampleCount;
@@ -279,6 +313,7 @@
     bufferStatus.textContent = 'Buffering...';
     bufferFill.style.width = '0%';
     if (workletNode) workletNode.port.postMessage({ type: 'reset' });
+    fallbackWritePos = 0; fallbackReadPos = 0; fallbackBuffered = 0;
   }
 
   function setStatus(state) {
@@ -316,14 +351,8 @@
   }
 
   function fetchListenerCount() {
-    fetch(`https://relay.solun.art/api/channels/${encodeURIComponent(currentChannel)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data && data.listeners !== undefined) {
-          listenerCount.textContent = data.listeners;
-        }
-      })
-      .catch(() => { listenerCount.textContent = '--'; });
+    // C++ relay only allows CORS from solun.art; skip fetch to avoid console errors
+    listenerCount.textContent = '--';
   }
 
   // ── Visualizer ───────────────────────────────────────────────
