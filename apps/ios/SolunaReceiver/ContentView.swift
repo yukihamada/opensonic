@@ -547,65 +547,48 @@ struct ContentView: View {
     // MARK: - Now Playing
 
     private var nowPlayingArea: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(isPlaying ? AnyShapeStyle(LinearGradient.solLunaGradient) : AnyShapeStyle(Color.white.opacity(0.04)))
-                    .frame(height: 200)
-                if !isPlaying {
-                    VStack(spacing: 8) {
-                        ZStack {
-                            Circle().fill(RadialGradient(colors: [.solunaGradientStart.opacity(0.3), .solunaGradientEnd.opacity(0.1), .clear],
-                                                         center: .center, startRadius: 10, endRadius: 50))
-                                .frame(width: 80, height: 80)
-                            Image(systemName: "waveform").font(.system(size: 32)).foregroundColor(.white.opacity(0.2))
-                        }
-                        Text("Tap a channel to start").font(.subheadline).foregroundColor(.white.opacity(0.25))
+        // Spotify-style mini player: single row, fixed height
+        HStack(spacing: 12) {
+            // Play/Pause button
+            Button(action: togglePlayback) {
+                ZStack {
+                    if receiver.state == .connecting {
+                        ProgressView().tint(.white).scaleEffect(0.8)
+                    } else {
+                        Circle().fill(isPlaying ? LinearGradient.solGradient : LinearGradient.lunaGradient)
+                            .frame(width: 44, height: 44)
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 18, weight: .bold)).foregroundColor(.white)
+                            .offset(x: isPlaying ? 0 : 2)
+                    }
+                }.frame(width: 44, height: 44)
+            }.buttonStyle(.plain)
+
+            // Channel name + status
+            VStack(alignment: .leading, spacing: 2) {
+                Text(receiver.nowPlayingTitle ?? currentChannelName.capitalized)
+                    .font(.system(size: 15, weight: .bold)).foregroundColor(.white).lineLimit(1)
+                HStack(spacing: 4) {
+                    if isPlaying {
+                        Circle().fill(Color.solunaLive).frame(width: 5, height: 5)
+                        Text("\(receiver.sdkReceiver?.bufferFillMs ?? 0)ms")
+                            .font(.system(size: 10, design: .monospaced)).foregroundColor(.white.opacity(0.4))
+                    } else {
+                        Text("Ready").font(.system(size: 12)).foregroundColor(.white.opacity(0.4))
                     }
                 }
-                // Compact: no large artwork or waveform when playing
-            }.clipShape(RoundedRectangle(cornerRadius: 20))
+            }
 
-            VStack(spacing: 2) {
-                Text(receiver.nowPlayingTitle ?? currentChannelName.capitalized)
-                    .font(.system(size: 17, weight: .bold)).foregroundColor(.white).lineLimit(1)
-                Text(receiver.nowPlayingArtist ?? (isPlaying ? "Streaming" : "Ready"))
-                    .font(.system(size: 13)).foregroundColor(.white.opacity(0.5)).lineLimit(1)
+            Spacer()
+
+            // Prev/Next
+            Button { switchPrevChannel() } label: {
+                Image(systemName: "backward.fill").font(.system(size: 14)).foregroundColor(.white.opacity(0.4))
             }
-            if isPlaying {
-                AudioVisualizerView(barCount: 32, isPlaying: isPlaying)
-                    .frame(height: 30)
-                    .padding(.horizontal, 8)
+            Button { switchNextChannel() } label: {
+                Image(systemName: "forward.fill").font(.system(size: 14)).foregroundColor(.white.opacity(0.4))
             }
-            HStack(spacing: 24) {
-                Button { switchPrevChannel() } label: { Image(systemName: "backward.fill").font(.system(size: 16)).foregroundColor(.white.opacity(0.4)) }
-                Button(action: togglePlayback) {
-                    ZStack {
-                        if receiver.state == .connecting {
-                            ProgressView().tint(.white).scaleEffect(1.0).frame(width: 52, height: 52)
-                        } else {
-                            Circle().fill(isPlaying ? LinearGradient.solGradient : LinearGradient.lunaGradient)
-                                .frame(width: 52, height: 52)
-                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 22, weight: .bold)).foregroundColor(.white)
-                                .offset(x: isPlaying ? 0 : 2)
-                        }
-                    }
-                }.buttonStyle(.plain)
-                Button { switchNextChannel() } label: { Image(systemName: "forward.fill").font(.system(size: 16)).foregroundColor(.white.opacity(0.4)) }
-            }
-            if isPlaying {
-                HStack(spacing: 6) {
-                    Circle().fill(Color.solunaLive).frame(width: 5, height: 5)
-                    Text("LIVE").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundColor(.solunaLive)
-                    Spacer()
-                    Text("\(receiver.sdkReceiver?.bufferFillMs ?? 0)ms")
-                        .font(.system(size: 10, design: .monospaced)).foregroundColor(.white.opacity(0.3))
-                    Text("\(receiver.sdkReceiver?.packetsPerSec ?? 0)pps")
-                        .font(.system(size: 10, design: .monospaced)).foregroundColor(.white.opacity(0.3))
-                }.padding(.horizontal, 4)
-            }
-        }.padding(16).glassCard()
+        }.padding(12).glassCard()
     }
 
     // MARK: - Volume
