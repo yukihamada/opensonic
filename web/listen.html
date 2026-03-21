@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="Soluna Radio — ブラウザでリアルタイム音楽を聴く。チャンネルを選んでタップするだけ。">
+    <meta name="theme-color" content="#05060a">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Listen — Soluna Radio</title>
+
+    <meta property="og:title" content="Listen — Soluna Radio">
+    <meta property="og:description" content="ブラウザでリアルタイム音楽ストリーミング。タップして聴こう。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/listen">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --cyan:   #06b6d4;
+            --green:  #10b981;
+            --red:    #ef4444;
+            --amber:  #f59e0b;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { height: 100%; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100%;
+            line-height: 1.5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-x: hidden;
+        }
+
+        /* ── Ambient background ── */
+        .ambient {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .ambient::before {
+            content: '';
+            position: absolute;
+            top: -40%; left: -20%;
+            width: 80%; height: 80%;
+            background: radial-gradient(ellipse, rgba(59,130,246,0.08) 0%, transparent 70%);
+            animation: drift 20s ease-in-out infinite alternate;
+        }
+        .ambient::after {
+            content: '';
+            position: absolute;
+            bottom: -30%; right: -20%;
+            width: 70%; height: 70%;
+            background: radial-gradient(ellipse, rgba(6,182,212,0.06) 0%, transparent 70%);
+            animation: drift 25s ease-in-out infinite alternate-reverse;
+        }
+        @keyframes drift {
+            0%   { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(40px, -30px) scale(1.1); }
+        }
+
+        /* ── Layout ── */
+        .container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 480px;
+            padding: 24px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 28px;
+            min-height: 100vh;
+        }
+
+        /* ── Nav ── */
+        .nav {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .nav-logo {
+            font-size: 17px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .nav-logo svg { width: 22px; height: 22px; }
+        .nav-status {
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text3);
+        }
+        .status-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--text3);
+            transition: background 0.3s;
+        }
+        .status-dot.connected { background: var(--green); box-shadow: 0 0 6px rgba(16,185,129,0.5); }
+        .status-dot.error { background: var(--red); }
+
+        /* ── Player card ── */
+        .player {
+            width: 100%;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px 28px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+        }
+
+        /* ── Visualizer ring ── */
+        .viz-ring {
+            position: relative;
+            width: 160px;
+            height: 160px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .viz-ring canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .channel-icon {
+            font-size: 48px;
+            z-index: 1;
+            user-select: none;
+        }
+
+        .channel-name {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .channel-meta {
+            font-size: 13px;
+            color: var(--text2);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .listener-count {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* ── Play button ── */
+        .play-btn {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s, box-shadow 0.2s;
+            box-shadow: 0 4px 20px rgba(59,130,246,0.3);
+        }
+        .play-btn:hover { transform: scale(1.06); box-shadow: 0 6px 28px rgba(59,130,246,0.4); }
+        .play-btn:active { transform: scale(0.96); }
+        .play-btn svg { width: 32px; height: 32px; }
+        .play-btn.playing { background: linear-gradient(135deg, var(--cyan), var(--blue)); }
+
+        /* ── Volume ── */
+        .volume-row {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 4px;
+        }
+        .volume-row svg { width: 18px; height: 18px; color: var(--text3); flex-shrink: 0; }
+        .volume-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--s3);
+            outline: none;
+        }
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: var(--text);
+            cursor: pointer;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        }
+        .volume-slider::-moz-range-thumb {
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: var(--text);
+            cursor: pointer;
+            border: none;
+        }
+
+        /* ── Buffer bar ── */
+        .buffer-bar {
+            width: 100%;
+            height: 3px;
+            background: var(--s3);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .buffer-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            border-radius: 2px;
+            transition: width 0.15s;
+        }
+
+        /* ── Channel picker ── */
+        .channels-section {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .channels-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text3);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .channel-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 8px;
+        }
+        .ch-btn {
+            padding: 10px 8px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: var(--s1);
+            color: var(--text2);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            text-decoration: none;
+        }
+        .ch-btn:hover { border-color: var(--border2); background: var(--s2); color: var(--text); }
+        .ch-btn.active {
+            border-color: var(--blue);
+            background: rgba(59,130,246,0.1);
+            color: var(--text);
+        }
+        .ch-btn .ch-emoji { font-size: 20px; }
+
+        /* ── App install CTA ── */
+        .app-cta {
+            width: 100%;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px 20px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .app-cta-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .app-cta-icon svg { width: 22px; height: 22px; color: #fff; }
+        .app-cta-text { flex: 1; }
+        .app-cta-text .title { font-size: 14px; font-weight: 600; }
+        .app-cta-text .sub { font-size: 12px; color: var(--text3); margin-top: 2px; }
+        .app-cta-link {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--blue);
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .app-cta-link:hover { text-decoration: underline; }
+
+        /* ── Tap overlay ── */
+        .tap-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: rgba(5,6,10,0.92);
+            backdrop-filter: blur(16px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            cursor: pointer;
+            transition: opacity 0.4s;
+        }
+        .tap-overlay.hidden { opacity: 0; pointer-events: none; }
+        .tap-overlay .pulse-ring {
+            width: 120px; height: 120px;
+            border-radius: 50%;
+            border: 2px solid rgba(59,130,246,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); border-color: rgba(59,130,246,0.3); }
+            50% { transform: scale(1.08); border-color: rgba(59,130,246,0.6); }
+        }
+        .tap-overlay .pulse-ring svg { width: 48px; height: 48px; color: var(--blue); }
+        .tap-overlay .tap-text {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text);
+        }
+        .tap-overlay .tap-sub {
+            font-size: 13px;
+            color: var(--text3);
+        }
+
+        /* ── Footer ── */
+        .footer {
+            margin-top: auto;
+            padding: 24px 0 max(12px, env(safe-area-inset-bottom));
+            text-align: center;
+            font-size: 12px;
+            color: var(--text3);
+        }
+        .footer a { color: var(--text2); text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+
+        /* ── Responsive ── */
+        @media (max-width: 360px) {
+            .container { padding: 16px 14px; }
+            .player { padding: 24px 18px; }
+            .channel-name { font-size: 24px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Ambient glow -->
+    <div class="ambient"></div>
+
+    <!-- Tap to start overlay (required for AudioContext on mobile) -->
+    <div class="tap-overlay" id="tapOverlay">
+        <div class="pulse-ring">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none"/>
+            </svg>
+        </div>
+        <div class="tap-text">Tap to Listen</div>
+        <div class="tap-sub" id="tapChannel">Connecting to channel...</div>
+    </div>
+
+    <div class="container">
+        <!-- Nav -->
+        <div class="nav">
+            <a href="/soluna" class="nav-logo">
+                <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#lg)" stroke-width="2"/><path d="M12 6a6 6 0 0 1 0 12" fill="url(#lg)" opacity="0.6"/><defs><linearGradient id="lg" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#3b82f6"/><stop offset="1" stop-color="#06b6d4"/></linearGradient></defs></svg>
+                Soluna
+            </a>
+            <div class="nav-status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Connecting</span>
+            </div>
+        </div>
+
+        <!-- Player -->
+        <div class="player">
+            <div class="viz-ring">
+                <canvas id="vizCanvas" width="160" height="160"></canvas>
+                <div class="channel-icon" id="channelIcon">🎵</div>
+            </div>
+
+            <div class="channel-name" id="channelName">---</div>
+
+            <div class="channel-meta">
+                <div class="listener-count">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span id="listenerCount">--</span>
+                </div>
+                <span id="bufferStatus">Buffering...</span>
+            </div>
+
+            <!-- Play / Stop -->
+            <button class="play-btn" id="playBtn" aria-label="Play/Stop">
+                <svg id="iconPlay" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                <svg id="iconStop" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="3" width="14" height="18" rx="2"/></svg>
+            </button>
+
+            <!-- Volume -->
+            <div class="volume-row">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/></svg>
+                <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="80">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            </div>
+
+            <!-- Buffer indicator -->
+            <div class="buffer-bar">
+                <div class="buffer-fill" id="bufferFill"></div>
+            </div>
+        </div>
+
+        <!-- Channel picker -->
+        <div class="channels-section">
+            <div class="channels-label">Channels</div>
+            <div class="channel-grid" id="channelGrid">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
+        <!-- App install CTA -->
+        <div class="app-cta">
+            <div class="app-cta-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><line x1="12" y1="18" x2="12" y2="18"/></svg>
+            </div>
+            <div class="app-cta-text">
+                <div class="title">Soluna Rx for iPhone</div>
+                <div class="sub">High quality, low latency</div>
+            </div>
+            <a href="https://testflight.apple.com/join/PYbefDSE" class="app-cta-link" target="_blank" rel="noopener">Install</a>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <a href="/soluna">solun.art</a> &middot; Open-source network audio
+        </div>
+    </div>
+
+    <script src="/listen.js"></script>
+</body>
+</html>

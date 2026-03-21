@@ -522,7 +522,8 @@ final class SDKAudioReceiver: ObservableObject {
         }
     }
 
-    private func sendUDP(_ msg: String) {
+    /// Send a raw string over the relay UDP socket (used by ChatManager).
+    func sendUDP(_ msg: String) {
         guard udpSocket >= 0 else { return }
         msg.withCString { ptr in
             withUnsafePointer(to: relayAddr) { addrPtr in
@@ -549,6 +550,18 @@ final class SDKAudioReceiver: ObservableObject {
                     Darwin.recvfrom(udpSocket, &buf, buf.count, 0, sa, &senderLen)
                 }
             }
+            guard n > 0 else { continue }
+
+            // TEXT messages are plain text (not RTP). Forward to ChatManager.
+            if buf[0] != 0x80, n > 10,
+               let str = String(bytes: buf[0..<n], encoding: .utf8),
+               str.hasPrefix("TEXT:chat") {
+                DispatchQueue.main.async {
+                    ChatManager.shared.handleRelayMessage(str)
+                }
+                continue
+            }
+
             guard n > 12 else { continue }
             guard (buf[0] & 0xC0) == 0x80 else { continue }  // RTP version=2
             guard (buf[1] & 0x7F) == 96 else { continue }    // PT=96 (S24)

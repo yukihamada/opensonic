@@ -60,6 +60,10 @@
 		ST0001 /* SleepTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = ST0002 /* SleepTimer.swift */; };
 		AL0001 /* SolunaAlarm.swift in Sources */ = {isa = PBXBuildFile; fileRef = AL0002 /* SolunaAlarm.swift */; };
 		AV0001 /* AudioVisualizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AV0002 /* AudioVisualizer.swift */; };
+		CM0001 /* ChatManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CM0002 /* ChatManager.swift */; };
+		CV0001 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CV0002 /* ChatView.swift */; };
+		TM0001 /* TipManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = TM0002 /* TipManager.swift */; };
+		TV0001 /* TippingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TV0002 /* TippingView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -120,6 +124,10 @@
 		ST0002 /* SleepTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimer.swift; sourceTree = "<group>"; };
 		AL0002 /* SolunaAlarm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaAlarm.swift; sourceTree = "<group>"; };
 		AV0002 /* AudioVisualizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioVisualizer.swift; sourceTree = "<group>"; };
+		CM0002 /* ChatManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatManager.swift; sourceTree = "<group>"; };
+		CV0002 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		TM0002 /* TipManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipManager.swift; sourceTree = "<group>"; };
+		TV0002 /* TippingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TippingView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -204,6 +212,10 @@
 				ST0002 /* SleepTimer.swift */,
 				AL0002 /* SolunaAlarm.swift */,
 				AV0002 /* AudioVisualizer.swift */,
+				CM0002 /* ChatManager.swift */,
+				CV0002 /* ChatView.swift */,
+				TM0002 /* TipManager.swift */,
+				TV0002 /* TippingView.swift */,
 			);
 			path = SolunaReceiver;
 			sourceTree = "<group>";
@@ -388,6 +400,10 @@
 				ST0001 /* SleepTimer.swift in Sources */,
 				AL0001 /* SolunaAlarm.swift in Sources */,
 				AV0001 /* AudioVisualizer.swift in Sources */,
+				CM0001 /* ChatManager.swift in Sources */,
+				CV0001 /* ChatView.swift in Sources */,
+				TM0001 /* TipManager.swift in Sources */,
+				TV0001 /* TippingView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -216,7 +216,7 @@ final class AudioReceiver: ObservableObject {
     // MARK: - SDK Audio Receiver (pure-Swift relay playback)
     /// When true, SDKAudioReceiver handles relay audio instead of the C++ bridge.
     private let useSDKReceiver = true
-    private var sdkReceiver: SDKAudioReceiver?
+    private(set) var sdkReceiver: SDKAudioReceiver?
     private var sdkStateSink: AnyCancellable?
     private var sdkPacketsSink: AnyCancellable?
     private var sdkReceivingSink: AnyCancellable?
@@ -708,6 +708,11 @@ final class AudioReceiver: ObservableObject {
         sdkReceivingSink = nil
         sdkReceiver?.stop()
         sdkReceiver = nil
+    }
+
+    /// Send a raw string via the SDK receiver's UDP socket (for chat messages).
+    func sdkSendUDP(_ msg: String) {
+        sdkReceiver?.sendUDP(msg)
     }
 
     /// Set mic to global (relay) or local (LAN multicast)

@@ -66,6 +66,10 @@ struct ContentView: View {
     @StateObject private var sleepTimer = SleepTimerManager.shared
     @StateObject private var alarmManager = SolunaAlarmManager.shared
     @State private var showSleepPicker = false
+    @State private var showChat = false
+    @StateObject private var chatManager = ChatManager.shared
+    @State private var showTipping = false
+    @StateObject private var tipManager = TipManager.shared
 
     private var recentChannels: [String] {
         (try? JSONDecoder().decode([String].self, from: Data(recentChannelsJSON.utf8))) ?? []
@@ -73,6 +77,13 @@ struct ContentView: View {
     private var currentChannelName: String { UserDefaults.standard.string(forKey: "channel") ?? "soluna" }
     private var isPlaying: Bool { receiver.state == .receiving }
     private var isMicActive: Bool { receiver.isMicTransmitting || receiver.isMicMonitoring }
+
+    /// Current DJ from social listening (first member with role "dj")
+    private var currentDJ: SocialListeningManager.ListenerInfo? {
+        socialListening.currentChannelListeners.first { $0.role == "dj" }
+    }
+    private var currentDJName: String { currentDJ?.name ?? "DJ \(currentChannelName.capitalized)" }
+    private var currentDJDeviceId: String { currentDJ?.id ?? "" }
 
     // MARK: - Actions
 
@@ -263,6 +274,18 @@ struct ContentView: View {
                 SilentDiscoView(channel: currentChannelName) { ch in switchChannel(ch) }
             }
         }
+        .sheet(isPresented: $showChat) {
+            ChatView(sendUDP: { msg in
+                receiver.sdkSendUDP(msg)
+            })
+        }
+        .sheet(isPresented: $showTipping) {
+            TippingView(
+                djName: currentDJName,
+                djDeviceId: currentDJDeviceId,
+                tipManager: tipManager
+            )
+        }
         .sheet(isPresented: $showAddSpeaker, onDismiss: { newName = ""; newHost = "" }) { addSpeakerSheet }
         .sheet(isPresented: $showPlayer) { PlayerView(model: playerModel) }
         .sheet(isPresented: $showChannelCreate) {
@@ -366,8 +389,28 @@ struct ContentView: View {
             Spacer()
             AIToggleButton(isEnabled: $aiAutoChannel.isAutoMode)
             headerBtn("globe", .solunaLuna) { showDevicePicker = true }
+            chatButton
             headerBtn("qrcode", .white.opacity(0.6)) { showQR = true }
             headerBtn("gearshape", .white.opacity(0.6)) { showSettings = true }
+        }
+    }
+    private var chatButton: some View {
+        Button { showChat = true } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "bubble.left.fill").font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.solunaLuna)
+                    .frame(width: 28, height: 28)
+                    .background(Color.white.opacity(0.08)).clipShape(Circle())
+                if chatManager.unreadCount > 0 {
+                    Text("\(min(chatManager.unreadCount, 99))")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(minWidth: 14, minHeight: 14)
+                        .background(Color.solunaMic)
+                        .clipShape(Circle())
+                        .offset(x: 4, y: -4)
+                }
+            }
         }
     }
     private func headerBtn(_ icon: String, _ color: Color, action: @escaping () -> Void) -> some View {
@@ -596,6 +639,20 @@ struct ContentView: View {
             Button { showPlayer = true } label: {
                 Image(systemName: "music.note.list").font(.system(size: 14)).foregroundColor(.solunaLuna)
                     .frame(width: 36, height: 36).background(Color.solunaLuna.opacity(0.12)).clipShape(Circle())
+            }
+            Button { showTipping = true } label: {
+                ZStack {
+                    Image(systemName: "heart.fill").font(.system(size: 14)).foregroundColor(.solunaSolEnd)
+                        .frame(width: 36, height: 36).background(Color.solunaSolEnd.opacity(0.12)).clipShape(Circle())
+                    if tipManager.totalTipped > 0 {
+                        Text("\(tipManager.totalTipped)")
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4).padding(.vertical, 1)
+                            .background(Color.solunaSolEnd).clipShape(Capsule())
+                            .offset(x: 12, y: -12)
+                    }
+                }
             }
             Button { showSilentDisco = true } label: {
                 Image(systemName: "qrcode").font(.system(size: 14)).foregroundColor(.purple)

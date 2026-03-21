@@ -982,8 +982,8 @@
             <div class="num-label">kHz / 24bit</div>
         </div>
         <div class="num-card reveal reveal-delay-3">
-            <div class="num-val">3</div>
-            <div class="num-label">稼働リージョン</div>
+            <div class="num-val">7</div>
+            <div class="num-label">ラジオチャンネル</div>
         </div>
         <div class="num-card reveal reveal-delay-4">
             <div class="num-val">MIT</div>
@@ -1529,41 +1529,81 @@
 <!-- Live Channels -->
 <section class="section" id="channels">
     <div class="section-label reveal">チャンネルを試す</div>
-    <h2 class="reveal">すぐ接続できる。</h2>
-    <p class="sub reveal">世界 3 リージョンにリレーが稼働中。チャンネル名を合わせれば誰でも接続できます。誰かが配信していれば音が届きます。</p>
+    <h2 class="reveal">7チャンネル、24時間配信中。</h2>
+    <p class="sub reveal">AWS Tokyo リレーで常時稼働。アプリを開くだけで、今すぐ音楽が流れます。</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:24px">
-        <a href="https://relay.solun.art/c/ambient-tokyo" class="install-card reveal reveal-delay-1" style="text-decoration:none;color:inherit;cursor:pointer">
+        <a href="/listen?ch=soluna" class="install-card reveal reveal-delay-1" style="text-decoration:none;color:inherit;cursor:pointer">
             <div style="display:flex;align-items:center;gap:12px">
-                <div style="font-size:28px">🎵</div>
+                <div style="font-size:28px">🌀</div>
                 <div>
-                    <h3 style="margin:0;font-size:16px">ambient-tokyo</h3>
-                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Tokyo (nrt) — Ambient / Lo-fi</p>
+                    <h3 style="margin:0;font-size:16px">Soluna</h3>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">The flagship mix</p>
                 </div>
-                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(59,130,246,0.15);color:#60a5fa">RELAY UP</span>
+                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.15);color:#34d399">LIVE</span>
             </div>
         </a>
-        <a href="https://relay.solun.art/c/electronic-la" class="install-card reveal reveal-delay-2" style="text-decoration:none;color:inherit;cursor:pointer">
+        <a href="/listen?ch=jazz" class="install-card reveal reveal-delay-2" style="text-decoration:none;color:inherit;cursor:pointer">
             <div style="display:flex;align-items:center;gap:12px">
-                <div style="font-size:28px">🎧</div>
+                <div style="font-size:28px">🎷</div>
                 <div>
-                    <h3 style="margin:0;font-size:16px">electronic-la</h3>
-                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Los Angeles (lax) — Electronic</p>
+                    <h3 style="margin:0;font-size:16px">Jazz</h3>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Smooth jazz piano</p>
                 </div>
-                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(59,130,246,0.15);color:#60a5fa">RELAY UP</span>
+                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.15);color:#34d399">LIVE</span>
             </div>
         </a>
-        <a href="https://relay.solun.art/c/chill-amsterdam" class="install-card reveal reveal-delay-3" style="text-decoration:none;color:inherit;cursor:pointer">
+        <a href="/listen?ch=lofi" class="install-card reveal reveal-delay-3" style="text-decoration:none;color:inherit;cursor:pointer">
             <div style="display:flex;align-items:center;gap:12px">
-                <div style="font-size:28px">🌍</div>
+                <div style="font-size:28px">📻</div>
                 <div>
-                    <h3 style="margin:0;font-size:16px">chill-amsterdam</h3>
-                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Amsterdam (ams) — Chill</p>
+                    <h3 style="margin:0;font-size:16px">Lo-Fi</h3>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Chill beats to relax</p>
                 </div>
-                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(59,130,246,0.15);color:#60a5fa">RELAY UP</span>
+                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.15);color:#34d399">LIVE</span>
+            </div>
+        </a>
+        <a href="/listen?ch=chill" class="install-card reveal reveal-delay-1" style="text-decoration:none;color:inherit;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:12px">
+                <div style="font-size:28px">🌅</div>
+                <div>
+                    <h3 style="margin:0;font-size:16px">Chill</h3>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Easy listening vibes</p>
+                </div>
+                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.15);color:#34d399">LIVE</span>
+            </div>
+        </a>
+        <a href="/listen?ch=dance" class="install-card reveal reveal-delay-2" style="text-decoration:none;color:inherit;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:12px">
+                <div style="font-size:28px">💃</div>
+                <div>
+                    <h3 style="margin:0;font-size:16px">Dance</h3>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">High-energy grooves</p>
+                </div>
+                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.15);color:#34d399">LIVE</span>
+            </div>
+        </a>
+        <a href="/listen?ch=bjj" class="install-card reveal reveal-delay-3" style="text-decoration:none;color:inherit;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:12px">
+                <div style="font-size:28px">🥋</div>
+                <div>
+                    <h3 style="margin:0;font-size:16px">BJJ</h3>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Training beats</p>
+                </div>
+                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.15);color:#34d399">LIVE</span>
+            </div>
+        </a>
+        <a href="/listen?ch=yuki" class="install-card reveal reveal-delay-1" style="text-decoration:none;color:inherit;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:12px">
+                <div style="font-size:28px">❄️</div>
+                <div>
+                    <h3 style="margin:0;font-size:16px">Yuki</h3>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Yuki's personal mix</p>
+                </div>
+                <span style="margin-left:auto;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(16,185,129,0.15);color:#34d399">LIVE</span>
             </div>
         </a>
     </div>
-    <p class="sub reveal" style="margin-top:16px;font-size:13px">リレーサーバーは常時稼働中です。送信者が同じチャンネル名で配信していれば、アプリから即座に音声が届きます。</p>
+    <p class="sub reveal" style="margin-top:16px;font-size:13px">全チャンネル24時間自動配信中。アプリまたは<a href="/listen" style="color:var(--blue)">ブラウザ</a>で今すぐ聴けます。</p>
 </section>
 
 <hr>
