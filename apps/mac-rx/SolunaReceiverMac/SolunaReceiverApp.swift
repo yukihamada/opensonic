@@ -45,6 +45,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(handleWake),
             name: NSWorkspace.didWakeNotification, object: nil
         )
+
+        // Start built-in web dashboard on port 8400
+        Task { @MainActor in
+            DashboardServer.shared.start()
+        }
     }
 
     @objc private func handleWake() {
@@ -301,6 +306,18 @@ struct MenuBarMiniPlayer: View {
                     Button("Sync") { speakers.recalculateAllDelays() }
                         .font(.caption)
                 }
+            }
+
+            Divider()
+
+            // Dashboard URL
+            HStack {
+                Image(systemName: "network")
+                    .foregroundColor(.secondary)
+                Text("http://\(DashboardServer.localIPAddress()):\(DashboardServer.port)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
             }
 
             Divider()
