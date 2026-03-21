@@ -109,10 +109,15 @@
   // ── Audio context ────────────────────────────────────────────
   function ensureAudioContext() {
     if (audioCtx) {
-      if (audioCtx.state === 'suspended') audioCtx.resume();
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
       return;
     }
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+    } catch (e) {
+      console.warn('[Soluna] AudioContext creation deferred until user gesture');
+      return;
+    }
 
     gainNode = audioCtx.createGain();
     gainNode.gain.value = volumeSlider.value / 100;
