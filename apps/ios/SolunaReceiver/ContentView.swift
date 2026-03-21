@@ -36,6 +36,7 @@ struct ContentView: View {
     @AppStorage("connectMode") private var connectMode = true
     @State private var groupCode = ""
     @State private var showQR = false
+    @State private var showSilentDisco = false
     @State private var pttPressed = false
     @State private var showPlayer = false
     @State private var showDJPicker = false
@@ -60,6 +61,11 @@ struct ContentView: View {
     @State private var micChannel: String = ""
     @State private var micMode: Int = 0  // 0=Local(LAN), 1=Global(Relay), 2=Karaoke(ローカルミックス)
     @ObservedObject private var sharePlayManager = SharePlayManager.shared
+    @StateObject private var socialListening = SocialListeningManager.shared
+    @StateObject private var aiAutoChannel = AIAutoChannel.shared
+    @StateObject private var sleepTimer = SleepTimerManager.shared
+    @StateObject private var alarmManager = SolunaAlarmManager.shared
+    @State private var showSleepPicker = false
 
     private var recentChannels: [String] {
         (try? JSONDecoder().decode([String].self, from: Data(recentChannelsJSON.utf8))) ?? []
@@ -252,6 +258,11 @@ struct ContentView: View {
         .sheet(isPresented: $showFanRank) { NavigationStack { FanRankView() } }
         .sheet(isPresented: $showSubscription) { SubscriptionView(store: channelStore) }
         .sheet(isPresented: $showQR) { ChannelQRView(channel: currentChannelName) }
+        .sheet(isPresented: $showSilentDisco) {
+            if #available(iOS 16.0, *) {
+                SilentDiscoView(channel: currentChannelName) { ch in switchChannel(ch) }
+            }
+        }
         .sheet(isPresented: $showAddSpeaker, onDismiss: { newName = ""; newHost = "" }) { addSpeakerSheet }
         .sheet(isPresented: $showPlayer) { PlayerView(model: playerModel) }
         .sheet(isPresented: $showChannelCreate) {
@@ -259,6 +270,14 @@ struct ContentView: View {
                                 activeChannel: Binding(get: { currentChannelName }, set: { switchChannel($0) }))
         }
         .sheet(isPresented: $showDJDeckView) { DJDeckView(receiver: receiver) }
+        .confirmationDialog("Sleep Timer", isPresented: $showSleepPicker, titleVisibility: .visible) {
+            Button("15 min") { sleepTimer.start(minutes: 15) }
+            Button("30 min") { sleepTimer.start(minutes: 30) }
+            Button("45 min") { sleepTimer.start(minutes: 45) }
+            Button("1 hour") { sleepTimer.start(minutes: 60) }
+            Button("2 hours") { sleepTimer.start(minutes: 120) }
+            Button("Cancel", role: .cancel) {}
+        }
         .onAppear {
             speakers.audioReceiver = receiver; playerModel.speakersController = speakers
             loadSavedSettings(); micChannel = currentChannelName
@@ -275,6 +294,11 @@ struct ContentView: View {
 
             // SharePlay session observer
             SharePlayManager.shared.observeSessions()
+            // Social Listening & AI Auto Channel
+            socialListening.startPolling()
+            if aiAutoChannel.isAutoMode { aiAutoChannel.start() }
+            // Restore alarm if set
+            alarmManager.restoreAlarm()
             Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
                 Task { @MainActor in
                     speakers.applyServerRxDelay()
@@ -324,6 +348,12 @@ struct ContentView: View {
             activity.userInfo = ["channel": currentChannelName]
             activity.isEligibleForHandoff = true
         }
+        // MARK: - Sleep Timer Fade
+        .onReceive(NotificationCenter.default.publisher(for: .solunaSleepFade)) { notification in
+            if let fade = notification.userInfo?["fade"] as? Float {
+                receiver.volume = masterVolume * fade
+            }
+        }
     }
 
     // MARK: - Header
@@ -334,6 +364,7 @@ struct ContentView: View {
                 .foregroundStyle(LinearGradient.solLunaGradient)
                 .onTapGesture(count: 3) { showDebug = true }
             Spacer()
+            AIToggleButton(isEnabled: $aiAutoChannel.isAutoMode)
             headerBtn("globe", .solunaLuna) { showDevicePicker = true }
             headerBtn("qrcode", .white.opacity(0.6)) { showQR = true }
             headerBtn("gearshape", .white.opacity(0.6)) { showSettings = true }
@@ -376,6 +407,15 @@ struct ContentView: View {
     private var listenTab: some View {
         VStack(spacing: 0) {
             channelGrid.padding(.horizontal, 16).padding(.bottom, 8)
+            if aiAutoChannel.isAutoMode && aiAutoChannel.suggestedChannel != currentChannelName {
+                AISuggestionChip(
+                    channel: aiAutoChannel.suggestedChannel,
+                    reason: aiAutoChannel.suggestionReason
+                ) {
+                    switchChannel(aiAutoChannel.suggestedChannel)
+                }
+                .padding(.horizontal, 16).padding(.bottom, 6)
+            }
             nowPlayingArea.padding(.horizontal, 16).padding(.bottom, 8)
             volumeControl.padding(.horizontal, 16).padding(.bottom, 6)
             quickActions.padding(.horizontal, 16).padding(.bottom, 6)
@@ -407,6 +447,7 @@ struct ContentView: View {
                                 Image(systemName: ch.icon).font(.system(size: 14))
                                     .foregroundColor(active ? .white : ch.color)
                                 Spacer()
+                                ListenerBadge(count: socialListening.count(for: ch.id))
                                 if active && isPlaying {
                                     Image(systemName: "antenna.radiowaves.left.and.right")
                                         .font(.caption2).foregroundColor(.white.opacity(0.8))
@@ -491,6 +532,10 @@ struct ContentView: View {
                 Text(receiver.nowPlayingArtist ?? (isPlaying ? "Now streaming" : "Ready to play"))
                     .font(.system(size: 15)).foregroundColor(.white.opacity(0.5)).lineLimit(1)
             }
+            if isPlaying {
+                AudioVisualizerView(barCount: 32, isPlaying: isPlaying)
+                    .padding(.horizontal, 8)
+            }
             HStack(spacing: 32) {
                 Button {} label: { Image(systemName: "backward.fill").font(.system(size: 20)).foregroundColor(.white.opacity(0.4)) }
                 Button(action: togglePlayback) {
@@ -552,6 +597,10 @@ struct ContentView: View {
                 Image(systemName: "music.note.list").font(.system(size: 14)).foregroundColor(.solunaLuna)
                     .frame(width: 36, height: 36).background(Color.solunaLuna.opacity(0.12)).clipShape(Circle())
             }
+            Button { showSilentDisco = true } label: {
+                Image(systemName: "qrcode").font(.system(size: 14)).foregroundColor(.purple)
+                    .frame(width: 36, height: 36).background(Color.purple.opacity(0.12)).clipShape(Circle())
+            }
             Button {
                 if sharePlayManager.isSharePlaying {
                     sharePlayManager.leave()
@@ -565,6 +614,23 @@ struct ContentView: View {
                     .frame(width: 36, height: 36)
                     .background(sharePlayManager.isSharePlaying ? Color.green : Color.green.opacity(0.12))
                     .clipShape(Circle())
+            }
+            // Sleep Timer
+            if sleepTimer.isActive {
+                Button { sleepTimer.stop() } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "moon.fill").font(.system(size: 11))
+                        Text(sleepTimer.formattedRemaining).font(.system(size: 11, weight: .bold, design: .monospaced))
+                    }
+                    .foregroundColor(.solunaLuna)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Color.solunaLuna.opacity(0.15)).clipShape(Capsule())
+                }
+            } else {
+                Button { showSleepPicker = true } label: {
+                    Image(systemName: "moon.fill").font(.system(size: 14)).foregroundColor(.white.opacity(0.5))
+                        .frame(width: 36, height: 36).background(Color.white.opacity(0.08)).clipShape(Circle())
+                }
             }
             Spacer()
             if channelStore.currentPlan == .free {
@@ -692,6 +758,30 @@ struct ContentView: View {
                     }
                 }
             }.padding(16).glassCard()
+            // MARK: - Alarm
+            VStack(spacing: 12) {
+                HStack {
+                    Image(systemName: "alarm.fill").font(.system(size: 18)).foregroundColor(.solunaSol)
+                    Text("Wake Up Alarm").font(.system(size: 17, weight: .bold)).foregroundColor(.white)
+                    Spacer()
+                    if alarmManager.isAlarmSet {
+                        Button { alarmManager.cancelAlarm() } label: {
+                            Text("Cancel").font(.system(size: 13, weight: .semibold)).foregroundColor(.solunaMic)
+                        }
+                    }
+                }
+                if alarmManager.isAlarmSet, let time = alarmManager.alarmTime {
+                    HStack {
+                        Image(systemName: "bell.fill").font(.caption).foregroundColor(.solunaLive)
+                        Text(time, style: .time).font(.system(size: 15, weight: .medium)).foregroundColor(.white)
+                        Text("on").foregroundColor(.white.opacity(0.4)).font(.caption)
+                        Text(alarmManager.alarmChannel.capitalized).font(.system(size: 13, weight: .bold)).foregroundColor(.solunaLuna)
+                    }
+                } else {
+                    alarmSetupView
+                }
+            }.padding(16).glassCard()
+
             VStack(spacing: 0) {
                 profileRow("person.circle", "Account") { if !auth.isAuthenticated { showLogin = true } }
                 Divider().background(Color.white.opacity(0.06))
@@ -699,6 +789,31 @@ struct ContentView: View {
             }.glassCard(cornerRadius: 16)
             Spacer().frame(height: 40)
         }.padding(.horizontal, 16)
+    }
+
+    @State private var alarmPickerTime = Date()
+    @State private var alarmPickerChannel = "chill"
+
+    private var alarmSetupView: some View {
+        VStack(spacing: 10) {
+            DatePicker("Time", selection: $alarmPickerTime, displayedComponents: .hourAndMinute)
+                .datePickerStyle(.compact)
+                .labelsHidden()
+                .colorScheme(.dark)
+            Picker("Channel", selection: $alarmPickerChannel) {
+                ForEach(presetChannels) { ch in
+                    Text(ch.label).tag(ch.id)
+                }
+            }
+            .pickerStyle(.segmented)
+            Button {
+                alarmManager.setAlarm(time: alarmPickerTime, channel: alarmPickerChannel)
+            } label: {
+                Text("Set Alarm").font(.system(size: 14, weight: .semibold)).foregroundColor(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .background(LinearGradient.solGradient).clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
     }
 
     private func profileRow(_ icon: String, _ label: String, action: @escaping () -> Void) -> some View {

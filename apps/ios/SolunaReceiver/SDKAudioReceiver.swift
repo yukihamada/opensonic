@@ -45,6 +45,22 @@ final class SDKAudioReceiver: ObservableObject {
 
     var isPlaying: Bool { state == .receiving || state == .connecting }
 
+    // MARK: - Crossfade
+
+    enum FadePhase {
+        case none
+        case fadingOut
+        case fadingIn
+    }
+
+    private var fadePhase: FadePhase = .none
+    private var fadeProgress: Float = 0       // 0.0 to 1.0
+    private var pendingChannel: String?
+    private let fadeDurationSamples: Int = 48000  // 1 second at 48kHz
+
+    /// The current fade multiplier for the audio callback (thread-safe read)
+    private var _fadeMultiplier: Float = 1.0
+
     // MARK: - Audio Engine
 
     private var audioEngine: AVAudioEngine?
@@ -143,10 +159,107 @@ final class SDKAudioReceiver: ObservableObject {
     }
 
     func setChannel(_ name: String) {
-        let wasPlaying = isPlaying
-        if wasPlaying { stop() }
-        channel = name
-        if wasPlaying { start() }
+        guard name != channel else { return }
+        if isPlaying {
+            crossfadeTo(channel: name)
+        } else {
+            channel = name
+        }
+    }
+
+    /// Crossfade: fade out current audio, switch relay, fade in new audio.
+    /// Uses a volume envelope applied in the audio callback.
+    func crossfadeTo(channel newChannel: String) {
+        guard fadePhase == .none else {
+            // Already crossfading; queue the channel
+            pendingChannel = newChannel
+            return
+        }
+        pendingChannel = newChannel
+        fadePhase = .fadingOut
+        fadeProgress = 0
+    }
+
+    /// Called from recvLoop context when fade-out completes.
+    /// Disconnects old relay, flushes ring, connects to new channel.
+    private func completeFadeOutAndSwitch() {
+        guard let newChannel = pendingChannel else {
+            fadePhase = .none
+            return
+        }
+
+        // Stop the old relay connection (socket + heartbeat) without stopping audio engine
+        running.set(false)
+        heartbeatTimer?.cancel()
+        heartbeatTimer = nil
+        if udpSocket >= 0 {
+            Darwin.close(udpSocket)
+            udpSocket = -1
+        }
+
+        // Flush ring buffer for clean start
+        flushRing()
+        firstPacketReceived.set(false)
+
+        // Update channel
+        DispatchQueue.main.async { [weak self] in
+            self?.channel = newChannel
+        }
+
+        // Begin fade-in phase
+        fadePhase = .fadingIn
+        fadeProgress = 0
+        pendingChannel = nil
+
+        // Connect to new relay channel
+        let host = "relay.solun.art"
+        let ch = newChannel
+        let deviceName = UIDevice.current.name
+
+        recvQueue.async { [weak self] in
+            guard let self else { return }
+
+            // DNS resolve
+            var hints = addrinfo()
+            hints.ai_family = AF_INET
+            hints.ai_socktype = SOCK_DGRAM
+            var res: UnsafeMutablePointer<addrinfo>?
+            guard getaddrinfo(host, "5100", &hints, &res) == 0, let addrInfo = res else {
+                DispatchQueue.main.async { self.state = .error }
+                return
+            }
+            memcpy(&self.relayAddr, addrInfo.pointee.ai_addr, Int(addrInfo.pointee.ai_addrlen))
+            freeaddrinfo(res)
+
+            self.udpSocket = Darwin.socket(AF_INET, SOCK_DGRAM, 0)
+            guard self.udpSocket >= 0 else {
+                DispatchQueue.main.async { self.state = .error }
+                return
+            }
+
+            var tv = timeval(tv_sec: 0, tv_usec: 5000)
+            setsockopt(self.udpSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+
+            self.sendUDP("JOIN:\(ch)::\(deviceName)\n")
+            self.running.set(true)
+
+            DispatchQueue.main.async {
+                self.isConnected = true
+                self.state = .connecting
+            }
+
+            let timer = DispatchSource.makeTimerSource(queue: self.recvQueue)
+            timer.schedule(deadline: .now() + 5, repeating: 5.0)
+            timer.setEventHandler { [weak self] in
+                guard let self, self.running.value else { return }
+                self.sendUDP("HELLO\n")
+                self.sendUDP("JOIN:\(ch)::\(deviceName)\n")
+            }
+            timer.resume()
+            self.heartbeatTimer = timer
+
+            self.recvLoop()
+        }
     }
 
     // MARK: - Ring Buffer (lock-free SPSC)
@@ -208,6 +321,43 @@ final class SDKAudioReceiver: ObservableObject {
             // Read mono, duplicate to stereo
             let readCount = min(frames, scratchCap)
             let got = self.ringRead(scratch, count: readCount)
+
+            // Apply crossfade envelope
+            let phase = self.fadePhase
+            if phase != .none && got > 0 {
+                let fadeDur = Float(self.fadeDurationSamples)
+                var progress = self.fadeProgress
+                for i in 0..<got {
+                    let t = min(progress / fadeDur, 1.0)
+                    let multiplier: Float
+                    switch phase {
+                    case .fadingOut:
+                        multiplier = 1.0 - t  // 1.0 -> 0.0
+                    case .fadingIn:
+                        multiplier = t         // 0.0 -> 1.0
+                    case .none:
+                        multiplier = 1.0
+                    }
+                    scratch[i] *= multiplier
+                    progress += 1.0
+                }
+                self.fadeProgress = progress
+                self._fadeMultiplier = (phase == .fadingOut) ? max(0, 1.0 - progress / fadeDur) : min(1.0, progress / fadeDur)
+
+                // Check if fade phase completed
+                if progress >= fadeDur {
+                    if phase == .fadingOut {
+                        // Trigger channel switch on recvQueue
+                        DispatchQueue.main.async { [weak self] in
+                            self?.completeFadeOutAndSwitch()
+                        }
+                    } else if phase == .fadingIn {
+                        self.fadePhase = .none
+                        self.fadeProgress = 0
+                        self._fadeMultiplier = 1.0
+                    }
+                }
+            }
 
             for ch in 0..<ablp.count {
                 if let dst = ablp[ch].mData?.assumingMemoryBound(to: Float.self) {
