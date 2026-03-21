@@ -558,12 +558,18 @@ final class SDKAudioReceiver: ObservableObject {
             }
             guard n > 0 else { continue }
 
-            // TEXT messages are plain text (not RTP). Forward to ChatManager.
-            if buf[0] != 0x80, n > 10,
+            // TEXT messages are plain text (not RTP). Forward to ChatManager / ReactionManager.
+            if buf[0] != 0x80, n > 5,
                let str = String(bytes: buf[0..<n], encoding: .utf8),
-               str.hasPrefix("TEXT:chat") {
-                DispatchQueue.main.async {
-                    ChatManager.shared.handleRelayMessage(str)
+               str.hasPrefix("TEXT:") {
+                if str.hasPrefix("TEXT:chat") {
+                    DispatchQueue.main.async {
+                        ChatManager.shared.handleRelayMessage(str)
+                    }
+                } else if str.hasPrefix("TEXT:react") {
+                    DispatchQueue.main.async {
+                        ReactionManager.shared.handleRelay(str)
+                    }
                 }
                 continue
             }

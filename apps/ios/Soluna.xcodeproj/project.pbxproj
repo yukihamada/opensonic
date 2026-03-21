@@ -67,6 +67,8 @@
 		TV0001 /* TippingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TV0002 /* TippingView.swift */; };
 		WD0001 /* SolunaWidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = WD0002 /* SolunaWidgetData.swift */; };
 		CS0001 /* ClockSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = CS0002 /* ClockSync.swift */; };
+		RO0001 /* ReactionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = RO0002 /* ReactionOverlay.swift */; };
+		LR0001 /* ListeningReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = LR0002 /* ListeningReport.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -134,6 +136,8 @@
 		TV0002 /* TippingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TippingView.swift; sourceTree = "<group>"; };
 		WD0002 /* SolunaWidgetData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SolunaWidgetData.swift; sourceTree = "<group>"; };
 		CS0002 /* ClockSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClockSync.swift; sourceTree = "<group>"; };
+		RO0002 /* ReactionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReactionOverlay.swift; sourceTree = "<group>"; };
+		LR0002 /* ListeningReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningReport.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -225,6 +229,8 @@
 				TV0002 /* TippingView.swift */,
 				96B50007B84737D4022AEE16 /* MusicBroadcast.swift */,
 				6B3ADF1A6F6812139F27297C /* BroadcastView.swift */,
+				RO0002 /* ReactionOverlay.swift */,
+				LR0002 /* ListeningReport.swift */,
 			);
 			path = SolunaReceiver;
 			sourceTree = "<group>";
@@ -416,6 +422,8 @@
 				TV0001 /* TippingView.swift in Sources */,
 				653A035213B5BA2E1A1D0CDF /* MusicBroadcast.swift in Sources */,
 				C5B3FF236C6ED46B9014D2B2 /* BroadcastView.swift in Sources */,
+				RO0001 /* ReactionOverlay.swift in Sources */,
+				LR0001 /* ListeningReport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

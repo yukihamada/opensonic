@@ -71,6 +71,10 @@ struct ContentView: View {
     @State private var showTipping = false
     @State private var showBroadcast = false
     @StateObject private var tipManager = TipManager.shared
+    @StateObject private var reactionManager = ReactionManager.shared
+    @State private var showListeningReport = false
+    @State private var showQuickCreate = false
+    @State private var quickCreateName = ""
 
     private var recentChannels: [String] {
         (try? JSONDecoder().decode([String].self, from: Data(recentChannelsJSON.utf8))) ?? []
@@ -271,6 +275,11 @@ struct ContentView: View {
                 }
                 tabBar
             }
+            // Reaction overlay — floats above everything
+            GeometryReader { geo in
+                ReactionOverlayView(manager: reactionManager, screenWidth: geo.size.width)
+            }
+            .ignoresSafeArea()
         }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showDevicePicker) { DevicePickerView(registry: globalRegistry) { connectToGlobalDevice($0) } }
@@ -306,6 +315,36 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showDJDeckView) { DJDeckView(receiver: receiver) }
         .sheet(isPresented: $showBroadcast) { BroadcastView() }
+        .sheet(isPresented: $showListeningReport) {
+            NavigationStack {
+                ListeningReportView()
+                    .navigationTitle("Listening Report")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showListeningReport = false } } }
+            }
+            .preferredColorScheme(.dark)
+        }
+        .alert(channelStore.currentPlan == .free ? "Create Channel" : "Create Channel (PRO)", isPresented: $showQuickCreate) {
+            if channelStore.currentPlan != .free {
+                TextField("Channel name", text: $quickCreateName)
+                    .autocorrectionDisabled()
+                Button("Create") {
+                    let name = quickCreateName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    if !name.isEmpty { switchChannel(name) }
+                }
+            } else {
+                Button("Create Random Channel") {
+                    let id = String("abcdefghijklmnopqrstuvwxyz0123456789".shuffled().prefix(6))
+                    switchChannel("radio-\(id)")
+                }
+                Button("Upgrade to PRO") { showSubscription = true }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(channelStore.currentPlan == .free
+                 ? "Free: random name. Upgrade to PRO for custom names."
+                 : "Enter a name for your channel")
+        }
         .confirmationDialog("Sleep Timer", isPresented: $showSleepPicker, titleVisibility: .visible) {
             Button("15 min") { sleepTimer.start(minutes: 15) }
             Button("30 min") { sleepTimer.start(minutes: 30) }
@@ -463,7 +502,11 @@ struct ContentView: View {
             nowPlayingArea.padding(.horizontal, 16)
             volumeControl.padding(.horizontal, 16)
             quickActions.padding(.horizontal, 16)
-            if isPlaying { liveFeed.padding(.horizontal, 16) }
+            if isPlaying {
+                liveFeed.padding(.horizontal, 16)
+                ReactionBar(sendUDP: { msg in receiver.sdkSendUDP(msg) })
+                    .padding(.horizontal, 16).padding(.top, 4)
+            }
         }.padding(.bottom, 16)
     }
 
@@ -549,7 +592,7 @@ struct ContentView: View {
             HStack {
                 Text("Channels").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
                 Spacer()
-                Button { showChannelCreate = true } label: {
+                Button { quickCreateName = ""; showQuickCreate = true } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus").font(.system(size: 11, weight: .bold))
                         Text("Create").font(.system(size: 12, weight: .medium))
@@ -652,6 +695,13 @@ struct ContentView: View {
                 Image(systemName: "forward.fill").font(.system(size: 14)).foregroundColor(.white.opacity(0.4))
             }
         }.padding(12).glassCard()
+        .onTapGesture(count: 2) {
+            let emojis = ["🔥", "❤️", "🎵", "✨", "🙌"]
+            let emoji = emojis.randomElement()!
+            let x = CGFloat.random(in: 0.2...0.8)
+            reactionManager.addLocal(emoji: emoji, x: x)
+            receiver.sdkSendUDP("TEXT:react \(emoji)\n")
+        }
     }
 
     // MARK: - Volume
@@ -782,10 +832,17 @@ struct ContentView: View {
                 Text(fanRankManager.currentRank.icon).font(.system(size: 48))
                 Text(fanRankManager.currentRank.name).font(.system(size: 22, weight: .bold)).foregroundColor(.white)
                 Text("Fan Rank").font(.subheadline).foregroundColor(.white.opacity(0.4))
-                Button { showFanRank = true } label: {
-                    Text("View Details").font(.system(size: 14, weight: .semibold)).foregroundColor(.solunaLuna)
-                        .padding(.horizontal, 20).padding(.vertical, 10)
-                        .background(Color.solunaLuna.opacity(0.15)).clipShape(Capsule())
+                HStack(spacing: 12) {
+                    Button { showFanRank = true } label: {
+                        Text("View Details").font(.system(size: 14, weight: .semibold)).foregroundColor(.solunaLuna)
+                            .padding(.horizontal, 20).padding(.vertical, 10)
+                            .background(Color.solunaLuna.opacity(0.15)).clipShape(Capsule())
+                    }
+                    Button { showListeningReport = true } label: {
+                        Text("Weekly Report").font(.system(size: 14, weight: .semibold)).foregroundColor(.solunaSol)
+                            .padding(.horizontal, 20).padding(.vertical, 10)
+                            .background(Color.solunaSol.opacity(0.15)).clipShape(Capsule())
+                    }
                 }
             }.frame(maxWidth: .infinity).padding(24).glassCard()
             VStack(spacing: 12) {
