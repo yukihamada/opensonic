@@ -224,6 +224,17 @@ struct MenuBarMiniPlayer: View {
     @ObservedObject private var sdk = SDKAudioReceiver.shared
     @ObservedObject private var speakers = SpeakersController.shared
     @AppStorage("channel") private var channel = "soluna"
+    @State private var customChannel = ""
+
+    private func joinCustomChannel() {
+        let name = customChannel.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !name.isEmpty else { return }
+        channel = name
+        UserDefaults.standard.set(name, forKey: "channel")
+        sdk.setChannel(name)
+        if !receiver.isPlaying { receiver.start() }
+        customChannel = ""
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -259,6 +270,18 @@ struct MenuBarMiniPlayer: View {
                         }
                     }
                 }
+            }
+
+            Divider()
+
+            // Custom channel input
+            HStack {
+                TextField("Channel name...", text: $customChannel)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 140)
+                    .onSubmit { joinCustomChannel() }
+                Button("Join") { joinCustomChannel() }
+                    .disabled(customChannel.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
             Divider()
