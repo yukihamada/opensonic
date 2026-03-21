@@ -400,10 +400,7 @@ struct ContentView: View {
                 .foregroundStyle(LinearGradient.solLunaGradient)
                 .onTapGesture(count: 3) { showDebug = true }
             Spacer()
-            AIToggleButton(isEnabled: $aiAutoChannel.isAutoMode)
-            headerBtn("globe", .solunaLuna) { showDevicePicker = true }
             chatButton
-            headerBtn("qrcode", .white.opacity(0.6)) { showQR = true }
             headerBtn("gearshape", .white.opacity(0.6)) { showSettings = true }
         }
     }
@@ -461,22 +458,12 @@ struct ContentView: View {
     // MARK: - Listen Tab
 
     private var listenTab: some View {
-        VStack(spacing: 0) {
-            channelGrid.padding(.horizontal, 16).padding(.bottom, 8)
-            if aiAutoChannel.isAutoMode && aiAutoChannel.suggestedChannel != currentChannelName {
-                AISuggestionChip(
-                    channel: aiAutoChannel.suggestedChannel,
-                    reason: aiAutoChannel.suggestionReason
-                ) {
-                    switchChannel(aiAutoChannel.suggestedChannel)
-                }
-                .padding(.horizontal, 16).padding(.bottom, 6)
-            }
-            nowPlayingArea.padding(.horizontal, 16).padding(.bottom, 8)
-            volumeControl.padding(.horizontal, 16).padding(.bottom, 6)
-            quickActions.padding(.horizontal, 16).padding(.bottom, 6)
-            deviceBanner.padding(.horizontal, 16).padding(.bottom, 40)
-        }
+        VStack(spacing: 6) {
+            channelGrid.padding(.horizontal, 16)
+            nowPlayingArea.padding(.horizontal, 16)
+            volumeControl.padding(.horizontal, 16)
+            quickActions.padding(.horizontal, 16)
+        }.padding(.bottom, 16)
     }
 
     // MARK: - Channel Grid
@@ -612,76 +599,21 @@ struct ContentView: View {
     // MARK: - Quick Actions
 
     private var quickActions: some View {
-        HStack(spacing: 10) {
-            Button { showFestivalMode = true } label: {
-                Image(systemName: "sparkles").font(.system(size: 14)).foregroundColor(.solunaSol)
-                    .frame(width: 36, height: 36).background(Color.solunaSol.opacity(0.12)).clipShape(Circle())
+        HStack(spacing: 12) {
+            qBtn("heart.fill", .solunaSolEnd) { showTipping = true }
+            qBtn("qrcode", .purple) { showSilentDisco = true }
+            qBtn("moon.fill", sleepTimer.isActive ? .solunaLuna : .white.opacity(0.4)) {
+                if sleepTimer.isActive { sleepTimer.stop() } else { showSleepPicker = true }
             }
-            Button { showPlayer = true } label: {
-                Image(systemName: "music.note.list").font(.system(size: 14)).foregroundColor(.solunaLuna)
-                    .frame(width: 36, height: 36).background(Color.solunaLuna.opacity(0.12)).clipShape(Circle())
-            }
-            Button { showTipping = true } label: {
-                ZStack {
-                    Image(systemName: "heart.fill").font(.system(size: 14)).foregroundColor(.solunaSolEnd)
-                        .frame(width: 36, height: 36).background(Color.solunaSolEnd.opacity(0.12)).clipShape(Circle())
-                    if tipManager.totalTipped > 0 {
-                        Text("\(tipManager.totalTipped)")
-                            .font(.system(size: 8, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 4).padding(.vertical, 1)
-                            .background(Color.solunaSolEnd).clipShape(Capsule())
-                            .offset(x: 12, y: -12)
-                    }
-                }
-            }
-            Button { showSilentDisco = true } label: {
-                Image(systemName: "qrcode").font(.system(size: 14)).foregroundColor(.purple)
-                    .frame(width: 36, height: 36).background(Color.purple.opacity(0.12)).clipShape(Circle())
-            }
-            Button {
-                if sharePlayManager.isSharePlaying {
-                    sharePlayManager.leave()
-                } else {
-                    Task { await sharePlayManager.startSharing(channel: currentChannelName) }
-                }
-            } label: {
-                Image(systemName: sharePlayManager.isSharePlaying ? "shareplay" : "shareplay")
-                    .font(.system(size: 14))
-                    .foregroundColor(sharePlayManager.isSharePlaying ? .white : .green)
-                    .frame(width: 36, height: 36)
-                    .background(sharePlayManager.isSharePlaying ? Color.green : Color.green.opacity(0.12))
-                    .clipShape(Circle())
-            }
-            Button { showBroadcast = true } label: {
-                Image(systemName: "antenna.radiowaves.left.and.right").font(.system(size: 14)).foregroundColor(.solunaSol)
-                    .frame(width: 36, height: 36).background(Color.solunaSol.opacity(0.12)).clipShape(Circle())
-            }
-            // Sleep Timer
-            if sleepTimer.isActive {
-                Button { sleepTimer.stop() } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "moon.fill").font(.system(size: 11))
-                        Text(sleepTimer.formattedRemaining).font(.system(size: 11, weight: .bold, design: .monospaced))
-                    }
-                    .foregroundColor(.solunaLuna)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color.solunaLuna.opacity(0.15)).clipShape(Capsule())
-                }
-            } else {
-                Button { showSleepPicker = true } label: {
-                    Image(systemName: "moon.fill").font(.system(size: 14)).foregroundColor(.white.opacity(0.5))
-                        .frame(width: 36, height: 36).background(Color.white.opacity(0.08)).clipShape(Circle())
-                }
-            }
+            qBtn("antenna.radiowaves.left.and.right", .solunaSol) { showBroadcast = true }
             Spacer()
-            if channelStore.currentPlan == .free {
-                Button { showSubscription = true } label: {
-                    Text("PRO").font(.system(size: 11, weight: .bold)).foregroundColor(.white)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(LinearGradient.solGradient).clipShape(Capsule())
-                }
-            }
+        }
+    }
+
+    private func qBtn(_ icon: String, _ color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.system(size: 13)).foregroundColor(color)
+                .frame(width: 32, height: 32).background(color.opacity(0.12)).clipShape(Circle())
         }
     }
 
