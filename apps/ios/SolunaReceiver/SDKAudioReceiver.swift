@@ -528,6 +528,19 @@ final class SDKAudioReceiver: ObservableObject {
         }
     }
 
+    /// Send raw bytes over the relay UDP socket (used by SoundTeleport).
+    func sendUDPBytes(_ data: [UInt8]) {
+        guard udpSocket >= 0 else { return }
+        data.withUnsafeBufferPointer { buf in
+            guard let base = buf.baseAddress else { return }
+            withUnsafePointer(to: relayAddr) { addrPtr in
+                let sa = UnsafeRawPointer(addrPtr).assumingMemoryBound(to: sockaddr.self)
+                _ = Darwin.sendto(udpSocket, base, data.count, 0, sa,
+                                  socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+    }
+
     /// Send a raw string over the relay UDP socket (used by ChatManager).
     func sendUDP(_ msg: String) {
         guard udpSocket >= 0 else { return }
@@ -573,6 +586,10 @@ final class SDKAudioReceiver: ObservableObject {
                 } else if str.hasPrefix("TEXT:request") || str.hasPrefix("TEXT:vote") {
                     DispatchQueue.main.async {
                         SongRequestManager.shared.handleRelay(str)
+                    }
+                } else if str.hasPrefix("TEXT:heartbeat") {
+                    DispatchQueue.main.async {
+                        HeartbeatManager.shared.handleRelay(str)
                     }
                 }
                 continue

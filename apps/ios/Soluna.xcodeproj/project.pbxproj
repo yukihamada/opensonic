@@ -74,6 +74,10 @@
 		SR0001 /* SongRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0002 /* SongRequest.swift */; };
 		RW0001 /* RewindControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = RW0002 /* RewindControl.swift */; };
 		SID001 /* SongIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = SID002 /* SongIdentifier.swift */; };
+		TP0001 /* SoundTeleport.swift in Sources */ = {isa = PBXBuildFile; fileRef = TP0002 /* SoundTeleport.swift */; };
+		CW0001 /* CrowdSynth.swift in Sources */ = {isa = PBXBuildFile; fileRef = CW0002 /* CrowdSynth.swift */; };
+		HB0001 /* HeartbeatSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = HB0002 /* HeartbeatSync.swift */; };
+		HK0001 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = HK0002 /* HealthKit.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -148,6 +152,10 @@
 		SR0002 /* SongRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongRequest.swift; sourceTree = "<group>"; };
 		RW0002 /* RewindControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RewindControl.swift; sourceTree = "<group>"; };
 		SID002 /* SongIdentifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongIdentifier.swift; sourceTree = "<group>"; };
+		TP0002 /* SoundTeleport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundTeleport.swift; sourceTree = "<group>"; };
+		CW0002 /* CrowdSynth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrowdSynth.swift; sourceTree = "<group>"; };
+		HB0002 /* HeartbeatSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartbeatSync.swift; sourceTree = "<group>"; };
+		HK0002 /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -160,6 +168,7 @@
 				1A0013 /* AVFoundation.framework in Frameworks */,
 				1A0014 /* CoreFoundation.framework in Frameworks */,
 				1A0015 /* MultipeerConnectivity.framework in Frameworks */,
+				HK0001 /* HealthKit.framework in Frameworks */,
 				8FC4F84804D632CE47C27811 /* SolunaSDK in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -246,6 +255,9 @@
 				SR0002 /* SongRequest.swift */,
 				RW0002 /* RewindControl.swift */,
 				SID002 /* SongIdentifier.swift */,
+				TP0002 /* SoundTeleport.swift */,
+				CW0002 /* CrowdSynth.swift */,
+				HB0002 /* HeartbeatSync.swift */,
 			);
 			path = SolunaReceiver;
 			sourceTree = "<group>";
@@ -258,6 +270,7 @@
 				2A0013 /* AVFoundation.framework */,
 				2A0014 /* CoreFoundation.framework */,
 				2A0015 /* MultipeerConnectivity.framework */,
+				HK0002 /* HealthKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -444,6 +457,9 @@
 				SR0001 /* SongRequest.swift in Sources */,
 				RW0001 /* RewindControl.swift in Sources */,
 				SID001 /* SongIdentifier.swift in Sources */,
+				TP0001 /* SoundTeleport.swift in Sources */,
+				CW0001 /* CrowdSynth.swift in Sources */,
+				HB0001 /* HeartbeatSync.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

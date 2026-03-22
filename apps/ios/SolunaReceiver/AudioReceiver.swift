@@ -715,6 +715,11 @@ final class AudioReceiver: ObservableObject {
         sdkReceiver?.sendUDP(msg)
     }
 
+    /// Send raw bytes via the SDK receiver's UDP socket (for SoundTeleport).
+    func sdkSendUDPBytes(_ data: [UInt8]) {
+        sdkReceiver?.sendUDPBytes(data)
+    }
+
     /// Set mic to global (relay) or local (LAN multicast)
     var micGlobal: Bool {
         get { receiver.micGlobal }

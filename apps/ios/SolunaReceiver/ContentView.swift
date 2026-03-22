@@ -78,6 +78,7 @@ struct ContentView: View {
     @State private var showArtistDashboard = false
     @State private var showSongRequest = false
     @StateObject private var songRequestManager = SongRequestManager.shared
+    @State private var showCrowdSynth = false
 
     private var recentChannels: [String] {
         (try? JSONDecoder().decode([String].self, from: Data(recentChannelsJSON.utf8))) ?? []
@@ -345,6 +346,10 @@ struct ContentView: View {
             ArtistDashboardView()
                 .preferredColorScheme(.dark)
         }
+        .sheet(isPresented: $showCrowdSynth) {
+            CrowdSynthView()
+                .preferredColorScheme(.dark)
+        }
         .alert(channelStore.currentPlan == .free ? "Create Channel" : "Create Channel (PRO)", isPresented: $showQuickCreate) {
             if channelStore.currentPlan != .free {
                 TextField("Channel name", text: $quickCreateName)
@@ -606,6 +611,7 @@ struct ContentView: View {
                     Image(systemName: "arrow.down").font(.system(size: 9))
                     Text("\(receiver.sdkReceiver?.packetsPerSec ?? 0)pps").font(.system(size: 10, design: .monospaced))
                 }.foregroundColor(.white.opacity(0.25))
+                HeartbeatView()
                 Spacer()
             }
 
@@ -765,6 +771,10 @@ struct ContentView: View {
             }
             qBtn("antenna.radiowaves.left.and.right", .solunaSol) { showBroadcast = true }
             qBtn("music.note.list", .solunaLuna) { showSongRequest = true }
+            TeleportButton(sendPacket: { packet in
+                receiver.sdkSendUDPBytes(packet)
+            })
+            qBtn("pianokeys", .solunaGradientStart) { showCrowdSynth = true }
             Spacer()
         }
     }
