@@ -69,6 +69,11 @@
 		CS0001 /* ClockSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = CS0002 /* ClockSync.swift */; };
 		RO0001 /* ReactionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = RO0002 /* ReactionOverlay.swift */; };
 		LR0001 /* ListeningReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = LR0002 /* ListeningReport.swift */; };
+		AD0001 /* ArtistDashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD0002 /* ArtistDashboard.swift */; };
+		LM0001 /* ListenerMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = LM0002 /* ListenerMap.swift */; };
+		SR0001 /* SongRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0002 /* SongRequest.swift */; };
+		RW0001 /* RewindControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = RW0002 /* RewindControl.swift */; };
+		SID001 /* SongIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = SID002 /* SongIdentifier.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -138,6 +143,11 @@
 		CS0002 /* ClockSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClockSync.swift; sourceTree = "<group>"; };
 		RO0002 /* ReactionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReactionOverlay.swift; sourceTree = "<group>"; };
 		LR0002 /* ListeningReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningReport.swift; sourceTree = "<group>"; };
+		AD0002 /* ArtistDashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtistDashboard.swift; sourceTree = "<group>"; };
+		LM0002 /* ListenerMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListenerMap.swift; sourceTree = "<group>"; };
+		SR0002 /* SongRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongRequest.swift; sourceTree = "<group>"; };
+		RW0002 /* RewindControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RewindControl.swift; sourceTree = "<group>"; };
+		SID002 /* SongIdentifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongIdentifier.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -231,6 +241,11 @@
 				6B3ADF1A6F6812139F27297C /* BroadcastView.swift */,
 				RO0002 /* ReactionOverlay.swift */,
 				LR0002 /* ListeningReport.swift */,
+				AD0002 /* ArtistDashboard.swift */,
+				LM0002 /* ListenerMap.swift */,
+				SR0002 /* SongRequest.swift */,
+				RW0002 /* RewindControl.swift */,
+				SID002 /* SongIdentifier.swift */,
 			);
 			path = SolunaReceiver;
 			sourceTree = "<group>";
@@ -424,6 +439,11 @@
 				C5B3FF236C6ED46B9014D2B2 /* BroadcastView.swift in Sources */,
 				RO0001 /* ReactionOverlay.swift in Sources */,
 				LR0001 /* ListeningReport.swift in Sources */,
+				AD0001 /* ArtistDashboard.swift in Sources */,
+				LM0001 /* ListenerMap.swift in Sources */,
+				SR0001 /* SongRequest.swift in Sources */,
+				RW0001 /* RewindControl.swift in Sources */,
+				SID001 /* SongIdentifier.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

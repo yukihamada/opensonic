@@ -570,6 +570,10 @@ final class SDKAudioReceiver: ObservableObject {
                     DispatchQueue.main.async {
                         ReactionManager.shared.handleRelay(str)
                     }
+                } else if str.hasPrefix("TEXT:request") || str.hasPrefix("TEXT:vote") {
+                    DispatchQueue.main.async {
+                        SongRequestManager.shared.handleRelay(str)
+                    }
                 }
                 continue
             }

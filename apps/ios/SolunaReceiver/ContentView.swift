@@ -75,6 +75,9 @@ struct ContentView: View {
     @State private var showListeningReport = false
     @State private var showQuickCreate = false
     @State private var quickCreateName = ""
+    @State private var showArtistDashboard = false
+    @State private var showSongRequest = false
+    @StateObject private var songRequestManager = SongRequestManager.shared
 
     private var recentChannels: [String] {
         (try? JSONDecoder().decode([String].self, from: Data(recentChannelsJSON.utf8))) ?? []
@@ -326,6 +329,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showDJDeckView) { DJDeckView(receiver: receiver) }
         .sheet(isPresented: $showBroadcast) { BroadcastView() }
+        .sheet(isPresented: $showSongRequest) {
+            SongRequestView(sendUDP: { msg in receiver.sdkSendUDP(msg) })
+        }
         .sheet(isPresented: $showListeningReport) {
             NavigationStack {
                 ListeningReportView()
@@ -334,6 +340,10 @@ struct ContentView: View {
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { showListeningReport = false } } }
             }
             .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showArtistDashboard) {
+            ArtistDashboardView()
+                .preferredColorScheme(.dark)
         }
         .alert(channelStore.currentPlan == .free ? "Create Channel" : "Create Channel (PRO)", isPresented: $showQuickCreate) {
             if channelStore.currentPlan != .free {
@@ -526,6 +536,12 @@ struct ContentView: View {
 
     private var liveFeed: some View {
         VStack(spacing: 8) {
+            // Now playing card (song ID from relay META)
+            NowPlayingCard(
+                title: receiver.nowPlayingTitle,
+                artist: receiver.nowPlayingArtist
+            )
+
             // Live visualizer bar
             AudioVisualizerView(barCount: 48, isPlaying: isPlaying)
                 .frame(height: 24)
@@ -592,6 +608,9 @@ struct ContentView: View {
                 }.foregroundColor(.white.opacity(0.25))
                 Spacer()
             }
+
+            // Listener map
+            ListenerMapView(listenerCount: socialListening.count(for: currentChannelName))
         }
         .padding(12)
         .glassCard()
@@ -699,10 +718,11 @@ struct ContentView: View {
 
             Spacer()
 
-            // Prev/Next
+            // Prev / Rewind / Next
             Button { switchPrevChannel() } label: {
                 Image(systemName: "backward.fill").font(.system(size: 14)).foregroundColor(.white.opacity(0.4))
             }
+            RewindButton(sendUDP: { msg in receiver.sdkSendUDP(msg) })
             Button { switchNextChannel() } label: {
                 Image(systemName: "forward.fill").font(.system(size: 14)).foregroundColor(.white.opacity(0.4))
             }
@@ -744,6 +764,7 @@ struct ContentView: View {
                 if sleepTimer.isActive { sleepTimer.stop() } else { showSleepPicker = true }
             }
             qBtn("antenna.radiowaves.left.and.right", .solunaSol) { showBroadcast = true }
+            qBtn("music.note.list", .solunaLuna) { showSongRequest = true }
             Spacer()
         }
     }
@@ -855,6 +876,15 @@ struct ContentView: View {
                             .padding(.horizontal, 20).padding(.vertical, 10)
                             .background(Color.solunaSol.opacity(0.15)).clipShape(Capsule())
                     }
+                }
+                Button { showArtistDashboard = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chart.bar.fill").font(.system(size: 12))
+                        Text("Artist Dashboard").font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundColor(.solunaLive)
+                    .padding(.horizontal, 20).padding(.vertical, 10)
+                    .background(Color.solunaLive.opacity(0.15)).clipShape(Capsule())
                 }
             }.frame(maxWidth: .infinity).padding(24).glassCard()
             VStack(spacing: 12) {
