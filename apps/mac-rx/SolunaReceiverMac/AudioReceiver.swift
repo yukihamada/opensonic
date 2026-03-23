@@ -548,11 +548,17 @@ final class AudioReceiver: ObservableObject {
     func ensureBridgeRelayConnected(channel: String? = nil, completion: @escaping (Bool) -> Void = { _ in }) {
         let ch = channel ?? UserDefaults.standard.string(forKey: "channel") ?? "soluna"
         let devId = deviceId
+
+        // Disconnect first to avoid joining old recv thread inside connect()
+        receiver.disconnectRelay()
+
         // C++ bridge needs start() for recv loop (HELLO keepalive)
         if receiver.state == .stopped {
             receiver.start()
         }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+
+        // Small delay to let old recv thread finish
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self else { DispatchQueue.main.async { completion(false) }; return }
             let ok = self.receiver.connect(toRelay: "relay.solun.art", port: 5100,
                                             group: ch, password: "", deviceId: devId)
