@@ -178,6 +178,7 @@ struct ContentView: View {
         .sheet(isPresented: $showProDashboard) {
             ProDashboardView(receiver: receiver)
                 .frame(minWidth: 1100, minHeight: 700)
+                .interactiveDismissDisabled(false)
         }
         .sheet(isPresented: $showAddSpeaker, onDismiss: { newName = ""; newHost = "" }) {
             addSpeakerSheet
@@ -333,7 +334,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
                 Button { showProDashboard = true } label: {
-                    Label("Pro Dashboard", systemImage: "slider.horizontal.below.square.and.square.filled")
+                    Label("Broadcast Studio", systemImage: "antenna.radiowaves.left.and.right")
                         .foregroundColor(.orange)
                 }
                 .buttonStyle(.plain)
