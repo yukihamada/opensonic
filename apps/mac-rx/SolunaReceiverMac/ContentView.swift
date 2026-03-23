@@ -70,6 +70,8 @@ struct ContentView: View {
     @State private var showMoreSection = false
     @State private var channelSearch = ""
     @State private var showBrowseAll = false
+    @State private var showChannelSettings = false
+    @State private var channelToEdit = ""
 
     /// Top-level tab: Listen vs Broadcast
     @State private var topTab: TopTab = .listen
@@ -181,6 +183,9 @@ struct ContentView: View {
         .sheet(isPresented: $showCreateGroup) {
             createGroupSheet
         }
+        .sheet(isPresented: $showChannelSettings) {
+            ChannelSettingsView(channel: channelToEdit)
+        }
         .task {
             speakers.audioReceiver = receiver
             playerModel.speakersController = speakers
@@ -238,6 +243,14 @@ struct ContentView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        Button {
+                            channelToEdit = ch.id
+                            showChannelSettings = true
+                        } label: {
+                            Label("Channel Settings", systemImage: "gearshape")
+                        }
+                    }
                     .listRowBackground(
                         channel == ch.id
                             ? RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.1))

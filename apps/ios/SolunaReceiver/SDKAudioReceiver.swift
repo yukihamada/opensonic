@@ -43,8 +43,8 @@ final class SDKAudioReceiver: ObservableObject {
     var targetTotalLatencyMs: Double = 300
 
     /// Per-channel config fetched from relay server
-    private static var channelConfigs: [String: [String: Any]] = [:]
-    private static var configLoaded = false
+    static var channelConfigs: [String: [String: Any]] = [:]
+    static var configLoaded = false
 
     /// Fetch channel config from relay server (called once on first use)
     static func loadChannelConfig() {

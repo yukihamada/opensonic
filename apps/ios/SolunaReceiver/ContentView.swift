@@ -79,6 +79,8 @@ struct ContentView: View {
     @State private var showSongRequest = false
     @StateObject private var songRequestManager = SongRequestManager.shared
     @State private var showCrowdSynth = false
+    @State private var showChannelSettings = false
+    @State private var channelToEdit = ""
 
     private var recentChannels: [String] {
         (try? JSONDecoder().decode([String].self, from: Data(recentChannelsJSON.utf8))) ?? []
@@ -348,6 +350,10 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showCrowdSynth) {
             CrowdSynthView()
+                .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showChannelSettings) {
+            ChannelSettingsView(channel: channelToEdit)
                 .preferredColorScheme(.dark)
         }
         .alert(channelStore.currentPlan == .free ? "Create Channel" : "Create Channel (PRO)", isPresented: $showQuickCreate) {
@@ -708,6 +714,14 @@ struct ContentView: View {
                             .strokeBorder(active ? Color.white.opacity(0.2) : Color.white.opacity(0.06), lineWidth: 0.5))
                         .shadow(color: active ? ch.color.opacity(0.3) : .clear, radius: 8, y: 4)
                     }.buttonStyle(.plain)
+                    .contextMenu {
+                        Button {
+                            channelToEdit = ch.id
+                            showChannelSettings = true
+                        } label: {
+                            Label("Channel Settings", systemImage: "gearshape")
+                        }
+                    }
                 }
             }
             let custom = recentChannels.filter { ch in !presetChannels.contains(where: { $0.id == ch }) }
