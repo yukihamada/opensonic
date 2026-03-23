@@ -2922,17 +2922,23 @@ private struct SpectrumView: View {
                 .foregroundColor(.secondary)
 
             GeometryReader { geo in
-                let barW = max(2, (geo.size.width - CGFloat(31)) / 32)
+                let barW = max(3, (geo.size.width - CGFloat(31 * 2)) / 32)
                 let h = geo.size.height
-                HStack(alignment: .bottom, spacing: 1) {
+                HStack(alignment: .bottom, spacing: 2) {
                     ForEach(0..<32, id: \.self) { i in
-                        RoundedRectangle(cornerRadius: 1.5)
-                            .fill(barColor(bands[i]))
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(
+                                LinearGradient(
+                                    colors: [.green, .yellow, .orange, .red],
+                                    startPoint: .bottom,
+                                    endPoint: .top
+                                )
+                            )
                             .frame(width: barW, height: max(2, h * CGFloat(bands[i])))
                     }
                 }
             }
-            .frame(height: 60)
+            .frame(height: 80)
 
             HStack {
                 Text("20Hz").font(.system(size: 8, design: .monospaced)).foregroundColor(.secondary)
@@ -2945,14 +2951,27 @@ private struct SpectrumView: View {
         .padding(16)
         .glassCard()
         .cornerRadius(12)
-        .onReceive(Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()) { _ in
-            bands = receiver.spectrumBands()
+        .onReceive(Timer.publish(every: 0.03, on: .main, in: .common).autoconnect()) { _ in
+            let raw = receiver.spectrumBands()
+            // Smooth: fast attack, slow decay
+            for i in 0..<min(bands.count, raw.count) {
+                if raw[i] > bands[i] {
+                    bands[i] = bands[i] * 0.3 + raw[i] * 0.7  // fast rise
+                } else {
+                    bands[i] = bands[i] * 0.85 + raw[i] * 0.15 // slow fall
+                }
+            }
         }
+        .animation(.linear(duration: 0.03), value: bands)
     }
 
     private func barColor(_ v: Float) -> Color {
+        let gradient = Gradient(colors: [.green, .yellow, .orange, .red])
+        let stop = min(1, max(0, Double(v)))
+        // Return discrete color based on level
         if v > 0.85 { return .red }
-        if v > 0.6 { return .orange }
+        if v > 0.65 { return .orange }
+        if v > 0.4 { return .yellow }
         return .green
     }
 }
