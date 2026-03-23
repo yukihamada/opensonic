@@ -122,6 +122,7 @@ final class SDKAudioReceiver: ObservableObject {
     // MARK: - Network
 
     private var udpSocket: Int32 = -1
+    private var lanSocket: Int32 = -1  // LAN multicast socket (239.69.0.1:5004)
     private var relayAddr = sockaddr_in()
     private let recvQueue = DispatchQueue(label: "com.soluna.sdkrecv", qos: .userInteractive)
     private let running = SDKAtomicFlag()
@@ -182,6 +183,16 @@ final class SDKAudioReceiver: ObservableObject {
         heartbeatTimer?.cancel()
         heartbeatTimer = nil
 
+        if lanSocket >= 0 {
+            // Leave multicast group before closing
+            var mreq = ip_mreq()
+            inet_pton(AF_INET, "239.69.0.1", &mreq.imr_multiaddr)
+            mreq.imr_interface.s_addr = INADDR_ANY.bigEndian
+            setsockopt(lanSocket, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, socklen_t(MemoryLayout<ip_mreq>.size))
+            Darwin.close(lanSocket)
+            lanSocket = -1
+        }
+
         if udpSocket >= 0 {
             Darwin.close(udpSocket)
             udpSocket = -1
@@ -232,10 +243,18 @@ final class SDKAudioReceiver: ObservableObject {
             return
         }
 
-        // Stop the old relay connection (socket + heartbeat) without stopping audio engine
+        // Stop the old relay + LAN connections (sockets + heartbeat) without stopping audio engine
         running.set(false)
         heartbeatTimer?.cancel()
         heartbeatTimer = nil
+        if lanSocket >= 0 {
+            var mreq = ip_mreq()
+            inet_pton(AF_INET, "239.69.0.1", &mreq.imr_multiaddr)
+            mreq.imr_interface.s_addr = INADDR_ANY.bigEndian
+            setsockopt(lanSocket, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, socklen_t(MemoryLayout<ip_mreq>.size))
+            Darwin.close(lanSocket)
+            lanSocket = -1
+        }
         if udpSocket >= 0 {
             Darwin.close(udpSocket)
             udpSocket = -1
@@ -601,6 +620,43 @@ final class SDKAudioReceiver: ObservableObject {
             timer.resume()
             self.heartbeatTimer = timer
 
+            // LAN multicast receive (239.69.0.1:5004) — ultra-low latency path
+            let lanSock = Darwin.socket(AF_INET, SOCK_DGRAM, 0)
+            if lanSock >= 0 {
+                var bindAddr = sockaddr_in()
+                bindAddr.sin_family = sa_family_t(AF_INET)
+                bindAddr.sin_port = UInt16(5004).bigEndian
+                bindAddr.sin_addr.s_addr = INADDR_ANY.bigEndian
+
+                var yes: Int32 = 1
+                setsockopt(lanSock, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
+                setsockopt(lanSock, SOL_SOCKET, SO_REUSEPORT, &yes, socklen_t(MemoryLayout<Int32>.size))
+
+                let bindResult = withUnsafePointer(to: &bindAddr) { ptr in
+                    ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                        Darwin.bind(lanSock, sa, socklen_t(MemoryLayout<sockaddr_in>.size))
+                    }
+                }
+
+                if bindResult == 0 {
+                    // Join multicast group
+                    var mreq = ip_mreq()
+                    inet_pton(AF_INET, "239.69.0.1", &mreq.imr_multiaddr)
+                    mreq.imr_interface.s_addr = INADDR_ANY.bigEndian
+                    setsockopt(lanSock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, socklen_t(MemoryLayout<ip_mreq>.size))
+
+                    // 1ms recv timeout — fall through to relay quickly if no LAN data
+                    var lanTv = timeval(tv_sec: 0, tv_usec: 1000)
+                    setsockopt(lanSock, SOL_SOCKET, SO_RCVTIMEO, &lanTv, socklen_t(MemoryLayout<timeval>.size))
+
+                    self.lanSocket = lanSock
+                    print("[SDKRecv] LAN multicast joined 239.69.0.1:5004")
+                } else {
+                    Darwin.close(lanSock)
+                    print("[SDKRecv] LAN multicast bind failed, relay-only mode")
+                }
+            }
+
             // Receive loop
             self.recvLoop()
         }
@@ -642,11 +698,28 @@ final class SDKAudioReceiver: ObservableObject {
         let decodeCap = decodeCapacity
 
         while running.value && udpSocket >= 0 {
-            let n = withUnsafeMutablePointer(to: &sender) { sp -> Int in
-                sp.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
-                    Darwin.recvfrom(udpSocket, &buf, buf.count, 0, sa, &senderLen)
+            var n = 0
+
+            // Try LAN multicast first (1ms timeout, ~1-5ms latency)
+            if lanSocket >= 0 {
+                senderLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+                n = withUnsafeMutablePointer(to: &sender) { sp -> Int in
+                    sp.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                        Darwin.recvfrom(lanSocket, &buf, buf.count, 0, sa, &senderLen)
+                    }
                 }
             }
+
+            // If no LAN data, fall back to relay (50ms timeout)
+            if n <= 0 {
+                senderLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+                n = withUnsafeMutablePointer(to: &sender) { sp -> Int in
+                    sp.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                        Darwin.recvfrom(udpSocket, &buf, buf.count, 0, sa, &senderLen)
+                    }
+                }
+            }
+
             guard n > 0 else { continue }
 
             // TEXT messages are plain text (not RTP). Forward to ChatManager / ReactionManager.
