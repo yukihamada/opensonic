@@ -219,22 +219,23 @@ struct ProDashboardView: View {
             .background(Color.proCard)
             .cornerRadius(3)
 
-            // Mic TX
+            // Mic TX (SDK transmitter)
             Button(action: {
-                receiver.toggleMic()
-                addLog(receiver.isMicTransmitting ? "Mic TX ON" : "Mic TX OFF",
-                       color: receiver.isMicTransmitting ? .proGreen : .proRed)
+                let tx = SDKAudioTransmitter.shared
+                tx.toggleMic()
+                addLog(tx.micEnabled ? "Mic ON" : "Mic OFF",
+                       color: tx.micEnabled ? .proGreen : .proRed)
             }) {
                 HStack(spacing: 4) {
-                    Image(systemName: receiver.isMicTransmitting ? "mic.fill" : "mic")
+                    Image(systemName: SDKAudioTransmitter.shared.micEnabled ? "mic.fill" : "mic")
                         .font(.system(size: 10))
                     Text("MIC")
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .foregroundColor(receiver.isMicTransmitting ? .white : .proTextDim)
-                .background(receiver.isMicTransmitting ? Color.proRed : Color.proCard)
+                .foregroundColor(SDKAudioTransmitter.shared.micEnabled ? .white : .proTextDim)
+                .background(SDKAudioTransmitter.shared.micEnabled ? Color.proRed : Color.proCard)
                 .cornerRadius(4)
                 .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proBorder))
             }
@@ -750,8 +751,9 @@ struct ProDashboardView: View {
             broadcastChannel = channel
         }
         setBroadcastChannel()
-        SDKAudioTransmitter.shared.start(channel: broadcastChannel)
-        addLog("Broadcast started on \(broadcastChannel)", color: .proGreen)
+        // Start transmitter on channel (mic off by default — use MIC button to enable)
+        SDKAudioTransmitter.shared.start(channel: broadcastChannel, micEnabled: false)
+        addLog("Channel live: \(broadcastChannel) (mic off)", color: .proGreen)
     }
 
     private func stopBroadcast() {

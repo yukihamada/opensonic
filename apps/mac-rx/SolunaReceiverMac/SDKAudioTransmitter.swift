@@ -7,6 +7,7 @@ final class SDKAudioTransmitter: ObservableObject {
     static let shared = SDKAudioTransmitter()
 
     @Published var isTransmitting = false
+    @Published var micEnabled = false
     @Published var channel: String = ""
     @Published var packetsSent: UInt64 = 0
 
@@ -19,9 +20,14 @@ final class SDKAudioTransmitter: ObservableObject {
     private let samplesPerPacket = 96  // 2ms at 48kHz (matching relay radio)
     private var heartbeatTimer: Timer?
 
-    func start(channel: String, host: String = "relay.solun.art", port: UInt16 = 5100) {
+    func toggleMic() {
+        micEnabled.toggle()
+    }
+
+    func start(channel: String, micEnabled: Bool = false, host: String = "relay.solun.art", port: UInt16 = 5100) {
         guard !isTransmitting else { return }
         self.channel = channel
+        self.micEnabled = micEnabled
 
         // DNS resolve
         var hints = addrinfo()
@@ -71,6 +77,12 @@ final class SDKAudioTransmitter: ObservableObject {
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
             guard let self, self.isTransmitting else { return }
+            // Mic off → send silence (keepalive packets maintain connection)
+            guard self.micEnabled else {
+                // Still advance timestamp to keep stream alive
+                self.timestamp &+= UInt32(buffer.frameLength)
+                return
+            }
 
             // Convert to 48kHz mono if needed
             if let converter, inputFormat.sampleRate != 48000 || inputFormat.channelCount != 1 {
