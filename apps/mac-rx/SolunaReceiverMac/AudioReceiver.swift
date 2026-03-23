@@ -528,8 +528,16 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
-    /// Connect C++ bridge to relay for TX (mic/system audio broadcasting)
+    /// Broadcast mode: local (LAN multicast, ~1ms) or wan (relay server, ~30ms)
+    enum BroadcastMode: String, CaseIterable {
+        case local = "Local (LAN)"
+        case wan = "WAN (Relay)"
+    }
+    @Published var broadcastMode: BroadcastMode = .local
+
+    /// Connect C++ bridge to relay for TX (only needed for WAN mode)
     private func ensureBridgeRelayConnected() {
+        guard broadcastMode == .wan else { return }  // LAN mode: no relay needed
         let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
         let devId = deviceId
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in

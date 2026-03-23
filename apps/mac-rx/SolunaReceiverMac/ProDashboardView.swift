@@ -169,6 +169,60 @@ struct ProDashboardView: View {
             }
             .buttonStyle(.plain)
 
+            // Broadcast mode (Local / WAN)
+            Picker("", selection: $receiver.broadcastMode) {
+                ForEach(AudioReceiver.BroadcastMode.allCases, id: \.self) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 180)
+            .onChange(of: receiver.broadcastMode) { mode in
+                addLog("Broadcast: \(mode.rawValue)", color: .proAccent)
+            }
+
+            // Mic TX
+            Button(action: {
+                receiver.toggleMic()
+                addLog(receiver.isMicTransmitting ? "Mic TX ON" : "Mic TX OFF",
+                       color: receiver.isMicTransmitting ? .proGreen : .proRed)
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: receiver.isMicTransmitting ? "mic.fill" : "mic")
+                        .font(.system(size: 10))
+                    Text("MIC")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .foregroundColor(receiver.isMicTransmitting ? .white : .proTextDim)
+                .background(receiver.isMicTransmitting ? Color.proRed : Color.proCard)
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proBorder))
+            }
+            .buttonStyle(.plain)
+
+            // System Audio TX
+            Button(action: {
+                receiver.toggleShmTransmit()
+                addLog(receiver.isShmTransmitting ? "System Audio TX ON" : "System Audio TX OFF",
+                       color: receiver.isShmTransmitting ? .proGreen : .proRed)
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: receiver.isShmTransmitting ? "hifispeaker.fill" : "hifispeaker")
+                        .font(.system(size: 10))
+                    Text("SYS")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .foregroundColor(receiver.isShmTransmitting ? .white : .proTextDim)
+                .background(receiver.isShmTransmitting ? Color.proAccent : Color.proCard)
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proBorder))
+            }
+            .buttonStyle(.plain)
+
             // Mute All
             Button(action: {
                 isMuted.toggle()
