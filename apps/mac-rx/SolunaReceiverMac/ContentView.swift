@@ -72,6 +72,7 @@ struct ContentView: View {
     @State private var showBrowseAll = false
     @State private var showChannelSettings = false
     @State private var channelToEdit = ""
+    @State private var showProDashboard = false
 
     /// Top-level tab: Listen vs Broadcast
     @State private var topTab: TopTab = .listen
@@ -173,6 +174,10 @@ struct ContentView: View {
         .sheet(isPresented: $showFestivalMode) {
             FestivalModeView(receiver: receiver)
                 .frame(minWidth: 600, minHeight: 400)
+        }
+        .sheet(isPresented: $showProDashboard) {
+            ProDashboardView(receiver: receiver)
+                .frame(minWidth: 1100, minHeight: 700)
         }
         .sheet(isPresented: $showAddSpeaker, onDismiss: { newName = ""; newHost = "" }) {
             addSpeakerSheet
@@ -325,6 +330,11 @@ struct ContentView: View {
                 .buttonStyle(.plain)
                 Button { showFestivalMode = true } label: {
                     Label("Festival Mode", systemImage: "sparkles")
+                }
+                .buttonStyle(.plain)
+                Button { showProDashboard = true } label: {
+                    Label("Pro Dashboard", systemImage: "slider.horizontal.below.square.and.square.filled")
+                        .foregroundColor(.orange)
                 }
                 .buttonStyle(.plain)
             }

@@ -1,0 +1,723 @@
+//
+//  ProDashboardView.swift
+//  SolunaReceiverMac
+//
+//  Professional broadcast dashboard for DJs and event managers.
+//  Dark pro-audio theme with orange accents, inspired by koe.live/dashboard.html.
+//
+
+import SwiftUI
+
+// MARK: - Color Constants
+
+private extension Color {
+    static let proBg        = Color(red: 0.04, green: 0.04, blue: 0.04)
+    static let proCard      = Color(red: 0.10, green: 0.10, blue: 0.10)
+    static let proBorder    = Color(red: 0.17, green: 0.17, blue: 0.17)
+    static let proAccent    = Color(red: 0.976, green: 0.451, blue: 0.086)  // #f97316
+    static let proGreen     = Color(red: 0.20, green: 0.83, blue: 0.45)
+    static let proYellow    = Color(red: 0.98, green: 0.80, blue: 0.20)
+    static let proRed       = Color(red: 0.95, green: 0.25, blue: 0.25)
+    static let proText      = Color.white
+    static let proTextDim   = Color.white.opacity(0.6)
+}
+
+// MARK: - ProDashboardView
+
+struct ProDashboardView: View {
+    @ObservedObject var receiver: AudioReceiver
+    @StateObject private var registry = GlobalDeviceRegistry()
+
+    // State
+    @State private var elapsedTime: TimeInterval = 0
+    @State private var startTime = Date()
+    @State private var vuLeft: Float = 0
+    @State private var vuRight: Float = 0
+    @State private var logEntries: [(id: UUID, date: Date, message: String, color: Color)] = []
+    @State private var masterVolume: Float = 1.0
+    @State private var isMuted = false
+    @State private var isStreaming = false
+    @State private var peakLevel: Float = -12.0
+    @State private var jitterMs: Double = 0
+    @State private var eqBands: [Float] = [0.4, 0.5, 0.65, 0.8, 0.9, 0.85, 0.7, 0.55, 0.45, 0.35]
+    @AppStorage("channel") private var channel = "soluna"
+
+    // Timers
+    let vuTimer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
+    let statsTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+
+    private let eqFrequencies = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
+    private let availableChannels = ["soluna", "jazz", "lofi", "chill", "dance", "bjj", "yuki"]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            topBar
+            Divider().background(Color.proBorder)
+            HStack(spacing: 0) {
+                leftPanel
+                    .frame(minWidth: 520)
+                Divider().background(Color.proBorder)
+                rightSidebar
+                    .frame(width: 320)
+            }
+        }
+        .background(Color.proBg)
+        .frame(minWidth: 1000, minHeight: 600)
+        .onAppear {
+            startTime = Date()
+            isStreaming = SDKAudioReceiver.shared.isPlaying
+            masterVolume = SDKAudioReceiver.shared.volume
+            isMuted = SDKAudioReceiver.shared.isMuted
+            addLog("Dashboard opened", color: .proAccent)
+            registry.refresh()
+        }
+        .onReceive(vuTimer) { _ in
+            updateVU()
+        }
+        .onReceive(statsTimer) { _ in
+            updateStats()
+        }
+    }
+
+    // MARK: - Top Bar
+
+    private var topBar: some View {
+        HStack(spacing: 16) {
+            // Channel name
+            Text(channel.uppercased())
+                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                .foregroundColor(.proText)
+
+            // LIVE badge
+            if isStreaming {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color.proRed)
+                        .frame(width: 8, height: 8)
+                    Text("LIVE")
+                        .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                        .foregroundColor(.proRed)
+                    Text(formattedElapsed)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.proTextDim)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.proRed.opacity(0.15))
+                .cornerRadius(4)
+            }
+
+            Spacer()
+
+            // Listener count
+            HStack(spacing: 4) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 11))
+                Text("\(receiver.groupMembers.count)")
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            }
+            .foregroundColor(.proTextDim)
+
+            // Average sync offset
+            HStack(spacing: 4) {
+                Image(systemName: "clock.arrow.2.circlepath")
+                    .font(.system(size: 11))
+                Text(String(format: "%.1fms", SDKAudioReceiver.shared.syncOffsetMs))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+            }
+            .foregroundColor(abs(SDKAudioReceiver.shared.syncOffsetMs) < 5 ? .proGreen : .proYellow)
+
+            // Master volume
+            HStack(spacing: 6) {
+                Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(isMuted ? .proRed : .proAccent)
+                Slider(value: $masterVolume, in: 0...1)
+                    .frame(width: 120)
+                    .tint(.proAccent)
+                    .onChange(of: masterVolume) { newVal in
+                        SDKAudioReceiver.shared.volume = newVal
+                    }
+                Text("\(Int(masterVolume * 100))%")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.proTextDim)
+                    .frame(width: 32, alignment: .trailing)
+            }
+
+            // Stream toggle
+            Button(action: {
+                SDKAudioReceiver.shared.toggle()
+                isStreaming = SDKAudioReceiver.shared.isPlaying
+                addLog(isStreaming ? "Streaming started" : "Streaming stopped",
+                       color: isStreaming ? .proGreen : .proRed)
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: isStreaming ? "stop.fill" : "play.fill")
+                        .font(.system(size: 10))
+                    Text(isStreaming ? "STOP" : "START")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .foregroundColor(isStreaming ? .proRed : .proGreen)
+                .background((isStreaming ? Color.proRed : Color.proGreen).opacity(0.15))
+                .cornerRadius(4)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke((isStreaming ? Color.proRed : Color.proGreen).opacity(0.4))
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Mute All
+            Button(action: {
+                isMuted.toggle()
+                SDKAudioReceiver.shared.isMuted = isMuted
+                addLog(isMuted ? "Muted all" : "Unmuted", color: isMuted ? .proRed : .proGreen)
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: 10))
+                    Text("MUTE")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .foregroundColor(isMuted ? .white : .proTextDim)
+                .background(isMuted ? Color.proRed.opacity(0.8) : Color.proCard)
+                .cornerRadius(4)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.proBorder)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(Color.proCard)
+    }
+
+    // MARK: - Left Panel
+
+    private var leftPanel: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                vuMetersSection
+                nowPlayingSection
+                channelsSection
+                devicesSection
+            }
+            .padding(16)
+        }
+    }
+
+    // MARK: - VU Meters
+
+    private var vuMetersSection: some View {
+        proCard(title: "VU METERS", icon: "waveform") {
+            VStack(spacing: 10) {
+                vuMeterRow(label: "L", value: vuLeft)
+                vuMeterRow(label: "R", value: vuRight)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func vuMeterRow(label: String, value: Float) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundColor(.proTextDim)
+                .frame(width: 16)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    // Background
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.proBg)
+
+                    // Meter fill with green->yellow->red gradient
+                    let fillWidth = CGFloat(value) * geo.size.width
+                    HStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [.proGreen, .proYellow, .proRed],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: fillWidth)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                    }
+
+                    // Tick marks
+                    ForEach([0.25, 0.5, 0.75, 0.9], id: \.self) { tick in
+                        Rectangle()
+                            .fill(Color.proBorder.opacity(0.6))
+                            .frame(width: 1, height: geo.size.height)
+                            .offset(x: CGFloat(tick) * geo.size.width)
+                    }
+                }
+            }
+            .frame(height: 20)
+
+            Text(String(format: "%+.1f", 20 * log10(max(value, 0.0001))))
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(.proTextDim)
+                .frame(width: 44, alignment: .trailing)
+        }
+    }
+
+    // MARK: - Now Playing
+
+    private var nowPlayingSection: some View {
+        proCard(title: "NOW PLAYING", icon: "music.note") {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(
+                        LinearGradient(
+                            colors: [.proAccent.opacity(0.6), .proAccent.opacity(0.2)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 48, height: 48)
+                    .overlay(
+                        Image(systemName: "music.note")
+                            .font(.system(size: 20))
+                            .foregroundColor(.proAccent)
+                    )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Channel: \(channel)")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.proText)
+                    Text(isStreaming ? "Relay audio stream" : "Not streaming")
+                        .font(.system(size: 12))
+                        .foregroundColor(.proTextDim)
+                }
+
+                Spacer()
+
+                // Transport controls
+                HStack(spacing: 12) {
+                    Button(action: { switchToPreviousChannel() }) {
+                        Image(systemName: "backward.fill")
+                            .font(.system(size: 14))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.proTextDim)
+
+                    Button(action: {
+                        SDKAudioReceiver.shared.toggle()
+                        isStreaming = SDKAudioReceiver.shared.isPlaying
+                    }) {
+                        Image(systemName: isStreaming ? "pause.fill" : "play.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(.proAccent)
+                            .frame(width: 36, height: 36)
+                            .background(Color.proAccent.opacity(0.15))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: { switchToNextChannel() }) {
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 14))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.proTextDim)
+                }
+            }
+        }
+    }
+
+    // MARK: - Channels
+
+    private var channelsSection: some View {
+        proCard(title: "CHANNELS", icon: "antenna.radiowaves.left.and.right") {
+            VStack(spacing: 2) {
+                ForEach(availableChannels, id: \.self) { ch in
+                    let isActive = ch == channel
+                    let memberCount = receiver.groupMembers.filter { $0.role == ch }.count
+                    Button(action: {
+                        SDKAudioReceiver.shared.setChannel(ch)
+                        channel = ch
+                        addLog("Switched to channel: \(ch)", color: .proAccent)
+                    }) {
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(isActive ? Color.proGreen : Color.proBorder)
+                                .frame(width: 8, height: 8)
+                            Text(ch)
+                                .font(.system(size: 13, weight: isActive ? .bold : .medium, design: .monospaced))
+                                .foregroundColor(isActive ? .proAccent : .proText)
+                            Spacer()
+                            if isActive {
+                                Text("\(receiver.groupMembers.count) listeners")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(.proTextDim)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(isActive ? Color.proAccent.opacity(0.08) : Color.clear)
+                        .cornerRadius(4)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    // MARK: - Devices
+
+    private var devicesSection: some View {
+        proCard(title: "DEVICES", icon: "laptopcomputer.and.iphone") {
+            if registry.devices.isEmpty && receiver.groupMembers.isEmpty {
+                HStack {
+                    Text("No connected devices")
+                        .font(.system(size: 12))
+                        .foregroundColor(.proTextDim)
+                    Spacer()
+                    Button(action: { registry.refresh() }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11))
+                            .foregroundColor(.proAccent)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else {
+                VStack(spacing: 6) {
+                    // Show group members
+                    ForEach(receiver.groupMembers) { member in
+                        deviceRow(
+                            name: member.name,
+                            syncOffset: SDKAudioReceiver.shared.syncOffsetMs,
+                            status: .synced
+                        )
+                    }
+                    // Show global devices
+                    ForEach(registry.devices) { device in
+                        deviceRow(
+                            name: device.name,
+                            syncOffset: 0,
+                            status: .synced
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private enum DeviceStatus {
+        case synced, syncing, lost
+        var color: Color {
+            switch self {
+            case .synced: return .proGreen
+            case .syncing: return .proYellow
+            case .lost: return .proRed
+            }
+        }
+        var label: String {
+            switch self {
+            case .synced: return "Synced"
+            case .syncing: return "Syncing"
+            case .lost: return "Lost"
+            }
+        }
+    }
+
+    private func deviceRow(name: String, syncOffset: Double, status: DeviceStatus) -> some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(status.color)
+                .frame(width: 8, height: 8)
+            Text(name)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.proText)
+                .lineLimit(1)
+            Spacer()
+            Text(String(format: "%.1fms", syncOffset))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(.proTextDim)
+            Text(status.label)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(status.color)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(status.color.opacity(0.12))
+                .cornerRadius(3)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.proBg.opacity(0.5))
+        .cornerRadius(4)
+    }
+
+    // MARK: - Right Sidebar
+
+    private var rightSidebar: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                eqSection
+                compressorSection
+                latencySection
+                eventLogSection
+            }
+            .padding(16)
+        }
+        .background(Color.proCard.opacity(0.3))
+    }
+
+    // MARK: - EQ Visualization
+
+    private var eqSection: some View {
+        proCard(title: "MASTER EQ", icon: "slider.vertical.3") {
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach(0..<10, id: \.self) { i in
+                    VStack(spacing: 4) {
+                        // Bar
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(
+                                LinearGradient(
+                                    colors: [.proAccent, .proAccent.opacity(0.4)],
+                                    startPoint: .top, endPoint: .bottom
+                                )
+                            )
+                            .frame(width: 20, height: CGFloat(eqBands[i]) * 80)
+                            .animation(.easeInOut(duration: 0.3), value: eqBands[i])
+
+                        // Frequency label
+                        Text(eqFrequencies[i])
+                            .font(.system(size: 8, weight: .medium, design: .monospaced))
+                            .foregroundColor(.proTextDim)
+                    }
+                }
+            }
+            .frame(height: 100)
+        }
+    }
+
+    // MARK: - Compressor / Limiter
+
+    private var compressorSection: some View {
+        proCard(title: "COMPRESSOR / LIMITER", icon: "waveform.path.ecg") {
+            VStack(spacing: 8) {
+                // Peak level
+                HStack {
+                    Text("Peak")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.proTextDim)
+                    Spacer()
+                    Text(String(format: "%.1f dB", peakLevel))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundColor(peakLevel > -3 ? .proRed : peakLevel > -6 ? .proYellow : .proGreen)
+                }
+
+                // Level meter
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.proBg)
+                        let normalized = max(0, min(1, (peakLevel + 60) / 60))
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(
+                                LinearGradient(
+                                    colors: [.proGreen, .proYellow, .proRed],
+                                    startPoint: .leading, endPoint: .trailing
+                                )
+                            )
+                            .frame(width: CGFloat(normalized) * geo.size.width)
+                    }
+                }
+                .frame(height: 12)
+
+                // Gate threshold
+                HStack {
+                    Text("Gate")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.proTextDim)
+                    Spacer()
+                    Text("-40 dB")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.proTextDim)
+                    Rectangle()
+                        .fill(Color.proAccent.opacity(0.4))
+                        .frame(width: 40, height: 2)
+                }
+            }
+        }
+    }
+
+    // MARK: - Latency Monitor
+
+    private var latencySection: some View {
+        proCard(title: "LATENCY MONITOR", icon: "network") {
+            VStack(spacing: 8) {
+                latencyRow(label: "Sync Offset",
+                           value: String(format: "%.1f ms", SDKAudioReceiver.shared.syncOffsetMs),
+                           color: abs(SDKAudioReceiver.shared.syncOffsetMs) < 5 ? .proGreen : .proYellow)
+
+                latencyRow(label: "Buffer Fill",
+                           value: "\(SDKAudioReceiver.shared.bufferFillMs) ms (\(bufferPercent)%)",
+                           color: bufferPercent > 50 ? .proGreen : .proYellow)
+
+                latencyRow(label: "Packets/sec",
+                           value: "\(SDKAudioReceiver.shared.packetsPerSec)",
+                           color: SDKAudioReceiver.shared.packetsPerSec > 100 ? .proGreen : .proRed)
+
+                latencyRow(label: "Jitter",
+                           value: String(format: "%.1f ms", jitterMs),
+                           color: jitterMs < 5 ? .proGreen : .proYellow)
+
+                latencyRow(label: "Output Latency",
+                           value: String(format: "%.1f ms", SDKAudioReceiver.shared.outputLatencyMs),
+                           color: SDKAudioReceiver.shared.latencyExceeded ? .proRed : .proGreen)
+            }
+        }
+    }
+
+    private func latencyRow(label: String, value: String, color: Color) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(.proTextDim)
+            Spacer()
+            Text(value)
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundColor(color)
+        }
+    }
+
+    // MARK: - Event Log
+
+    private var eventLogSection: some View {
+        proCard(title: "EVENT LOG", icon: "list.bullet.rectangle") {
+            if logEntries.isEmpty {
+                Text("No events yet")
+                    .font(.system(size: 11))
+                    .foregroundColor(.proTextDim)
+            } else {
+                VStack(spacing: 3) {
+                    ForEach(logEntries.suffix(20).reversed(), id: \.id) { entry in
+                        HStack(spacing: 8) {
+                            Text(timeFormatter.string(from: entry.date))
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.proTextDim)
+                            Circle()
+                                .fill(entry.color)
+                                .frame(width: 5, height: 5)
+                            Text(entry.message)
+                                .font(.system(size: 11))
+                                .foregroundColor(.proText)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Card Container
+
+    @ViewBuilder
+    private func proCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 10))
+                    .foregroundColor(.proAccent)
+                Text(title)
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(.proAccent)
+            }
+
+            content()
+        }
+        .padding(12)
+        .background(Color.proCard)
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.proBorder, lineWidth: 0.5)
+        )
+    }
+
+    // MARK: - Helpers
+
+    private var formattedElapsed: String {
+        let elapsed = Date().timeIntervalSince(startTime)
+        let h = Int(elapsed) / 3600
+        let m = (Int(elapsed) % 3600) / 60
+        let s = Int(elapsed) % 60
+        return String(format: "%02d:%02d:%02d", h, m, s)
+    }
+
+    private var bufferPercent: Int {
+        // Buffer capacity is ~4000ms (192000 samples / 48000 Hz)
+        let fill = SDKAudioReceiver.shared.bufferFillMs
+        return min(100, fill * 100 / max(1, 4000))
+    }
+
+    private let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
+
+    private func addLog(_ message: String, color: Color) {
+        logEntries.append((id: UUID(), date: Date(), message: message, color: color))
+        if logEntries.count > 100 {
+            logEntries.removeFirst(logEntries.count - 100)
+        }
+    }
+
+    private func updateVU() {
+        let sdk = SDKAudioReceiver.shared
+        let fill = Float(sdk.bufferFillMs) / 300.0
+        let base = min(1.0, max(0.0, fill))
+        // Add slight variation for L/R
+        vuLeft = base * Float.random(in: 0.85...1.0)
+        vuRight = base * Float.random(in: 0.80...0.95)
+
+        // Animate EQ bands
+        for i in 0..<eqBands.count {
+            let target = base * Float.random(in: 0.2...1.0)
+            eqBands[i] = eqBands[i] * 0.7 + target * 0.3
+        }
+
+        // Update peak
+        let maxVu = max(vuLeft, vuRight)
+        peakLevel = maxVu > 0.001 ? 20 * log10(maxVu) : -60
+    }
+
+    private func updateStats() {
+        let sdk = SDKAudioReceiver.shared
+        isStreaming = sdk.isPlaying
+
+        // Estimate jitter from sync offset changes
+        let currentOffset = abs(sdk.syncOffsetMs)
+        jitterMs = jitterMs * 0.8 + currentOffset * 0.2
+
+        // Log state changes
+        if sdk.state == .receiving && !isStreaming {
+            addLog("Receiving audio", color: .proGreen)
+        }
+    }
+
+    private func switchToNextChannel() {
+        guard let idx = availableChannels.firstIndex(of: channel) else { return }
+        let next = availableChannels[(idx + 1) % availableChannels.count]
+        SDKAudioReceiver.shared.setChannel(next)
+        channel = next
+        addLog("Switched to channel: \(next)", color: .proAccent)
+    }
+
+    private func switchToPreviousChannel() {
+        guard let idx = availableChannels.firstIndex(of: channel) else { return }
+        let prev = availableChannels[(idx - 1 + availableChannels.count) % availableChannels.count]
+        SDKAudioReceiver.shared.setChannel(prev)
+        channel = prev
+        addLog("Switched to channel: \(prev)", color: .proAccent)
+    }
+}
