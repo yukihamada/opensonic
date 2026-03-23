@@ -4582,8 +4582,8 @@ private:
         _channels
     );
 
-    // Wire WAN relay forwarding if relay is connected
-    if (_impl && _impl->wan_relay_state() == WanRelayClient::State::Connected) {
+    // Always wire WAN relay forwarding — wan_relay_send_audio checks Connected state internally
+    if (_impl) {
         auto* impl = _impl.get();
         _txImpl->tx_relay_callback = [impl](const uint8_t* data, size_t len) {
             impl->wan_relay_send_audio(data, len);
@@ -4803,8 +4803,8 @@ private:
         _channels
     );
 
-    // Wire WAN relay forwarding if connected
-    if (_impl && _impl->wan_relay_state() == WanRelayClient::State::Connected) {
+    // Always wire WAN relay forwarding — wan_relay_send_audio checks Connected state internally
+    if (_impl) {
         auto* impl = _impl.get();
         _shmTxImpl->tx_relay_callback = [impl](const uint8_t* data, size_t len) {
             impl->wan_relay_send_audio(data, len);

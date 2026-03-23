@@ -506,10 +506,11 @@ final class AudioReceiver: ObservableObject {
                     }
                     return
                 }
-                // Ensure C++ bridge is connected to relay for TX
-                self.ensureBridgeRelayConnected()
-                if self.receiver.startMicTransmit() {
-                    self.isMicTransmitting = true
+                // Ensure C++ bridge is connected to relay for TX, then start mic
+                self.ensureBridgeRelayConnected { _ in
+                    if self.receiver.startMicTransmit() {
+                        self.isMicTransmitting = true
+                    }
                 }
             }
         }
@@ -521,9 +522,11 @@ final class AudioReceiver: ObservableObject {
             receiver.stopShmTransmit()
             isShmTransmitting = false
         } else {
-            ensureBridgeRelayConnected()
-            if receiver.startShmTransmit() {
-                isShmTransmitting = true
+            ensureBridgeRelayConnected { [weak self] _ in
+                guard let self else { return }
+                if self.receiver.startShmTransmit() {
+                    self.isShmTransmitting = true
+                }
             }
         }
     }
@@ -542,17 +545,18 @@ final class AudioReceiver: ObservableObject {
     }
 
     /// Connect C++ bridge to relay for TX (always connect — auto mode handles both)
-    func ensureBridgeRelayConnected() {
-        let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+    func ensureBridgeRelayConnected(channel: String? = nil, completion: @escaping (Bool) -> Void = { _ in }) {
+        let ch = channel ?? UserDefaults.standard.string(forKey: "channel") ?? "soluna"
         let devId = deviceId
         // C++ bridge needs start() for recv loop (HELLO keepalive)
         if receiver.state == .stopped {
             receiver.start()
         }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
-            _ = self.receiver.connect(toRelay: "relay.solun.art", port: 5100,
-                                       group: ch, password: "", deviceId: devId)
+            guard let self else { DispatchQueue.main.async { completion(false) }; return }
+            let ok = self.receiver.connect(toRelay: "relay.solun.art", port: 5100,
+                                            group: ch, password: "", deviceId: devId)
+            DispatchQueue.main.async { completion(ok) }
         }
     }
 

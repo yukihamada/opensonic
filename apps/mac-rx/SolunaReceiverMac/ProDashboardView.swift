@@ -750,37 +750,34 @@ struct ProDashboardView: View {
             broadcastChannel = channel
         }
         setBroadcastChannel()
+        addLog("Connecting to relay...", color: .proAccent)
 
-        // Ensure relay connection first
-        receiver.ensureBridgeRelayConnected()
+        // Wait for relay connection THEN start TX
+        receiver.ensureBridgeRelayConnected(channel: broadcastChannel) { [self] ok in
+            if !ok { addLog("Relay failed — LAN only", color: .proRed) }
 
-        // Start TX based on selected source
-        let source = audioSourceManager.selectedSource
-        switch source?.type {
-        case .systemAudio:
-            receiver.toggleShmTransmit()
-            if !receiver.isShmTransmitting {
-                addLog("System audio TX unavailable, using mic", color: .proAccent)
+            let source = audioSourceManager.selectedSource
+            switch source?.type {
+            case .systemAudio:
+                receiver.toggleShmTransmit()
+                if !receiver.isShmTransmitting {
+                    addLog("System audio TX unavailable, using mic", color: .proAccent)
+                    receiver.toggleMic()
+                }
+            case .audioFile:
+                receiver.toggleShmTransmit()
+                if !receiver.isShmTransmitting {
+                    addLog("Using mic for file broadcast", color: .proAccent)
+                    receiver.toggleMic()
+                }
+                if !playlist.isEmpty && !isPlayingFile { playTrack(at: 0) }
+            case .microphone, .inputDevice:
+                receiver.toggleMic()
+            case .noSource, nil:
                 receiver.toggleMic()
             }
-        case .audioFile:
-            // Playlist handles playback → system audio TX broadcasts it
-            receiver.toggleShmTransmit()
-            if !receiver.isShmTransmitting {
-                addLog("Using mic for file broadcast", color: .proAccent)
-                receiver.toggleMic()
-            }
-            // Auto-play first track if playlist has items and nothing playing
-            if !playlist.isEmpty && !isPlayingFile {
-                playTrack(at: 0)
-            }
-        case .microphone, .inputDevice:
-            receiver.toggleMic()
-        case .noSource, nil:
-            // Default to mic if no source explicitly selected
-            receiver.toggleMic()
+            addLog("Broadcast started on \(channel)", color: .proGreen)
         }
-        addLog("Broadcast started on \(channel)", color: .proGreen)
     }
 
     private func stopBroadcast() {
