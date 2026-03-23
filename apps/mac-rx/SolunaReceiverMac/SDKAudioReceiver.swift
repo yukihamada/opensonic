@@ -11,6 +11,7 @@ import Foundation
 import AVFoundation
 import CoreAudio
 import Combine
+import Accelerate
 
 // MARK: - SDKAudioReceiver
 
@@ -54,6 +55,13 @@ final class SDKAudioReceiver: ObservableObject {
     @Published private(set) var outputLatencyMs: Double = 0  // output device latency (incl. Bluetooth)
     @Published private(set) var outputLevelL: Float = 0  // L channel peak (0-1)
     @Published private(set) var outputLevelR: Float = 0  // R channel peak (0-1)
+    @Published private(set) var spectrumBands: [Float] = Array(repeating: 0, count: 32)
+
+    // FFT infrastructure (pre-allocated for audio thread)
+    private let fftSize = 2048
+    private var fftSetup: OpaquePointer?  // vDSP_create_fftsetup result
+    private let fftLog2n = vDSP_Length(11) // log2(2048)
+    private var fftWindowBuffer = [Float](repeating: 0, count: 2048)
 
     // Bluetooth latency compensation: target total latency so all devices sync
     // Live channels use lower latency for real-time feel; radio uses higher for stability
@@ -141,6 +149,10 @@ final class SDKAudioReceiver: ObservableObject {
         ringBuffer.initialize(repeating: 0, count: ringCapacity)
         scratchBuffer = .allocate(capacity: scratchCapacity)
         decodeBuffer = .allocate(capacity: decodeCapacity)
+
+        // FFT setup (created once, reused every frame)
+        fftSetup = vDSP_create_fftsetup(fftLog2n, FFTRadix(kFFTRadix2))
+        vDSP_hann_window(&fftWindowBuffer, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
 
         // Auto-start after init
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
@@ -259,12 +271,19 @@ final class SDKAudioReceiver: ObservableObject {
         eng.connect(node, to: eng.mainMixerNode, format: fmt)
         eng.mainMixerNode.outputVolume = isMuted ? 0 : volume
 
-        // Install tap on output for level metering
+        // Install tap on output for level metering + FFT spectrum analysis
         let mixerFormat = eng.mainMixerNode.outputFormat(forBus: 0)
-        eng.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: mixerFormat) { [weak self] buffer, _ in
+        let capturedFFTSize = fftSize
+        let capturedLog2n = fftLog2n
+        let capturedFFTSetup = fftSetup
+        let capturedWindow = fftWindowBuffer
+        let capturedSampleRate = Float(mixerFormat.sampleRate > 0 ? mixerFormat.sampleRate : 48000)
+        eng.mainMixerNode.installTap(onBus: 0, bufferSize: 2048, format: mixerFormat) { [weak self] buffer, _ in
             guard let self else { return }
             guard let channelData = buffer.floatChannelData else { return }
             let frameCount = Int(buffer.frameLength)
+
+            // Level metering
             var peakL: Float = 0
             var peakR: Float = 0
             let ptrL = channelData[0]
@@ -275,9 +294,19 @@ final class SDKAudioReceiver: ObservableObject {
             } else {
                 peakR = peakL
             }
+
+            // FFT spectrum analysis
+            let bands = SDKAudioReceiver.computeSpectrum(
+                channelData[0], frameCount: frameCount,
+                fftSize: capturedFFTSize, log2n: capturedLog2n,
+                fftSetup: capturedFFTSetup, window: capturedWindow,
+                sampleRate: capturedSampleRate
+            )
+
             DispatchQueue.main.async {
                 self.outputLevelL = peakL
                 self.outputLevelR = peakR
+                self.spectrumBands = bands
             }
         }
 
@@ -304,6 +333,74 @@ final class SDKAudioReceiver: ObservableObject {
         engine = nil
         outputLevelL = 0
         outputLevelR = 0
+        spectrumBands = Array(repeating: 0, count: 32)
+    }
+
+    // MARK: - FFT Spectrum Computation (static, safe to call from audio thread)
+
+    private static func computeSpectrum(
+        _ samples: UnsafePointer<Float>, frameCount: Int,
+        fftSize: Int, log2n: vDSP_Length,
+        fftSetup: OpaquePointer?, window: [Float],
+        sampleRate: Float
+    ) -> [Float] {
+        guard let fftSetup else { return Array(repeating: 0, count: 32) }
+
+        let n = min(frameCount, fftSize)
+        let halfN = fftSize / 2
+
+        // Apply Hann window to input samples
+        var windowed = [Float](repeating: 0, count: fftSize)
+        for i in 0..<n { windowed[i] = samples[i] * window[i] }
+
+        // Pack interleaved real data into split complex form
+        var realp = [Float](repeating: 0, count: halfN)
+        var imagp = [Float](repeating: 0, count: halfN)
+
+        windowed.withUnsafeBufferPointer { buf in
+            buf.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: halfN) { complex in
+                var split = DSPSplitComplex(realp: &realp, imagp: &imagp)
+                vDSP_ctoz(complex, 2, &split, 1, vDSP_Length(halfN))
+            }
+        }
+
+        // Forward FFT (in-place)
+        var splitComplex = DSPSplitComplex(realp: &realp, imagp: &imagp)
+        vDSP_fft_zrip(fftSetup, &splitComplex, 1, log2n, FFTDirection(kFFTDirection_Forward))
+
+        // Compute squared magnitudes
+        var magnitudes = [Float](repeating: 0, count: halfN)
+        vDSP_zvmags(&splitComplex, 1, &magnitudes, 1, vDSP_Length(halfN))
+
+        // Convert to dB scale (10 * log10)
+        var one: Float = 1.0
+        vDSP_vdbcon(magnitudes, 1, &one, &magnitudes, 1, vDSP_Length(halfN), 0)
+
+        // Map FFT bins to 32 logarithmic display bands (20Hz – 20kHz)
+        let binResolution = sampleRate / Float(fftSize)
+        let minFreq: Float = 20
+        let maxFreq: Float = 20000
+        let logMin = log10(minFreq)
+        let logMax = log10(maxFreq)
+
+        var bands = [Float](repeating: 0, count: 32)
+        for i in 0..<32 {
+            let freqLow  = pow(10, logMin + (logMax - logMin) * Float(i) / 32)
+            let freqHigh = pow(10, logMin + (logMax - logMin) * Float(i + 1) / 32)
+            let binLow  = max(1, Int(freqLow / binResolution))
+            let binHigh = min(halfN - 1, Int(freqHigh / binResolution))
+
+            if binHigh >= binLow {
+                var maxVal: Float = -120
+                for b in binLow...binHigh {
+                    maxVal = max(maxVal, magnitudes[b])
+                }
+                // Normalize: -60dB..0dB → 0.0..1.0
+                bands[i] = max(0, min(1, (maxVal + 60) / 60))
+            }
+        }
+
+        return bands
     }
 
     // MARK: - Ring Buffer (lock-free SPSC)
