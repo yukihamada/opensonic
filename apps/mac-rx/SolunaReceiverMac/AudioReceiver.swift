@@ -552,8 +552,11 @@ final class AudioReceiver: ObservableObject {
         // Disconnect old connection first
         receiver.disconnectRelay()
 
-        // Don't call receiver.start() — it creates AVAudioEngine conflict with SDK
-        // connect(toRelay:) creates its own recv thread for HELLO keepalive
+        // C++ _impl must exist for connectToRelay to work — start() creates it
+        // This also starts the C++ recv loop (needed for HELLO keepalive)
+        if receiver.state == .stopped {
+            receiver.start()
+        }
 
         // Delay to let old recv thread finish, then connect
         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.5) { [weak self] in

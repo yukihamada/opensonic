@@ -201,10 +201,13 @@ final class SDKAudioReceiver: ObservableObject {
 
     func setChannel(_ name: String) {
         guard name != channel else { return }
-        if isPlaying {
-            crossfadeTo(channel: name)
-        } else {
-            channel = name
+        let wasPlaying = isPlaying
+        if wasPlaying { stop() }
+        channel = name
+        if wasPlaying {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.start()
+            }
         }
     }
 
