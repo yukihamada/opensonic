@@ -82,6 +82,9 @@ struct ProDashboardView: View {
             addLog("Dashboard opened", color: .proAccent)
             registry.refresh()
             audioSourceManager.refresh()
+            if broadcastChannel.isEmpty && !isPro {
+                generateRandomChannel()
+            }
         }
         .onReceive(vuTimer) { _ in
             updateVU()
