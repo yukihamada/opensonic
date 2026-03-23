@@ -947,16 +947,9 @@ struct ProDashboardView: View {
         }
         setBroadcastChannel()
         print("[ProDash] Starting SDKAudioTransmitter on \(broadcastChannel)")
-        // Start transmitter (mic off, system audio on)
-        SDKAudioTransmitter.shared.start(channel: broadcastChannel, micEnabled: false)
-        // Start system audio capture → forward to transmitter
-        Task {
-            await SystemAudioCapture.shared.startCapture()
-            SystemAudioCapture.shared.onAudioBuffer = { sampleBuffer in
-                SDKAudioTransmitter.shared.sendSystemAudio(sampleBuffer)
-            }
-        }
-        addLog("GO LIVE: \(broadcastChannel)", color: .proGreen)
+        // Start transmitter with mic ON by default
+        SDKAudioTransmitter.shared.start(channel: broadcastChannel, micEnabled: true)
+        addLog("GO LIVE: \(broadcastChannel) 🎤", color: .proGreen)
     }
 
     private func stopBroadcast() {
