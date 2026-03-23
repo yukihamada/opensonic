@@ -181,12 +181,21 @@ struct ContentView: View {
         .sheet(isPresented: $showCreateGroup) {
             createGroupSheet
         }
-        .onAppear {
+        .task {
             speakers.audioReceiver = receiver
             playerModel.speakersController = speakers
             playerModel.daemon = speakers.primaryDaemon
             loadSavedSettings()
-            if autoConnect { receiver.start() }
+            if autoConnect {
+                receiver.start()
+                // Ensure SDK receiver starts even if AudioReceiver state is stale
+                let sdk = SDKAudioReceiver.shared
+                if sdk.state == .stopped || sdk.state == .error {
+                    sdk.channel = channel
+                    sdk.relayHost = "relay.solun.art"
+                    sdk.start()
+                }
+            }
             Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
                 Task { @MainActor in
                     speakers.applyServerRxDelay()

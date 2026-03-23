@@ -9,6 +9,7 @@
 
 import Foundation
 import AVFoundation
+import CoreAudio
 import Combine
 
 // MARK: - SDKAudioReceiver
@@ -33,7 +34,9 @@ final class SDKAudioReceiver: ObservableObject {
     @Published var volume: Float = 1.0 { didSet { engine?.mainMixerNode.outputVolume = isMuted ? 0 : volume } }
     @Published var isMuted: Bool = false { didSet { engine?.mainMixerNode.outputVolume = isMuted ? 0 : volume } }
     @Published var relayHost: String = "relay.solun.art"
-    @Published var channel: String = "soluna"
+    @Published var channel: String = "soluna" {
+        didSet { targetTotalLatencyMs = Self.latencyForChannel(channel) }
+    }
 
     var isPlaying: Bool { state == .receiving || state == .connecting }
 
@@ -48,6 +51,20 @@ final class SDKAudioReceiver: ObservableObject {
     @Published private(set) var bufferFillMs: Int = 0      // ring buffer fill in ms
     @Published private(set) var packetsPerSec: Int = 0     // recv rate
     @Published private(set) var syncOffsetMs: Double = 0   // NTP sync offset
+    @Published private(set) var outputLatencyMs: Double = 0  // output device latency (incl. Bluetooth)
+
+    // Bluetooth latency compensation: target total latency so all devices sync
+    // Live channels use lower latency for real-time feel; radio uses higher for stability
+    var targetTotalLatencyMs: Double = 300
+
+    /// Determine target latency based on channel type
+    static func latencyForChannel(_ ch: String) -> Double {
+        let liveChannels: Set<String> = ["live", "stage", "dj", "karaoke", "talk"]
+        if liveChannels.contains(ch) || ch.hasPrefix("live-") { return 50 }
+        return 300
+    }
+    private var outputLatencyFrames: Int = 0  // latency in samples at 48kHz
+    private var _prefillPtr: UnsafeMutablePointer<Int64>?  // atomic prefill for RT thread
 
     // MARK: - Audio Engine
 
@@ -61,7 +78,7 @@ final class SDKAudioReceiver: ObservableObject {
     private let ringBuffer: UnsafeMutablePointer<Float>
     private var writePos: Int64 = 0
     private var readPos: Int64 = 0
-    private let prefillThreshold = 14400  // 300 ms — enough for WAN jitter
+    private let basePrefillThreshold = 14400  // 300 ms — enough for WAN jitter
 
     // Pre-allocated scratch buffer for audio callback (avoid malloc on RT thread)
     private let scratchBuffer: UnsafeMutablePointer<Float>
@@ -104,6 +121,15 @@ final class SDKAudioReceiver: ObservableObject {
         ringBuffer.initialize(repeating: 0, count: ringCapacity)
         scratchBuffer = .allocate(capacity: scratchCapacity)
         decodeBuffer = .allocate(capacity: decodeCapacity)
+
+        // Auto-start after init
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self, self.state == .stopped else { return }
+            let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+            self.channel = ch
+            self.relayHost = "relay.solun.art"
+            self.start()
+        }
     }
 
     // MARK: - Public API
@@ -111,16 +137,7 @@ final class SDKAudioReceiver: ObservableObject {
     private var lastStartTime: Date = .distantPast
 
     func start() {
-        NSLog("[SDKRecv] start() called, state=%@", state.rawValue)
-        guard state == .stopped || state == .error else { NSLog("[SDKRecv] start() SKIP: state=%@", state.rawValue); return }
-        // Cooldown: prevent rapid restart cycles
-        let elapsed = Date().timeIntervalSince(lastStartTime)
-        guard elapsed > 5.0 else {
-            NSLog("[SDKRecv] start() COOLDOWN: %.1fs ago", elapsed)
-            return
-        }
-        lastStartTime = Date()
-        NSLog("[SDKRecv] start() PROCEEDING")
+        guard state == .stopped || state == .error else { return }
         errorMessage = nil
         state = .connecting
         _packetsReceivedAtomic = 0
@@ -177,7 +194,10 @@ final class SDKAudioReceiver: ObservableObject {
         // We'll use the instance's writePos/readPos directly via pointer
         let wpAddr = withUnsafeMutablePointer(to: &writePos) { $0 }
         let rpAddr = withUnsafeMutablePointer(to: &readPos) { $0 }
-        let prefill = prefillThreshold
+        // Dynamic prefill pointer: updated by stats polling with BT latency compensation
+        let prefillPtr = UnsafeMutablePointer<Int64>.allocate(capacity: 1)
+        prefillPtr.initialize(to: Int64(basePrefillThreshold))
+        self._prefillPtr = prefillPtr
         let fpReceived = firstPacketReceived
 
         let node = AVAudioSourceNode(format: fmt) { _, _, frameCount, bufferList -> OSStatus in
@@ -188,6 +208,7 @@ final class SDKAudioReceiver: ObservableObject {
             let r = OSAtomicAdd64(0, rpAddr)
             let avail = min(Int(w - r), ringCap)
 
+            let prefill = Int(OSAtomicAdd64(0, prefillPtr))
             if avail < prefill {
                 if avail == 0 && fpReceived.value {
                     // Buffer ran dry — re-enter prefill mode to rebuild buffer
@@ -273,9 +294,12 @@ final class SDKAudioReceiver: ObservableObject {
     // MARK: - Relay Connection
 
     private func connectRelay() {
-        NSLog("[SDKRecv] connectRelay: running=%d, socket=%d, state=%@", running.value ? 1 : 0, udpSocket, state.rawValue)
-        guard !running.value else { NSLog("[SDKRecv] SKIP: already running"); return }
-        guard udpSocket < 0 else { NSLog("[SDKRecv] SKIP: socket still open"); return }
+        print("[SDKRecv] connectRelay ENTER, channel=\(channel), host=\(relayHost)")
+        // Force cleanup before connecting
+        running.set(false)
+        heartbeatSource?.cancel()
+        heartbeatSource = nil
+        if udpSocket >= 0 { Darwin.close(udpSocket); udpSocket = -1 }
 
         let host = relayHost
         let ch = channel
@@ -415,6 +439,60 @@ final class SDKAudioReceiver: ObservableObject {
         }
     }
 
+    // MARK: - Output Latency Measurement (Bluetooth compensation)
+
+    /// Measure the current output device latency in milliseconds.
+    /// Includes device latency + safety offset, covering Bluetooth codec delay.
+    private func getOutputLatencyMs() -> Double {
+        guard let eng = engine else { return 0 }
+        let device = eng.outputNode.auAudioUnit.deviceID
+
+        // Device latency (frames)
+        var latency: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyLatency,
+            mScope: kAudioObjectPropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectGetPropertyData(device, &address, 0, nil, &size, &latency)
+
+        // Safety offset (frames)
+        var safetyOffset: UInt32 = 0
+        var soSize = UInt32(MemoryLayout<UInt32>.size)
+        var soAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertySafetyOffset,
+            mScope: kAudioObjectPropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectGetPropertyData(device, &soAddress, 0, nil, &soSize, &safetyOffset)
+
+        // Convert frames to ms (assume 48kHz sample rate)
+        return Double(latency + safetyOffset) / 48.0
+    }
+
+    /// Update output latency measurement and recalculate compensation frames.
+    /// Also updates the atomic prefill pointer read by the RT audio callback.
+    private func updateOutputLatency() {
+        let ms = getOutputLatencyMs()
+        outputLatencyMs = ms
+        outputLatencyFrames = Int(ms * 48.0)  // 48kHz → frames
+        // Update the dynamic prefill threshold atomically for the RT thread
+        if let ptr = _prefillPtr {
+            let newPrefill = Int64(dynamicPrefillThreshold)
+            OSAtomicCompareAndSwap64(OSAtomicAdd64(0, ptr), newPrefill, ptr)
+        }
+    }
+
+    /// Dynamic prefill threshold: base prefill + extra buffer to compensate for low-latency devices.
+    /// All devices target the same total latency (targetTotalLatencyMs).
+    /// High-latency devices (Bluetooth) get less extra buffer; low-latency devices (wired) get more.
+    private var dynamicPrefillThreshold: Int {
+        let extraMs = max(0, targetTotalLatencyMs - outputLatencyMs)
+        let extraFrames = Int(extraMs * 48.0)
+        return basePrefillThreshold + extraFrames
+    }
+
     // MARK: - Stats & Watchdog
 
     private var _lastPktCount: Int64 = 0
@@ -429,6 +507,7 @@ final class SDKAudioReceiver: ObservableObject {
                 self.packetsReceived = UInt64(current)
                 self.bufferFillMs = self.ringAvailable() * 1000 / 48000  // samples → ms
                 self.syncOffsetMs = ClockSync.shared.offsetMs(currentRtpTimestamp: self._lastRtpTimestamp)
+                self.updateOutputLatency()
             }
         }
     }

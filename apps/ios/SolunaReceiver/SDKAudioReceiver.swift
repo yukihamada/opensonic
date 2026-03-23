@@ -33,7 +33,24 @@ final class SDKAudioReceiver: ObservableObject {
     @Published private(set) var bufferFillMs: Int = 0
     @Published private(set) var packetsPerSec: Int = 0
     @Published private(set) var syncOffsetMs: Double = 0
-    @Published var channel: String = "soluna"
+    @Published private(set) var outputLatencyMs: Double = 0  // output device latency (incl. Bluetooth)
+    @Published var channel: String = "soluna" {
+        didSet { targetTotalLatencyMs = Self.latencyForChannel(channel) }
+    }
+
+    // Bluetooth latency compensation: target total latency so all devices sync
+    // Live channels use lower latency for real-time feel; radio uses higher for stability
+    var targetTotalLatencyMs: Double = 300
+
+    /// Determine target latency based on channel type
+    static func latencyForChannel(_ ch: String) -> Double {
+        // Live/interactive channels → ultra-low latency
+        let liveChannels: Set<String> = ["live", "stage", "dj", "karaoke", "talk"]
+        if liveChannels.contains(ch) || ch.hasPrefix("live-") { return 50 }
+        // Music radio channels → stable playback
+        return 300
+    }
+    private var outputLatencyFrames: Int = 0  // latency in samples at 48kHz
     @Published var volume: Float = 1.0 {
         didSet { audioEngine?.mainMixerNode.outputVolume = volume }
     }
@@ -78,7 +95,7 @@ final class SDKAudioReceiver: ObservableObject {
     private let ringBuffer: UnsafeMutablePointer<Float>
     private var writePos: Int64 = 0
     private var readPos: Int64 = 0
-    private let prefillThreshold = 14400  // 300 ms — enough for WAN jitter
+    private let basePrefillThreshold = 14400  // 300 ms — enough for WAN jitter
 
     // Pre-allocated scratch buffer for audio callback (no malloc on RT thread)
     private let scratchBuffer: UnsafeMutablePointer<Float>
@@ -312,9 +329,10 @@ final class SDKAudioReceiver: ObservableObject {
             let frames = Int(frameCount)
             let ablp = UnsafeMutableAudioBufferListPointer(bufferList)
 
-            // Prefill gate — also re-enters prefill if buffer runs dry
+            // Prefill gate — dynamic threshold includes BT latency compensation
             let avail = self.ringAvailable()
-            if avail < self.prefillThreshold {
+            let prefill = self.dynamicPrefillThreshold
+            if avail < prefill {
                 if avail == 0 && self.firstPacketReceived.value {
                     // Buffer ran dry — re-enter prefill mode to rebuild buffer
                     self.firstPacketReceived.set(false)
@@ -471,6 +489,33 @@ final class SDKAudioReceiver: ObservableObject {
     private func stopHeadTracking() {
         headphoneMotionManager?.stopDeviceMotionUpdates()
         headphoneMotionManager = nil
+    }
+
+    // MARK: - Output Latency Measurement (Bluetooth compensation)
+
+    /// Measure the current output device latency in milliseconds.
+    /// On iOS, AVAudioSession.outputLatency includes Bluetooth codec delay.
+    private func getOutputLatencyMs() -> Double {
+        let session = AVAudioSession.sharedInstance()
+        let outputLatency = session.outputLatency       // seconds (includes BT)
+        let ioBufferDuration = session.ioBufferDuration  // seconds
+        return (outputLatency + ioBufferDuration) * 1000.0
+    }
+
+    /// Update output latency measurement and recalculate compensation frames.
+    private func updateOutputLatency() {
+        let ms = getOutputLatencyMs()
+        outputLatencyMs = ms
+        outputLatencyFrames = Int(ms * 48.0)  // 48kHz → frames
+    }
+
+    /// Dynamic prefill threshold: base prefill + extra buffer to compensate for low-latency devices.
+    /// All devices target the same total latency (targetTotalLatencyMs).
+    /// High-latency devices (Bluetooth) get less extra buffer; low-latency devices (wired) get more.
+    private var dynamicPrefillThreshold: Int {
+        let extraMs = max(0, targetTotalLatencyMs - outputLatencyMs)
+        let extraFrames = Int(extraMs * 48.0)
+        return basePrefillThreshold + extraFrames
     }
 
     // MARK: - UDP Relay Connection
@@ -651,6 +696,7 @@ final class SDKAudioReceiver: ObservableObject {
                     self?.bufferFillMs = bufMs
                     self?.packetsPerSec = 500  // ~500 pkt/s at 48kHz/96samples
                     self?.syncOffsetMs = offsetMs
+                    self?.updateOutputLatency()
                 }
             }
         }

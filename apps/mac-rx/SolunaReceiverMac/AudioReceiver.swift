@@ -319,11 +319,6 @@ final class AudioReceiver: ObservableObject {
         delegateHandler = DelegateHandler()
         delegateHandler.audioReceiver = self
         receiver.delegate = delegateHandler
-        // Kill C++ bridge network completely — SDK handles relay
-        receiver.stop()
-        receiver.disconnectRelay()
-        // Force-close C++ relay socket by setting a bogus relay that will fail
-        receiver.multicastGroup = "0.0.0.0"
 
         // Load presets, favorites, groups
         loadPresets()
@@ -405,9 +400,7 @@ final class AudioReceiver: ObservableObject {
         errorMessage = nil
         state = .connecting
 
-        // Ensure C++ bridge is fully disconnected (prevent ghost JOIN flood)
-        receiver.disconnectRelay()
-        // receiver.start()  // DISABLED: SDK handles playback
+        // C++ bridge disabled — SDK handles all audio
 
         // Start SDK audio player immediately (mono ring buffer + AVAudioSourceNode)
         let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
