@@ -45,6 +45,8 @@ struct ProDashboardView: View {
     @State private var jitterMs: Double = 0
     @State private var eqBands: [Float] = [0.4, 0.5, 0.65, 0.8, 0.9, 0.85, 0.7, 0.55, 0.45, 0.35]
     @AppStorage("channel") private var channel = "soluna"
+    @State private var showFilePicker = false
+    @State private var showProSettings = false
 
     // Timers
     let vuTimer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
@@ -70,9 +72,11 @@ struct ProDashboardView: View {
             HStack(spacing: 0) {
                 leftPanel
                     .frame(minWidth: 520)
-                Divider().background(Color.proBorder)
-                rightSidebar
-                    .frame(width: 320)
+                if showProSettings {
+                    Divider().background(Color.proBorder)
+                    rightSidebar
+                        .frame(width: 320)
+                }
             }
         }
         .background(Color.proBg)
@@ -99,6 +103,19 @@ struct ProDashboardView: View {
         .onReceive(filePlaybackTimer) { _ in
             checkFilePlayback()
         }
+        .fileImporter(
+            isPresented: $showFilePicker,
+            allowedContentTypes: [.mp3, .wav, .aiff, .audio],
+            allowsMultipleSelection: true
+        ) { result in
+            if case .success(let urls) = result {
+                for url in urls {
+                    if url.startAccessingSecurityScopedResource() {
+                        addToPlaylist(url)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Top Bar
@@ -118,6 +135,22 @@ struct ProDashboardView: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.escape, modifiers: [])
+
+            // Pro settings toggle
+            Button { withAnimation(.spring(response: 0.3)) { showProSettings.toggle() } } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 10))
+                    Text("PRO")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                }
+                .foregroundColor(showProSettings ? .proAccent : .proTextDim)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(showProSettings ? Color.proAccent.opacity(0.15) : Color.proCard)
+                .cornerRadius(4)
+            }
+            .buttonStyle(.plain)
 
             // Channel name
             Text(channel.uppercased())
@@ -719,28 +752,7 @@ struct ProDashboardView: View {
                 // Add files button + track count
                 HStack {
                     Button {
-                        // Run on next run loop to escape SwiftUI sheet context
-                        DispatchQueue.main.async {
-                            let panel = NSOpenPanel()
-                            panel.allowedContentTypes = [
-                                UTType(filenameExtension: "mp3")!,
-                                UTType(filenameExtension: "wav")!,
-                                UTType(filenameExtension: "m4a")!,
-                                UTType(filenameExtension: "aac")!,
-                                UTType(filenameExtension: "flac")!,
-                                UTType(filenameExtension: "aiff")!,
-                            ]
-                            panel.allowsMultipleSelection = true
-                            panel.canChooseDirectories = true
-                            panel.canChooseFiles = true
-                            panel.title = "Add Audio Files"
-                            panel.level = .floating
-                            if panel.runModal() == .OK {
-                                for url in panel.urls {
-                                    self.addToPlaylist(url)
-                                }
-                            }
-                        }
+                        showFilePicker = true
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "plus")
