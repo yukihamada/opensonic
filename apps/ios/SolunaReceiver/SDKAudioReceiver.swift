@@ -42,12 +42,30 @@ final class SDKAudioReceiver: ObservableObject {
     // Live channels use lower latency for real-time feel; radio uses higher for stability
     var targetTotalLatencyMs: Double = 300
 
-    /// Determine target latency based on channel type
+    /// Per-channel config fetched from relay server
+    private static var channelConfigs: [String: [String: Any]] = [:]
+    private static var configLoaded = false
+
+    /// Fetch channel config from relay server (called once on first use)
+    static func loadChannelConfig() {
+        guard !configLoaded else { return }
+        configLoaded = true
+        guard let url = URL(string: "https://relay.solun.art/api/channel-config") else { return }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            guard let data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let channels = json["channels"] as? [String: [String: Any]] else { return }
+            DispatchQueue.main.async { channelConfigs = channels }
+        }.resume()
+    }
+
+    /// Determine target latency based on channel config from server
     static func latencyForChannel(_ ch: String) -> Double {
-        // Live/interactive channels → ultra-low latency
+        // Server config takes priority
+        if let config = channelConfigs[ch], let ms = config["latencyMs"] as? Double { return ms }
+        if let config = channelConfigs[ch], let ms = config["latencyMs"] as? Int { return Double(ms) }
+        // Fallback: prefix-based detection
         let liveChannels: Set<String> = ["live", "stage", "dj", "karaoke", "talk"]
         if liveChannels.contains(ch) || ch.hasPrefix("live-") { return 50 }
-        // Music radio channels → stable playback
         return 300
     }
     private var outputLatencyFrames: Int = 0  // latency in samples at 48kHz
@@ -140,6 +158,7 @@ final class SDKAudioReceiver: ObservableObject {
 
     func start(channel: String? = nil) {
         guard state == .stopped || state == .error else { return }
+        Self.loadChannelConfig()  // Fetch server config on first start
         if let ch = channel { self.channel = ch }
 
         state = .connecting
