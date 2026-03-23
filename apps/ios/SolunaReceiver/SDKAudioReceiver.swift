@@ -537,7 +537,7 @@ final class SDKAudioReceiver: ObservableObject {
     /// Whether the output device latency exceeds the target (BT can't meet sync)
     @Published private(set) var latencyExceeded: Bool = false
 
-    private var dynamicPrefillThreshold: Int {
+    var dynamicPrefillThreshold: Int {
         let gap = targetTotalLatencyMs - outputLatencyMs
         if gap < 0 {
             // BT latency exceeds target — can't sync, minimize prefill for lowest achievable latency

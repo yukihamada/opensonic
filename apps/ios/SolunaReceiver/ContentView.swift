@@ -470,7 +470,7 @@ struct ContentView: View {
         HStack(spacing: 12) {
             Text("SOLUNA").font(.system(size: 17, weight: .bold, design: .rounded))
                 .foregroundStyle(LinearGradient.solLunaGradient)
-                .onTapGesture(count: 3) { showDebug = true }
+                .onTapGesture(count: 3) { showDebug = true; showDebugPanel.toggle() }
             Spacer()
             headerBtn("gearshape", .white.opacity(0.6)) { showSettings = true }
         }
@@ -528,6 +528,8 @@ struct ContentView: View {
 
     // MARK: - Listen Tab
 
+    @State private var showDebugPanel = false
+
     private var listenTab: some View {
         VStack(spacing: 16) {
             nowPlayingHero.padding(.horizontal, 16)
@@ -539,7 +541,49 @@ struct ContentView: View {
             if isPlaying {
                 liveFeed.padding(.horizontal, 16)
             }
+            // Debug panel (tap 5 times on channel name to toggle)
+            if showDebugPanel {
+                connectionDebugPanel.padding(.horizontal, 16)
+            }
         }.padding(.bottom, 16)
+    }
+
+    private var connectionDebugPanel: some View {
+        let sdk = receiver.sdkReceiver
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("DEBUG").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundColor(.orange)
+                Spacer()
+                Button("Close") { showDebugPanel = false }.font(.caption)
+            }
+            Group {
+                debugRow("Channel", currentChannelName)
+                debugRow("SDK State", sdk?.state.rawValue ?? "nil")
+                debugRow("Connected", "\(sdk?.isConnected ?? false)")
+                debugRow("Receiving", "\(sdk?.isReceivingAudio ?? false)")
+                debugRow("Packets", "\(sdk?.packetsReceived ?? 0)")
+                debugRow("PPS", "\(sdk?.packetsPerSec ?? 0)")
+                debugRow("Buffer", "\(sdk?.bufferFillMs ?? 0)ms")
+                debugRow("Relay", receiver.relayState.rawValue)
+                debugRow("Sync Offset", String(format: "%.1fms", sdk?.syncOffsetMs ?? 0))
+                debugRow("Output Latency", String(format: "%.1fms", sdk?.outputLatencyMs ?? 0))
+                debugRow("Prefill Target", "\(sdk?.dynamicPrefillThreshold ?? 0) samples")
+                debugRow("Latency Target", "\(Int(sdk?.targetTotalLatencyMs ?? 0))ms")
+                debugRow("Latency Exceeded", "\(sdk?.latencyExceeded ?? false)")
+            }
+        }
+        .padding(10)
+        .background(Color.black.opacity(0.8))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .font(.system(size: 11, design: .monospaced))
+    }
+
+    private func debugRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).foregroundColor(.white.opacity(0.5))
+            Spacer()
+            Text(value).foregroundColor(.green)
+        }
     }
 
     private var latencyWarningBanner: some View {
