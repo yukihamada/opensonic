@@ -74,6 +74,10 @@ final class SDKAudioTransmitter: ObservableObject {
 
         print("[SDKTx] Mic format: \(hwFormat.sampleRate)Hz, \(hwFormat.channelCount)ch → 48000Hz 1ch")
 
+        // Connect input → mainMixer (required for engine to run), mute output
+        engine.connect(inputNode, to: engine.mainMixerNode, format: hwFormat)
+        engine.mainMixerNode.outputVolume = 0
+
         // Create converter once, reuse across callbacks (keeps internal state)
         let needsConversion = hwFormat.sampleRate != 48000 || hwFormat.channelCount != 1
         let converter: AVAudioConverter? = needsConversion ? AVAudioConverter(from: hwFormat, to: targetFormat) : nil
