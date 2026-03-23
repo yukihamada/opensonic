@@ -1317,12 +1317,13 @@ public:
 
     void disconnect() {
         running_.store(false);
-        if (recv_thread_.joinable()) {
-            recv_thread_.join();
-        }
+        // Close socket FIRST to unblock recvfrom() immediately
         if (udp_sock_ >= 0) {
             ::close(udp_sock_);
             udp_sock_ = -1;
+        }
+        if (recv_thread_.joinable()) {
+            recv_thread_.join();
         }
         {
             std::lock_guard<std::mutex> lk(peers_mutex_);
