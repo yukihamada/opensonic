@@ -51,6 +51,8 @@ struct ProDashboardView: View {
 
     private let eqFrequencies = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
     @State private var broadcastChannel: String = ""
+    @State private var localLatencyMs: Double = 10
+    @State private var wanLatencyMs: Double = 300
 
     // Playlist / file playback
     @State private var playlist: [(id: UUID, url: URL, name: String)] = []
@@ -516,6 +518,9 @@ struct ProDashboardView: View {
                 .cornerRadius(4)
                 .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proBorder))
 
+                // Latency settings
+                latencySettingsPanel
+
                 // Current broadcast status
                 HStack(spacing: 8) {
                     Circle()
@@ -557,6 +562,113 @@ struct ProDashboardView: View {
 
     private var isBroadcasting: Bool {
         receiver.isMicTransmitting || receiver.isShmTransmitting
+    }
+
+    private var latencySettingsPanel: some View {
+        VStack(spacing: 8) {
+            // Header
+            HStack {
+                Image(systemName: "clock.arrow.2.circlepath")
+                    .font(.system(size: 10))
+                    .foregroundColor(.proAccent)
+                Text("LATENCY TARGET")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.proTextDim)
+                Spacer()
+            }
+
+            // Local (LAN)
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    Circle().fill(Color.proGreen).frame(width: 6, height: 6)
+                    Text("LAN")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.proText)
+                }
+                .frame(width: 40, alignment: .leading)
+
+                Slider(value: $localLatencyMs, in: 5...200, step: 5)
+                    .tint(.proGreen)
+                    .frame(maxWidth: .infinity)
+
+                Text("\(Int(localLatencyMs))ms")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.proGreen)
+                    .frame(width: 45, alignment: .trailing)
+            }
+
+            // WAN (Remote)
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    Circle().fill(Color.proAccent).frame(width: 6, height: 6)
+                    Text("WAN")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.proText)
+                }
+                .frame(width: 40, alignment: .leading)
+
+                Slider(value: $wanLatencyMs, in: 20...1000, step: 10)
+                    .tint(.proAccent)
+                    .frame(maxWidth: .infinity)
+
+                Text("\(Int(wanLatencyMs))ms")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.proAccent)
+                    .frame(width: 45, alignment: .trailing)
+            }
+
+            // Quick presets
+            HStack(spacing: 6) {
+                latencyPreset("Real-time", local: 5, wan: 50, color: .proGreen)
+                latencyPreset("Balanced", local: 20, wan: 300, color: .proAccent)
+                latencyPreset("Stable", local: 50, wan: 500, color: .blue)
+                Spacer()
+            }
+        }
+        .padding(10)
+        .background(Color.proBg)
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proBorder))
+        .onChange(of: localLatencyMs) { _ in applyLatencySettings() }
+        .onChange(of: wanLatencyMs) { _ in applyLatencySettings() }
+    }
+
+    private func latencyPreset(_ label: String, local: Double, wan: Double, color: Color) -> some View {
+        let isActive = abs(localLatencyMs - local) < 3 && abs(wanLatencyMs - wan) < 15
+        return Button {
+            localLatencyMs = local
+            wanLatencyMs = wan
+            addLog("Preset: \(label) (LAN \(Int(local))ms / WAN \(Int(wan))ms)", color: color)
+        } label: {
+            Text(label)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(isActive ? .white : color)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(isActive ? color.opacity(0.8) : color.opacity(0.1))
+                .cornerRadius(3)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func applyLatencySettings() {
+        // Update the channel config on the relay server
+        let ch = broadcastChannel.isEmpty ? channel : broadcastChannel
+        guard !ch.isEmpty else { return }
+        guard let url = URL(string: "https://relay.solun.art/api/channel-config/\(ch)") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "latencyMs": Int(wanLatencyMs),
+            "localLatencyMs": Int(localLatencyMs),
+            "mode": localLatencyMs <= 20 ? "live" : "radio"
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        URLSession.shared.dataTask(with: request) { _, _, _ in }.resume()
+
+        // Also update local SDK target
+        SDKAudioReceiver.shared.targetTotalLatencyMs = wanLatencyMs
     }
 
     private func generateRandomChannel() {
