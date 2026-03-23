@@ -21,7 +21,7 @@ final class SDKAudioTransmitter: ObservableObject {
     nonisolated(unsafe) private var seqNum: UInt16 = 0
     nonisolated(unsafe) private var timestamp: UInt32 = 0
     nonisolated(unsafe) private let ssrc: UInt32 = UInt32.random(in: 0...UInt32.max)
-    nonisolated(unsafe) private let samplesPerPacket = 96  // 2ms at 48kHz (matching relay radio)
+    nonisolated(unsafe) private let samplesPerPacket = 480  // 10ms at 48kHz
     private var heartbeatTimer: Timer?
 
     func toggleMic() {
