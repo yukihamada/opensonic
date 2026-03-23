@@ -506,6 +506,8 @@ final class AudioReceiver: ObservableObject {
                     }
                     return
                 }
+                // Ensure C++ bridge is connected to relay for TX
+                self.ensureBridgeRelayConnected()
                 if self.receiver.startMicTransmit() {
                     self.isMicTransmitting = true
                 }
@@ -519,9 +521,21 @@ final class AudioReceiver: ObservableObject {
             receiver.stopShmTransmit()
             isShmTransmitting = false
         } else {
+            ensureBridgeRelayConnected()
             if receiver.startShmTransmit() {
                 isShmTransmitting = true
             }
+        }
+    }
+
+    /// Connect C++ bridge to relay for TX (mic/system audio broadcasting)
+    private func ensureBridgeRelayConnected() {
+        let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
+        let devId = deviceId
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            _ = self.receiver.connect(toRelay: "relay.solun.art", port: 5100,
+                                       group: ch, password: "", deviceId: devId)
         }
     }
 

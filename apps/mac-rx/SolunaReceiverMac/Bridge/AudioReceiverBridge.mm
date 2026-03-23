@@ -1219,13 +1219,14 @@ public:
         struct timeval tv{0, 200000};
         setsockopt(udp_sock_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-        // JOIN disabled — SDK handles relay connection to prevent JOIN flood
-        // C++ bridge is only used for mic TX, not for receiving audio
-        fprintf(stderr, "[bridge] JOIN suppressed — SDK handles relay\n");
-        ::close(udp_sock_);
-        udp_sock_ = -1;
-        state_.store(State::Disconnected, std::memory_order_relaxed);
-        return false;
+        // Send JOIN (needed for mic/system audio TX)
+        std::string join_msg = "JOIN:" + group;
+        join_msg += ":" + password;
+        join_msg += ":" + device_name;
+        if (!device_id_.empty()) join_msg += ":" + device_id_;
+        join_msg += "\n";
+        sendto(udp_sock_, join_msg.c_str(), join_msg.size(), 0,
+               reinterpret_cast<const sockaddr*>(&relay_addr_), sizeof(relay_addr_));
 
         // Wait for OK:joined (up to 5 seconds), also collect PEER messages
         // Need enough attempts to handle groups with many existing members
