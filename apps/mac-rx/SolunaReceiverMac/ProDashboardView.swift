@@ -750,7 +750,20 @@ struct ProDashboardView: View {
             broadcastChannel = channel
         }
         setBroadcastChannel()
-        receiver.toggleShmTransmit()
+
+        // Start TX based on selected source
+        let source = audioSourceManager.selectedSource
+        if source?.type == .systemAudio {
+            receiver.toggleShmTransmit()
+            if !receiver.isShmTransmitting {
+                // SHM failed (no virtual driver) — fall back to mic
+                addLog("System audio TX unavailable, using mic", color: .proAccent)
+                receiver.toggleMic()
+            }
+        } else {
+            // Default: mic TX
+            receiver.toggleMic()
+        }
         addLog("Broadcast started on \(channel)", color: .proGreen)
     }
 
