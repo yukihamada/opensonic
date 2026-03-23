@@ -1122,6 +1122,13 @@ final class AudioReceiver: ObservableObject {
         let sdkBands = sdk.spectrumBands
         if sdkBands.contains(where: { $0 > 0.01 }) { return sdkBands }
 
+        // Use system audio capture (ScreenCaptureKit) if active
+        let sys = SystemAudioCapture.shared
+        if sys.isCapturing {
+            let sysBands = sys.spectrumBands
+            if sysBands.contains(where: { $0 > 0.01 }) { return sysBands }
+        }
+
         // Fallback to C++ bridge
         let bridge = receiver.spectrumBands().map { $0.floatValue }
         if bridge.contains(where: { $0 > 0.01 }) { return bridge }

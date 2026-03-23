@@ -338,7 +338,7 @@ final class SDKAudioReceiver: ObservableObject {
 
     // MARK: - FFT Spectrum Computation (static, safe to call from audio thread)
 
-    private static func computeSpectrum(
+    nonisolated static func computeSpectrum(
         _ samples: UnsafePointer<Float>, frameCount: Int,
         fftSize: Int, log2n: vDSP_Length,
         fftSetup: OpaquePointer?, window: [Float],

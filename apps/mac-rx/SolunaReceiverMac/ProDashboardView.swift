@@ -88,6 +88,8 @@ struct ProDashboardView: View {
             if broadcastChannel.isEmpty {
                 generateRandomChannel()
             }
+            // Start system audio capture for VU meters + spectrum
+            Task { await SystemAudioCapture.shared.startCapture() }
         }
         .onReceive(vuTimer) { _ in
             updateVU()
@@ -1331,8 +1333,10 @@ struct ProDashboardView: View {
 
     private func updateVU() {
         let sdk = SDKAudioReceiver.shared
-        let rawL = sdk.outputLevelL
-        let rawR = sdk.outputLevelR
+        // Blend SDK playback levels with system audio capture (use whichever is louder)
+        let sys = SystemAudioCapture.shared
+        let rawL = max(sdk.outputLevelL, sys.outputLevelL)
+        let rawR = max(sdk.outputLevelR, sys.outputLevelR)
 
         if rawL > 0.001 || rawR > 0.001 {
             // Real audio levels from engine tap
