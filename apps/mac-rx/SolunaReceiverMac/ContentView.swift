@@ -347,6 +347,23 @@ struct ContentView: View {
                         .padding(.horizontal, 32)
                         .padding(.top, 20)
 
+                    // Latency warning
+                    if SDKAudioReceiver.shared.latencyExceeded {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.yellow)
+                                .font(.system(size: 13))
+                            Text("Bluetooth latency too high for sync — use wired output or increase channel latency target")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.8))
+                            Spacer()
+                        }
+                        .padding(10)
+                        .background(Color.orange.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(.horizontal, 32)
+                    }
+
                     // Broadcast section (when in broadcast tab)
                     if topTab == .broadcast {
                         broadcastSection

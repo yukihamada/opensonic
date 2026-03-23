@@ -531,11 +531,35 @@ struct ContentView: View {
     private var listenTab: some View {
         VStack(spacing: 16) {
             nowPlayingHero.padding(.horizontal, 16)
+            if receiver.sdkReceiver?.latencyExceeded == true {
+                latencyWarningBanner.padding(.horizontal, 16)
+            }
             channelGrid.padding(.horizontal, 16)
             if isPlaying {
                 liveFeed.padding(.horizontal, 16)
             }
         }.padding(.bottom, 16)
+    }
+
+    private var latencyWarningBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.yellow)
+                .font(.system(size: 14))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Bluetooth latency too high for sync")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                Text("Use wired output or increase channel latency target")
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            Spacer()
+        }
+        .padding(10)
+        .background(Color.orange.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.3), lineWidth: 1))
     }
 
     // MARK: - Now Playing Hero (Spotify-style big player card)
