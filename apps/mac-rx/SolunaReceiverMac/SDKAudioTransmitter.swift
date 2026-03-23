@@ -7,10 +7,13 @@ import Darwin
 final class SDKAudioTransmitter: ObservableObject {
     static let shared = SDKAudioTransmitter()
 
-    @Published var isTransmitting = false
+    @Published var isTransmitting = false {
+        didSet { _isTransmittingAtomic = isTransmitting }
+    }
     @Published var micEnabled = false {
         didSet { _micEnabledAtomic = micEnabled }
     }
+    nonisolated(unsafe) private var _isTransmittingAtomic = false
     nonisolated(unsafe) private var _micEnabledAtomic = false
     @Published var channel: String = ""
     nonisolated(unsafe) var packetsSent: UInt64 = 0
@@ -35,6 +38,7 @@ final class SDKAudioTransmitter: ObservableObject {
 
     func toggleMic() {
         micEnabled.toggle()
+        print("[SDKTx] MIC toggled: \(micEnabled), atomic: \(_micEnabledAtomic)")
     }
 
     func start(channel: String, micEnabled: Bool = false, host: String = "relay.solun.art", port: UInt16 = 5100) {
@@ -96,7 +100,7 @@ final class SDKAudioTransmitter: ObservableObject {
         let channels = Int(inputFormat.channelCount)
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
-            guard let self, self.isTransmitting else { return }
+            guard let self, self._isTransmittingAtomic else { return }
             guard self._micEnabledAtomic else { return }
 
             // Extract first channel (mono)
