@@ -234,10 +234,26 @@ final class SDKAudioTransmitter: ObservableObject {
 
     /// Send system audio from ScreenCaptureKit CMSampleBuffer (called from audio callback)
     /// Send system audio from ScreenCaptureKit (skipped when mic is ON — mic takes priority)
+    // Residual buffer for system audio resampling (persists across calls)
+    nonisolated(unsafe) private static var sysAudioBuffer = [Float]()
+    nonisolated(unsafe) private static var sysAudioLoggedFormat = false
+
     nonisolated func sendSystemAudio(_ sampleBuffer: CMSampleBuffer) {
-        guard udpSocket >= 0 else { print("[SDKTx] sendSystemAudio: no socket"); return }
-        guard !_micEnabledAtomic else { return }  // Mic ON → mic audio takes priority
-        guard let blockBuffer = sampleBuffer.dataBuffer else { print("[SDKTx] sendSystemAudio: no data"); return }
+        guard udpSocket >= 0 else { return }
+        guard !_micEnabledAtomic else { return }
+
+        // Get actual format from CMSampleBuffer
+        guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) else { return }
+        guard let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else { return }
+        let srcRate = asbd.pointee.mSampleRate
+        let srcChannels = Int(asbd.pointee.mChannelsPerFrame)
+
+        if !Self.sysAudioLoggedFormat {
+            Self.sysAudioLoggedFormat = true
+            print("[SDKTx] System audio format: \(srcRate)Hz, \(srcChannels)ch")
+        }
+
+        guard let blockBuffer = sampleBuffer.dataBuffer else { return }
         var length = 0
         var dataPointer: UnsafeMutablePointer<Int8>?
         CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &dataPointer)
@@ -245,21 +261,41 @@ final class SDKAudioTransmitter: ObservableObject {
 
         let floatPtr = UnsafeRawPointer(dataPointer).assumingMemoryBound(to: Float.self)
         let floatCount = length / MemoryLayout<Float>.size
-        let channels = 2  // ScreenCaptureKit delivers interleaved stereo
-        let frames = floatCount / channels
+        let frames = floatCount / max(srcChannels, 1)
 
-        // Extract mono (left channel) and send packets
-        let spp = samplesPerPacket
-        var offset = 0
-        while offset + spp <= frames {
-            var mono = [Float](repeating: 0, count: spp)
-            for i in 0..<spp {
-                mono[i] = floatPtr[(offset + i) * channels]
-                // Mix mic if enabled
-                // (mic audio comes from the engine tap, system audio from here)
+        // Extract mono (left channel)
+        var mono = [Float](repeating: 0, count: frames)
+        for i in 0..<frames {
+            mono[i] = floatPtr[i * srcChannels]
+        }
+
+        // Resample to 48kHz if needed
+        let targetRate = 48000.0
+        if abs(srcRate - targetRate) > 1.0 {
+            let ratio = targetRate / srcRate
+            let outCount = Int(Double(frames) * ratio)
+            var resampled = [Float](repeating: 0, count: outCount)
+            for i in 0..<outCount {
+                let srcPos = Double(i) / ratio
+                let idx = Int(srcPos)
+                let frac = Float(srcPos - Double(idx))
+                if idx + 1 < frames {
+                    resampled[i] = mono[idx] * (1 - frac) + mono[idx + 1] * frac
+                } else if idx < frames {
+                    resampled[i] = mono[idx]
+                }
             }
-            sendAudioPacket(mono)
-            offset += spp
+            Self.sysAudioBuffer.append(contentsOf: resampled)
+        } else {
+            Self.sysAudioBuffer.append(contentsOf: mono)
+        }
+
+        // Send 96-sample packets
+        let spp = samplesPerPacket
+        while Self.sysAudioBuffer.count >= spp {
+            let samples = Array(Self.sysAudioBuffer.prefix(spp))
+            Self.sysAudioBuffer.removeFirst(spp)
+            sendAudioPacket(samples)
         }
     }
 
