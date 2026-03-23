@@ -375,12 +375,6 @@ struct ContentView: View {
                         .padding(.horizontal, 32)
                     }
 
-                    // Broadcast section (when in broadcast tab)
-                    if topTab == .broadcast {
-                        broadcastSection
-                            .padding(.horizontal, 32)
-                    }
-
                     // Bottom controls (volume, record, stats)
                     bottomControls
                         .padding(.horizontal, 32)
@@ -413,14 +407,6 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
-                Picker("", selection: $topTab) {
-                    ForEach(TopTab.allCases, id: \.self) { tab in
-                        Text(tab.rawValue).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 200)
-
                 Spacer()
 
                 Button { showDevicePicker = true } label: {
