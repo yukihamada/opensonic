@@ -47,7 +47,7 @@ struct ProDashboardView: View {
     let statsTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     private let eqFrequencies = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
-    private let availableChannels = ["soluna", "jazz", "lofi", "chill", "dance", "bjj", "yuki"]
+    @State private var broadcastChannel: String = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -401,39 +401,88 @@ struct ProDashboardView: View {
     // MARK: - Channels
 
     private var channelsSection: some View {
-        proCard(title: "CHANNELS", icon: "antenna.radiowaves.left.and.right") {
-            VStack(spacing: 2) {
-                ForEach(availableChannels, id: \.self) { ch in
-                    let isActive = ch == channel
-                    let memberCount = receiver.groupMembers.filter { $0.role == ch }.count
-                    Button(action: {
-                        SDKAudioReceiver.shared.setChannel(ch)
-                        channel = ch
-                        addLog("Switched to channel: \(ch)", color: .proAccent)
-                    }) {
-                        HStack(spacing: 10) {
-                            Circle()
-                                .fill(isActive ? Color.proGreen : Color.proBorder)
-                                .frame(width: 8, height: 8)
-                            Text(ch)
-                                .font(.system(size: 13, weight: isActive ? .bold : .medium, design: .monospaced))
-                                .foregroundColor(isActive ? .proAccent : .proText)
-                            Spacer()
-                            if isActive {
-                                Text("\(receiver.groupMembers.count) listeners")
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundColor(.proTextDim)
-                            }
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(isActive ? Color.proAccent.opacity(0.08) : Color.clear)
-                        .cornerRadius(4)
-                    }
-                    .buttonStyle(.plain)
+        proCard(title: "MY CHANNEL", icon: "antenna.radiowaves.left.and.right") {
+            VStack(spacing: 12) {
+                // Channel name input
+                HStack(spacing: 8) {
+                    Image(systemName: "number")
+                        .font(.system(size: 12))
+                        .foregroundColor(.proTextDim)
+                    TextField("Channel name", text: $broadcastChannel)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 14, weight: .medium, design: .monospaced))
+                        .foregroundColor(.proText)
+                        .onSubmit { setBroadcastChannel() }
                 }
+                .padding(8)
+                .background(Color.proBg)
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proBorder))
+
+                // Current broadcast status
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(isBroadcasting ? Color.proGreen : Color.proBorder)
+                        .frame(width: 8, height: 8)
+                    Text(isBroadcasting ? "Broadcasting on \(channel)" : "Not broadcasting")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(isBroadcasting ? .proGreen : .proTextDim)
+                    Spacer()
+                    Text("\(receiver.groupMembers.count) listeners")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.proTextDim)
+                }
+
+                // Go Live button
+                Button {
+                    if isBroadcasting {
+                        stopBroadcast()
+                    } else {
+                        setBroadcastChannel()
+                        startBroadcast()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: isBroadcasting ? "stop.circle.fill" : "dot.circle.fill")
+                        Text(isBroadcasting ? "STOP BROADCAST" : "GO LIVE")
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .foregroundColor(isBroadcasting ? .proRed : .white)
+                    .background(isBroadcasting ? Color.proRed.opacity(0.15) : Color.proAccent)
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
             }
         }
+    }
+
+    private var isBroadcasting: Bool {
+        receiver.isMicTransmitting || receiver.isShmTransmitting
+    }
+
+    private func setBroadcastChannel() {
+        let ch = broadcastChannel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !ch.isEmpty else { return }
+        channel = ch
+        SDKAudioReceiver.shared.setChannel(ch)
+        addLog("Channel set: \(ch)", color: .proAccent)
+    }
+
+    private func startBroadcast() {
+        if broadcastChannel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            broadcastChannel = channel
+        }
+        setBroadcastChannel()
+        receiver.toggleShmTransmit()
+        addLog("Broadcast started on \(channel)", color: .proGreen)
+    }
+
+    private func stopBroadcast() {
+        if receiver.isMicTransmitting { receiver.toggleMic() }
+        if receiver.isShmTransmitting { receiver.toggleShmTransmit() }
+        addLog("Broadcast stopped", color: .proRed)
     }
 
     // MARK: - Devices
@@ -782,19 +831,6 @@ struct ProDashboardView: View {
         }
     }
 
-    private func switchToNextChannel() {
-        guard let idx = availableChannels.firstIndex(of: channel) else { return }
-        let next = availableChannels[(idx + 1) % availableChannels.count]
-        SDKAudioReceiver.shared.setChannel(next)
-        channel = next
-        addLog("Switched to channel: \(next)", color: .proAccent)
-    }
-
-    private func switchToPreviousChannel() {
-        guard let idx = availableChannels.firstIndex(of: channel) else { return }
-        let prev = availableChannels[(idx - 1 + availableChannels.count) % availableChannels.count]
-        SDKAudioReceiver.shared.setChannel(prev)
-        channel = prev
-        addLog("Switched to channel: \(prev)", color: .proAccent)
-    }
+    private func switchToNextChannel() {}
+    private func switchToPreviousChannel() {}
 }
