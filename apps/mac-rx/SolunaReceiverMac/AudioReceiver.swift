@@ -549,15 +549,13 @@ final class AudioReceiver: ObservableObject {
         let ch = channel ?? UserDefaults.standard.string(forKey: "channel") ?? "soluna"
         let devId = deviceId
 
-        // Disconnect first to avoid joining old recv thread inside connect()
+        // Disconnect old connection first
         receiver.disconnectRelay()
 
-        // C++ bridge needs start() for recv loop (HELLO keepalive)
-        if receiver.state == .stopped {
-            receiver.start()
-        }
+        // Don't call receiver.start() — it creates AVAudioEngine conflict with SDK
+        // connect(toRelay:) creates its own recv thread for HELLO keepalive
 
-        // Small delay to let old recv thread finish
+        // Delay to let old recv thread finish, then connect
         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self else { DispatchQueue.main.async { completion(false) }; return }
             let ok = self.receiver.connect(toRelay: "relay.solun.art", port: 5100,
