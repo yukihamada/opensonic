@@ -45,6 +45,7 @@
 		CS0001 /* ClockSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = CS0002 /* ClockSync.swift */; };
 		CHSET01 /* ChannelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHSET02 /* ChannelSettingsView.swift */; };
 		PD0001 /* ProDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = PD0002 /* ProDashboardView.swift */; };
+		ASM001 /* AudioSourceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ASM002 /* AudioSourceManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -91,6 +92,7 @@
 		CHSET02 /* ChannelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelSettingsView.swift; sourceTree = "<group>"; };
 		CS0002 /* ClockSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClockSync.swift; sourceTree = "<group>"; };
 		PD0002 /* ProDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProDashboardView.swift; sourceTree = "<group>"; };
+		ASM002 /* AudioSourceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSourceManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -156,6 +158,7 @@
 				DB0001 /* DashboardServer.swift */,
 				CHSET02 /* ChannelSettingsView.swift */,
 				PD0002 /* ProDashboardView.swift */,
+				ASM002 /* AudioSourceManager.swift */,
 			);
 			path = SolunaReceiverMac;
 			sourceTree = "<group>";
@@ -292,6 +295,7 @@
 				DB0002 /* DashboardServer.swift in Sources */,
 				CHSET01 /* ChannelSettingsView.swift in Sources */,
 				PD0001 /* ProDashboardView.swift in Sources */,
+				ASM001 /* AudioSourceManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

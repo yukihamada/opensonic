@@ -27,6 +27,7 @@ private extension Color {
 struct ProDashboardView: View {
     @ObservedObject var receiver: AudioReceiver
     @StateObject private var registry = GlobalDeviceRegistry()
+    @StateObject private var audioSourceManager = AudioSourceManager.shared
 
     // State
     @State private var elapsedTime: TimeInterval = 0
@@ -70,6 +71,7 @@ struct ProDashboardView: View {
             isMuted = SDKAudioReceiver.shared.isMuted
             addLog("Dashboard opened", color: .proAccent)
             registry.refresh()
+            audioSourceManager.refresh()
         }
         .onReceive(vuTimer) { _ in
             updateVU()
@@ -413,6 +415,32 @@ struct ProDashboardView: View {
                         .font(.system(size: 14, weight: .medium, design: .monospaced))
                         .foregroundColor(.proText)
                         .onSubmit { setBroadcastChannel() }
+                }
+                .padding(8)
+                .background(Color.proBg)
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proBorder))
+
+                // Audio source picker
+                HStack(spacing: 8) {
+                    Image(systemName: iconForSourceType(audioSourceManager.selectedSource?.type))
+                        .font(.system(size: 12))
+                        .foregroundColor(.proAccent)
+                    Picker("Source", selection: $audioSourceManager.selectedSource) {
+                        ForEach(audioSourceManager.sources) { source in
+                            HStack(spacing: 6) {
+                                Image(systemName: iconForSourceType(source.type))
+                                Text(source.name)
+                            }.tag(Optional(source))
+                        }
+                    }
+                    .labelsHidden()
+                    Button(action: { audioSourceManager.refresh() }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10))
+                            .foregroundColor(.proTextDim)
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(8)
                 .background(Color.proBg)
@@ -828,6 +856,15 @@ struct ProDashboardView: View {
         // Log state changes
         if sdk.state == .receiving && !isStreaming {
             addLog("Receiving audio", color: .proGreen)
+        }
+    }
+
+    private func iconForSourceType(_ type: AudioSourceManager.AudioSource.SourceType?) -> String {
+        switch type {
+        case .microphone:  return "mic.fill"
+        case .systemAudio: return "desktopcomputer"
+        case .inputDevice: return "waveform.path"
+        case nil:          return "questionmark.circle"
         }
     }
 
