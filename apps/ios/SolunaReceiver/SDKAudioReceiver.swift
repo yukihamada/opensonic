@@ -11,6 +11,7 @@ import AVFoundation
 import UIKit
 import Darwin
 import CoreMotion
+import Network
 
 // MARK: - SDKAudioReceiver
 
@@ -122,13 +123,19 @@ final class SDKAudioReceiver: ObservableObject {
     // MARK: - Network
 
     private var udpSocket: Int32 = -1
-    private var lanSocket: Int32 = -1  // LAN multicast socket (239.69.0.1:5004)
+    nonisolated(unsafe) private var lanSocket: Int32 = -1  // LAN unicast receive socket (Bonjour-discovered)
+    nonisolated(unsafe) private var lanLocalPort: UInt16 = 0  // Port bound for LAN unicast receive
     private var relayAddr = sockaddr_in()
     private let recvQueue = DispatchQueue(label: "com.soluna.sdkrecv", qos: .userInteractive)
     private let running = SDKAtomicFlag()
     private let firstPacketReceived = SDKAtomicFlag()
     private var heartbeatTimer: DispatchSourceTimer?
+    nonisolated(unsafe) private var lanKeepAliveTimer: DispatchSourceTimer?
     private var _packetsReceivedAtomic: Int64 = 0
+
+    // Bonjour discovery for LAN transmitters
+    nonisolated(unsafe) private var bonjourBrowser: NWBrowser?
+    nonisolated(unsafe) private var discoveredTxAddr: sockaddr_in?  // Mac transmitter's IP:5005
 
     // Pre-allocated decode buffer for recv loop
     private let decodeBuffer: UnsafeMutablePointer<Float>
@@ -182,16 +189,19 @@ final class SDKAudioReceiver: ObservableObject {
 
         heartbeatTimer?.cancel()
         heartbeatTimer = nil
+        lanKeepAliveTimer?.cancel()
+        lanKeepAliveTimer = nil
+
+        // Stop Bonjour browser
+        bonjourBrowser?.cancel()
+        bonjourBrowser = nil
+        discoveredTxAddr = nil
 
         if lanSocket >= 0 {
-            // Leave multicast group before closing
-            var mreq = ip_mreq()
-            inet_pton(AF_INET, "239.69.0.1", &mreq.imr_multiaddr)
-            mreq.imr_interface.s_addr = INADDR_ANY.bigEndian
-            setsockopt(lanSocket, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, socklen_t(MemoryLayout<ip_mreq>.size))
             Darwin.close(lanSocket)
             lanSocket = -1
         }
+        lanLocalPort = 0
 
         if udpSocket >= 0 {
             Darwin.close(udpSocket)
@@ -247,14 +257,16 @@ final class SDKAudioReceiver: ObservableObject {
         running.set(false)
         heartbeatTimer?.cancel()
         heartbeatTimer = nil
+        lanKeepAliveTimer?.cancel()
+        lanKeepAliveTimer = nil
+        bonjourBrowser?.cancel()
+        bonjourBrowser = nil
+        discoveredTxAddr = nil
         if lanSocket >= 0 {
-            var mreq = ip_mreq()
-            inet_pton(AF_INET, "239.69.0.1", &mreq.imr_multiaddr)
-            mreq.imr_interface.s_addr = INADDR_ANY.bigEndian
-            setsockopt(lanSocket, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq, socklen_t(MemoryLayout<ip_mreq>.size))
             Darwin.close(lanSocket)
             lanSocket = -1
         }
+        lanLocalPort = 0
         if udpSocket >= 0 {
             Darwin.close(udpSocket)
             udpSocket = -1
@@ -620,17 +632,13 @@ final class SDKAudioReceiver: ObservableObject {
             timer.resume()
             self.heartbeatTimer = timer
 
-            // LAN multicast receive (239.69.0.1:5004) — ultra-low latency path
+            // LAN unicast receive — Bonjour discovery + direct UDP (no multicast entitlement needed)
             let lanSock = Darwin.socket(AF_INET, SOCK_DGRAM, 0)
             if lanSock >= 0 {
                 var bindAddr = sockaddr_in()
                 bindAddr.sin_family = sa_family_t(AF_INET)
-                bindAddr.sin_port = UInt16(5004).bigEndian
+                bindAddr.sin_port = 0  // random port — OS assigns
                 bindAddr.sin_addr.s_addr = INADDR_ANY.bigEndian
-
-                var yes: Int32 = 1
-                setsockopt(lanSock, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
-                setsockopt(lanSock, SOL_SOCKET, SO_REUSEPORT, &yes, socklen_t(MemoryLayout<Int32>.size))
 
                 let bindResult = withUnsafePointer(to: &bindAddr) { ptr in
                     ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
@@ -639,21 +647,29 @@ final class SDKAudioReceiver: ObservableObject {
                 }
 
                 if bindResult == 0 {
-                    // Join multicast group
-                    var mreq = ip_mreq()
-                    inet_pton(AF_INET, "239.69.0.1", &mreq.imr_multiaddr)
-                    mreq.imr_interface.s_addr = INADDR_ANY.bigEndian
-                    setsockopt(lanSock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, socklen_t(MemoryLayout<ip_mreq>.size))
+                    // Get the OS-assigned port
+                    var assignedAddr = sockaddr_in()
+                    var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+                    withUnsafeMutablePointer(to: &assignedAddr) { ptr in
+                        ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                            getsockname(lanSock, sa, &addrLen)
+                        }
+                    }
+                    let localPort = UInt16(bigEndian: assignedAddr.sin_port)
+                    self.lanLocalPort = localPort
 
                     // 1ms recv timeout — fall through to relay quickly if no LAN data
                     var lanTv = timeval(tv_sec: 0, tv_usec: 1000)
                     setsockopt(lanSock, SOL_SOCKET, SO_RCVTIMEO, &lanTv, socklen_t(MemoryLayout<timeval>.size))
 
                     self.lanSocket = lanSock
-                    print("[SDKRecv] LAN multicast joined 239.69.0.1:5004")
+                    print("[SDKRecv] LAN unicast socket bound on port \(localPort)")
+
+                    // Browse for LAN transmitters via Bonjour
+                    self.startBonjourDiscovery(channel: ch, localPort: localPort)
                 } else {
                     Darwin.close(lanSock)
-                    print("[SDKRecv] LAN multicast bind failed, relay-only mode")
+                    print("[SDKRecv] LAN unicast bind failed, relay-only mode")
                 }
             }
 
@@ -700,7 +716,7 @@ final class SDKAudioReceiver: ObservableObject {
         while running.value && udpSocket >= 0 {
             var n = 0
 
-            // Try LAN multicast first (1ms timeout, ~1-5ms latency)
+            // Try LAN unicast first (1ms timeout, ~1-5ms latency via Bonjour-discovered transmitter)
             if lanSocket >= 0 {
                 senderLen = socklen_t(MemoryLayout<sockaddr_in>.size)
                 n = withUnsafeMutablePointer(to: &sender) { sp -> Int in
@@ -802,6 +818,116 @@ final class SDKAudioReceiver: ObservableObject {
                     self?.syncOffsetMs = offsetMs
                     self?.updateOutputLatency()
                 }
+            }
+        }
+    }
+
+    // MARK: - Bonjour Discovery (LAN Transmitter)
+
+    /// Browse for _soluna-tx._udp services on the local network.
+    /// When found, send a LISTEN registration to the Mac transmitter so it sends us unicast packets.
+    nonisolated private func startBonjourDiscovery(channel: String, localPort: UInt16) {
+        let browser = NWBrowser(for: .bonjour(type: "_soluna-tx._udp.", domain: "local."), using: .udp)
+        browser.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                print("[SDKRecv] Bonjour browser ready, scanning for _soluna-tx._udp.")
+            case .failed(let error):
+                print("[SDKRecv] Bonjour browser failed: \(error)")
+            default:
+                break
+            }
+        }
+
+        browser.browseResultsChangedHandler = { [weak self] results, _ in
+            guard let self else { return }
+            for result in results {
+                // Resolve the endpoint to get IP:port
+                self.resolveAndRegister(result: result, channel: channel, localPort: localPort)
+            }
+        }
+
+        browser.start(queue: self.recvQueue)
+        self.bonjourBrowser = browser
+    }
+
+    /// Resolve a Bonjour browse result and send LISTEN registration to the transmitter
+    nonisolated private func resolveAndRegister(result: NWBrowser.Result, channel: String, localPort: UInt16) {
+        // Create a temporary NWConnection to resolve the endpoint
+        let params = NWParameters.udp
+        let connection = NWConnection(to: result.endpoint, using: params)
+        connection.stateUpdateHandler = { [weak self] state in
+            guard let self else {
+                connection.cancel()
+                return
+            }
+            switch state {
+            case .ready:
+                // Extract the resolved IP from the connection's current path
+                if let path = connection.currentPath,
+                   let endpoint = path.remoteEndpoint,
+                   case .hostPort(let host, _) = endpoint {
+                    // Build sockaddr_in for the transmitter's registration port (5005)
+                    var txAddr = sockaddr_in()
+                    txAddr.sin_family = sa_family_t(AF_INET)
+                    txAddr.sin_port = UInt16(5005).bigEndian
+
+                    let hostStr: String
+                    switch host {
+                    case .ipv4(let ipv4):
+                        let raw = ipv4.rawValue
+                        raw.withUnsafeBytes { ptr in
+                            txAddr.sin_addr = ptr.load(as: in_addr.self)
+                        }
+                        hostStr = "\(ipv4)"
+                    default:
+                        print("[SDKRecv] Bonjour: non-IPv4 endpoint, skipping")
+                        connection.cancel()
+                        return
+                    }
+
+                    self.discoveredTxAddr = txAddr
+                    print("[SDKRecv] Bonjour discovered TX at \(hostStr):5005")
+
+                    // Send initial LISTEN registration
+                    self.sendListenRegistration(to: txAddr, localPort: localPort, channel: channel)
+
+                    // Start keepalive timer: re-send LISTEN every 10s
+                    let timer = DispatchSource.makeTimerSource(queue: self.recvQueue)
+                    timer.schedule(deadline: .now() + 10, repeating: 10.0)
+                    timer.setEventHandler { [weak self] in
+                        guard let self, self.running.value, let addr = self.discoveredTxAddr else { return }
+                        self.sendListenRegistration(to: addr, localPort: localPort, channel: channel)
+                    }
+                    timer.resume()
+                    self.lanKeepAliveTimer = timer
+                }
+                connection.cancel()
+
+            case .failed(let error):
+                print("[SDKRecv] Bonjour resolve failed: \(error)")
+                connection.cancel()
+
+            case .cancelled:
+                break
+
+            default:
+                break
+            }
+        }
+        connection.start(queue: self.recvQueue)
+    }
+
+    /// Send "LISTEN:<port>:<channel>" UDP message to a transmitter's registration port
+    nonisolated private func sendListenRegistration(to txAddr: sockaddr_in, localPort: UInt16, channel: String) {
+        guard lanSocket >= 0 else { return }
+        let msg = "LISTEN:\(localPort):\(channel)\n"
+        msg.withCString { ptr in
+            var addr = txAddr
+            withUnsafePointer(to: &addr) { a in
+                let sa = UnsafeRawPointer(a).assumingMemoryBound(to: sockaddr.self)
+                _ = Darwin.sendto(lanSocket, ptr, strlen(ptr), 0, sa,
+                                  socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
     }

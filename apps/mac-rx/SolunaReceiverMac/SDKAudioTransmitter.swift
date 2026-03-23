@@ -19,12 +19,19 @@ final class SDKAudioTransmitter: ObservableObject {
     nonisolated(unsafe) private var udpSocket: Int32 = -1
     nonisolated(unsafe) private var relayAddr = sockaddr_in()
     nonisolated(unsafe) private var lanSocket: Int32 = -1
-    nonisolated(unsafe) private var lanAddr = sockaddr_in()
     nonisolated(unsafe) private var seqNum: UInt16 = 0
     nonisolated(unsafe) private var timestamp: UInt32 = 0
     nonisolated(unsafe) private let ssrc: UInt32 = UInt32.random(in: 0...UInt32.max)
     nonisolated(unsafe) private let samplesPerPacket = 96  // 2ms at 48kHz
     private var heartbeatTimer: Timer?
+
+    // Bonjour + Unicast LAN: listeners register via UDP, we fan-out packets
+    nonisolated(unsafe) private var listeners: [(sockaddr_in, Date)] = []
+    nonisolated(unsafe) private var listenerLock = os_unfair_lock()
+    nonisolated(unsafe) private var registrationSocket: Int32 = -1
+    private var bonjourService: NetService?
+    private var registrationThread: Thread?
+    private var listenerCleanupTimer: Timer?
 
     func toggleMic() {
         micEnabled.toggle()
@@ -51,17 +58,14 @@ final class SDKAudioTransmitter: ObservableObject {
         udpSocket = socket(AF_INET, SOCK_DGRAM, 0)
         guard udpSocket >= 0 else { print("[SDKTx] socket() failed"); return }
 
-        // Create LAN multicast socket (239.69.0.1:5004)
+        // Create LAN unicast socket for sending to registered listeners
         lanSocket = socket(AF_INET, SOCK_DGRAM, 0)
         if lanSocket >= 0 {
-            lanAddr.sin_family = sa_family_t(AF_INET)
-            lanAddr.sin_port = UInt16(5004).bigEndian
-            inet_pton(AF_INET, "239.69.0.1", &lanAddr.sin_addr)
-            // Set TTL for multicast
-            var ttl: UInt8 = 1
-            setsockopt(lanSocket, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, socklen_t(MemoryLayout<UInt8>.size))
-            print("[SDKTx] LAN multicast ready (239.69.0.1:5004)")
+            print("[SDKTx] LAN unicast socket ready")
         }
+
+        // Start Bonjour advertisement + registration listener
+        startBonjourAndRegistration(channel: channel)
 
         // Send JOIN to relay
         let deviceName = Host.current().localizedName ?? "SolunaSDK-Mac"
@@ -119,6 +123,11 @@ final class SDKAudioTransmitter: ObservableObject {
                 self?.sendUDP("HELLO\n")
             }
 
+            // Cleanup stale listeners every 10s
+            listenerCleanupTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+                self?.cleanupStaleListeners()
+            }
+
             print("[SDKTx] Started transmitting on channel '\(channel)'")
         } catch {
             print("[SDKTx] Engine start error: \(error)")
@@ -132,6 +141,9 @@ final class SDKAudioTransmitter: ObservableObject {
         isTransmitting = false
         heartbeatTimer?.invalidate()
         heartbeatTimer = nil
+        listenerCleanupTimer?.invalidate()
+        listenerCleanupTimer = nil
+        stopBonjourAndRegistration()
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         engine = nil
@@ -192,13 +204,19 @@ final class SDKAudioTransmitter: ObservableObject {
             }
         }
 
-        // Send to LAN multicast (low latency, same WiFi)
+        // Send to LAN listeners via unicast (low latency, same WiFi)
         if lanSocket >= 0 {
-            packet.withUnsafeBufferPointer { buf in
-                withUnsafePointer(to: lanAddr) { addr in
-                    let sa = UnsafeRawPointer(addr).assumingMemoryBound(to: sockaddr.self)
-                    _ = sendto(lanSocket, buf.baseAddress!, packet.count, 0, sa,
-                              socklen_t(MemoryLayout<sockaddr_in>.size))
+            os_unfair_lock_lock(&listenerLock)
+            let currentListeners = listeners
+            os_unfair_lock_unlock(&listenerLock)
+            for (listenerAddr, _) in currentListeners {
+                var addr = listenerAddr
+                packet.withUnsafeBufferPointer { buf in
+                    withUnsafePointer(to: &addr) { a in
+                        let sa = UnsafeRawPointer(a).assumingMemoryBound(to: sockaddr.self)
+                        _ = sendto(lanSocket, buf.baseAddress!, packet.count, 0, sa,
+                                  socklen_t(MemoryLayout<sockaddr_in>.size))
+                    }
                 }
             }
         }
@@ -258,6 +276,140 @@ final class SDKAudioTransmitter: ObservableObject {
                 _ = sendto(udpSocket, ptr, strlen(ptr), 0, sa,
                           socklen_t(MemoryLayout<sockaddr_in>.size))
             }
+        }
+    }
+
+    // MARK: - Bonjour Advertisement + Listener Registration
+
+    private func startBonjourAndRegistration(channel: String) {
+        // 1. Start registration socket on port 5005 to receive LISTEN messages from iPhones
+        registrationSocket = socket(AF_INET, SOCK_DGRAM, 0)
+        guard registrationSocket >= 0 else {
+            print("[SDKTx] Failed to create registration socket")
+            return
+        }
+
+        var bindAddr = sockaddr_in()
+        bindAddr.sin_family = sa_family_t(AF_INET)
+        bindAddr.sin_port = UInt16(5005).bigEndian
+        bindAddr.sin_addr.s_addr = INADDR_ANY.bigEndian
+
+        var yes: Int32 = 1
+        setsockopt(registrationSocket, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
+
+        let bindResult = withUnsafePointer(to: &bindAddr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                Darwin.bind(registrationSocket, sa, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+
+        guard bindResult == 0 else {
+            print("[SDKTx] Registration socket bind failed (port 5005): \(errno)")
+            Darwin.close(registrationSocket)
+            registrationSocket = -1
+            return
+        }
+
+        // Set 500ms recv timeout so thread can check isTransmitting periodically
+        var tv = timeval(tv_sec: 0, tv_usec: 500000)
+        setsockopt(registrationSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+
+        print("[SDKTx] Registration socket listening on port 5005")
+
+        // 2. Start background thread to receive LISTEN messages
+        let thread = Thread { [weak self] in
+            self?.registrationLoop()
+        }
+        thread.name = "SDKTx-Registration"
+        thread.qualityOfService = .userInteractive
+        thread.start()
+        registrationThread = thread
+
+        // 3. Advertise Bonjour service: _soluna-tx._udp with channel name as TXT record
+        let service = NetService(domain: "local.", type: "_soluna-tx._udp.", name: channel, port: 5005)
+        let txtData = NetService.data(fromTXTRecord: ["channel": channel.data(using: .utf8) ?? Data()])
+        service.setTXTRecord(txtData)
+        service.publish()
+        bonjourService = service
+        print("[SDKTx] Bonjour advertising _soluna-tx._udp. channel=\(channel)")
+    }
+
+    private func stopBonjourAndRegistration() {
+        // Stop Bonjour
+        bonjourService?.stop()
+        bonjourService = nil
+
+        // Close registration socket (causes registrationLoop to exit)
+        if registrationSocket >= 0 {
+            Darwin.close(registrationSocket)
+            registrationSocket = -1
+        }
+        registrationThread = nil
+
+        // Clear listeners
+        os_unfair_lock_lock(&listenerLock)
+        listeners.removeAll()
+        os_unfair_lock_unlock(&listenerLock)
+
+        print("[SDKTx] Bonjour + registration stopped")
+    }
+
+    /// Background thread: receives "LISTEN:<port>:<channel>\n" UDP messages from iPhones
+    nonisolated private func registrationLoop() {
+        var buf = [UInt8](repeating: 0, count: 256)
+        var sender = sockaddr_in()
+        var senderLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+
+        while registrationSocket >= 0 {
+            senderLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+            let n = withUnsafeMutablePointer(to: &sender) { sp -> Int in
+                sp.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                    Darwin.recvfrom(registrationSocket, &buf, buf.count, 0, sa, &senderLen)
+                }
+            }
+
+            guard n > 0 else { continue }
+
+            guard let msg = String(bytes: buf[0..<n], encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) else { continue }
+
+            // Parse "LISTEN:<port>:<channel>"
+            let parts = msg.split(separator: ":")
+            guard parts.count >= 2, parts[0] == "LISTEN" else { continue }
+            guard let listenerPort = UInt16(parts[1]) else { continue }
+
+            // Build listener address: sender's IP + specified port
+            var listenerAddr = sender
+            listenerAddr.sin_port = listenerPort.bigEndian
+
+            let now = Date()
+            var ipStr = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+            inet_ntop(AF_INET, &listenerAddr.sin_addr, &ipStr, socklen_t(INET_ADDRSTRLEN))
+            let ipString = String(cString: ipStr)
+
+            os_unfair_lock_lock(&listenerLock)
+            // Update existing or add new listener
+            if let idx = listeners.firstIndex(where: {
+                $0.0.sin_addr.s_addr == listenerAddr.sin_addr.s_addr && $0.0.sin_port == listenerAddr.sin_port
+            }) {
+                listeners[idx].1 = now
+            } else {
+                listeners.append((listenerAddr, now))
+                print("[SDKTx] New LAN listener: \(ipString):\(listenerPort) (total: \(listeners.count))")
+            }
+            os_unfair_lock_unlock(&listenerLock)
+        }
+    }
+
+    /// Remove listeners that haven't re-registered in 30 seconds
+    nonisolated private func cleanupStaleListeners() {
+        let cutoff = Date().addingTimeInterval(-30)
+        os_unfair_lock_lock(&listenerLock)
+        let before = listeners.count
+        listeners.removeAll { $0.1 < cutoff }
+        let after = listeners.count
+        os_unfair_lock_unlock(&listenerLock)
+        if before != after {
+            print("[SDKTx] Cleaned up \(before - after) stale listener(s), \(after) remaining")
         }
     }
 }
