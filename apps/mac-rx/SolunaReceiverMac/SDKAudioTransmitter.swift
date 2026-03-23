@@ -88,32 +88,23 @@ final class SDKAudioTransmitter: ObservableObject {
         tv = timeval(tv_sec: 0, tv_usec: 0)
         setsockopt(udpSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
-        // Start audio engine: inputNode → mixerNode (converts to 48kHz mono) → mainMixer (muted)
+        // Start audio engine — tap at native format, send as-is
+        // (receiver adjusts playback rate based on packet timing)
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
-        let hwFormat = inputNode.outputFormat(forBus: 0)
-        let mono48k = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
+        let inputFormat = inputNode.outputFormat(forBus: 0)
 
-        print("[SDKTx] Mic HW: \(hwFormat.sampleRate)Hz, \(hwFormat.channelCount)ch")
-
-        // Mixer node for sample rate conversion
-        let mixerNode = AVAudioMixerNode()
-        engine.attach(mixerNode)
-        engine.connect(inputNode, to: mixerNode, format: hwFormat)
-        engine.connect(mixerNode, to: engine.mainMixerNode, format: mono48k)
-        engine.mainMixerNode.outputVolume = 0  // Don't play through speakers
+        print("[SDKTx] Mic: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
 
         var sampleBuffer = [Float]()
 
-        // Tap on mixer with 48kHz mono — mixer converts sample rate
-        mixerNode.installTap(onBus: 0, bufferSize: 4096, format: mono48k) { [weak self] buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
             guard let self, self._isTransmittingAtomic else { return }
             guard self._micEnabledAtomic else { return }
 
             guard let data = buffer.floatChannelData?[0] else { return }
             for i in 0..<Int(buffer.frameLength) { sampleBuffer.append(data[i]) }
 
-            // Send 96-sample packets (48kHz)
             let pktSize = self.samplesPerPacket
             while sampleBuffer.count >= pktSize {
                 let samples = Array(sampleBuffer.prefix(pktSize))
@@ -153,12 +144,7 @@ final class SDKAudioTransmitter: ObservableObject {
         listenerCleanupTimer?.invalidate()
         listenerCleanupTimer = nil
         stopBonjourAndRegistration()
-        // Remove tap from mixer node (not input node)
-        if let eng = engine {
-            for node in eng.attachedNodes where node is AVAudioMixerNode {
-                (node as! AVAudioMixerNode).removeTap(onBus: 0)
-            }
-        }
+        engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         engine = nil
         if udpSocket >= 0 { Darwin.close(udpSocket); udpSocket = -1 }
