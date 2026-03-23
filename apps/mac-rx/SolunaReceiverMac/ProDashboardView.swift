@@ -793,7 +793,7 @@ struct ProDashboardView: View {
     }
 
     private var isBroadcasting: Bool {
-        SDKAudioTransmitter.shared.isTransmitting || receiver.isMicTransmitting || receiver.isShmTransmitting
+        SDKAudioTransmitter.shared.isTransmitting
     }
 
     private func channelTab(_ label: String, icon: String, active: Bool, locked: Bool = false, action: @escaping () -> Void) -> some View {
