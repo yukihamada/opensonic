@@ -768,9 +768,13 @@ struct ProDashboardView: View {
                         ]
                         panel.allowsMultipleSelection = true
                         panel.canChooseDirectories = true
-                        if panel.runModal() == .OK {
-                            for url in panel.urls {
-                                addToPlaylist(url)
+                        panel.begin { response in
+                            if response == .OK {
+                                DispatchQueue.main.async {
+                                    for url in panel.urls {
+                                        addToPlaylist(url)
+                                    }
+                                }
                             }
                         }
                     } label: {
