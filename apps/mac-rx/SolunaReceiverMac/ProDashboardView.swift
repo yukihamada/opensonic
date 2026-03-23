@@ -719,32 +719,25 @@ struct ProDashboardView: View {
                 // Add files button + track count
                 HStack {
                     Button {
-                        let panel = NSOpenPanel()
-                        panel.allowedContentTypes = [
-                            UTType(filenameExtension: "mp3")!,
-                            UTType(filenameExtension: "wav")!,
-                            UTType(filenameExtension: "m4a")!,
-                            UTType(filenameExtension: "aac")!,
-                            UTType(filenameExtension: "flac")!,
-                            UTType(filenameExtension: "aiff")!,
-                        ]
-                        panel.allowsMultipleSelection = true
-                        panel.canChooseDirectories = true
-                        if let window = NSApp.keyWindow {
-                            panel.beginSheetModal(for: window) { response in
-                                if response == .OK {
-                                    DispatchQueue.main.async {
-                                        for url in panel.urls {
-                                            addToPlaylist(url)
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // Fallback: run as modal dialog
+                        // Run on next run loop to escape SwiftUI sheet context
+                        DispatchQueue.main.async {
+                            let panel = NSOpenPanel()
+                            panel.allowedContentTypes = [
+                                UTType(filenameExtension: "mp3")!,
+                                UTType(filenameExtension: "wav")!,
+                                UTType(filenameExtension: "m4a")!,
+                                UTType(filenameExtension: "aac")!,
+                                UTType(filenameExtension: "flac")!,
+                                UTType(filenameExtension: "aiff")!,
+                            ]
+                            panel.allowsMultipleSelection = true
+                            panel.canChooseDirectories = true
+                            panel.canChooseFiles = true
+                            panel.title = "Add Audio Files"
+                            panel.level = .floating
                             if panel.runModal() == .OK {
                                 for url in panel.urls {
-                                    addToPlaylist(url)
+                                    self.addToPlaylist(url)
                                 }
                             }
                         }
