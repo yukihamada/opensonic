@@ -312,12 +312,18 @@ final class AudioReceiver: ObservableObject {
     private var statsTimer: Timer?
     private var lastPacketCount: UInt64 = 0
     private var staleTicks: Int = 0
+    private var sdkStateObserver: Timer?
 
     init() {
         receiver = SolunaAudioReceiver.sharedInstance()
         delegateHandler = DelegateHandler()
         delegateHandler.audioReceiver = self
         receiver.delegate = delegateHandler
+        // Kill C++ bridge network completely — SDK handles relay
+        receiver.stop()
+        receiver.disconnectRelay()
+        // Force-close C++ relay socket by setting a bogus relay that will fail
+        receiver.multicastGroup = "0.0.0.0"
 
         // Load presets, favorites, groups
         loadPresets()
@@ -394,23 +400,14 @@ final class AudioReceiver: ObservableObject {
     /// On macOS, MultipeerConnectivity is not available, so we skip peer scanning
     /// and go straight to multicast reception.
     func start() {
-        guard state == .stopped || state == .error else { return }
+        NSLog("[AudioReceiver] start() called, state=%@", state.rawValue)
+        guard state == .stopped || state == .error else { NSLog("[AudioReceiver] start() skipped"); return }
         errorMessage = nil
         state = .connecting
 
-        let ok = receiver.start()
-        if !ok { return } // bridge sets state -> .error via delegate
-
-        // Mute C++ bridge audio — SDKAudioReceiver handles playback
-        receiver.volume = 0
-
-        // Restore previously active local devices
-        refreshDevices()
-        restoreSavedDevices()
-        updateNowPlaying()
-
-        // Setup metadata and file-sync callbacks (stored in C++ for when relay connects)
-        setupMetaCallback()
+        // Ensure C++ bridge is fully disconnected (prevent ghost JOIN flood)
+        receiver.disconnectRelay()
+        // receiver.start()  // DISABLED: SDK handles playback
 
         // Start SDK audio player immediately (mono ring buffer + AVAudioSourceNode)
         let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
@@ -420,10 +417,20 @@ final class AudioReceiver: ObservableObject {
         sdk.volume = isMuted ? 0 : volume
         sdk.start()
 
-        // Also auto-connect C++ bridge relay (for mic TX, members, etc.)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            guard let self, self.relayState == .disconnected else { return }
-            self.connectRelay(group: ch)
+        updateNowPlaying()
+
+        // SDK handles relay connection — just update state
+        relayState = .connected
+        relayGroup = ch
+
+        // Monitor SDK state → update AudioReceiver state
+        sdkStateObserver = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            let sdkState = SDKAudioReceiver.shared.state
+            if sdkState == .receiving && self.state != .receiving {
+                self.state = .receiving
+            }
+            self.packetsReceived = UInt64(SDKAudioReceiver.shared.packetsReceived)
         }
 
         // Start stats polling + watchdog
@@ -446,6 +453,8 @@ final class AudioReceiver: ObservableObject {
         // Stop stats polling and watchdog
         stopStatsPolling()
         stopWatchdog()
+        sdkStateObserver?.invalidate()
+        sdkStateObserver = nil
 
         // Disconnect WAN relay
         disconnectRelay()
@@ -538,33 +547,14 @@ final class AudioReceiver: ObservableObject {
     /// Connect to WAN relay server with group code
     func connectRelay(group: String, password: String = "",
                       host: String = "relay.solun.art", port: UInt16 = 5100) {
-        NSLog("[FileSync] connectRelay called, isPlaying=\(isPlaying), state=\(state), relayState=\(relayState)")
-        guard isPlaying else {
-            NSLog("[FileSync] connectRelay skipped: not playing")
-            return
-        }
-        relayState = .connecting
-        relayError = nil
-
-        // Sync SDK audio player to new channel
+        guard isPlaying else { return }
+        // Only switch if channel actually changed — prevents stop/start socket flood
         let sdk = SDKAudioReceiver.shared
-        sdk.setChannel(group)
-
-        // Run connection on background to avoid blocking UI during DNS/JOIN
-        let devId = deviceId
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
-            let ok = self.receiver.connect(toRelay: host, port: port, group: group, password: password, deviceId: devId)
-            NSLog("[FileSync] connectRelay result: \(ok)")
-            Task { @MainActor in
-                self.relayState = ok ? .connected : .error
-                self.relayGroup = self.receiver.relayGroup
-                self.updateRelayState()
-                // System audio TX is available via UI button (not auto-started to save CPU)
-                // P2P direct relay: disabled for now (high CPU usage)
-                // iPhone connects via WAN relay instead
-            }
+        if group != sdk.channel {
+            sdk.setChannel(group)
         }
+        relayState = .connected
+        relayGroup = group
     }
 
     /// Disconnect from WAN relay
@@ -580,12 +570,7 @@ final class AudioReceiver: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.updateRelayState()
-                // Auto-reconnect relay if disconnected while playing
-                // Read channel EACH time (not captured once) so channel switches work
-                if self.isPlaying && self.relayState == .disconnected {
-                    let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
-                    self.connectRelay(group: ch)
-                }
+                // SDK handles reconnection internally — no need to call connectRelay here
             }
         }
     }
@@ -619,16 +604,9 @@ final class AudioReceiver: ObservableObject {
             // 10 ticks × 3s = 30 seconds with no packets → reconnect
             let connectMode = UserDefaults.standard.object(forKey: "autoConnect") as? Bool ?? true
             if staleTicks >= 10 && state == .receiving {
-                if connectMode {
-                    print("[AudioReceiver] Watchdog: no packets for \(staleTicks * 3)s — reconnecting")
-                    stop()
-                    Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 3_000_000_000) // 3s
-                        self.start()
-                    }
-                } else {
-                    print("[AudioReceiver] Watchdog: no packets for \(staleTicks * 3)s — Connect Mode off, not reconnecting")
-                }
+                // Don't stop/restart — just log. SDK handles reconnection internally.
+                print("[AudioReceiver] Watchdog: no packets for \(staleTicks * 3)s — SDK will handle reconnection")
+                staleTicks = 0
             }
         } else {
             staleTicks = 0

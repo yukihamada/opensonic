@@ -191,7 +191,8 @@ private:
         if (gap < 0) return true;  // duplicate — already received
 
         // Auto-detect TX channel count from stream_id upper 4 bits
-        uint32_t tx_channels = (ostp.stream_id >> 12) & 0xF;
+        uint32_t deck_id = (ostp.stream_id >> 14) & 0x3;
+        uint32_t tx_channels = (ostp.stream_id >> 10) & 0xF;
         if (tx_channels == 0) tx_channels = 2;  // backward compat
 
         const uint32_t ring_ch = config_.channels;  // ring buffer channel width
@@ -199,11 +200,9 @@ private:
         // §4.9 IMA-ADPCM decode (PT=115 stereo, PT=116 mono)
         if (rtp.pt == 115 || rtp.pt == 116) {
             if (payload_size < 4) return false;
-            // Read ADPCM header: valprev(16) + index(8) + reserved(8)
-            if (adpcm_state_.valprev == 0 && adpcm_state_.index == 0) {
-                adpcm_state_.valprev = static_cast<int16_t>(payload[0] | (payload[1] << 8));
-                adpcm_state_.index = payload[2];
-            }
+            // Always read state header from each packet (enables recovery after loss)
+            adpcm_state_.valprev = static_cast<int16_t>(payload[0] | (payload[1] << 8));
+            adpcm_state_.index = std::clamp(static_cast<int>(payload[2]), 0, 88);
             size_t num_samples = (payload_size - 4) * 2;
             size_t adpcm_frames = num_samples / tx_channels;
             // Decode nibbles → 24-bit int32_t for ring buffer
@@ -220,7 +219,7 @@ private:
                 if (adpcm_state_.valprev > 32767) adpcm_state_.valprev = 32767;
                 if (adpcm_state_.valprev < -32768) adpcm_state_.valprev = -32768;
                 adpcm_state_.index += ima_index_table_[nib];
-                if (adpcm_state_.index < 0) adpcm_state_.index = 40;
+                if (adpcm_state_.index < 0) adpcm_state_.index = 0;
                 if (adpcm_state_.index > 88) adpcm_state_.index = 88;
                 // 16-bit → 24-bit (shift left 8)
                 adpcm_decode_buf_[i] = static_cast<int32_t>(adpcm_state_.valprev) << 8;
@@ -246,7 +245,7 @@ private:
         if (rtp.pt == 96 && payload_size >= sizeof(int32_t)) {
             int32_t last = reinterpret_cast<const int32_t*>(payload)[payload_size/sizeof(int32_t) - 1];
             adpcm_state_.valprev = static_cast<int16_t>(last >> 8); // 24-bit → 16-bit
-            adpcm_state_.index = 40;
+            adpcm_state_.index = 0;
         }
 
         // OSTP payload is int32_t (4 bytes/sample, native byte order)
@@ -1000,23 +999,40 @@ private:
         constexpr float kFadeIn  = 0.001f;
         constexpr float kFadeOut = 0.005f;
 
-        if (!self->prefilled_) {
-            if (avail < target) {
-                self->ramp_ *= (1.0f - kFadeOut);
-                std::memset(dst, 0, total * sizeof(float));
-                return noErr;
-            }
-            self->prefilled_ = true;
-        }
-
-        if (avail < frame_count) {
-            self->prefilled_ = false;
+        // Play whatever is available — no prefill gate.
+        // This ensures continuous playback even with thin buffers.
+        if (avail == 0) {
+            // Nothing to play — output held sample with fade
             for (uint32_t i = 0; i < frame_count; i++) {
                 self->ramp_ *= (1.0f - kFadeOut);
                 for (uint32_t ch = 0; ch < self->channels_; ch++) {
                     dst[i * self->channels_ + ch] = self->held_sample_[ch] * self->ramp_;
                 }
             }
+            return noErr;
+        }
+
+        uint32_t playable = std::min(static_cast<uint32_t>(avail), frame_count);
+        if (playable < frame_count) {
+            // Partial buffer — play what we have, hold last sample for rest
+            self->ring_.read(self->read_buf_.data(), playable);
+            const int32_t* src = self->read_buf_.data();
+            float vol = self->volume_.load(std::memory_order_relaxed);
+            for (uint32_t i = 0; i < playable; i++) {
+                self->ramp_ = std::min(1.0f, self->ramp_ + kFadeIn);
+                for (uint32_t ch = 0; ch < self->channels_; ch++) {
+                    float s = static_cast<float>(src[i * self->channels_ + ch]) / 8388608.0f;
+                    dst[i * self->channels_ + ch] = s * self->ramp_ * vol;
+                    self->held_sample_[ch] = s * self->ramp_ * vol;
+                }
+            }
+            for (uint32_t i = playable; i < frame_count; i++) {
+                self->ramp_ *= (1.0f - kFadeOut);
+                for (uint32_t ch = 0; ch < self->channels_; ch++) {
+                    dst[i * self->channels_ + ch] = self->held_sample_[ch] * self->ramp_;
+                }
+            }
+            self->prefilled_ = true;
             return noErr;
         }
 
@@ -1199,23 +1215,23 @@ public:
             return false;
         }
 
-        // Set recv timeout 1s
-        struct timeval tv{1, 0};
+        // Set recv timeout 200ms for fast JOIN handshake
+        struct timeval tv{0, 200000};
         setsockopt(udp_sock_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-        // Send JOIN:<group>:<password>:<device_name>:<device_id>\n
-        std::string join_msg = "JOIN:" + group;
-        join_msg += ":" + password;
-        join_msg += ":" + device_name;
-        if (!device_id_.empty()) join_msg += ":" + device_id_;
-        join_msg += "\n";
-        sendto(udp_sock_, join_msg.c_str(), join_msg.size(), 0,
-               reinterpret_cast<const sockaddr*>(&relay_addr_), sizeof(relay_addr_));
+        // JOIN disabled — SDK handles relay connection to prevent JOIN flood
+        // C++ bridge is only used for mic TX, not for receiving audio
+        fprintf(stderr, "[bridge] JOIN suppressed — SDK handles relay\n");
+        ::close(udp_sock_);
+        udp_sock_ = -1;
+        state_.store(State::Disconnected, std::memory_order_relaxed);
+        return false;
 
-        // Wait for OK:joined (up to 3 seconds), also collect PEER messages
+        // Wait for OK:joined (up to 5 seconds), also collect PEER messages
+        // Need enough attempts to handle groups with many existing members
         char buf[256];
         bool joined = false;
-        for (int attempt = 0; attempt < 6 && !joined; attempt++) {
+        for (int attempt = 0; attempt < 30 && !joined; attempt++) {
             sockaddr_in from{};
             socklen_t from_len = sizeof(from);
             ssize_t n = recvfrom(udp_sock_, buf, sizeof(buf) - 1, 0,
@@ -1419,12 +1435,15 @@ public:
 
 private:
     void recv_loop() {
+        fprintf(stderr, "[recv_loop] STARTED\n");
         // Set receive timeout so heartbeat can fire between packets
         struct timeval tv{1, 0};
         setsockopt(udp_sock_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
         uint8_t buf[65536];
         auto last_hello = std::chrono::steady_clock::now();
+        uint64_t total_rx = 0;
+        auto last_log = std::chrono::steady_clock::now();
 
         while (running_.load()) {
             sockaddr_in from{};
@@ -1540,6 +1559,7 @@ private:
                             ::sendto(udp_sock_, buf, n, 0, (const sockaddr*)&child, sizeof(child));
                         }
                     }
+                    total_rx++;
                     std::lock_guard<std::mutex> lock(cb_mutex_);
                     if (rx_callback_) {
                         rx_callback_(buf, static_cast<size_t>(n));
@@ -1547,8 +1567,12 @@ private:
                 }
             }
 
-            // Send HELLO heartbeat every 5 seconds
+            // Log recv stats every 5 seconds
             auto now = std::chrono::steady_clock::now();
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - last_log).count() >= 5) {
+                fprintf(stderr, "[recv_loop] alive: %llu audio pkts, running=%d\n", total_rx, running_.load());
+                last_log = now;
+            }
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_hello).count();
             if (elapsed >= 5) {
                 const char* hello = "HELLO\n";
@@ -2893,10 +2917,10 @@ public:
         if (!relay_first_packet_received_.load(std::memory_order_relaxed)) {
             relay_first_packet_received_.store(true, std::memory_order_relaxed);
             flush_requested_.store(true, std::memory_order_release);
-            target_fill_frames_.store(24000, std::memory_order_relaxed);  // 500ms WAN jitter cushion
+            target_fill_frames_.store(1440, std::memory_order_relaxed);  // 30ms prefill
             health_underruns_in_window_ = 0;
             last_underrun_ms_ = 0;
-            fprintf(stderr, "[relay] First packet — buffer flushed, target=24000 (500ms)\n");
+            fprintf(stderr, "[relay] First packet — target=1440 (30ms)\n");
         }
         relay_inject_count_++;
         rtp_receiver_->inject_raw_packet(data, len, ring_buffer_);
@@ -2919,22 +2943,15 @@ public:
             ia_last_rtp_ts_     = rtp_ts;
         }
 
-        // Periodic stats + jitter-adaptive buffer (every ~5s at 500pps)
+        // Periodic stats (every ~5s at 500pps)
+        // NOTE: jitter-adaptive buffer disabled for relay mode —
+        // input rate == output rate (48kHz), so target must stay low
+        // to prevent prefill stall. Underruns handled by PLC in audio callback.
         if (relay_inject_count_ % 2500 == 0) {
             size_t fill   = ring_buffer_.available_read();
             uint32_t tgt  = target_fill_frames_.load();
             fprintf(stderr, "[relay] fill=%zu target=%u jitter=%.1fms\n",
                     fill, tgt, ia_jitter_ema_ms_);
-            // RFC 3550: buffer = 4× jitter, clamped [30ms, 500ms]
-            if (ia_jitter_ema_ms_ > 1.0) {
-                double jt_ms = std::max(30.0, std::min(500.0, ia_jitter_ema_ms_ * 4.0));
-                uint32_t jt_frames = static_cast<uint32_t>(jt_ms * 48.0);
-                uint32_t cur = target_fill_frames_.load(std::memory_order_relaxed);
-                uint32_t blended = static_cast<uint32_t>(cur * 0.9 + jt_frames * 0.1);
-                // 500ms floor in WAN mode
-                blended = std::max(blended, 24000u);
-                target_fill_frames_.store(blended, std::memory_order_relaxed);
-            }
         }
     }
 
@@ -3085,11 +3102,9 @@ public:
                            const std::string& device_name,
                            const std::string& device_id = "") {
         if (!wan_relay_) wan_relay_ = std::make_unique<WanRelayClient>();
-        // Set RX callback: inject received audio into ring buffer
+        // Set RX callback: inject via ReceiverImpl (handles buffer reset, jitter, ADPCM decode)
         wan_relay_->set_rx_callback([this](const uint8_t* data, size_t len) {
-            if (rtp_receiver_) {
-                rtp_receiver_->inject_raw_packet(data, len, ring_buffer_);
-            }
+            inject_raw_packet(data, len);
         });
         // Apply stored callbacks BEFORE connect so they're active when
         // the relay sends FILE:/SYNC: to new joiners immediately after JOIN
@@ -3116,14 +3131,17 @@ public:
         bool ok = wan_relay_->connect(host, port, group, password, device_name, device_id);
         if (ok) {
             set_relay_network_disabled(true);
+            // Disable sync mode for relay — use fixed buffer instead
+            sync_mode_.store(false, std::memory_order_relaxed);
+            sync_delay_ms_.store(200, std::memory_order_relaxed);
             // Flush old channel audio from ring buffer
             flush_requested_.store(true, std::memory_order_release);
-            target_fill_frames_.store(24000, std::memory_order_relaxed);  // 500ms WAN jitter cushion
+            target_fill_frames_.store(1440, std::memory_order_relaxed);  // 30ms — prefill fast, jitter adapts up
             health_.store(0, std::memory_order_relaxed);
             health_silenced_.store(false, std::memory_order_relaxed);
             prefilled_ = false;
-            sync_samples_count_ = 0;  // reset for fast re-convergence
-            fprintf(stderr, "[relay] Connected — buffer flushed, target=24000 (500ms), health reset\n");
+            sync_samples_count_ = 0;
+            fprintf(stderr, "[relay] Connected — target=1440 (30ms), sync off\n");
         }
         return ok;
     }
@@ -3568,15 +3586,23 @@ private:
         const uint32_t min_target = frame_count * 3;
         if (target < min_target) target = min_target;
 
-        // ── Gradual drift correction with crossfade ────────────────────────
-        // Only discard when buffer is significantly overfilled (3x target)
-        // to avoid WiFi burst → discard → underrun cycle.
-        // Matched with iOS: very gradual (frame_count/80) to keep sync stable.
+        // ── Drift correction with overflow protection ────────────────────
         {
             size_t avail_now = ring_buffer_.available_read();
-            if (prefilled_ && avail_now > static_cast<size_t>(target) * 3) {
+            size_t capacity = ring_buffer_.capacity();
+
+            // Emergency: if buffer is >80% full, flush to target to prevent crash
+            if (avail_now > capacity * 4 / 5) {
+                size_t drain_to = static_cast<size_t>(target);
+                if (avail_now > drain_to) {
+                    ring_buffer_.discard(avail_now - drain_to);
+                }
+                drift_xfade_ = 96;
+            }
+            // Normal: gradual drift when overfilled (3x target)
+            else if (prefilled_ && avail_now > static_cast<size_t>(target) * 3) {
                 size_t excess = avail_now - static_cast<size_t>(target) * 2;
-                size_t drift = std::min(excess, static_cast<size_t>(frame_count / 80 + 1));
+                size_t drift = std::min(excess, static_cast<size_t>(frame_count / 4 + 1));
                 ring_buffer_.discard(drift);
                 drift_xfade_ = 48;
             }

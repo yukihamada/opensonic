@@ -78,7 +78,7 @@ final class SDKAudioReceiver: ObservableObject {
     private let ringBuffer: UnsafeMutablePointer<Float>
     private var writePos: Int64 = 0
     private var readPos: Int64 = 0
-    private let prefillThreshold = 4800  // 100 ms
+    private let prefillThreshold = 14400  // 300 ms — enough for WAN jitter
 
     // Pre-allocated scratch buffer for audio callback (no malloc on RT thread)
     private let scratchBuffer: UnsafeMutablePointer<Float>
@@ -243,7 +243,7 @@ final class SDKAudioReceiver: ObservableObject {
                 return
             }
 
-            var tv = timeval(tv_sec: 0, tv_usec: 5000)
+            var tv = timeval(tv_sec: 0, tv_usec: 50000)  // 50ms recv timeout for WAN
             setsockopt(self.udpSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
             self.sendUDP("JOIN:\(ch)::\(deviceName)\n")
@@ -259,7 +259,6 @@ final class SDKAudioReceiver: ObservableObject {
             timer.setEventHandler { [weak self] in
                 guard let self, self.running.value else { return }
                 self.sendUDP("HELLO\n")
-                self.sendUDP("JOIN:\(ch)::\(deviceName)\n")
             }
             timer.resume()
             self.heartbeatTimer = timer
@@ -313,9 +312,13 @@ final class SDKAudioReceiver: ObservableObject {
             let frames = Int(frameCount)
             let ablp = UnsafeMutableAudioBufferListPointer(bufferList)
 
-            // Prefill gate
+            // Prefill gate — also re-enters prefill if buffer runs dry
             let avail = self.ringAvailable()
-            if avail < self.prefillThreshold && !self.firstPacketReceived.value {
+            if avail < self.prefillThreshold {
+                if avail == 0 && self.firstPacketReceived.value {
+                    // Buffer ran dry — re-enter prefill mode to rebuild buffer
+                    self.firstPacketReceived.set(false)
+                }
                 for ch in 0..<ablp.count {
                     if let dst = ablp[ch].mData?.assumingMemoryBound(to: Float.self) {
                         memset(dst, 0, frames * MemoryLayout<Float>.size)
@@ -499,8 +502,8 @@ final class SDKAudioReceiver: ObservableObject {
                 return
             }
 
-            // 5ms recv timeout
-            var tv = timeval(tv_sec: 0, tv_usec: 5000)
+            // 50ms recv timeout for WAN
+            var tv = timeval(tv_sec: 0, tv_usec: 50000)  // 50ms recv timeout for WAN
             setsockopt(self.udpSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
             // JOIN
@@ -518,7 +521,6 @@ final class SDKAudioReceiver: ObservableObject {
             timer.setEventHandler { [weak self] in
                 guard let self, self.running.value else { return }
                 self.sendUDP("HELLO\n")
-                self.sendUDP("JOIN:\(ch)::\(deviceName)\n")
             }
             timer.resume()
             self.heartbeatTimer = timer

@@ -2,8 +2,28 @@
 //  ContentView.swift
 //  SolunaReceiverMac
 //
+//  Spotify-style player — channels -> now playing -> controls (matching iOS design)
+//
 
 import SwiftUI
+import UniformTypeIdentifiers
+
+// MARK: - Extended Channel List
+
+private let allChannels: [SolunaChannel] = [
+    SolunaChannel(id: "soluna",  label: "Soluna",   icon: "sun.and.horizon.fill",  color: .solunaSol,           description: "The flagship mix"),
+    SolunaChannel(id: "jazz",    label: "Jazz",     icon: "pianokeys",             color: .orange,              description: "Smooth jazz piano"),
+    SolunaChannel(id: "lofi",    label: "Lo-Fi",    icon: "headphones",            color: .purple,              description: "Chill beats to relax"),
+    SolunaChannel(id: "chill",   label: "Chill",    icon: "leaf.fill",             color: .solunaLuna,          description: "Easy listening vibes"),
+    SolunaChannel(id: "dance",   label: "Dance",    icon: "bolt.heart.fill",       color: .solunaSolEnd,        description: "High-energy grooves"),
+    SolunaChannel(id: "bjj",     label: "BJJ",      icon: "figure.martial.arts",   color: .solunaGradientMid,   description: "Training beats"),
+    SolunaChannel(id: "yuki",    label: "Yuki",     icon: "snowflake",             color: .solunaLunaEnd,       description: "Yuki's personal mix"),
+    SolunaChannel(id: "ambient", label: "Ambient",  icon: "cloud.fill",            color: .cyan,                description: "Atmospheric soundscapes"),
+    SolunaChannel(id: "rock",    label: "Rock",     icon: "guitars.fill",          color: .red,                 description: "Classic & modern rock"),
+    SolunaChannel(id: "edm",     label: "EDM",      icon: "waveform.path",         color: .mint,                description: "Electronic dance music"),
+    SolunaChannel(id: "classical", label: "Classical", icon: "music.quarternote.3", color: .brown,               description: "Orchestral masterworks"),
+    SolunaChannel(id: "hiphop",  label: "Hip-Hop",  icon: "mic.fill",              color: .yellow,              description: "Beats & rhymes"),
+]
 
 // MARK: - Root
 
@@ -43,6 +63,43 @@ struct ContentView: View {
     @StateObject private var globalRegistry = GlobalDeviceRegistry()
     @State private var showDevicePicker = false
     @State private var isPulsing = false
+    @State private var showDebug = false
+
+    @State private var playerExpanded = false
+    @State private var selectedGroupDevices: Set<UInt32> = []
+    @State private var showMoreSection = false
+    @State private var channelSearch = ""
+    @State private var showBrowseAll = false
+
+    /// Top-level tab: Listen vs Broadcast
+    @State private var topTab: TopTab = .listen
+    enum TopTab: String, CaseIterable { case listen = "Listen", broadcast = "Broadcast" }
+
+    /// Broadcast channel name (defaults to current listening channel)
+    @State private var broadcastChannel = ""
+
+    // MARK: - Derived State
+
+    private var isPlaying: Bool { receiver.state == .receiving }
+
+    private var recentChannels: [String] {
+        recentChannelsData
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    private var filteredChannels: [SolunaChannel] {
+        let query = channelSearch.trimmingCharacters(in: .whitespaces).lowercased()
+        if query.isEmpty { return showBrowseAll ? allChannels : Array(allChannels.prefix(6)) }
+        return allChannels.filter {
+            $0.label.lowercased().contains(query) ||
+            $0.id.lowercased().contains(query) ||
+            $0.description.lowercased().contains(query)
+        }
+    }
+
+    // MARK: - Device Functions
 
     private func connectToDevice(_ device: SolunaLocalDevice) {
         connectedDeviceHost = device.host
@@ -65,80 +122,46 @@ struct ContentView: View {
         }
     }
 
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // Device browser always visible
-                DeviceBrowserView(
-                    browser: deviceBrowser,
-                    connectedDeviceHost: connectedDeviceHost,
-                    onSelect: { connectToDevice($0) },
-                    onDisconnect: { disconnectDevice() }
-                )
-                .padding(12)
-                .background(Color.white.opacity(0.04))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+    private func addRecentChannel(_ ch: String) {
+        var list = recentChannels.filter { $0 != ch }
+        list.insert(ch, at: 0)
+        if list.count > 5 { list = Array(list.prefix(5)) }
+        recentChannelsData = list.joined(separator: ",")
+    }
 
-                if connectedDeviceHost == nil {
-                    ChannelBrowserView(
-                        currentChannel: channel,
-                        onSelect: { switchToChannel($0) }
-                    )
-                    quickChannelBar
-                    relayBanner
-                    playSection
-                    if receiver.state == .receiving {
-                        statsRow
-                    }
-                    sendSection
-                } else {
-                    // Device-connected info banner
-                    HStack(spacing: 10) {
-                        Image(systemName: "laptopcomputer.and.iphone")
-                            .foregroundColor(.solunaLive)
-                        let devName = deviceBrowser.devices.first(where: { $0.host == connectedDeviceHost })?.name ?? (connectedDeviceHost ?? "Device")
-                        Text("#\(devName)")
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                        Text("接続中 — 解除するまで同じ音声が流れます")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.5))
-                        Spacer()
-                    }
-                    .padding(12)
-                    .background(Color.solunaLive.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                speakersCard
-                playerSectionCollapsible
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 32)
+    private func switchToChannel(_ ch: String) {
+        let trimmed = ch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        channel = trimmed
+        groupCode = trimmed
+        addRecentChannel(trimmed)
+        if receiver.state != .receiving { receiver.start() }
+        receiver.connectRelay(group: trimmed)
+    }
+
+    private func togglePlayback() {
+        if receiver.state == .error { receiver.start() }
+        else { receiver.toggle() }
+    }
+
+    private func loadSavedSettings() {
+        let d = UserDefaults.standard
+        if let g = d.string(forKey: "multicastGroup"), !g.isEmpty { receiver.multicastGroup = g }
+        let port = d.integer(forKey: "port")
+        if port > 0 { receiver.port = UInt16(port) }
+        let ch = d.integer(forKey: "channels")
+        if ch >= 1 { receiver.channels = UInt32(ch) }
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        NavigationSplitView {
+            sidebarView
+        } detail: {
+            detailView
         }
-        .background(LinearGradient.solunaBg)
         .preferredColorScheme(.dark)
-        .navigationTitle("Soluna")
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button(action: { showDevicePicker = true }) {
-                    Image(systemName: "globe")
-                        .foregroundColor(.purple)
-                }
-                .help("グローバルデバイスを選択")
-            }
-            ToolbarItem(placement: .automatic) {
-                Button(action: { showFestivalMode = true }) {
-                    Image(systemName: "sparkles").foregroundColor(.secondary)
-                }
-                .help("Festival Mode")
-            }
-            ToolbarItem(placement: .automatic) {
-                Button(action: { showSettings = true }) {
-                    Image(systemName: "gearshape").foregroundColor(.secondary)
-                }
-            }
-        }
         .sheet(isPresented: $showDevicePicker) {
             GlobalDevicePickerView(registry: globalRegistry) { device in
                 connectToGlobalDevice(device)
@@ -153,28 +176,10 @@ struct ContentView: View {
             addSpeakerSheet
         }
         .sheet(isPresented: $showSavePreset, onDismiss: { presetName = "" }) {
-            VStack(spacing: 16) {
-                Text("Save Preset")
-                    .font(.headline)
-                    .padding(.top, 16)
-                TextField("Preset name (e.g. Living Room)", text: $presetName)
-                    .textFieldStyle(.roundedBorder)
-                    .padding(.horizontal, 16)
-                HStack {
-                    Button("Cancel") { showSavePreset = false }
-                        .keyboardShortcut(.cancelAction)
-                    Spacer()
-                    Button("Save") {
-                        receiver.savePreset(name: presetName)
-                        showSavePreset = false
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(presetName.isEmpty)
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
-            }
-            .frame(width: 320)
+            savePresetSheet
+        }
+        .sheet(isPresented: $showCreateGroup) {
+            createGroupSheet
         }
         .onAppear {
             speakers.audioReceiver = receiver
@@ -201,64 +206,330 @@ struct ContentView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: receiver.state.rawValue)
     }
 
-    // MARK: - Play Section (hero)
+    // MARK: - Sidebar
 
-    private var playSection: some View {
-        VStack(spacing: 16) {
-            // Play/stop button with gradient ring
-            Button(action: togglePlayback) {
-                ZStack {
-                    GradientRing(isActive: receiver.state == .receiving)
-                        .frame(width: 88, height: 88)
-                        .opacity(receiver.state == .receiving ? 1 : 0.3)
+    private var sidebarView: some View {
+        List {
+            Section("Channels") {
+                ForEach(allChannels) { ch in
+                    Button { switchToChannel(ch.id) } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: ch.icon)
+                                .font(.system(size: 14))
+                                .foregroundColor(ch.color)
+                                .frame(width: 24)
+                            Text(ch.label)
+                                .foregroundColor(channel == ch.id ? .white : .white.opacity(0.8))
+                            Spacer()
+                            if channel == ch.id && isPlaying {
+                                Image(systemName: "speaker.wave.2.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.solunaSol)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(
+                        channel == ch.id
+                            ? RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.1))
+                            : nil
+                    )
+                }
+            }
 
-                    Circle()
-                        .fill(
-                            receiver.state == .receiving
-                                ? Color.solunaLive.opacity(0.15)
-                                : Color.white.opacity(0.06)
-                        )
-                        .frame(width: 76, height: 76)
+            // Custom channel quick-join
+            Section("Custom") {
+                HStack(spacing: 8) {
+                    if isEditingChannel {
+                        TextField("Channel name", text: $editedChannel, onCommit: {
+                            switchToChannel(editedChannel)
+                            isEditingChannel = false
+                        })
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
 
-                    if receiver.state == .connecting {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                            .tint(.white)
+                        Button {
+                            switchToChannel(editedChannel)
+                            isEditingChannel = false
+                        } label: {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.solunaLive)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button { isEditingChannel = false } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     } else {
-                        Image(systemName: heroIcon)
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundColor(receiver.state == .receiving ? .solunaLive : .solunaGradientMid)
+                        Button {
+                            editedChannel = ""
+                            isEditingChannel = true
+                        } label: {
+                            Label("Join Custom", systemImage: "plus")
+                                .font(.system(size: 13))
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
-            .buttonStyle(.plain)
-            .opacity(receiver.state == .connecting ? (isPulsing ? 0.5 : 1.0) : 1.0)
-            .onChange(of: receiver.state) { newState in
-                if newState == .connecting {
-                    withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) {
-                        isPulsing = true
+
+            if !recentChannels.isEmpty {
+                let customRecent = recentChannels.filter { name in !allChannels.contains { $0.id == name } }
+                if !customRecent.isEmpty {
+                    Section("Recent") {
+                        ForEach(customRecent, id: \.self) { name in
+                            Button { switchToChannel(name) } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "clock")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.white.opacity(0.5))
+                                        .frame(width: 24)
+                                    Text(name.capitalized)
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
+                }
+            }
+
+            Section {
+                Button { showSettings = true } label: {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .buttonStyle(.plain)
+                Button { showFestivalMode = true } label: {
+                    Label("Festival Mode", systemImage: "sparkles")
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .listStyle(.sidebar)
+        .navigationTitle("SOLUNA")
+        .frame(minWidth: 180)
+    }
+
+    // MARK: - Detail View
+
+    private var detailView: some View {
+        ZStack {
+            LinearGradient.solunaBg.ignoresSafeArea()
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    // Now Playing Hero
+                    nowPlayingHero
+                        .padding(.horizontal, 32)
+                        .padding(.top, 20)
+
+                    // Broadcast section (when in broadcast tab)
+                    if topTab == .broadcast {
+                        broadcastSection
+                            .padding(.horizontal, 32)
+                    }
+
+                    // Bottom controls (volume, record, stats)
+                    bottomControls
+                        .padding(.horizontal, 32)
+
+                    // Speakers section (collapsed by default)
+                    if !speakers.speakers.isEmpty || !receiver.availableDevices.filter(\.isActive).isEmpty {
+                        speakersSection
+                            .padding(.horizontal, 32)
+                    }
+
+                    // More section (send, player, talk mode)
+                    moreSectionCompact
+                        .padding(.horizontal, 32)
+                        .padding(.bottom, 32)
+                }
+            }
+
+            // Debug overlay
+            if showDebug {
+                VStack {
+                    HStack {
+                        Spacer()
+                        debugOverlayInline
+                            .frame(maxWidth: 320)
+                            .padding(12)
+                    }
+                    Spacer()
+                }
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .automatic) {
+                Picker("", selection: $topTab) {
+                    ForEach(TopTab.allCases, id: \.self) { tab in
+                        Text(tab.rawValue).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 200)
+
+                Spacer()
+
+                Button { showDevicePicker = true } label: {
+                    Image(systemName: "globe")
+                }
+                .help("Devices")
+
+                Button { showDebug.toggle() } label: {
+                    Image(systemName: "ant")
+                }
+                .help("Debug")
+            }
+        }
+    }
+
+    // MARK: - Now Playing Hero
+
+    private var nowPlayingHero: some View {
+        let ch = allChannels.first { $0.id == channel }
+
+        return VStack(spacing: 24) {
+            // Channel artwork
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                (ch?.color ?? .solunaLuna).opacity(0.5),
+                                (ch?.color ?? .solunaLuna).opacity(0.05)
+                            ],
+                            center: .center,
+                            startRadius: 30,
+                            endRadius: 140
+                        )
+                    )
+                    .frame(width: 240, height: 240)
+
+                if isPlaying {
+                    WaveformVisualizer(level: Float(receiver.isMicTransmitting ? receiver.micInputLevel : 0.5))
+                        .frame(width: 160, height: 80)
+                        .opacity(0.6)
                 } else {
-                    withAnimation(.default) {
-                        isPulsing = false
-                    }
+                    Image(systemName: ch?.icon ?? "music.note")
+                        .font(.system(size: 72, weight: .ultraLight))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.white, .white.opacity(0.6)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
                 }
             }
-            .disabled(receiver.state == .connecting)
+            .shadow(color: (ch?.color ?? .solunaLuna).opacity(0.3), radius: 40)
 
-            // Status pill
-            HStack(spacing: 6) {
-                Circle().fill(heroAccent).frame(width: 7, height: 7)
-                    .shadow(color: heroAccent.opacity(0.6), radius: 4)
-                Text(receiver.state.rawValue)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(heroAccent)
+            // Channel info
+            VStack(spacing: 6) {
+                Text(ch?.label ?? channel.capitalized)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.white)
+                Text(isPlaying ? "Now streaming" : (ch?.description ?? "Custom channel"))
+                    .font(.system(size: 14))
+                    .foregroundColor(.white.opacity(0.5))
             }
-            .padding(.horizontal, 14).padding(.vertical, 6)
-            .background(heroAccent.opacity(0.1))
-            .clipShape(Capsule())
 
-            // Error detail (actionable message when in error state)
+            // Spectrum (only when receiving)
+            if isPlaying {
+                SpectrumView(receiver: receiver)
+                    .frame(height: 40)
+                    .padding(.horizontal, 20)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            // Transport controls
+            HStack(spacing: 36) {
+                Button {
+                    let ids = allChannels.map(\.id)
+                    if let idx = ids.firstIndex(of: channel) {
+                        switchToChannel(ids[(idx - 1 + ids.count) % ids.count])
+                    }
+                } label: {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+
+                Button(action: togglePlayback) {
+                    ZStack {
+                        if receiver.state == .connecting {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(1.5)
+                                .frame(width: 56, height: 56)
+                        } else {
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 56, height: 56)
+                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.black)
+                                .offset(x: isPlaying ? 0 : 2)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.space, modifiers: [])
+
+                Button {
+                    let ids = allChannels.map(\.id)
+                    if let idx = ids.firstIndex(of: channel) {
+                        switchToChannel(ids[(idx + 1) % ids.count])
+                    }
+                } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Volume
+            HStack(spacing: 12) {
+                Image(systemName: masterMuted ? "speaker.slash.fill" : "speaker.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.4))
+                    .onTapGesture { masterMuted.toggle(); speakers.setAllMute(masterMuted) }
+                Slider(value: Binding(
+                    get: { masterVolume },
+                    set: { v in
+                        masterVolume = v
+                        speakers.setAllVolume(v)
+                    }
+                ), in: 0...1)
+                .tint(.white.opacity(0.5))
+                .frame(maxWidth: 280)
+                Image(systemName: "speaker.wave.3.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+
+            // Connection status
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(isPlaying ? .green : .white.opacity(0.3))
+                    .frame(width: 6, height: 6)
+                Text(isPlaying ? "Connected to relay.solun.art" : "Not playing")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.4))
+                if isPlaying {
+                    Text("--")
+                        .foregroundColor(.white.opacity(0.2))
+                    Text("\(receiver.bufferMs)ms buf")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+            }
+
+            // Error detail
             if receiver.state == .error {
                 VStack(spacing: 4) {
                     if let msg = receiver.errorMessage, !msg.isEmpty {
@@ -267,42 +538,110 @@ struct ContentView: View {
                             .foregroundColor(.red.opacity(0.9))
                             .multilineTextAlignment(.center)
                     }
-                    Text("Tap the button above to retry")
+                    Text("Click play to retry")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
                 .padding(.horizontal, 16)
                 .transition(.opacity)
             }
+        }
+        .padding(.vertical, 32)
+    }
 
-            // Spectrum (only when receiving)
-            if receiver.state == .receiving {
-                SpectrumView(receiver: receiver)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+    // MARK: - Speakers Section (DisclosureGroup)
+
+    private var speakersSection: some View {
+        DisclosureGroup {
+            VStack(spacing: 0) {
+                speakersCard
             }
-
-            // Volume
+        } label: {
             HStack(spacing: 8) {
-                Image(systemName: "speaker.fill").font(.system(size: 12)).foregroundColor(.white.opacity(0.4))
-                Slider(value: Binding(
-                    get: { masterVolume },
-                    set: { v in
-                        masterVolume = v
-                        speakers.setAllVolume(v)
-                    }
-                ), in: 0...1)
-                .tint(.solunaGradientMid)
-                Image(systemName: "speaker.wave.3.fill").font(.system(size: 12)).foregroundColor(.white.opacity(0.4))
+                Image(systemName: "hifispeaker.2.fill")
+                    .foregroundColor(.solunaLuna)
+                Text("Speakers")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Spacer()
+                Text("\(speakers.speakers.count + receiver.availableDevices.filter(\.isActive).count)")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(.white.opacity(0.5))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.1))
+                    .clipShape(Capsule())
             }
-            .padding(.horizontal, 8)
+        }
+        .tint(.white.opacity(0.6))
+        .padding(16)
+        .glassCard()
+    }
+
+    // MARK: - More Section (compact for split view)
+
+    private var moreSectionCompact: some View {
+        VStack(spacing: 12) {
+            // Device browser
+            DisclosureGroup {
+                DeviceBrowserView(
+                    browser: deviceBrowser,
+                    connectedDeviceHost: connectedDeviceHost,
+                    onSelect: { connectToDevice($0) },
+                    onDisconnect: { disconnectDevice() }
+                )
+                .padding(.top, 8)
+            } label: {
+                Label("Nearby Devices", systemImage: "antenna.radiowaves.left.and.right")
+                    .font(.headline)
+                    .foregroundColor(.white)
+            }
+            .tint(.white.opacity(0.6))
+            .padding(12)
+            .glassCard()
+
+            // Send section
+            sendSection
+
+            // Player section
+            playerSectionCollapsible
+
+            // Device connection banner
+            if let host = connectedDeviceHost {
+                let devName = deviceBrowser.devices.first(where: { $0.host == host })?.name ?? host
+                HStack(spacing: 10) {
+                    Image(systemName: "laptopcomputer.and.iphone")
+                        .foregroundColor(.solunaLive)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(devName).font(.system(size: 14, weight: .bold)).foregroundColor(.white)
+                        Text("Direct connection").font(.caption2).foregroundColor(.white.opacity(0.4))
+                    }
+                    Spacer()
+                    Button { disconnectDevice() } label: {
+                        Text("Disconnect")
+                            .font(.caption.bold())
+                            .foregroundColor(.solunaMic)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.solunaMic.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(12)
+                .glassCard()
+            }
+
+            // Relay banner
+            relayBanner
 
             // Remote Volume Control (group members)
-            if receiver.state == .receiving && !receiver.groupMembers.isEmpty {
+            if isPlaying && !receiver.groupMembers.isEmpty {
                 RemoteVolumeSection(receiver: receiver)
             }
 
-            // Talk Mode toggle
-            if receiver.state == .receiving {
+            // Talk mode
+            if isPlaying {
                 Button(action: {
                     talkMode.toggle()
                     receiver.setTalkMode(talkMode)
@@ -321,16 +660,689 @@ struct ContentView: View {
                         }
                     }
                     .foregroundColor(talkMode ? .solunaGradientStart : .white.opacity(0.5))
-                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 12).padding(.vertical, 10)
                     .background(talkMode ? Color.solunaGradientStart.opacity(0.1) : Color.clear)
-                    .cornerRadius(8)
+                    .glassCard(cornerRadius: 12)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.vertical, 20)
-        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Header Bar
+
+    private var headerBar: some View {
+        HStack(spacing: 12) {
+            Text("SOLUNA")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(LinearGradient.solLunaGradient)
+                .onTapGesture(count: 3) { showDebug.toggle() }
+
+            Spacer()
+
+            headerButton(icon: "globe", color: .solunaLuna) { showDevicePicker = true }
+            headerButton(icon: "sparkles", color: .solunaSol) { showFestivalMode = true }
+            headerButton(icon: "ant", color: .red.opacity(0.6)) { showDebug.toggle() }
+            headerButton(icon: "gearshape", color: .white.opacity(0.6)) { showSettings = true }
+        }
+    }
+
+    private func headerButton(icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(color)
+                .frame(width: 32, height: 32)
+                .background(Color.white.opacity(0.08))
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Top Tab Picker
+
+    private var topTabPicker: some View {
+        Picker("", selection: $topTab) {
+            ForEach(TopTab.allCases, id: \.self) { tab in
+                HStack(spacing: 4) {
+                    Image(systemName: tab == .listen ? "headphones" : "mic.fill")
+                    Text(tab.rawValue)
+                }
+                .tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+    }
+
+    // MARK: - Broadcast Section
+
+    private var broadcastSection: some View {
+        VStack(spacing: 20) {
+            // Broadcast header card
+            VStack(spacing: 16) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 36))
+                    .foregroundStyle(
+                        receiver.isMicTransmitting || receiver.isShmTransmitting
+                            ? LinearGradient.solGradient
+                            : LinearGradient(colors: [.white.opacity(0.3), .white.opacity(0.15)], startPoint: .top, endPoint: .bottom)
+                    )
+                    .shadow(color: receiver.isMicTransmitting ? .solunaSol.opacity(0.5) : .clear, radius: 10)
+
+                Text(receiver.isMicTransmitting || receiver.isShmTransmitting ? "Broadcasting" : "Ready to Broadcast")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(.white)
+
+                // Channel name field
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Channel")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+                    HStack(spacing: 8) {
+                        Image(systemName: "number")
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(0.3))
+                        TextField("Channel name", text: $broadcastChannel)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.white)
+                            .onAppear { if broadcastChannel.isEmpty { broadcastChannel = channel } }
+                        if !broadcastChannel.isEmpty {
+                            Button {
+                                broadcastChannel = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.3))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
+                // Status line
+                if receiver.isMicTransmitting || receiver.isShmTransmitting {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(Color.solunaMic)
+                            .frame(width: 8, height: 8)
+                            .shadow(color: .solunaMic.opacity(0.6), radius: 4)
+                        Text("Broadcasting to:")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white.opacity(0.6))
+                        Text(broadcastChannel.isEmpty ? channel : broadcastChannel)
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundColor(.solunaSol)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.solunaMic.opacity(0.1))
+                    .clipShape(Capsule())
+                }
+            }
+            .padding(20)
+            .glassCard()
+
+            // Big Mic Button
+            VStack(spacing: 16) {
+                Button {
+                    // Ensure we are connected to the right channel before toggling mic
+                    let ch = broadcastChannel.isEmpty ? channel : broadcastChannel
+                    if !receiver.isPlaying { receiver.start() }
+                    if ch != channel {
+                        switchToChannel(ch)
+                    }
+                    receiver.toggleMic()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                receiver.isMicTransmitting
+                                    ? LinearGradient(colors: [.solunaMic, .solunaMic.opacity(0.7)], startPoint: .top, endPoint: .bottom)
+                                    : LinearGradient(colors: [Color.white.opacity(0.12), Color.white.opacity(0.06)], startPoint: .top, endPoint: .bottom)
+                            )
+                            .frame(width: 100, height: 100)
+                            .shadow(color: receiver.isMicTransmitting ? .solunaMic.opacity(0.4) : .clear, radius: 16)
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(
+                                        receiver.isMicTransmitting ? Color.white.opacity(0.3) : Color.white.opacity(0.1),
+                                        lineWidth: 2
+                                    )
+                            )
+
+                        Image(systemName: receiver.isMicTransmitting ? "mic.fill" : "mic.slash.fill")
+                            .font(.system(size: 40, weight: .medium))
+                            .foregroundColor(receiver.isMicTransmitting ? .white : .white.opacity(0.5))
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Text(receiver.isMicTransmitting ? "Tap to stop" : "Tap to broadcast")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.4))
+
+                // Mic level meter
+                if receiver.isMicTransmitting {
+                    VStack(spacing: 6) {
+                        Text("Mic Level")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.4))
+                        MicLevelMeter(level: receiver.micInputLevel)
+                            .frame(height: 8)
+                            .clipShape(Capsule())
+                        HStack {
+                            Text("TX: \(formatNum(receiver.txPacketsSent)) pkts")
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.3))
+                            Spacer()
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .padding(20)
+            .glassCard()
+
+            // System Audio Transmit
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Button {
+                        let ch = broadcastChannel.isEmpty ? channel : broadcastChannel
+                        if !receiver.isPlaying { receiver.start() }
+                        if ch != channel {
+                            switchToChannel(ch)
+                        }
+                        receiver.toggleShmTransmit()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: receiver.isShmTransmitting ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                                .font(.system(size: 16))
+                            Text(receiver.isShmTransmitting ? "System Audio ON" : "System Audio")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .foregroundColor(receiver.isShmTransmitting ? .white : .white.opacity(0.6))
+                        .background(
+                            receiver.isShmTransmitting
+                                ? LinearGradient(colors: [.orange, .orange.opacity(0.7)], startPoint: .leading, endPoint: .trailing)
+                                : LinearGradient(colors: [Color.white.opacity(0.08), Color.white.opacity(0.04)], startPoint: .leading, endPoint: .trailing)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(
+                                    receiver.isShmTransmitting ? Color.white.opacity(0.2) : Color.white.opacity(0.06),
+                                    lineWidth: 0.5
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if receiver.isShmTransmitting {
+                    VStack(spacing: 4) {
+                        MicLevelMeter(level: receiver.shmTxLevel)
+                            .frame(height: 6)
+                            .clipShape(Capsule())
+                        HStack {
+                            Text("TX: \(formatNum(receiver.shmTxPacketsSent)) pkts")
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.3))
+                            Spacer()
+                        }
+                    }
+                    .transition(.opacity)
+                }
+
+                // Sync mode picker
+                if receiver.isMicTransmitting || receiver.isShmTransmitting {
+                    HStack(spacing: 12) {
+                        Text("Mode")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.4))
+                        Picker("", selection: $streamMode) {
+                            Text("Sync").tag("sync")
+                            Text("Jam (Low Latency)").tag("jam")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 200)
+                    }
+                }
+            }
+            .padding(16)
+            .glassCard()
+        }
+    }
+
+    // MARK: - 1. Channel Grid
+
+    private var channelGrid: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Title row
+            HStack {
+                Text("Channels")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                Spacer()
+                Button { showBrowseAll.toggle() } label: {
+                    Text(showBrowseAll ? "Show Less" : "Browse All")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.solunaLuna)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.solunaLuna.opacity(0.15))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Search / filter
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.4))
+                TextField("Search channels...", text: $channelSearch)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundColor(.white)
+                if !channelSearch.isEmpty {
+                    Button { channelSearch = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            // Custom channel quick-join
+            HStack(spacing: 8) {
+                if isEditingChannel {
+                    TextField("Channel name", text: $editedChannel, onCommit: {
+                        switchToChannel(editedChannel)
+                        isEditingChannel = false
+                    })
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(maxWidth: 160)
+
+                    Button {
+                        switchToChannel(editedChannel)
+                        isEditingChannel = false
+                    } label: {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.solunaLive)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button { isEditingChannel = false } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button {
+                        editedChannel = ""
+                        isEditingChannel = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Custom")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundColor(.solunaLuna)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.solunaLuna.opacity(0.15))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer()
+            }
+
+            // Grid
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 12),
+                GridItem(.flexible(), spacing: 12),
+                GridItem(.flexible(), spacing: 12)
+            ], spacing: 12) {
+                ForEach(filteredChannels) { ch in
+                    Button { switchToChannel(ch.id) } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Image(systemName: ch.icon)
+                                    .font(.title2)
+                                    .foregroundColor(channel == ch.id ? .white : ch.color)
+                                Spacer()
+                                if channel == ch.id && isPlaying {
+                                    Image(systemName: "antenna.radiowaves.left.and.right")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                            }
+                            Text(ch.label)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(channel == ch.id ? .white : .white.opacity(0.9))
+                            Text(ch.description)
+                                .font(.caption2)
+                                .foregroundColor(channel == ch.id ? .white.opacity(0.7) : .white.opacity(0.4))
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(
+                            Group {
+                                if channel == ch.id {
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .fill(ch.color.gradient)
+                                } else {
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .fill(Color.white.opacity(0.06))
+                                }
+                            }
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .strokeBorder(
+                                    channel == ch.id ? Color.white.opacity(0.2) : Color.white.opacity(0.06),
+                                    lineWidth: 0.5
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // Recent custom channels
+            let customRecent = recentChannels.filter { ch in !allChannels.contains(where: { $0.id == ch }) }
+            if !customRecent.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(customRecent, id: \.self) { ch in
+                            Button { switchToChannel(ch) } label: {
+                                Text(ch)
+                                    .font(.system(size: 12, weight: ch == channel ? .bold : .medium, design: .monospaced))
+                                    .foregroundColor(ch == channel ? .white : .white.opacity(0.5))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(ch == channel ? Color.solunaGradientMid : Color.white.opacity(0.06))
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 2. Now Playing
+
+    private var nowPlayingArea: some View {
+        VStack(spacing: 16) {
+            // Visualizer / album art
+            ZStack {
+                Group {
+                    if isPlaying {
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(LinearGradient.solLunaGradient)
+                            .frame(height: 180)
+                    } else {
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color.white.opacity(0.04))
+                            .frame(height: 180)
+                    }
+                }
+
+                if isPlaying {
+                    WaveformVisualizer(level: Float(receiver.isMicTransmitting ? receiver.micInputLevel : 0.5))
+                        .frame(height: 100)
+                        .padding(.horizontal, 20)
+                        .opacity(0.8)
+                } else {
+                    VStack(spacing: 8) {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 40))
+                            .foregroundColor(.white.opacity(0.15))
+                        Text("Tap a channel to start")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.25))
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+
+            // Song info
+            VStack(spacing: 4) {
+                Text(channel.capitalized)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                Text(isPlaying ? "Now streaming" : "Ready to play")
+                    .font(.system(size: 15))
+                    .foregroundColor(.white.opacity(0.5))
+                    .lineLimit(1)
+            }
+
+            // Play / Pause button row
+            HStack(spacing: 32) {
+                Button {} label: {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                .buttonStyle(.plain)
+
+                // Main play/pause — large and prominent
+                Button(action: togglePlayback) {
+                    ZStack {
+                        if receiver.state == .connecting {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(1.5)
+                                .frame(width: 72, height: 72)
+                        } else {
+                            Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                .font(.system(size: 72))
+                                .foregroundStyle(isPlaying ? LinearGradient.solGradient : LinearGradient.lunaGradient)
+                                .shadow(color: isPlaying ? .solunaSol.opacity(0.4) : .solunaLuna.opacity(0.3), radius: 12)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Button {} label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Status line
+            if isPlaying {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color.solunaLive)
+                        .frame(width: 6, height: 6)
+                        .shadow(color: .solunaLive.opacity(0.6), radius: 4)
+                    Text("Listening")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.solunaLive)
+                    Text("--")
+                        .foregroundColor(.white.opacity(0.3))
+                    Text("\(receiver.bufferMs)ms buf")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+            }
+
+            // Error detail
+            if receiver.state == .error {
+                VStack(spacing: 4) {
+                    if let msg = receiver.errorMessage, !msg.isEmpty {
+                        Text(msg)
+                            .font(.system(size: 12))
+                            .foregroundColor(.red.opacity(0.9))
+                            .multilineTextAlignment(.center)
+                    }
+                    Text("Click play to retry")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .transition(.opacity)
+            }
+
+            // Spectrum (only when receiving)
+            if isPlaying {
+                SpectrumView(receiver: receiver)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .padding(16)
         .glassCard()
+    }
+
+    // MARK: - 3. Bottom Controls
+
+    private var bottomControls: some View {
+        HStack(spacing: 10) {
+            // Record button
+            Button {
+                if receiver.isRecording { receiver.stopRecording() }
+                else { receiver.startRecording() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: receiver.isRecording ? "record.circle.fill" : "record.circle")
+                        .font(.system(size: 14))
+                        .foregroundColor(receiver.isRecording ? .red : .white.opacity(0.6))
+                    Text(receiver.isRecording ? "Recording" : "Record")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(receiver.isRecording ? .red : .white.opacity(0.6))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background((receiver.isRecording ? Color.red : Color.white).opacity(0.1))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help(receiver.isRecording ? "Stop Recording" : "Record to WAV")
+
+            Spacer()
+
+            // Stats pills (compact)
+            if isPlaying {
+                HStack(spacing: 6) {
+                    miniStat(formatNum(receiver.packetsReceived), color: .green)
+                    if receiver.packetsDropped > 0 {
+                        miniStat(String(format: "%.1f%%", Double(receiver.packetsDropped) / max(1, Double(receiver.packetsReceived)) * 100), color: .orange)
+                    }
+                    if receiver.isSyncMode {
+                        miniStat("\(receiver.syncDelayMs)ms", color: .blue)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func miniStat(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundColor(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.1))
+            .clipShape(Capsule())
+    }
+
+    // MARK: - More Section (Mac-specific: speakers, daemon, send, player)
+
+    private var moreSection: some View {
+        VStack(spacing: 12) {
+            Button(action: { withAnimation(.spring(response: 0.3)) { showMoreSection.toggle() } }) {
+                HStack {
+                    Image(systemName: "ellipsis.circle.fill")
+                        .foregroundColor(.solunaGradientMid)
+                    Text("More")
+                        .font(.headline)
+                        .foregroundColor(showMoreSection ? .primary : .secondary)
+                    Spacer()
+                    Image(systemName: showMoreSection ? "chevron.up" : "chevron.down")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+            .glassCard()
+
+            if showMoreSection {
+                // Device browser
+                DeviceBrowserView(
+                    browser: deviceBrowser,
+                    connectedDeviceHost: connectedDeviceHost,
+                    onSelect: { connectToDevice($0) },
+                    onDisconnect: { disconnectDevice() }
+                )
+                .padding(12)
+                .background(Color.white.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                // Send section
+                sendSection
+
+                // Speakers card
+                speakersCard
+
+                // Player section
+                playerSectionCollapsible
+
+                // Talk mode
+                if isPlaying {
+                    Button(action: {
+                        talkMode.toggle()
+                        receiver.setTalkMode(talkMode)
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: talkMode ? "person.3.fill" : "person.3")
+                                .font(.system(size: 13))
+                            Text("Talk Mode")
+                                .font(.system(size: 12, weight: .medium))
+                            if talkMode {
+                                Text("ON").font(.caption2.weight(.bold))
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(Color.solunaGradientStart.opacity(0.2))
+                                    .foregroundColor(.solunaGradientStart)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .foregroundColor(talkMode ? .solunaGradientStart : .white.opacity(0.5))
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .background(talkMode ? Color.solunaGradientStart.opacity(0.1) : Color.clear)
+                        .glassCard(cornerRadius: 12)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 
     // MARK: - Send Section (collapsible)
@@ -341,7 +1353,6 @@ struct ContentView: View {
 
     private var sendSection: some View {
         VStack(spacing: 0) {
-            // Header (tap to expand)
             Button(action: { withAnimation(.spring(response: 0.3)) { sendExpanded.toggle() } }) {
                 HStack {
                     Image(systemName: "arrow.up.circle.fill")
@@ -367,7 +1378,6 @@ struct ContentView: View {
             if sendExpanded {
                 Divider().padding(.horizontal, 16)
                 VStack(spacing: 12) {
-                    // Mic + System Audio toggles
                     HStack(spacing: 10) {
                         sendToggle(title: "Mic", icon: "mic.fill",
                                    active: receiver.isMicTransmitting, color: .red,
@@ -376,16 +1386,12 @@ struct ContentView: View {
                                    active: receiver.isShmTransmitting, color: .orange,
                                    action: { receiver.toggleShmTransmit() })
                     }
-
-                    // Level meters
                     if receiver.isMicTransmitting {
                         MicLevelMeter(level: receiver.micInputLevel).frame(height: 6)
                     }
                     if receiver.isShmTransmitting {
                         MicLevelMeter(level: receiver.shmTxLevel).frame(height: 6).tint(.orange)
                     }
-
-                    // Sync/Jam toggle (only when sending)
                     if anySending {
                         Picker("", selection: $streamMode) {
                             Text("Sync").tag("sync")
@@ -419,8 +1425,6 @@ struct ContentView: View {
     }
 
     // MARK: - Player Section (collapsible)
-
-    @State private var playerExpanded = false
 
     private var playerSectionCollapsible: some View {
         VStack(spacing: 0) {
@@ -529,203 +1533,56 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Quick Channel Bar
+    // MARK: - Debug Overlay (inline, not sheet)
 
-    private var recentChannels: [String] {
-        recentChannelsData
-            .components(separatedBy: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-    }
-
-    private func addRecentChannel(_ ch: String) {
-        var list = recentChannels.filter { $0 != ch }
-        list.insert(ch, at: 0)
-        if list.count > 5 { list = Array(list.prefix(5)) }
-        recentChannelsData = list.joined(separator: ",")
-    }
-
-    private func switchToChannel(_ ch: String) {
-        let trimmed = ch.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        channel = trimmed
-        groupCode = trimmed
-        addRecentChannel(trimmed)
-        // Direct channel switch: connectRelay auto-disconnects old channel
-        if receiver.state != .receiving { receiver.start() }
-        receiver.connectRelay(group: trimmed)
-    }
-
-    private var quickChannelBar: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "dot.radiowaves.left.and.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.solunaGradientStart)
-
-                if isEditingChannel {
-                    TextField("Channel", text: $editedChannel, onCommit: {
-                        switchToChannel(editedChannel)
-                        isEditingChannel = false
-                    })
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(maxWidth: 140)
-
-                    Button {
-                        switchToChannel(editedChannel)
-                        isEditingChannel = false
-                    } label: {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.solunaLive)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        isEditingChannel = false
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Text(channel)
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.solunaGradientStart)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.solunaGradientStart.opacity(0.1))
-                        .clipShape(Capsule())
-
-                    Button {
-                        editedChannel = channel
-                        isEditingChannel = true
-                    } label: {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Edit channel name")
-                }
-
+    private var debugOverlayInline: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Debug")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
                 Spacer()
-
-                Button {
-                    editedChannel = ""
-                    isEditingChannel = true
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 10))
-                        Text("Switch")
-                            .font(.caption2.weight(.medium))
-                    }
-                    .foregroundColor(.solunaGradientStart)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.solunaGradientStart.opacity(0.08))
-                    .clipShape(Capsule())
+                Button { showDebug = false } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.5))
                 }
                 .buttonStyle(.plain)
             }
-
-            // Recent channels chips
-            if !recentChannels.isEmpty && !isEditingChannel {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        Text("Recent:")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                        ForEach(recentChannels, id: \.self) { ch in
-                            Button {
-                                switchToChannel(ch)
-                            } label: {
-                                Text(ch)
-                                    .font(.system(size: 10, weight: ch == channel ? .bold : .regular, design: .monospaced))
-                                    .foregroundColor(ch == channel ? .purple : .secondary)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(ch == channel ? Color.solunaGradientStart.opacity(0.12) : Color(nsColor: .tertiaryLabelColor).opacity(0.15))
-                                    .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
+            Divider()
+            Group {
+                debugLine("State", receiver.state.rawValue)
+                debugLine("Channel", channel)
+                debugLine("Packets", formatNum(receiver.packetsReceived))
+                debugLine("Dropped", formatNum(receiver.packetsDropped))
+                debugLine("Buffer", "\(receiver.bufferMs)ms")
+                if receiver.isSyncMode { debugLine("Sync", "\(receiver.syncDelayMs)ms") }
+                if receiver.isMicTransmitting { debugLine("TX", formatNum(receiver.txPacketsSent)) }
+                debugLine("Speakers", "\(speakers.speakers.count)")
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .glassCard()
+        .padding(12)
+        .background(Color.black.opacity(0.85))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(0.1)))
     }
 
-    // MARK: - Stats
-
-    private var statsRow: some View {
-        HStack(spacing: 8) {
-            StatPill(value: formatNum(receiver.packetsReceived), label: "pkts", color: .green)
-            if receiver.packetsDropped > 0 {
-                let pct = receiver.packetsReceived > 0
-                    ? String(format: "%.1f%%", Double(receiver.packetsDropped) / Double(receiver.packetsReceived) * 100)
-                    : "—"
-                StatPill(value: pct, label: "drop", color: .orange)
-            }
-            StatPill(value: "\(receiver.bufferMs)ms", label: "buf", color: nil)
-            if receiver.packetsConcealed > 0 {
-                StatPill(value: formatNum(receiver.packetsConcealed), label: "plc", color: .yellow)
-            }
-            if receiver.isMicTransmitting {
-                StatPill(value: formatNum(receiver.txPacketsSent), label: "tx", color: .red)
-            }
-            if receiver.isSyncMode {
-                StatPill(value: "\(receiver.syncDelayMs)ms", label: "sync", color: .blue)
-            }
+    private func debugLine(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(.white.opacity(0.5))
             Spacer()
-            Button {
-                if receiver.isRecording {
-                    receiver.stopRecording()
-                } else {
-                    receiver.startRecording()
-                }
-            } label: {
-                Image(systemName: receiver.isRecording ? "record.circle.fill" : "record.circle")
-                    .font(.system(size: 18))
-                    .foregroundColor(receiver.isRecording ? .red : .secondary)
-            }
-            .buttonStyle(.plain)
-            .help(receiver.isRecording ? "Stop Recording" : "Record to WAV")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // MARK: - Preset Import/Export
-
-    private func exportPresets(receiver: AudioReceiver) {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "soluna-presets.json"
-        panel.title = "Export Presets"
-        if panel.runModal() == .OK, let url = panel.url {
-            try? receiver.exportPresets(to: url)
+            Text(value)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundColor(.white.opacity(0.8))
         }
     }
 
-    private func importPresets(receiver: AudioReceiver) {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
-        panel.title = "Import Presets"
-        if panel.runModal() == .OK, let url = panel.url {
-            try? receiver.importPresets(from: url)
-        }
-    }
-
-    // MARK: - Speakers card
+    // MARK: - Speakers Card
 
     private var speakersCard: some View {
         VStack(spacing: 0) {
-            // Header
             HStack {
                 Text("Speakers")
                     .font(.headline)
@@ -746,7 +1603,6 @@ struct ContentView: View {
 
             Divider().padding(.horizontal, 16)
 
-            // Master volume + delay
             if speakers.anyConnected {
                 MasterRow(volume: $masterVolume, muted: $masterMuted) { v in
                     speakers.setAllVolume(v)
@@ -760,7 +1616,6 @@ struct ContentView: View {
                 Divider().padding(.horizontal, 16)
             }
 
-            // Routing presets
             if !receiver.presets.isEmpty || !receiver.activeOutputs.isEmpty {
                 PresetRow(
                     presets: receiver.presets,
@@ -774,10 +1629,8 @@ struct ContentView: View {
                 Divider().padding(.horizontal, 16)
             }
 
-            // Local Mac (primary output)
             LocalSpeakerRow(receiver: receiver)
 
-            // Local devices (BT / AirPlay / USB)
             ForEach(receiver.availableDevices.filter { $0.isActive }) { device in
                 Divider().padding(.horizontal, 16)
                 LocalDeviceRow(
@@ -800,7 +1653,6 @@ struct ContentView: View {
                 )
             }
 
-            // Remote speakers
             ForEach(speakers.speakers) { speaker in
                 if let daemon = speakers.client(for: speaker.id) {
                     Divider().padding(.horizontal, 16)
@@ -814,7 +1666,6 @@ struct ContentView: View {
                 }
             }
 
-            // Speaker groups
             if !receiver.speakerGroups.isEmpty {
                 Divider().padding(.horizontal, 16)
                 VStack(alignment: .leading, spacing: 6) {
@@ -858,12 +1709,36 @@ struct ContentView: View {
         }
         .glassCard()
         .cornerRadius(20)
-        .sheet(isPresented: $showCreateGroup) {
-            createGroupSheet
-        }
     }
 
-    @State private var selectedGroupDevices: Set<UInt32> = []
+    // MARK: - Save Preset Sheet
+
+    private var savePresetSheet: some View {
+        VStack(spacing: 16) {
+            Text("Save Preset")
+                .font(.headline)
+                .padding(.top, 16)
+            TextField("Preset name (e.g. Living Room)", text: $presetName)
+                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal, 16)
+            HStack {
+                Button("Cancel") { showSavePreset = false }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Save") {
+                    receiver.savePreset(name: presetName)
+                    showSavePreset = false
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(presetName.isEmpty)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+        }
+        .frame(width: 320)
+    }
+
+    // MARK: - Create Group Sheet
 
     private var createGroupSheet: some View {
         VStack(spacing: 12) {
@@ -922,7 +1797,7 @@ struct ContentView: View {
         .frame(width: 320)
     }
 
-    // MARK: - Add speaker sheet
+    // MARK: - Add Speaker Sheet
 
     private var addSpeakerSheet: some View {
         VStack(spacing: 0) {
@@ -941,19 +1816,18 @@ struct ContentView: View {
             .padding(.bottom, 12)
 
             if addSpeakerTab == 2 {
-                // WAN Channel tab — connect by channel name only
                 VStack(spacing: 12) {
                     Image(systemName: "globe")
                         .font(.system(size: 32))
                         .foregroundColor(.solunaGradientStart)
-                    Text("チャンネル名を入力するだけで\nWANリレー経由で接続できます")
+                    Text("Enter a channel name to connect\nvia WAN relay")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
-                    TextField("チャンネル名 (例: ambient-tokyo)", text: $groupCode)
+                    TextField("Channel name (e.g. ambient-tokyo)", text: $groupCode)
                         .textFieldStyle(.roundedBorder)
                         .padding(.horizontal, 16)
-                    Button("接続") {
+                    Button("Connect") {
                         let code = groupCode.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !code.isEmpty else { return }
                         if receiver.state != .receiving { receiver.start() }
@@ -968,7 +1842,6 @@ struct ContentView: View {
                 }
                 .padding(.vertical, 16)
             } else if addSpeakerTab == 0 {
-                // Local devices tab
                 let inactiveDevices = receiver.availableDevices.filter { !$0.isActive }
                 if inactiveDevices.isEmpty {
                     VStack(spacing: 8) {
@@ -1037,7 +1910,6 @@ struct ContentView: View {
                     .frame(maxHeight: 200)
                 }
             } else {
-                // Network tab (existing)
                 Form {
                     TextField("Name (e.g. Mac, Living Room)", text: $newName)
                     TextField("IP Address / Host", text: $newHost)
@@ -1068,53 +1940,28 @@ struct ContentView: View {
         .onAppear { receiver.refreshDevices() }
     }
 
-    // MARK: - Computed
+    // MARK: - Preset Import/Export
 
-    private var heroAccent: Color {
-        switch receiver.state {
-        case .receiving:  return .green
-        case .connecting: return .orange
-        case .error:      return .red
-        case .stopped:    return .blue
+    private func exportPresets(receiver: AudioReceiver) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "soluna-presets.json"
+        panel.title = "Export Presets"
+        if panel.runModal() == .OK, let url = panel.url {
+            try? receiver.exportPresets(to: url)
         }
     }
 
-    private var heroIcon: String {
-        switch receiver.state {
-        case .receiving: return "stop.fill"
-        case .error:     return "arrow.clockwise"
-        default:         return "play.fill"
+    private func importPresets(receiver: AudioReceiver) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.title = "Import Presets"
+        if panel.runModal() == .OK, let url = panel.url {
+            try? receiver.importPresets(from: url)
         }
     }
 
     // MARK: - Helpers
-
-    private func togglePlayback() {
-        if receiver.state == .error {
-            receiver.start()
-        } else {
-            receiver.toggle()
-        }
-    }
-
-    private func loadSavedSettings() {
-        let d = UserDefaults.standard
-        if let g = d.string(forKey: "multicastGroup"), !g.isEmpty { receiver.multicastGroup = g }
-        let port = d.integer(forKey: "port")
-        if port > 0 { receiver.port = UInt16(port) }
-        let ch = d.integer(forKey: "channels")
-        if ch >= 1 { receiver.channels = UInt32(ch) }
-    }
-
-    private func channelLayoutLabel(_ ch: Int) -> String {
-        switch ch {
-        case 1:  return "Mono"
-        case 2:  return "Stereo"
-        case 6:  return "5.1 (FL FR C LFE SL SR)"
-        case 8:  return "7.1 (FL FR C LFE SL SR BL BR)"
-        default: return "\(ch)ch"
-        }
-    }
 
     private func formatNum(_ n: UInt64) -> String {
         n >= 1_000_000 ? String(format: "%.1fM", Double(n) / 1_000_000)

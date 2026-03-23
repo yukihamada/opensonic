@@ -466,7 +466,6 @@ struct ContentView: View {
                 .foregroundStyle(LinearGradient.solLunaGradient)
                 .onTapGesture(count: 3) { showDebug = true }
             Spacer()
-            chatButton
             headerBtn("gearshape", .white.opacity(0.6)) { showSettings = true }
         }
     }
@@ -524,36 +523,124 @@ struct ContentView: View {
     // MARK: - Listen Tab
 
     private var listenTab: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 16) {
+            nowPlayingHero.padding(.horizontal, 16)
             channelGrid.padding(.horizontal, 16)
-            nowPlayingArea.padding(.horizontal, 16)
-            volumeControl.padding(.horizontal, 16)
-            quickActions.padding(.horizontal, 16)
             if isPlaying {
                 liveFeed.padding(.horizontal, 16)
-                ReactionBar(sendUDP: { msg in receiver.sdkSendUDP(msg) })
-                    .padding(.horizontal, 16).padding(.top, 4)
             }
         }.padding(.bottom, 16)
+    }
+
+    // MARK: - Now Playing Hero (Spotify-style big player card)
+
+    private var nowPlayingHero: some View {
+        VStack(spacing: 20) {
+            // Channel icon — big and colorful
+            let ch = presetChannels.first { $0.id == currentChannelName }
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                (ch?.color ?? .solunaLuna).opacity(0.6),
+                                (ch?.color ?? .solunaLuna).opacity(0.1)
+                            ],
+                            center: .center,
+                            startRadius: 20,
+                            endRadius: 100
+                        )
+                    )
+                    .frame(width: 180, height: 180)
+
+                Image(systemName: ch?.icon ?? "music.note")
+                    .font(.system(size: 56, weight: .light))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.white, .white.opacity(0.7)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                if isPlaying {
+                    AudioVisualizerView(barCount: 48, isPlaying: true)
+                        .frame(height: 20)
+                        .offset(y: 70)
+                }
+            }
+
+            // Channel name + description
+            VStack(spacing: 4) {
+                Text(ch?.label ?? currentChannelName.capitalized)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.white)
+                Text(ch?.description ?? "Custom channel")
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+
+            // Transport controls
+            HStack(spacing: 32) {
+                Button { switchPrevChannel() } label: {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+
+                Button { togglePlayback() } label: {
+                    ZStack {
+                        Circle()
+                            .fill(.white)
+                            .frame(width: 64, height: 64)
+                        if receiver.state == .connecting {
+                            ProgressView().tint(.black).scaleEffect(0.9)
+                        } else {
+                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.black)
+                                .offset(x: isPlaying ? 0 : 2)
+                        }
+                    }
+                }
+
+                Button { switchNextChannel() } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+            }
+
+            // Volume
+            HStack(spacing: 10) {
+                Image(systemName: "speaker.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.4))
+                Slider(value: $masterVolume, in: 0...1) { _ in
+                    if masterMuted { masterMuted = false; receiver.isMuted = false }
+                    receiver.volume = masterVolume
+                    UserDefaults.standard.set(masterVolume, forKey: "soluna_volume")
+                }
+                .tint(.white.opacity(0.6))
+                Image(systemName: "speaker.wave.3.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+            .padding(.horizontal, 20)
+        }
+        .padding(.vertical, 24)
+        .glassCard()
     }
 
     // MARK: - Live Feed (bottom card — the "wow" factor)
 
     private var liveFeed: some View {
         VStack(spacing: 8) {
-            // Now playing card (song ID from relay META)
             NowPlayingCard(
                 title: receiver.nowPlayingTitle,
                 artist: receiver.nowPlayingArtist
             )
-
-            // Live visualizer bar
-            AudioVisualizerView(barCount: 48, isPlaying: isPlaying)
-                .frame(height: 24)
-
-            // Social presence
             HStack(spacing: 6) {
-                // Animated listening dots
                 HStack(spacing: -6) {
                     ForEach(0..<min(5, max(1, socialListening.count(for: currentChannelName))), id: \.self) { i in
                         Circle()
@@ -573,50 +660,7 @@ struct ContentView: View {
                         .foregroundColor(.white.opacity(0.4))
                 }
                 Spacer()
-                // Sync indicator
-                HStack(spacing: 3) {
-                    Circle().fill(.green).frame(width: 4, height: 4)
-                    Text("SYNC")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundColor(.green.opacity(0.7))
-                }
             }
-
-            // Last chat message preview
-            if let lastMsg = chatManager.messages.last {
-                HStack(spacing: 6) {
-                    Image(systemName: "bubble.left.fill")
-                        .font(.system(size: 9))
-                        .foregroundColor(.white.opacity(0.3))
-                    Text("\(lastMsg.sender): \(lastMsg.text)")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.5))
-                        .lineLimit(1)
-                    Spacer()
-                }
-                .onTapGesture { showChat = true }
-            }
-
-            // Stats bar
-            HStack(spacing: 16) {
-                HStack(spacing: 4) {
-                    Image(systemName: "waveform").font(.system(size: 9))
-                    Text("48kHz").font(.system(size: 10, design: .monospaced))
-                }.foregroundColor(.white.opacity(0.25))
-                HStack(spacing: 4) {
-                    Image(systemName: "clock").font(.system(size: 9))
-                    Text("\(receiver.sdkReceiver?.bufferFillMs ?? 0)ms").font(.system(size: 10, design: .monospaced))
-                }.foregroundColor(.white.opacity(0.25))
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.down").font(.system(size: 9))
-                    Text("\(receiver.sdkReceiver?.packetsPerSec ?? 0)pps").font(.system(size: 10, design: .monospaced))
-                }.foregroundColor(.white.opacity(0.25))
-                HeartbeatView()
-                Spacer()
-            }
-
-            // Listener map
-            ListenerMapView(listenerCount: socialListening.count(for: currentChannelName))
         }
         .padding(12)
         .glassCard()
@@ -941,6 +985,23 @@ struct ContentView: View {
                 }
             }.padding(16).glassCard()
 
+            // MARK: - Quick Actions
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Actions").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    profileActionBtn("bubble.left.fill", "Chat", .solunaLuna) { showChat = true }
+                    profileActionBtn("heart.fill", "Tip", .solunaSolEnd) { showTipping = true }
+                    profileActionBtn("music.note.list", "Request", .solunaLuna) { showSongRequest = true }
+                    profileActionBtn("pianokeys", "Synth", .solunaGradientStart) { showCrowdSynth = true }
+                    profileActionBtn("qrcode", "Silent Disco", .purple) { showSilentDisco = true }
+                    profileActionBtn("antenna.radiowaves.left.and.right", "Broadcast", .solunaSol) { showBroadcast = true }
+                    profileActionBtn("moon.fill", "Sleep", sleepTimer.isActive ? .solunaLuna : .white.opacity(0.4)) {
+                        if sleepTimer.isActive { sleepTimer.stop() } else { showSleepPicker = true }
+                    }
+                    profileActionBtn("dial.low.fill", "DJ Deck", .solunaSol) { showDJDeckView = true }
+                }
+            }.padding(16).glassCard()
+
             VStack(spacing: 0) {
                 profileRow("person.circle", "Account") { if !auth.isAuthenticated { showLogin = true } }
                 Divider().background(Color.white.opacity(0.06))
@@ -971,6 +1032,16 @@ struct ContentView: View {
                 Text("Set Alarm").font(.system(size: 14, weight: .semibold)).foregroundColor(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 10)
                     .background(LinearGradient.solGradient).clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+
+    private func profileActionBtn(_ icon: String, _ label: String, _ color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 16)).foregroundColor(color)
+                    .frame(width: 40, height: 40).background(color.opacity(0.12)).clipShape(Circle())
+                Text(label).font(.system(size: 10, weight: .medium)).foregroundColor(.white.opacity(0.6)).lineLimit(1)
             }
         }
     }

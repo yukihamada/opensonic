@@ -61,7 +61,7 @@ final class SDKAudioReceiver: ObservableObject {
     private let ringBuffer: UnsafeMutablePointer<Float>
     private var writePos: Int64 = 0
     private var readPos: Int64 = 0
-    private let prefillThreshold = 4800  // 100 ms
+    private let prefillThreshold = 14400  // 300 ms — enough for WAN jitter
 
     // Pre-allocated scratch buffer for audio callback (avoid malloc on RT thread)
     private let scratchBuffer: UnsafeMutablePointer<Float>
@@ -108,8 +108,19 @@ final class SDKAudioReceiver: ObservableObject {
 
     // MARK: - Public API
 
+    private var lastStartTime: Date = .distantPast
+
     func start() {
-        guard state == .stopped || state == .error else { return }
+        NSLog("[SDKRecv] start() called, state=%@", state.rawValue)
+        guard state == .stopped || state == .error else { NSLog("[SDKRecv] start() SKIP: state=%@", state.rawValue); return }
+        // Cooldown: prevent rapid restart cycles
+        let elapsed = Date().timeIntervalSince(lastStartTime)
+        guard elapsed > 5.0 else {
+            NSLog("[SDKRecv] start() COOLDOWN: %.1fs ago", elapsed)
+            return
+        }
+        lastStartTime = Date()
+        NSLog("[SDKRecv] start() PROCEEDING")
         errorMessage = nil
         state = .connecting
         _packetsReceivedAtomic = 0
@@ -140,6 +151,7 @@ final class SDKAudioReceiver: ObservableObject {
     }
 
     func setChannel(_ name: String) {
+        guard name != channel else { return }  // Skip if already on this channel
         let wasPlaying = isPlaying
         if wasPlaying { stop() }
         channel = name
@@ -156,31 +168,46 @@ final class SDKAudioReceiver: ObservableObject {
         let scratch = scratchBuffer
         let scratchCap = scratchCapacity
 
-        let node = AVAudioSourceNode(format: fmt) { [weak self] _, _, frameCount, bufferList -> OSStatus in
-            guard let self else { return noErr }
+        // Capture raw pointers for RT audio callback (no weak self — avoid GC stalls)
+        let ringBuf = ringBuffer
+        let ringCap = ringCapacity
+        var rPos = UnsafeMutablePointer<Int64>.allocate(capacity: 1)
+        rPos.initialize(to: 0)
+        let wPosPtr = UnsafeMutablePointer<Int64>.allocate(capacity: 1)
+        // We'll use the instance's writePos/readPos directly via pointer
+        let wpAddr = withUnsafeMutablePointer(to: &writePos) { $0 }
+        let rpAddr = withUnsafeMutablePointer(to: &readPos) { $0 }
+        let prefill = prefillThreshold
+        let fpReceived = firstPacketReceived
+
+        let node = AVAudioSourceNode(format: fmt) { _, _, frameCount, bufferList -> OSStatus in
             let frames = Int(frameCount)
             let ablp = UnsafeMutableAudioBufferListPointer(bufferList)
 
-            // Prefill gate: check via ring positions (no separate flag needed)
-            let avail = self.ringAvailable()
-            if avail < self.prefillThreshold && !self.firstPacketReceived.value {
-                for ch in 0..<ablp.count {
-                    if let dst = ablp[ch].mData?.assumingMemoryBound(to: Float.self) {
-                        memset(dst, 0, frames * MemoryLayout<Float>.size)
-                    }
+            let w = OSAtomicAdd64(0, wpAddr)
+            let r = OSAtomicAdd64(0, rpAddr)
+            let avail = min(Int(w - r), ringCap)
+
+            if avail < prefill {
+                if avail == 0 && fpReceived.value {
+                    // Buffer ran dry — re-enter prefill mode to rebuild buffer
+                    fpReceived.set(false)
+                }
+                for c in 0..<ablp.count {
+                    if let d = ablp[c].mData?.assumingMemoryBound(to: Float.self) { memset(d, 0, frames * 4) }
                 }
                 return noErr
             }
 
-            // Read mono samples using pre-allocated scratch buffer
-            let readCount = min(frames, scratchCap)
-            let got = self.ringRead(scratch, count: readCount)
+            let n = min(avail, min(frames, scratchCap))
+            let rr = Int(OSAtomicAdd64(0, rpAddr))
+            for i in 0..<n { scratch[i] = ringBuf[(rr + i) % ringCap] }
+            OSAtomicAdd64(Int64(n), rpAddr)
 
-            // Mono -> stereo: copy to both L and R channels
-            for ch in 0..<ablp.count {
-                if let dst = ablp[ch].mData?.assumingMemoryBound(to: Float.self) {
-                    if got > 0 { memcpy(dst, scratch, got * MemoryLayout<Float>.size) }
-                    if got < frames { memset(dst.advanced(by: got), 0, (frames - got) * MemoryLayout<Float>.size) }
+            for c in 0..<ablp.count {
+                if let d = ablp[c].mData?.assumingMemoryBound(to: Float.self) {
+                    if n > 0 { memcpy(d, scratch, n * 4) }
+                    if n < frames { memset(d.advanced(by: n), 0, (frames - n) * 4) }
                 }
             }
             return noErr
@@ -246,7 +273,9 @@ final class SDKAudioReceiver: ObservableObject {
     // MARK: - Relay Connection
 
     private func connectRelay() {
-        guard !running.value else { return }
+        NSLog("[SDKRecv] connectRelay: running=%d, socket=%d, state=%@", running.value ? 1 : 0, udpSocket, state.rawValue)
+        guard !running.value else { NSLog("[SDKRecv] SKIP: already running"); return }
+        guard udpSocket < 0 else { NSLog("[SDKRecv] SKIP: socket still open"); return }
 
         let host = relayHost
         let ch = channel
@@ -276,8 +305,8 @@ final class SDKAudioReceiver: ObservableObject {
             guard sock >= 0 else { return }
             self.udpSocket = sock
 
-            // 5ms recv timeout
-            var tv = timeval(tv_sec: 0, tv_usec: 5000)
+            // 50ms recv timeout for WAN
+            var tv = timeval(tv_sec: 0, tv_usec: 50000)
             setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
             // JOIN
@@ -293,7 +322,6 @@ final class SDKAudioReceiver: ObservableObject {
             hb.setEventHandler { [weak self] in
                 guard let self, self.running.value, self.udpSocket >= 0 else { return }
                 self.sendUDP("HELLO\n", sock: self.udpSocket, addr: &self.relayAddr)
-                self.sendUDP("JOIN:\(ch)::\(deviceName)\n", sock: self.udpSocket, addr: &self.relayAddr)
             }
             hb.resume()
             self.heartbeatSource = hb
@@ -428,12 +456,15 @@ final class SDKAudioReceiver: ObservableObject {
         if packetsReceived == lastPacketCount {
             staleTicks += 1
             if staleTicks >= 10 {
-                print("[SDKAudioReceiver] Watchdog: no packets for \(staleTicks * 3)s — reconnecting")
-                stop()
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    self.start()
+                print("[SDKAudioReceiver] Watchdog: no packets for \(staleTicks * 3)s — sending re-JOIN")
+                // Don't stop/restart (creates new socket flood) — just re-send JOIN on existing socket
+                let ch = channel
+                let deviceName = Host.current().localizedName ?? "SolunaSDK-Mac"
+                recvQueue.async { [weak self] in
+                    guard let self, self.udpSocket >= 0 else { return }
+                    self.sendUDP("JOIN:\(ch)::\(deviceName)\n", sock: self.udpSocket, addr: &self.relayAddr)
                 }
+                staleTicks = 0  // Reset to avoid repeated re-JOINs
             }
         } else {
             staleTicks = 0

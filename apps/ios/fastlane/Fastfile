@@ -51,13 +51,13 @@ platform :ios do
     # Use automatic signing with provisioning updates
     update_code_signing_settings(
       use_automatic_signing: true,
-      path: "SolunaReceiver.xcodeproj",
+      path: "Soluna.xcodeproj",
       team_id: "5BV85JW8US",
       targets: ["SolunaReceiver"]
     )
 
     build_app(
-      project: "SolunaReceiver.xcodeproj",
+      project: "Soluna.xcodeproj",
       scheme: "SolunaReceiver",
       configuration: "Release",
       export_method: "app-store",
