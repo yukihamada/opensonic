@@ -88,32 +88,54 @@ final class SDKAudioTransmitter: ObservableObject {
         tv = timeval(tv_sec: 0, tv_usec: 0)
         setsockopt(udpSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
-        // Start audio engine with mic input → 48kHz mono
+        // Start audio engine with mic input
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
         let hwFormat = inputNode.outputFormat(forBus: 0)
-        let tapFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
 
-        print("[SDKTx] Mic HW: \(hwFormat.sampleRate)Hz, \(hwFormat.channelCount)ch → tap: 48000Hz 1ch")
+        print("[SDKTx] Mic HW: \(hwFormat.sampleRate)Hz, \(hwFormat.channelCount)ch")
+
+        // Resample ratio: adjust packet timing to match actual sample rate
+        let hwRate = hwFormat.sampleRate
+        let targetRate = 48000.0
+        let resampleRatio = targetRate / hwRate  // e.g., 48000/44100 = 1.088
+        let hwSamplesPerPacket = Int(Double(samplesPerPacket) / resampleRatio)  // samples to collect at hw rate
 
         var sampleBuffer = [Float]()
-        let spp = samplesPerPacket
+        let spp = hwSamplesPerPacket
 
-        // Tap with 48kHz mono format — AVAudioEngine converts internally
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: tapFormat) { [weak self] buffer, _ in
+        // Tap at hardware native format (guaranteed to work)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: hwFormat) { [weak self] buffer, _ in
             guard let self, self._isTransmittingAtomic else { return }
             guard self._micEnabledAtomic else { return }
 
             // Extract first channel (mono)
             guard let data = buffer.floatChannelData?[0] else { return }
-            for i in 0..<Int(buffer.frameLength) {
-                sampleBuffer.append(data[i])
+            let frameCount = Int(buffer.frameLength)
+
+            if hwRate == targetRate {
+                // No resampling needed
+                for i in 0..<frameCount { sampleBuffer.append(data[i]) }
+            } else {
+                // Simple linear interpolation resample to 48kHz
+                let outCount = Int(Double(frameCount) * resampleRatio)
+                for i in 0..<outCount {
+                    let srcPos = Double(i) / resampleRatio
+                    let idx = Int(srcPos)
+                    let frac = Float(srcPos - Double(idx))
+                    if idx + 1 < frameCount {
+                        sampleBuffer.append(data[idx] * (1 - frac) + data[idx + 1] * frac)
+                    } else if idx < frameCount {
+                        sampleBuffer.append(data[idx])
+                    }
+                }
             }
 
-            // Send packets when we have enough samples
-            while sampleBuffer.count >= spp {
-                let samples = Array(sampleBuffer.prefix(spp))
-                sampleBuffer.removeFirst(spp)
+            // Send 96-sample packets (at 48kHz rate)
+            let pktSize = self.samplesPerPacket
+            while sampleBuffer.count >= pktSize {
+                let samples = Array(sampleBuffer.prefix(pktSize))
+                sampleBuffer.removeFirst(pktSize)
                 self.sendAudioPacket(samples)
             }
         }
