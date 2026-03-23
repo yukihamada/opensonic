@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreMedia
 import Darwin
 
 @MainActor
@@ -12,15 +13,15 @@ final class SDKAudioTransmitter: ObservableObject {
     }
     nonisolated(unsafe) private var _micEnabledAtomic = false
     @Published var channel: String = ""
-    @Published var packetsSent: UInt64 = 0
+    nonisolated(unsafe) var packetsSent: UInt64 = 0
 
     private var engine: AVAudioEngine?
-    private var udpSocket: Int32 = -1
-    private var relayAddr = sockaddr_in()
-    private var seqNum: UInt16 = 0
-    private var timestamp: UInt32 = 0
-    private let ssrc: UInt32 = UInt32.random(in: 0...UInt32.max)
-    private let samplesPerPacket = 96  // 2ms at 48kHz (matching relay radio)
+    nonisolated(unsafe) private var udpSocket: Int32 = -1
+    nonisolated(unsafe) private var relayAddr = sockaddr_in()
+    nonisolated(unsafe) private var seqNum: UInt16 = 0
+    nonisolated(unsafe) private var timestamp: UInt32 = 0
+    nonisolated(unsafe) private let ssrc: UInt32 = UInt32.random(in: 0...UInt32.max)
+    nonisolated(unsafe) private let samplesPerPacket = 96  // 2ms at 48kHz (matching relay radio)
     private var heartbeatTimer: Timer?
 
     func toggleMic() {
@@ -154,7 +155,7 @@ final class SDKAudioTransmitter: ObservableObject {
 
     // MARK: - RTP Packet Construction
 
-    private func sendAudioPacket(_ samples: [Float]) {
+    nonisolated private func sendAudioPacket(_ samples: [Float]) {
         guard udpSocket >= 0 else { return }
 
         // RTP header (12 bytes) + payload + CRC (4 bytes)
@@ -208,7 +209,38 @@ final class SDKAudioTransmitter: ObservableObject {
         packetsSent += 1
     }
 
-    private func crc32(_ data: [UInt8], count: Int) -> UInt32 {
+    /// Send system audio from ScreenCaptureKit CMSampleBuffer (called from audio callback)
+    /// Send system audio from ScreenCaptureKit (skipped when mic is ON — mic takes priority)
+    nonisolated func sendSystemAudio(_ sampleBuffer: CMSampleBuffer) {
+        guard udpSocket >= 0 else { return }
+        guard !_micEnabledAtomic else { return }  // Mic ON → mic audio takes priority
+        guard let blockBuffer = sampleBuffer.dataBuffer else { return }
+        var length = 0
+        var dataPointer: UnsafeMutablePointer<Int8>?
+        CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &dataPointer)
+        guard let dataPointer, length > 0 else { return }
+
+        let floatPtr = UnsafeRawPointer(dataPointer).assumingMemoryBound(to: Float.self)
+        let floatCount = length / MemoryLayout<Float>.size
+        let channels = 2  // ScreenCaptureKit delivers interleaved stereo
+        let frames = floatCount / channels
+
+        // Extract mono (left channel) and send packets
+        let spp = samplesPerPacket
+        var offset = 0
+        while offset + spp <= frames {
+            var mono = [Float](repeating: 0, count: spp)
+            for i in 0..<spp {
+                mono[i] = floatPtr[(offset + i) * channels]
+                // Mix mic if enabled
+                // (mic audio comes from the engine tap, system audio from here)
+            }
+            sendAudioPacket(mono)
+            offset += spp
+        }
+    }
+
+    nonisolated private func crc32(_ data: [UInt8], count: Int) -> UInt32 {
         var crc: UInt32 = 0xFFFFFFFF
         for i in 0..<count {
             crc ^= UInt32(data[i])

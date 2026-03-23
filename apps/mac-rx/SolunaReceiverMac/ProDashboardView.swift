@@ -180,46 +180,7 @@ struct ProDashboardView: View {
                     .frame(width: 32, alignment: .trailing)
             }
 
-            // Stream toggle
-            Button(action: {
-                SDKAudioReceiver.shared.toggle()
-                isStreaming = SDKAudioReceiver.shared.isPlaying
-                addLog(isStreaming ? "Streaming started" : "Streaming stopped",
-                       color: isStreaming ? .proGreen : .proRed)
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: isStreaming ? "stop.fill" : "play.fill")
-                        .font(.system(size: 10))
-                    Text(isStreaming ? "STOP" : "START")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .foregroundColor(isStreaming ? .proRed : .proGreen)
-                .background((isStreaming ? Color.proRed : Color.proGreen).opacity(0.15))
-                .cornerRadius(4)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke((isStreaming ? Color.proRed : Color.proGreen).opacity(0.4))
-                )
-            }
-            .buttonStyle(.plain)
-
-            // Network mode indicator (auto-detected)
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(receiver.broadcastMode == .local ? Color.proGreen : Color.proAccent)
-                    .frame(width: 6, height: 6)
-                Text(receiver.broadcastMode == .local ? "LAN" : "WAN")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(.proTextDim)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.proCard)
-            .cornerRadius(3)
-
-            // Mic TX (SDK transmitter)
+            // MIC toggle (overlay mic on broadcast)
             Button(action: {
                 let tx = SDKAudioTransmitter.shared
                 tx.toggleMic()
@@ -227,7 +188,7 @@ struct ProDashboardView: View {
                        color: tx.micEnabled ? .proGreen : .proRed)
             }) {
                 HStack(spacing: 4) {
-                    Image(systemName: SDKAudioTransmitter.shared.micEnabled ? "mic.fill" : "mic")
+                    Image(systemName: SDKAudioTransmitter.shared.micEnabled ? "mic.fill" : "mic.slash")
                         .font(.system(size: 10))
                     Text("MIC")
                         .font(.system(size: 11, weight: .bold, design: .monospaced))
@@ -236,27 +197,6 @@ struct ProDashboardView: View {
                 .padding(.vertical, 6)
                 .foregroundColor(SDKAudioTransmitter.shared.micEnabled ? .white : .proTextDim)
                 .background(SDKAudioTransmitter.shared.micEnabled ? Color.proRed : Color.proCard)
-                .cornerRadius(4)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proBorder))
-            }
-            .buttonStyle(.plain)
-
-            // System Audio TX
-            Button(action: {
-                receiver.toggleShmTransmit()
-                addLog(receiver.isShmTransmitting ? "System Audio TX ON" : "System Audio TX OFF",
-                       color: receiver.isShmTransmitting ? .proGreen : .proRed)
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: receiver.isShmTransmitting ? "hifispeaker.fill" : "hifispeaker")
-                        .font(.system(size: 10))
-                    Text("SYS")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .foregroundColor(receiver.isShmTransmitting ? .white : .proTextDim)
-                .background(receiver.isShmTransmitting ? Color.proAccent : Color.proCard)
                 .cornerRadius(4)
                 .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proBorder))
             }
@@ -751,15 +691,23 @@ struct ProDashboardView: View {
             broadcastChannel = channel
         }
         setBroadcastChannel()
-        // Start transmitter on channel (mic off by default — use MIC button to enable)
+        // Start transmitter with system audio capture (mic off by default)
         SDKAudioTransmitter.shared.start(channel: broadcastChannel, micEnabled: false)
-        addLog("Channel live: \(broadcastChannel) (mic off)", color: .proGreen)
+        // Start system audio capture and forward to transmitter
+        Task {
+            await SystemAudioCapture.shared.startCapture()
+            SystemAudioCapture.shared.onAudioBuffer = { sampleBuffer in
+                // Forward system audio to transmitter's UDP
+                SDKAudioTransmitter.shared.sendSystemAudio(sampleBuffer)
+            }
+        }
+        addLog("GO LIVE: \(broadcastChannel)", color: .proGreen)
     }
 
     private func stopBroadcast() {
         SDKAudioTransmitter.shared.stop()
-        if receiver.isMicTransmitting { receiver.toggleMic() }
-        if receiver.isShmTransmitting { receiver.toggleShmTransmit() }
+        SystemAudioCapture.shared.onAudioBuffer = nil
+        Task { await SystemAudioCapture.shared.stopCapture() }
         addLog("Broadcast stopped", color: .proRed)
     }
 
