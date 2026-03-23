@@ -51,7 +51,7 @@ struct ProDashboardView: View {
     let statsTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     private let eqFrequencies = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
-    @State private var broadcastChannel: String = ""
+    @AppStorage("proDashboardChannel") private var broadcastChannel: String = ""
     @State private var localLatencyMs: Double = 50
     @State private var wanLatencyMs: Double = 500
 
