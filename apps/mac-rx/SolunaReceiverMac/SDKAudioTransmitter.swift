@@ -7,7 +7,10 @@ final class SDKAudioTransmitter: ObservableObject {
     static let shared = SDKAudioTransmitter()
 
     @Published var isTransmitting = false
-    @Published var micEnabled = false
+    @Published var micEnabled = false {
+        didSet { _micEnabledAtomic = micEnabled }
+    }
+    nonisolated(unsafe) private var _micEnabledAtomic = false
     @Published var channel: String = ""
     @Published var packetsSent: UInt64 = 0
 
@@ -77,8 +80,8 @@ final class SDKAudioTransmitter: ObservableObject {
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
             guard let self, self.isTransmitting else { return }
-            // Mic off → send silence (keepalive packets maintain connection)
-            guard self.micEnabled else {
+            // Mic off → skip audio (keepalive maintains connection)
+            guard self._micEnabledAtomic else {
                 // Still advance timestamp to keep stream alive
                 self.timestamp &+= UInt32(buffer.frameLength)
                 return
