@@ -72,6 +72,8 @@ final class SystemAudioCapture: NSObject, ObservableObject {
             self.streamOutput = output
 
             try stream.addStreamOutput(output, type: .audio, sampleHandlerQueue: .global(qos: .userInteractive))
+            // Also add video output (required by ScreenCaptureKit to avoid "stream output NOT found" errors)
+            try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: .global(qos: .background))
 
             try await stream.startCapture()
 
