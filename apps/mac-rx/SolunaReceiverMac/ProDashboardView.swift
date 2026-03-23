@@ -88,8 +88,7 @@ struct ProDashboardView: View {
             if broadcastChannel.isEmpty {
                 generateRandomChannel()
             }
-            // Start system audio capture for VU meters + spectrum
-            Task { await SystemAudioCapture.shared.startCapture() }
+            // System audio capture starts when user selects it as source
         }
         .onReceive(vuTimer) { _ in
             updateVU()
@@ -532,6 +531,16 @@ struct ProDashboardView: View {
                         }
                     }
                     .labelsHidden()
+                    .onChange(of: audioSourceManager.selectedSource) { source in
+                        Task {
+                            if source?.type == .systemAudio {
+                                await SystemAudioCapture.shared.startCapture()
+                                addLog("System audio capture started", color: .proGreen)
+                            } else {
+                                await SystemAudioCapture.shared.stopCapture()
+                            }
+                        }
+                    }
                     Button(action: { audioSourceManager.refresh() }) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 10))

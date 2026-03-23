@@ -37,16 +37,7 @@ class AudioSourceManager: ObservableObject {
     func refresh() {
         var result: [AudioSource] = []
 
-        // System Audio (ScreenCaptureKit, macOS 13+)
-        if #available(macOS 13.0, *) {
-            result.append(AudioSource(
-                id: "system-audio",
-                name: "System Audio",
-                type: .systemAudio
-            ))
-        }
-
-        // Enumerate CoreAudio input devices
+        // Enumerate CoreAudio input devices first (mic as default)
         var propAddress = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -83,8 +74,17 @@ class AudioSourceManager: ObservableObject {
             ))
         }
 
+        // System Audio at the end (opt-in, not default)
+        if #available(macOS 13.0, *) {
+            result.append(AudioSource(
+                id: "system-audio",
+                name: "System Audio",
+                type: .systemAudio
+            ))
+        }
+
         sources = result
-        // Preserve selection if still valid, otherwise pick first
+        // Preserve selection if still valid, otherwise pick first (mic, not system audio)
         if let current = selectedSource, !result.contains(where: { $0.id == current.id }) {
             selectedSource = result.first
         } else if selectedSource == nil {
