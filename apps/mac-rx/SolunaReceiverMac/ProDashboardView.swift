@@ -198,17 +198,19 @@ struct ProDashboardView: View {
             }
             .buttonStyle(.plain)
 
-            // Broadcast mode (Local / WAN)
-            Picker("", selection: $receiver.broadcastMode) {
-                ForEach(AudioReceiver.BroadcastMode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
+            // Network mode indicator (auto-detected)
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(receiver.broadcastMode == .local ? Color.proGreen : Color.proAccent)
+                    .frame(width: 6, height: 6)
+                Text(receiver.broadcastMode == .local ? "LAN" : "WAN")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.proTextDim)
             }
-            .pickerStyle(.segmented)
-            .frame(width: 180)
-            .onChange(of: receiver.broadcastMode) { mode in
-                addLog("Broadcast: \(mode.rawValue)", color: .proAccent)
-            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.proCard)
+            .cornerRadius(3)
 
             // Mic TX
             Button(action: {
@@ -416,24 +418,74 @@ struct ProDashboardView: View {
 
     // MARK: - Channels
 
+    @State private var showUpgrade = false
+
+    private var isPro: Bool {
+        // Check ChannelStore subscription status (shared with iOS)
+        UserDefaults.standard.string(forKey: "purchasedChannel") != nil ||
+        UserDefaults.standard.bool(forKey: "isProSubscribed")
+    }
+
     private var channelsSection: some View {
         proCard(title: "MY CHANNEL", icon: "antenna.radiowaves.left.and.right") {
             VStack(spacing: 12) {
-                // Channel name input
-                HStack(spacing: 8) {
-                    Image(systemName: "number")
-                        .font(.system(size: 12))
-                        .foregroundColor(.proTextDim)
-                    TextField("Channel name", text: $broadcastChannel)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 14, weight: .medium, design: .monospaced))
-                        .foregroundColor(.proText)
-                        .onSubmit { setBroadcastChannel() }
+                // Channel name: PRO = custom input, Free = random only
+                if isPro {
+                    HStack(spacing: 8) {
+                        Image(systemName: "number")
+                            .font(.system(size: 12))
+                            .foregroundColor(.proAccent)
+                        TextField("Channel name", text: $broadcastChannel)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            .foregroundColor(.proText)
+                            .onSubmit { setBroadcastChannel() }
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.yellow)
+                    }
+                    .padding(8)
+                    .background(Color.proBg)
+                    .cornerRadius(4)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proAccent.opacity(0.3)))
+                } else {
+                    HStack(spacing: 8) {
+                        Image(systemName: "number")
+                            .font(.system(size: 12))
+                            .foregroundColor(.proTextDim)
+                        Text(broadcastChannel.isEmpty ? "radio-xxxxxx" : broadcastChannel)
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            .foregroundColor(.proTextDim)
+                        Spacer()
+                        Button { generateRandomChannel() } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "dice")
+                                    .font(.system(size: 10))
+                                Text("Random")
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            }
+                            .foregroundColor(.proAccent)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(8)
+                    .background(Color.proBg)
+                    .cornerRadius(4)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proBorder))
+
+                    // Upgrade hint
+                    Button { showUpgrade = true } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "crown.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.yellow)
+                            Text("Upgrade to PRO for custom channel names")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.proTextDim)
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
-                .padding(8)
-                .background(Color.proBg)
-                .cornerRadius(4)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proBorder))
 
                 // Audio source picker
                 HStack(spacing: 8) {
@@ -502,6 +554,13 @@ struct ProDashboardView: View {
 
     private var isBroadcasting: Bool {
         receiver.isMicTransmitting || receiver.isShmTransmitting
+    }
+
+    private func generateRandomChannel() {
+        let id = String("abcdefghijklmnopqrstuvwxyz0123456789".shuffled().prefix(6))
+        broadcastChannel = "radio-\(id)"
+        setBroadcastChannel()
+        addLog("Random channel: \(broadcastChannel)", color: .proAccent)
     }
 
     private func setBroadcastChannel() {

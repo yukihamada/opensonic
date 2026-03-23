@@ -535,9 +535,14 @@ final class AudioReceiver: ObservableObject {
     }
     @Published var broadcastMode: BroadcastMode = .local
 
-    /// Connect C++ bridge to relay for TX (only needed for WAN mode)
+    /// Auto-detect broadcast mode: always broadcast to both LAN + WAN
+    /// LAN multicast is always sent by C++ bridge; WAN relay is connected on TX start
+    func autoDetectBroadcastMode() {
+        broadcastMode = .local  // C++ bridge sends LAN multicast + WAN relay simultaneously
+    }
+
+    /// Connect C++ bridge to relay for TX (always connect — auto mode handles both)
     private func ensureBridgeRelayConnected() {
-        guard broadcastMode == .wan else { return }  // LAN mode: no relay needed
         let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
         let devId = deviceId
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
