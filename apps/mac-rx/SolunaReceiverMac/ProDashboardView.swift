@@ -51,8 +51,8 @@ struct ProDashboardView: View {
 
     private let eqFrequencies = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
     @State private var broadcastChannel: String = ""
-    @State private var localLatencyMs: Double = 10
-    @State private var wanLatencyMs: Double = 300
+    @State private var localLatencyMs: Double = 50
+    @State private var wanLatencyMs: Double = 500
 
     // Playlist / file playback
     @State private var playlist: [(id: UUID, url: URL, name: String)] = []
@@ -84,7 +84,7 @@ struct ProDashboardView: View {
             addLog("Dashboard opened", color: .proAccent)
             registry.refresh()
             audioSourceManager.refresh()
-            if broadcastChannel.isEmpty && !isPro {
+            if broadcastChannel.isEmpty {
                 generateRandomChannel()
             }
         }
