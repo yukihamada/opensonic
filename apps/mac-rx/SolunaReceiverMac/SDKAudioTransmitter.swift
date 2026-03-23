@@ -26,7 +26,7 @@ final class SDKAudioTransmitter: ObservableObject {
     nonisolated(unsafe) private var timestamp: UInt32 = 0
     nonisolated(unsafe) private let ssrc: UInt32 = UInt32.random(in: 0...UInt32.max)
     nonisolated(unsafe) private let samplesPerPacket = 96  // 2ms at 48kHz
-    private var heartbeatTimer: Timer?
+    private var heartbeatSource: DispatchSourceTimer?
 
     // Bonjour + Unicast LAN: listeners register via UDP, we fan-out packets
     nonisolated(unsafe) private var listeners: [(sockaddr_in, Date)] = []
@@ -34,7 +34,7 @@ final class SDKAudioTransmitter: ObservableObject {
     nonisolated(unsafe) private var registrationSocket: Int32 = -1
     private var bonjourService: NetService?
     private var registrationThread: Thread?
-    private var listenerCleanupTimer: Timer?
+    private var listenerCleanupSource: DispatchSourceTimer?
 
     func toggleMic() {
         micEnabled.toggle()
@@ -118,15 +118,21 @@ final class SDKAudioTransmitter: ObservableObject {
             self.engine = engine
             isTransmitting = true
 
-            // Heartbeat every 5s
-            heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            // Heartbeat every 5s (DispatchSource — works regardless of RunLoop)
+            let hb = DispatchSource.makeTimerSource(queue: .global(qos: .userInteractive))
+            hb.schedule(deadline: .now() + 5, repeating: 5.0)
+            hb.setEventHandler { [weak self] in
                 self?.sendUDP("HELLO\n")
             }
+            hb.resume()
+            heartbeatSource = hb
 
             // Cleanup stale listeners every 10s
-            listenerCleanupTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-                self?.cleanupStaleListeners()
-            }
+            let cleanup = DispatchSource.makeTimerSource(queue: .global())
+            cleanup.schedule(deadline: .now() + 10, repeating: 10.0)
+            cleanup.setEventHandler { [weak self] in self?.cleanupStaleListeners() }
+            cleanup.resume()
+            listenerCleanupSource = cleanup
 
             print("[SDKTx] Started transmitting on channel '\(channel)'")
         } catch {
@@ -139,10 +145,10 @@ final class SDKAudioTransmitter: ObservableObject {
     func stop() {
         guard isTransmitting else { return }
         isTransmitting = false
-        heartbeatTimer?.invalidate()
-        heartbeatTimer = nil
-        listenerCleanupTimer?.invalidate()
-        listenerCleanupTimer = nil
+        heartbeatSource?.cancel()
+        heartbeatSource = nil
+        listenerCleanupSource?.cancel()
+        listenerCleanupSource = nil
         stopBonjourAndRegistration()
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
