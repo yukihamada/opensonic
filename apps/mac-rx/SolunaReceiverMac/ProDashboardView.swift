@@ -808,12 +808,21 @@ struct ProDashboardView: View {
                         ]
                         panel.allowsMultipleSelection = true
                         panel.canChooseDirectories = true
-                        panel.begin { response in
-                            if response == .OK {
-                                DispatchQueue.main.async {
-                                    for url in panel.urls {
-                                        addToPlaylist(url)
+                        if let window = NSApp.keyWindow {
+                            panel.beginSheetModal(for: window) { response in
+                                if response == .OK {
+                                    DispatchQueue.main.async {
+                                        for url in panel.urls {
+                                            addToPlaylist(url)
+                                        }
                                     }
+                                }
+                            }
+                        } else {
+                            // Fallback: run as modal dialog
+                            if panel.runModal() == .OK {
+                                for url in panel.urls {
+                                    addToPlaylist(url)
                                 }
                             }
                         }

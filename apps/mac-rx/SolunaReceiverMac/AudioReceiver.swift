@@ -545,12 +545,14 @@ final class AudioReceiver: ObservableObject {
     func ensureBridgeRelayConnected() {
         let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
         let devId = deviceId
-        NSLog("[AudioReceiver] ensureBridgeRelayConnected: ch=%@, devId=%@", ch, devId)
+        // C++ bridge needs start() for recv loop (HELLO keepalive)
+        if receiver.state == .stopped {
+            receiver.start()
+        }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            let ok = self.receiver.connect(toRelay: "relay.solun.art", port: 5100,
+            _ = self.receiver.connect(toRelay: "relay.solun.art", port: 5100,
                                        group: ch, password: "", deviceId: devId)
-            NSLog("[AudioReceiver] connectToRelay result: %d", ok ? 1 : 0)
         }
     }
 
