@@ -30,6 +30,7 @@ struct ProDashboardView: View {
     @ObservedObject var receiver: AudioReceiver
     @StateObject private var registry = GlobalDeviceRegistry()
     @StateObject private var audioSourceManager = AudioSourceManager.shared
+    @StateObject private var channelStore = ChannelStore()
 
     // State
     @State private var elapsedTime: TimeInterval = 0
@@ -425,16 +426,10 @@ struct ProDashboardView: View {
 
     @State private var showUpgrade = false
 
-    private var isPro: Bool {
-        // Check ChannelStore subscription status (shared with iOS)
-        UserDefaults.standard.string(forKey: "purchasedChannel") != nil ||
-        UserDefaults.standard.bool(forKey: "isProSubscribed")
-    }
+    private var isPro: Bool { channelStore.isPurchased }
 
     @State private var useCustomChannel = false
-    private var purchasedChannel: String? {
-        UserDefaults.standard.string(forKey: "purchasedChannel")
-    }
+    private var purchasedChannel: String? { channelStore.purchasedChannelName }
 
     private var channelsSection: some View {
         proCard(title: "MY CHANNEL", icon: "antenna.radiowaves.left.and.right") {
@@ -446,7 +441,7 @@ struct ProDashboardView: View {
                         generateRandomChannel()
                     }
                     channelTab(
-                        isPro ? (purchasedChannel ?? "Custom") : "Custom",
+                        isPro ? (purchasedChannel ?? "Custom") : "Custom ¥1,000/yr",
                         icon: "crown.fill",
                         active: useCustomChannel,
                         locked: !isPro
@@ -458,7 +453,17 @@ struct ProDashboardView: View {
                                 setBroadcastChannel()
                             }
                         } else {
-                            showUpgrade = true
+                            // Start purchase flow
+                            Task {
+                                do {
+                                    if let tx = try await channelStore.purchase() {
+                                        useCustomChannel = true
+                                        addLog("Purchased custom channel!", color: .proGreen)
+                                    }
+                                } catch {
+                                    addLog("Purchase failed: \(error.localizedDescription)", color: .proRed)
+                                }
+                            }
                         }
                     }
                 }
@@ -474,7 +479,15 @@ struct ProDashboardView: View {
                             .textFieldStyle(.plain)
                             .font(.system(size: 14, weight: .medium, design: .monospaced))
                             .foregroundColor(.proAccent)
-                            .onSubmit { setBroadcastChannel() }
+                            .onSubmit {
+                                channelStore.savePurchasedChannel(broadcastChannel)
+                                setBroadcastChannel()
+                            }
+                        if channelStore.expiryDate != nil {
+                            Text("~\(channelStore.expiryDate!, style: .date)")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.proTextDim)
+                        }
                     }
                     .padding(8)
                     .background(Color.proBg)
