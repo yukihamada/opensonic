@@ -20,9 +20,11 @@ class AudioSourceManager: ObservableObject {
         let type: SourceType
 
         enum SourceType: String, Hashable {
+            case noSource
             case microphone
             case systemAudio
             case inputDevice
+            case audioFile
         }
     }
 
@@ -37,7 +39,13 @@ class AudioSourceManager: ObservableObject {
     func refresh() {
         var result: [AudioSource] = []
 
-        // Enumerate CoreAudio input devices first (mic as default)
+        // None (no source — default)
+        result.append(AudioSource(id: "none", name: "None", type: .noSource))
+
+        // Audio File (playlist)
+        result.append(AudioSource(id: "audio-file", name: "Audio File (Playlist)", type: .audioFile))
+
+        // Enumerate CoreAudio input devices
         var propAddress = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
             mScope: kAudioObjectPropertyScopeGlobal,

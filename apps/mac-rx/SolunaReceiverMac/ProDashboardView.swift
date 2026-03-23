@@ -753,16 +753,29 @@ struct ProDashboardView: View {
 
         // Start TX based on selected source
         let source = audioSourceManager.selectedSource
-        if source?.type == .systemAudio {
+        switch source?.type {
+        case .systemAudio:
             receiver.toggleShmTransmit()
             if !receiver.isShmTransmitting {
-                // SHM failed (no virtual driver) — fall back to mic
                 addLog("System audio TX unavailable, using mic", color: .proAccent)
                 receiver.toggleMic()
             }
-        } else {
-            // Default: mic TX
+        case .audioFile:
+            // Playlist handles playback → system audio TX broadcasts it
+            receiver.toggleShmTransmit()
+            if !receiver.isShmTransmitting {
+                addLog("Using mic for file broadcast", color: .proAccent)
+                receiver.toggleMic()
+            }
+            // Auto-play first track if playlist has items and nothing playing
+            if !playlist.isEmpty && !isPlayingFile {
+                playTrack(at: 0)
+            }
+        case .microphone, .inputDevice:
             receiver.toggleMic()
+        case .noSource, nil:
+            addLog("No source selected", color: .proRed)
+            return
         }
         addLog("Broadcast started on \(channel)", color: .proGreen)
     }
@@ -1399,9 +1412,11 @@ struct ProDashboardView: View {
 
     private func iconForSourceType(_ type: AudioSourceManager.AudioSource.SourceType?) -> String {
         switch type {
+        case .noSource:    return "minus.circle"
         case .microphone:  return "mic.fill"
         case .systemAudio: return "desktopcomputer"
         case .inputDevice: return "waveform.path"
+        case .audioFile:   return "music.note.list"
         case nil:          return "questionmark.circle"
         }
     }
