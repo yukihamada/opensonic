@@ -596,7 +596,7 @@ struct ProDashboardView: View {
     }
 
     private var isBroadcasting: Bool {
-        receiver.isMicTransmitting || receiver.isShmTransmitting
+        SDKAudioTransmitter.shared.isTransmitting || receiver.isMicTransmitting || receiver.isShmTransmitting
     }
 
     private func channelTab(_ label: String, icon: String, active: Bool, locked: Bool = false, action: @escaping () -> Void) -> some View {
@@ -750,22 +750,12 @@ struct ProDashboardView: View {
             broadcastChannel = channel
         }
         setBroadcastChannel()
-        addLog("Connecting to relay...", color: .proAccent)
-
-        // Connect relay, then start TX directly (bypass toggleMic's nested completion)
-        receiver.ensureBridgeRelayConnected(channel: broadcastChannel) { [self] ok in
-            if !ok { addLog("Relay failed — LAN only", color: .proRed) }
-
-            // Start mic TX directly
-            if receiver.startMicTransmitDirect() {
-                addLog("Mic TX started on \(channel)", color: .proGreen)
-            } else {
-                addLog("Mic TX failed to start", color: .proRed)
-            }
-        }
+        SDKAudioTransmitter.shared.start(channel: broadcastChannel)
+        addLog("Broadcast started on \(broadcastChannel)", color: .proGreen)
     }
 
     private func stopBroadcast() {
+        SDKAudioTransmitter.shared.stop()
         if receiver.isMicTransmitting { receiver.toggleMic() }
         if receiver.isShmTransmitting { receiver.toggleShmTransmit() }
         addLog("Broadcast stopped", color: .proRed)
