@@ -943,13 +943,22 @@ struct ProDashboardView: View {
             broadcastChannel = channel
         }
         setBroadcastChannel()
-        // Start transmitter (mic off by default, press MIC to enable)
+        // Start transmitter (mic off, system audio on)
         SDKAudioTransmitter.shared.start(channel: broadcastChannel, micEnabled: false)
-        addLog("GO LIVE: \(broadcastChannel) — press MIC to talk", color: .proGreen)
+        // Start system audio capture → forward to transmitter
+        Task {
+            await SystemAudioCapture.shared.startCapture()
+            SystemAudioCapture.shared.onAudioBuffer = { sampleBuffer in
+                SDKAudioTransmitter.shared.sendSystemAudio(sampleBuffer)
+            }
+        }
+        addLog("GO LIVE: \(broadcastChannel)", color: .proGreen)
     }
 
     private func stopBroadcast() {
         SDKAudioTransmitter.shared.stop()
+        SystemAudioCapture.shared.onAudioBuffer = nil
+        Task { await SystemAudioCapture.shared.stopCapture() }
         addLog("Broadcast stopped", color: .proRed)
     }
 
