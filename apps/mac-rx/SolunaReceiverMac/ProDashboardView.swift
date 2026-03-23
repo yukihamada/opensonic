@@ -456,7 +456,7 @@ struct ProDashboardView: View {
                         Image(systemName: "number")
                             .font(.system(size: 12))
                             .foregroundColor(.proTextDim)
-                        Text(broadcastChannel.isEmpty ? "radio-xxxxxx" : broadcastChannel)
+                        Text(broadcastChannel.isEmpty ? "live-xxxxxx" : broadcastChannel)
                             .font(.system(size: 14, weight: .medium, design: .monospaced))
                             .foregroundColor(.proTextDim)
                         Spacer()
@@ -561,7 +561,7 @@ struct ProDashboardView: View {
 
     private func generateRandomChannel() {
         let id = String("abcdefghijklmnopqrstuvwxyz0123456789".shuffled().prefix(6))
-        broadcastChannel = "radio-\(id)"
+        broadcastChannel = "live-\(id)"
         setBroadcastChannel()
         addLog("Random channel: \(broadcastChannel)", color: .proAccent)
     }

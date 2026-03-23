@@ -367,7 +367,7 @@ struct ContentView: View {
             } else {
                 Button("Create Random Channel") {
                     let id = String("abcdefghijklmnopqrstuvwxyz0123456789".shuffled().prefix(6))
-                    let name = "radio-\(id)"
+                    let name = "live-\(id)"
                     saveMyChannel(name); switchChannel(name)
                 }
                 Button("Upgrade to PRO") { showSubscription = true }
