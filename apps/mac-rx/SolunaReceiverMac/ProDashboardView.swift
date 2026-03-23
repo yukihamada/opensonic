@@ -728,19 +728,28 @@ struct ProDashboardView: View {
 
     private func updateVU() {
         let sdk = SDKAudioReceiver.shared
-        let fill = Float(sdk.bufferFillMs) / 300.0
-        let base = min(1.0, max(0.0, fill))
-        // Add slight variation for L/R
-        vuLeft = base * Float.random(in: 0.85...1.0)
-        vuRight = base * Float.random(in: 0.80...0.95)
+        let rawL = sdk.outputLevelL
+        let rawR = sdk.outputLevelR
 
-        // Animate EQ bands
-        for i in 0..<eqBands.count {
-            let target = base * Float.random(in: 0.2...1.0)
-            eqBands[i] = eqBands[i] * 0.7 + target * 0.3
+        if rawL > 0.001 || rawR > 0.001 {
+            // Real audio levels from engine tap
+            vuLeft = vuLeft * 0.3 + rawL * 0.7
+            vuRight = vuRight * 0.3 + rawR * 0.7
+
+            // EQ bands: distribute level with frequency weighting + variation
+            let base = max(rawL, rawR)
+            let freqWeights: [Float] = [0.5, 0.6, 0.75, 0.9, 1.0, 0.95, 0.8, 0.65, 0.5, 0.4]
+            for i in 0..<eqBands.count {
+                let target = base * freqWeights[i] * Float.random(in: 0.6...1.0)
+                eqBands[i] = eqBands[i] * 0.5 + target * 0.5
+            }
+        } else {
+            // Fade out
+            vuLeft *= 0.85
+            vuRight *= 0.85
+            for i in 0..<eqBands.count { eqBands[i] *= 0.88 }
         }
 
-        // Update peak
         let maxVu = max(vuLeft, vuRight)
         peakLevel = maxVu > 0.001 ? 20 * log10(maxVu) : -60
     }

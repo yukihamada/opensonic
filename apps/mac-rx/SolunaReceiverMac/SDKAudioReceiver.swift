@@ -52,6 +52,8 @@ final class SDKAudioReceiver: ObservableObject {
     @Published private(set) var packetsPerSec: Int = 0     // recv rate
     @Published private(set) var syncOffsetMs: Double = 0   // NTP sync offset
     @Published private(set) var outputLatencyMs: Double = 0  // output device latency (incl. Bluetooth)
+    @Published private(set) var outputLevelL: Float = 0  // L channel peak (0-1)
+    @Published private(set) var outputLevelR: Float = 0  // R channel peak (0-1)
 
     // Bluetooth latency compensation: target total latency so all devices sync
     // Live channels use lower latency for real-time feel; radio uses higher for stability
@@ -257,6 +259,28 @@ final class SDKAudioReceiver: ObservableObject {
         eng.connect(node, to: eng.mainMixerNode, format: fmt)
         eng.mainMixerNode.outputVolume = isMuted ? 0 : volume
 
+        // Install tap on output for level metering
+        let mixerFormat = eng.mainMixerNode.outputFormat(forBus: 0)
+        eng.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: mixerFormat) { [weak self] buffer, _ in
+            guard let self else { return }
+            guard let channelData = buffer.floatChannelData else { return }
+            let frameCount = Int(buffer.frameLength)
+            var peakL: Float = 0
+            var peakR: Float = 0
+            let ptrL = channelData[0]
+            for i in 0..<frameCount { peakL = max(peakL, abs(ptrL[i])) }
+            if buffer.format.channelCount >= 2 {
+                let ptrR = channelData[1]
+                for i in 0..<frameCount { peakR = max(peakR, abs(ptrR[i])) }
+            } else {
+                peakR = peakL
+            }
+            DispatchQueue.main.async {
+                self.outputLevelL = peakL
+                self.outputLevelR = peakR
+            }
+        }
+
         do {
             try eng.start()
         } catch {
@@ -271,12 +295,15 @@ final class SDKAudioReceiver: ObservableObject {
     }
 
     private func stopAudioEngine() {
-        if let node = sourceNode, let eng = engine {
+        if let eng = engine {
+            eng.mainMixerNode.removeTap(onBus: 0)
             eng.stop()
-            eng.detach(node)
+            if let node = sourceNode { eng.detach(node) }
         }
         sourceNode = nil
         engine = nil
+        outputLevelL = 0
+        outputLevelR = 0
     }
 
     // MARK: - Ring Buffer (lock-free SPSC)
