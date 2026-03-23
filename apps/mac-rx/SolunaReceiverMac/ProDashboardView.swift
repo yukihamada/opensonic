@@ -81,8 +81,22 @@ struct ProDashboardView: View {
 
     // MARK: - Top Bar
 
+    @Environment(\.dismiss) private var dismiss
+
     private var topBar: some View {
         HStack(spacing: 16) {
+            // Close button
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.proTextDim)
+                    .frame(width: 28, height: 28)
+                    .background(Color.proCard)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.escape, modifiers: [])
+
             // Channel name
             Text(channel.uppercased())
                 .font(.system(size: 16, weight: .bold, design: .monospaced))
