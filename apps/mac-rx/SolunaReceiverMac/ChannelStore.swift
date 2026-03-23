@@ -9,16 +9,74 @@ import StoreKit
 import Network
 import Foundation
 
+// MARK: - Subscription Plans
+
+enum SolunaPlan: String, CaseIterable {
+    case free = "Free"
+    case pro = "Pro"
+    case studio = "Studio"
+
+    var isSubscribed: Bool { self != .free }
+    var canCreateChannel: Bool { self != .free }
+    var hasHighQuality: Bool { self != .free }
+    var hasAnalytics: Bool { self == .studio }
+    var hasBroadcast: Bool { self == .studio }
+
+    var price: String {
+        switch self {
+        case .free: return "\u{00A5}0"
+        case .pro: return "\u{00A5}500/\u{6708}"
+        case .studio: return "\u{00A5}2,000/\u{6708}"
+        }
+    }
+
+    var channelSlots: Int {
+        switch self {
+        case .free: return 0
+        case .pro: return 1
+        case .studio: return 3
+        }
+    }
+
+    var features: [(String, String)] {
+        switch self {
+        case .free: return [
+            ("\u{30C1}\u{30E3}\u{30F3}\u{30CD}\u{30EB}", "\u{30E9}\u{30F3}\u{30C0}\u{30E0}\u{306E}\u{307F}"),
+            ("\u{97F3}\u{8CEA}", "\u{6A19}\u{6E96}"),
+            ("\u{5E83}\u{544A}", "\u{3042}\u{308A}"),
+            ("\u{914D}\u{4FE1}", "\u{2014}"),
+        ]
+        case .pro: return [
+            ("\u{30C1}\u{30E3}\u{30F3}\u{30CD}\u{30EB}", "\u{30AB}\u{30B9}\u{30BF}\u{30E0}1\u{500B}"),
+            ("\u{97F3}\u{8CEA}", "\u{9AD8}\u{97F3}\u{8CEA}"),
+            ("\u{5E83}\u{544A}", "\u{306A}\u{3057}"),
+            ("\u{914D}\u{4FE1}", "\u{5BFE}\u{5FDC}"),
+        ]
+        case .studio: return [
+            ("\u{30C1}\u{30E3}\u{30F3}\u{30CD}\u{30EB}", "\u{30AB}\u{30B9}\u{30BF}\u{30E0}3\u{500B}"),
+            ("\u{97F3}\u{8CEA}", "\u{6700}\u{9AD8}\u{97F3}\u{8CEA}"),
+            ("\u{5E83}\u{544A}", "\u{306A}\u{3057}"),
+            ("\u{914D}\u{4FE1}", "Pro Dashboard"),
+        ]
+        }
+    }
+}
+
 @MainActor
 final class ChannelStore: ObservableObject {
     static let productID = "com.soluna.channel.year"  // ¥1,000/year
+    static let proMonthlyID = "com.soluna.pro.monthly"  // ¥500/month
+    static let studioMonthlyID = "com.soluna.studio.monthly"  // ¥2,000/month
     static let relayHost = "relay.solun.art"
     static let relayPort: UInt16 = 5100
 
     @Published var product: Product?
+    @Published var proProduct: Product?
+    @Published var studioProduct: Product?
     @Published var isPurchased: Bool = false
     @Published var purchasedChannelName: String?
     @Published var expiryDate: Date?
+    @Published var currentPlan: SolunaPlan = .free
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
 
@@ -49,20 +107,47 @@ final class ChannelStore: ObservableObject {
 
     func loadProducts() async {
         do {
-            let products = try await Product.products(for: [Self.productID])
-            product = products.first
+            let products = try await Product.products(for: [
+                Self.productID,
+                Self.proMonthlyID,
+                Self.studioMonthlyID
+            ])
+            for p in products {
+                switch p.id {
+                case Self.productID:
+                    product = p
+                case Self.proMonthlyID:
+                    proProduct = p
+                case Self.studioMonthlyID:
+                    studioProduct = p
+                default:
+                    break
+                }
+            }
         } catch {
             errorMessage = "Failed to load products: \(error.localizedDescription)"
         }
     }
 
     @discardableResult
-    func purchase() async throws -> Transaction? {
-        guard let product else {
-            errorMessage = "Product not available"
+    func purchasePro() async throws -> Transaction? {
+        guard let proProduct else {
+            errorMessage = "Pro product not available"
             return nil
         }
+        return try await purchaseProduct(proProduct)
+    }
 
+    @discardableResult
+    func purchaseStudio() async throws -> Transaction? {
+        guard let studioProduct else {
+            errorMessage = "Studio product not available"
+            return nil
+        }
+        return try await purchaseProduct(studioProduct)
+    }
+
+    private func purchaseProduct(_ product: Product) async throws -> Transaction? {
         isLoading = true
         defer { isLoading = false }
 
@@ -72,7 +157,12 @@ final class ChannelStore: ObservableObject {
         case .success(let verification):
             let transaction = try checkVerified(verification)
             await transaction.finish()
-            await updatePurchaseState(transaction)
+            if transaction.productID == Self.proMonthlyID ||
+               transaction.productID == Self.studioMonthlyID {
+                await checkEntitlements()
+            } else {
+                await updatePurchaseState(transaction)
+            }
             return transaction
 
         case .userCancelled:
@@ -88,34 +178,70 @@ final class ChannelStore: ObservableObject {
         }
     }
 
+    @discardableResult
+    func purchase() async throws -> Transaction? {
+        guard let product else {
+            errorMessage = "Product not available"
+            return nil
+        }
+        return try await purchaseProduct(product)
+    }
+
     func checkEntitlements() async {
+        var foundChannel = false
+        var detectedPlan: SolunaPlan = .free
+
         for await result in Transaction.currentEntitlements {
-            if case .verified(let transaction) = result,
-               transaction.productID == Self.productID {
-                await updatePurchaseState(transaction)
-                return
+            if case .verified(let transaction) = result {
+                switch transaction.productID {
+                case Self.productID:
+                    foundChannel = true
+                    await updateChannelState(transaction)
+                case Self.studioMonthlyID:
+                    detectedPlan = .studio
+                case Self.proMonthlyID:
+                    if detectedPlan != .studio {
+                        detectedPlan = .pro
+                    }
+                default:
+                    break
+                }
             }
         }
-        // No active entitlement found
-        isPurchased = false
-        purchasedChannelName = nil
-        expiryDate = nil
-        persistState()
+
+        currentPlan = detectedPlan
+
+        if !foundChannel {
+            isPurchased = false
+            purchasedChannelName = nil
+            expiryDate = nil
+            persistState()
+        }
     }
 
     private func listenForTransactions() -> Task<Void, Error> {
         Task.detached { [weak self] in
             for await result in Transaction.updates {
-                if case .verified(let transaction) = result,
-                   transaction.productID == ChannelStore.productID {
+                if case .verified(let transaction) = result {
                     await transaction.finish()
-                    await self?.updatePurchaseState(transaction)
+                    switch transaction.productID {
+                    case ChannelStore.productID:
+                        await self?.updatePurchaseState(transaction)
+                    case ChannelStore.proMonthlyID, ChannelStore.studioMonthlyID:
+                        await self?.checkEntitlements()
+                    default:
+                        break
+                    }
                 }
             }
         }
     }
 
     private func updatePurchaseState(_ transaction: Transaction) async {
+        await updateChannelState(transaction)
+    }
+
+    private func updateChannelState(_ transaction: Transaction) async {
         if transaction.revocationDate != nil {
             isPurchased = false
             purchasedChannelName = nil

@@ -535,6 +535,7 @@ struct ContentView: View {
                 latencyWarningBanner.padding(.horizontal, 16)
             }
             channelGrid.padding(.horizontal, 16)
+            quickChannelJoin.padding(.horizontal, 16)
             if isPlaying {
                 liveFeed.padding(.horizontal, 16)
             }
@@ -767,6 +768,39 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Quick Channel Join
+
+    private var quickChannelJoin: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "number")
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.4))
+            TextField("Channel name...", text: $quickChannelInput)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14))
+                .foregroundColor(.white)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .onSubmit {
+                    let ch = quickChannelInput.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    if !ch.isEmpty { switchChannel(ch) }
+                }
+            if !quickChannelInput.isEmpty {
+                Button {
+                    let ch = quickChannelInput.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    if !ch.isEmpty { switchChannel(ch) }
+                } label: {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: - Now Playing
