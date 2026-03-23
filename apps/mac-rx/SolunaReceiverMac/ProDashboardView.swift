@@ -7,6 +7,8 @@
 //
 
 import SwiftUI
+import AVFoundation
+import UniformTypeIdentifiers
 
 // MARK: - Color Constants
 
@@ -50,6 +52,14 @@ struct ProDashboardView: View {
     private let eqFrequencies = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
     @State private var broadcastChannel: String = ""
 
+    // Playlist / file playback
+    @State private var playlist: [(id: UUID, url: URL, name: String)] = []
+    @State private var currentTrackIndex: Int? = nil
+    @State private var isPlayingFile = false
+    @State private var filePlaybackProgress: Double = 0
+    @State private var audioPlayer: AVAudioPlayer? = nil
+    let filePlaybackTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+
     var body: some View {
         VStack(spacing: 0) {
             topBar
@@ -78,6 +88,9 @@ struct ProDashboardView: View {
         }
         .onReceive(statsTimer) { _ in
             updateStats()
+        }
+        .onReceive(filePlaybackTimer) { _ in
+            checkFilePlayback()
         }
     }
 
@@ -276,6 +289,7 @@ struct ProDashboardView: View {
                 vuMetersSection
                 nowPlayingSection
                 channelsSection
+                playlistSection
                 devicesSection
             }
             .padding(16)
@@ -511,6 +525,278 @@ struct ProDashboardView: View {
         if receiver.isMicTransmitting { receiver.toggleMic() }
         if receiver.isShmTransmitting { receiver.toggleShmTransmit() }
         addLog("Broadcast stopped", color: .proRed)
+    }
+
+    // MARK: - Playlist
+
+    private var playlistSection: some View {
+        proCard(title: "PLAYLIST", icon: "music.note.list") {
+            VStack(spacing: 10) {
+                // Add files button + track count
+                HStack {
+                    Button {
+                        let panel = NSOpenPanel()
+                        panel.allowedContentTypes = [
+                            UTType(filenameExtension: "mp3")!,
+                            UTType(filenameExtension: "wav")!,
+                            UTType(filenameExtension: "m4a")!,
+                            UTType(filenameExtension: "aac")!,
+                            UTType(filenameExtension: "flac")!,
+                            UTType(filenameExtension: "aiff")!,
+                        ]
+                        panel.allowsMultipleSelection = true
+                        panel.canChooseDirectories = true
+                        if panel.runModal() == .OK {
+                            for url in panel.urls {
+                                addToPlaylist(url)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                            Text("Add Files")
+                        }
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .foregroundColor(.proAccent)
+                        .background(Color.proAccent.opacity(0.1))
+                        .cornerRadius(4)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    if !playlist.isEmpty {
+                        Button {
+                            audioPlayer?.stop()
+                            isPlayingFile = false
+                            currentTrackIndex = nil
+                            playlist.removeAll()
+                            addLog("Playlist cleared", color: .proTextDim)
+                        } label: {
+                            Text("Clear")
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundColor(.proTextDim)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Text("\(playlist.count) tracks")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.proTextDim)
+                }
+
+                // Playlist tracks
+                if !playlist.isEmpty {
+                    ScrollView {
+                        VStack(spacing: 2) {
+                            ForEach(Array(playlist.enumerated()), id: \.element.id) { index, track in
+                                HStack(spacing: 8) {
+                                    if currentTrackIndex == index && isPlayingFile {
+                                        Image(systemName: "speaker.wave.2.fill")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.proAccent)
+                                            .frame(width: 16)
+                                    } else {
+                                        Text("\(index + 1)")
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .foregroundColor(.proTextDim)
+                                            .frame(width: 16)
+                                    }
+
+                                    Text(track.name)
+                                        .font(.system(size: 12, design: .monospaced))
+                                        .foregroundColor(currentTrackIndex == index ? .proAccent : .proText)
+                                        .lineLimit(1)
+
+                                    Spacer()
+
+                                    // Play this track
+                                    Button { playTrack(at: index) } label: {
+                                        Image(systemName: "play.fill")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.proTextDim)
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    // Remove
+                                    Button {
+                                        if currentTrackIndex == index {
+                                            audioPlayer?.stop()
+                                            isPlayingFile = false
+                                            currentTrackIndex = nil
+                                        } else if let cur = currentTrackIndex, index < cur {
+                                            currentTrackIndex = cur - 1
+                                        }
+                                        playlist.remove(at: index)
+                                    } label: {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.proTextDim)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(currentTrackIndex == index ? Color.proAccent.opacity(0.08) : Color.clear)
+                                .cornerRadius(3)
+                                .onTapGesture(count: 2) { playTrack(at: index) }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 150)
+
+                    // Progress bar (when playing)
+                    if isPlayingFile, let player = audioPlayer, player.duration > 0 {
+                        VStack(spacing: 4) {
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(Color.proBg)
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(Color.proAccent)
+                                        .frame(width: max(0, CGFloat(filePlaybackProgress) * geo.size.width))
+                                }
+                            }
+                            .frame(height: 4)
+
+                            HStack {
+                                Text(formatTime(player.currentTime))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.proTextDim)
+                                Spacer()
+                                Text(formatTime(player.duration))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.proTextDim)
+                            }
+                        }
+                    }
+
+                    // Transport controls
+                    HStack(spacing: 16) {
+                        Button { previousTrack() } label: {
+                            Image(systemName: "backward.fill").font(.system(size: 12)).foregroundColor(.proText)
+                        }.buttonStyle(.plain)
+
+                        Button { toggleFilePlayback() } label: {
+                            Image(systemName: isPlayingFile ? "pause.fill" : "play.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(.proAccent)
+                        }.buttonStyle(.plain)
+
+                        Button { nextTrack() } label: {
+                            Image(systemName: "forward.fill").font(.system(size: 12)).foregroundColor(.proText)
+                        }.buttonStyle(.plain)
+
+                        Spacer()
+
+                        // Now playing name
+                        if isPlayingFile, let idx = currentTrackIndex, idx < playlist.count {
+                            Text(playlist[idx].name)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.proTextDim)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
+        }
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            for provider in providers {
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    if let url = url {
+                        DispatchQueue.main.async { addToPlaylist(url) }
+                    }
+                }
+            }
+            return true
+        }
+    }
+
+    // MARK: - File Playback Methods
+
+    private func addToPlaylist(_ url: URL) {
+        let audioExtensions = Set(["mp3", "wav", "m4a", "aac", "aiff", "flac"])
+        if url.hasDirectoryPath {
+            let fm = FileManager.default
+            if let files = try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) {
+                for file in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                    if audioExtensions.contains(file.pathExtension.lowercased()) {
+                        playlist.append((id: UUID(), url: file, name: file.lastPathComponent))
+                    }
+                }
+            }
+        } else if audioExtensions.contains(url.pathExtension.lowercased()) {
+            playlist.append((id: UUID(), url: url, name: url.lastPathComponent))
+        }
+    }
+
+    private func playTrack(at index: Int) {
+        guard index >= 0 && index < playlist.count else { return }
+        audioPlayer?.stop()
+        currentTrackIndex = index
+        let url = playlist[index].url
+        do {
+            audioPlayer = try AVAudioPlayer(contentsOf: url)
+            audioPlayer?.play()
+            isPlayingFile = true
+            filePlaybackProgress = 0
+            addLog("Playing: \(playlist[index].name)", color: .proAccent)
+        } catch {
+            addLog("Playback error: \(error.localizedDescription)", color: .proRed)
+            isPlayingFile = false
+        }
+    }
+
+    private func toggleFilePlayback() {
+        if isPlayingFile {
+            audioPlayer?.pause()
+            isPlayingFile = false
+        } else if let idx = currentTrackIndex {
+            if audioPlayer != nil {
+                audioPlayer?.play()
+                isPlayingFile = true
+            } else {
+                playTrack(at: idx)
+            }
+        } else if !playlist.isEmpty {
+            playTrack(at: 0)
+        }
+    }
+
+    private func nextTrack() {
+        guard !playlist.isEmpty else { return }
+        let next = ((currentTrackIndex ?? -1) + 1) % playlist.count
+        playTrack(at: next)
+    }
+
+    private func previousTrack() {
+        guard !playlist.isEmpty else { return }
+        // If more than 3 seconds into the track, restart it; otherwise go to previous
+        if let player = audioPlayer, player.currentTime > 3.0 {
+            player.currentTime = 0
+            return
+        }
+        let prev = ((currentTrackIndex ?? 1) - 1 + playlist.count) % playlist.count
+        playTrack(at: prev)
+    }
+
+    private func checkFilePlayback() {
+        guard isPlayingFile, let player = audioPlayer else { return }
+        if player.duration > 0 {
+            filePlaybackProgress = player.currentTime / player.duration
+        }
+        // Auto-advance when track finishes
+        if !player.isPlaying && isPlayingFile {
+            nextTrack()
+        }
+    }
+
+    private func formatTime(_ time: TimeInterval) -> String {
+        let m = Int(time) / 60
+        let s = Int(time) % 60
+        return String(format: "%d:%02d", m, s)
     }
 
     // MARK: - Devices
