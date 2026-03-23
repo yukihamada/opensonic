@@ -751,6 +751,9 @@ struct ProDashboardView: View {
         }
         setBroadcastChannel()
 
+        // Ensure relay connection first
+        receiver.ensureBridgeRelayConnected()
+
         // Start TX based on selected source
         let source = audioSourceManager.selectedSource
         switch source?.type {
@@ -774,8 +777,8 @@ struct ProDashboardView: View {
         case .microphone, .inputDevice:
             receiver.toggleMic()
         case .noSource, nil:
-            addLog("No source selected", color: .proRed)
-            return
+            // Default to mic if no source explicitly selected
+            receiver.toggleMic()
         }
         addLog("Broadcast started on \(channel)", color: .proGreen)
     }
