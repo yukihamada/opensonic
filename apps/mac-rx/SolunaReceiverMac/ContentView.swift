@@ -2921,11 +2921,10 @@ private struct SpectrumView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.secondary)
 
-            GeometryReader { geo in
-                let barW = max(3, (geo.size.width - CGFloat(31 * 2)) / 32)
-                let h = geo.size.height
-                HStack(alignment: .bottom, spacing: 2) {
-                    ForEach(0..<32, id: \.self) { i in
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(0..<32, id: \.self) { i in
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
                         RoundedRectangle(cornerRadius: 2)
                             .fill(
                                 LinearGradient(
@@ -2934,7 +2933,7 @@ private struct SpectrumView: View {
                                     endPoint: .top
                                 )
                             )
-                            .frame(width: barW, height: h * CGFloat(bands[i]))
+                            .frame(height: 80 * CGFloat(bands[i]))
                     }
                 }
             }
