@@ -88,50 +88,32 @@ final class SDKAudioTransmitter: ObservableObject {
         tv = timeval(tv_sec: 0, tv_usec: 0)
         setsockopt(udpSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
-        // Start audio engine with mic input
+        // Start audio engine: inputNode → mixerNode (converts to 48kHz mono) → mainMixer (muted)
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
         let hwFormat = inputNode.outputFormat(forBus: 0)
+        let mono48k = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
 
         print("[SDKTx] Mic HW: \(hwFormat.sampleRate)Hz, \(hwFormat.channelCount)ch")
 
-        // Resample ratio: adjust packet timing to match actual sample rate
-        let hwRate = hwFormat.sampleRate
-        let targetRate = 48000.0
-        let resampleRatio = targetRate / hwRate  // e.g., 48000/44100 = 1.088
-        let hwSamplesPerPacket = Int(Double(samplesPerPacket) / resampleRatio)  // samples to collect at hw rate
+        // Mixer node for sample rate conversion
+        let mixerNode = AVAudioMixerNode()
+        engine.attach(mixerNode)
+        engine.connect(inputNode, to: mixerNode, format: hwFormat)
+        engine.connect(mixerNode, to: engine.mainMixerNode, format: mono48k)
+        engine.mainMixerNode.outputVolume = 0  // Don't play through speakers
 
         var sampleBuffer = [Float]()
-        let spp = hwSamplesPerPacket
 
-        // Tap at hardware native format (guaranteed to work)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: hwFormat) { [weak self] buffer, _ in
+        // Tap on mixer with 48kHz mono — mixer converts sample rate
+        mixerNode.installTap(onBus: 0, bufferSize: 4096, format: mono48k) { [weak self] buffer, _ in
             guard let self, self._isTransmittingAtomic else { return }
             guard self._micEnabledAtomic else { return }
 
-            // Extract first channel (mono)
             guard let data = buffer.floatChannelData?[0] else { return }
-            let frameCount = Int(buffer.frameLength)
+            for i in 0..<Int(buffer.frameLength) { sampleBuffer.append(data[i]) }
 
-            if hwRate == targetRate {
-                // No resampling needed
-                for i in 0..<frameCount { sampleBuffer.append(data[i]) }
-            } else {
-                // Simple linear interpolation resample to 48kHz
-                let outCount = Int(Double(frameCount) * resampleRatio)
-                for i in 0..<outCount {
-                    let srcPos = Double(i) / resampleRatio
-                    let idx = Int(srcPos)
-                    let frac = Float(srcPos - Double(idx))
-                    if idx + 1 < frameCount {
-                        sampleBuffer.append(data[idx] * (1 - frac) + data[idx + 1] * frac)
-                    } else if idx < frameCount {
-                        sampleBuffer.append(data[idx])
-                    }
-                }
-            }
-
-            // Send 96-sample packets (at 48kHz rate)
+            // Send 96-sample packets (48kHz)
             let pktSize = self.samplesPerPacket
             while sampleBuffer.count >= pktSize {
                 let samples = Array(sampleBuffer.prefix(pktSize))
@@ -171,7 +153,12 @@ final class SDKAudioTransmitter: ObservableObject {
         listenerCleanupTimer?.invalidate()
         listenerCleanupTimer = nil
         stopBonjourAndRegistration()
-        engine?.inputNode.removeTap(onBus: 0)
+        // Remove tap from mixer node (not input node)
+        if let eng = engine {
+            for node in eng.attachedNodes where node is AVAudioMixerNode {
+                (node as! AVAudioMixerNode).removeTap(onBus: 0)
+            }
+        }
         engine?.stop()
         engine = nil
         if udpSocket >= 0 { Darwin.close(udpSocket); udpSocket = -1 }
