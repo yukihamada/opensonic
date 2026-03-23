@@ -18,6 +18,8 @@ final class SDKAudioTransmitter: ObservableObject {
     private var engine: AVAudioEngine?
     nonisolated(unsafe) private var udpSocket: Int32 = -1
     nonisolated(unsafe) private var relayAddr = sockaddr_in()
+    nonisolated(unsafe) private var lanSocket: Int32 = -1
+    nonisolated(unsafe) private var lanAddr = sockaddr_in()
     nonisolated(unsafe) private var seqNum: UInt16 = 0
     nonisolated(unsafe) private var timestamp: UInt32 = 0
     nonisolated(unsafe) private let ssrc: UInt32 = UInt32.random(in: 0...UInt32.max)
@@ -45,11 +47,23 @@ final class SDKAudioTransmitter: ObservableObject {
         memcpy(&relayAddr, info.pointee.ai_addr, Int(info.pointee.ai_addrlen))
         freeaddrinfo(res)
 
-        // Create UDP socket
+        // Create relay UDP socket
         udpSocket = socket(AF_INET, SOCK_DGRAM, 0)
         guard udpSocket >= 0 else { print("[SDKTx] socket() failed"); return }
 
-        // Send JOIN
+        // Create LAN multicast socket (239.69.0.1:5004)
+        lanSocket = socket(AF_INET, SOCK_DGRAM, 0)
+        if lanSocket >= 0 {
+            lanAddr.sin_family = sa_family_t(AF_INET)
+            lanAddr.sin_port = UInt16(5004).bigEndian
+            inet_pton(AF_INET, "239.69.0.1", &lanAddr.sin_addr)
+            // Set TTL for multicast
+            var ttl: UInt8 = 1
+            setsockopt(lanSocket, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, socklen_t(MemoryLayout<UInt8>.size))
+            print("[SDKTx] LAN multicast ready (239.69.0.1:5004)")
+        }
+
+        // Send JOIN to relay
         let deviceName = Host.current().localizedName ?? "SolunaSDK-Mac"
         sendUDP("JOIN:\(channel)::\(deviceName)\n")
 
@@ -121,10 +135,8 @@ final class SDKAudioTransmitter: ObservableObject {
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         engine = nil
-        if udpSocket >= 0 {
-            Darwin.close(udpSocket)
-            udpSocket = -1
-        }
+        if udpSocket >= 0 { Darwin.close(udpSocket); udpSocket = -1 }
+        if lanSocket >= 0 { Darwin.close(lanSocket); lanSocket = -1 }
         packetsSent = 0
         print("[SDKTx] Stopped")
     }
@@ -171,12 +183,23 @@ final class SDKAudioTransmitter: ObservableObject {
         packet[crcOffset + 2] = UInt8(truncatingIfNeeded: crc >> 16)
         packet[crcOffset + 3] = UInt8(truncatingIfNeeded: crc >> 24)
 
-        // Send
+        // Send to relay (WAN)
         packet.withUnsafeBufferPointer { buf in
             withUnsafePointer(to: relayAddr) { addr in
                 let sa = UnsafeRawPointer(addr).assumingMemoryBound(to: sockaddr.self)
                 _ = sendto(udpSocket, buf.baseAddress!, packet.count, 0, sa,
                           socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+
+        // Send to LAN multicast (low latency, same WiFi)
+        if lanSocket >= 0 {
+            packet.withUnsafeBufferPointer { buf in
+                withUnsafePointer(to: lanAddr) { addr in
+                    let sa = UnsafeRawPointer(addr).assumingMemoryBound(to: sockaddr.self)
+                    _ = sendto(lanSocket, buf.baseAddress!, packet.count, 0, sa,
+                              socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
             }
         }
 
