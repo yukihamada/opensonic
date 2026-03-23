@@ -107,6 +107,7 @@ struct ProDashboardView: View {
             isStreaming = SDKAudioReceiver.shared.isPlaying
             masterVolume = SDKAudioReceiver.shared.volume
             isMuted = SDKAudioReceiver.shared.isMuted
+            print("[ProDash] Dashboard opened!")
             addLog("Dashboard opened", color: .proAccent)
             registry.refresh()
             audioSourceManager.refresh()
@@ -694,6 +695,7 @@ struct ProDashboardView: View {
 
     private var goLiveButton: some View {
         Button {
+            print("[ProDash] GO LIVE tapped, isBroadcasting=\(isBroadcasting)")
             if isBroadcasting {
                 stopBroadcast()
             } else {
@@ -718,7 +720,7 @@ struct ProDashboardView: View {
                     .stroke(isBroadcasting ? Color.proRed : Color.proGreen, lineWidth: 2)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
     }
 
     // MARK: - Devices (compact bottom bar)
@@ -939,10 +941,12 @@ struct ProDashboardView: View {
     }
 
     private func startBroadcast() {
+        print("[ProDash] startBroadcast called, channel=\(broadcastChannel)")
         if broadcastChannel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             broadcastChannel = channel
         }
         setBroadcastChannel()
+        print("[ProDash] Starting SDKAudioTransmitter on \(broadcastChannel)")
         // Start transmitter (mic off, system audio on)
         SDKAudioTransmitter.shared.start(channel: broadcastChannel, micEnabled: false)
         // Start system audio capture → forward to transmitter

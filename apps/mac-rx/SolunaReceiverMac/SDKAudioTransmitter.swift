@@ -88,18 +88,19 @@ final class SDKAudioTransmitter: ObservableObject {
         tv = timeval(tv_sec: 0, tv_usec: 0)
         setsockopt(udpSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
-        // Start audio engine with mic input (simple: native format, no conversion)
+        // Start audio engine with mic input → 48kHz mono
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
+        let hwFormat = inputNode.outputFormat(forBus: 0)
+        let tapFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
 
-        print("[SDKTx] Mic: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
+        print("[SDKTx] Mic HW: \(hwFormat.sampleRate)Hz, \(hwFormat.channelCount)ch → tap: 48000Hz 1ch")
 
         var sampleBuffer = [Float]()
         let spp = samplesPerPacket
-        let channels = Int(inputFormat.channelCount)
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
+        // Tap with 48kHz mono format — AVAudioEngine converts internally
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: tapFormat) { [weak self] buffer, _ in
             guard let self, self._isTransmittingAtomic else { return }
             guard self._micEnabledAtomic else { return }
 
@@ -233,9 +234,9 @@ final class SDKAudioTransmitter: ObservableObject {
     /// Send system audio from ScreenCaptureKit CMSampleBuffer (called from audio callback)
     /// Send system audio from ScreenCaptureKit (skipped when mic is ON — mic takes priority)
     nonisolated func sendSystemAudio(_ sampleBuffer: CMSampleBuffer) {
-        guard udpSocket >= 0 else { return }
+        guard udpSocket >= 0 else { print("[SDKTx] sendSystemAudio: no socket"); return }
         guard !_micEnabledAtomic else { return }  // Mic ON → mic audio takes priority
-        guard let blockBuffer = sampleBuffer.dataBuffer else { return }
+        guard let blockBuffer = sampleBuffer.dataBuffer else { print("[SDKTx] sendSystemAudio: no data"); return }
         var length = 0
         var dataPointer: UnsafeMutablePointer<Int8>?
         CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &dataPointer)
