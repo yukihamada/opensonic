@@ -752,31 +752,16 @@ struct ProDashboardView: View {
         setBroadcastChannel()
         addLog("Connecting to relay...", color: .proAccent)
 
-        // Wait for relay connection THEN start TX
+        // Connect relay, then start TX directly (bypass toggleMic's nested completion)
         receiver.ensureBridgeRelayConnected(channel: broadcastChannel) { [self] ok in
             if !ok { addLog("Relay failed — LAN only", color: .proRed) }
 
-            let source = audioSourceManager.selectedSource
-            switch source?.type {
-            case .systemAudio:
-                receiver.toggleShmTransmit()
-                if !receiver.isShmTransmitting {
-                    addLog("System audio TX unavailable, using mic", color: .proAccent)
-                    receiver.toggleMic()
-                }
-            case .audioFile:
-                receiver.toggleShmTransmit()
-                if !receiver.isShmTransmitting {
-                    addLog("Using mic for file broadcast", color: .proAccent)
-                    receiver.toggleMic()
-                }
-                if !playlist.isEmpty && !isPlayingFile { playTrack(at: 0) }
-            case .microphone, .inputDevice:
-                receiver.toggleMic()
-            case .noSource, nil:
-                receiver.toggleMic()
+            // Start mic TX directly
+            if receiver.startMicTransmitDirect() {
+                addLog("Mic TX started on \(channel)", color: .proGreen)
+            } else {
+                addLog("Mic TX failed to start", color: .proRed)
             }
-            addLog("Broadcast started on \(channel)", color: .proGreen)
         }
     }
 

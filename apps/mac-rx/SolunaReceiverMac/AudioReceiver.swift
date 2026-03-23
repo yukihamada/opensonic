@@ -516,6 +516,16 @@ final class AudioReceiver: ObservableObject {
         }
     }
 
+    /// Start mic TX directly (bypasses permission re-check, for Pro Dashboard)
+    @discardableResult
+    func startMicTransmitDirect() -> Bool {
+        if receiver.startMicTransmit() {
+            isMicTransmitting = true
+            return true
+        }
+        return false
+    }
+
     /// Toggle system audio transmit (Soluna virtual device) on/off
     func toggleShmTransmit() {
         if isShmTransmitting {
@@ -550,11 +560,13 @@ final class AudioReceiver: ObservableObject {
         let devId = deviceId
 
         // C++ _impl must exist for connectToRelay to work — start() creates it
-        // connect() auto-disconnects old connection internally
-        // This also starts the C++ recv loop (needed for HELLO keepalive)
         if receiver.state == .stopped {
             receiver.start()
         }
+
+        // Stop SDK relay to avoid it stealing the JOIN as listener
+        let sdk = SDKAudioReceiver.shared
+        if sdk.state != .stopped { sdk.stop() }
 
         // connect() closes old socket first (unblocks recvfrom), then joins thread
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
