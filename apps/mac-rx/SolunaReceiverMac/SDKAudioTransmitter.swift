@@ -69,46 +69,32 @@ final class SDKAudioTransmitter: ObservableObject {
         // Start audio engine with mic input
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
+        let hwFormat = inputNode.outputFormat(forBus: 0)
 
-        // Target format: 48kHz mono Float32
-        let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
+        // Request 48kHz mono directly from the engine (AVAudioEngine handles conversion)
+        let tapFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
 
-        // Install tap - capture mic audio
-        let converter = AVAudioConverter(from: inputFormat, to: targetFormat)
+        // Use a mixer node to convert sample rate if hardware differs
+        let mixerNode = AVAudioMixerNode()
+        engine.attach(mixerNode)
+        engine.connect(inputNode, to: mixerNode, format: hwFormat)
+        // mixerNode output at 48kHz mono
+        engine.connect(mixerNode, to: engine.mainMixerNode, format: tapFormat)
+        engine.mainMixerNode.outputVolume = 0  // Don't play back mic through speakers
+
         var sampleBuffer = [Float]()
         let spp = samplesPerPacket
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
+        mixerNode.installTap(onBus: 0, bufferSize: UInt32(spp * 4), format: tapFormat) { [weak self] buffer, _ in
             guard let self, self.isTransmitting else { return }
-            // Mic off → skip audio (keepalive maintains connection)
             guard self._micEnabledAtomic else {
-                // Still advance timestamp to keep stream alive
                 self.timestamp &+= UInt32(buffer.frameLength)
                 return
             }
 
-            // Convert to 48kHz mono if needed
-            if let converter, inputFormat.sampleRate != 48000 || inputFormat.channelCount != 1 {
-                let ratio = 48000.0 / inputFormat.sampleRate
-                let outputFrames = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
-                guard let converted = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrames) else { return }
-                var error: NSError?
-                converter.convert(to: converted, error: &error) { _, outStatus in
-                    outStatus.pointee = .haveData
-                    return buffer
-                }
-                if let data = converted.floatChannelData?[0] {
-                    for i in 0..<Int(converted.frameLength) {
-                        sampleBuffer.append(data[i])
-                    }
-                }
-            } else {
-                if let data = buffer.floatChannelData?[0] {
-                    for i in 0..<Int(buffer.frameLength) {
-                        sampleBuffer.append(data[i])
-                    }
-                }
+            guard let data = buffer.floatChannelData?[0] else { return }
+            for i in 0..<Int(buffer.frameLength) {
+                sampleBuffer.append(data[i])
             }
 
             // Send packets when we have enough samples
@@ -142,7 +128,12 @@ final class SDKAudioTransmitter: ObservableObject {
         isTransmitting = false
         heartbeatTimer?.invalidate()
         heartbeatTimer = nil
-        engine?.inputNode.removeTap(onBus: 0)
+        // Remove tap from mixer node (not inputNode — tap is on mixer)
+        if let eng = engine {
+            for node in [eng.mainMixerNode] + eng.attachedNodes.compactMap({ $0 as? AVAudioMixerNode }) {
+                node.removeTap(onBus: 0)
+            }
+        }
         engine?.stop()
         engine = nil
         if udpSocket >= 0 {
