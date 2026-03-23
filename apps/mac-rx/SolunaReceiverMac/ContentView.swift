@@ -2934,7 +2934,7 @@ private struct SpectrumView: View {
                                     endPoint: .top
                                 )
                             )
-                            .frame(width: barW, height: max(2, h * CGFloat(bands[i])))
+                            .frame(width: barW, height: h * CGFloat(bands[i]))
                     }
                 }
             }
@@ -2956,10 +2956,12 @@ private struct SpectrumView: View {
             // Smooth: fast attack, slow decay
             for i in 0..<min(bands.count, raw.count) {
                 if raw[i] > bands[i] {
-                    bands[i] = bands[i] * 0.3 + raw[i] * 0.7  // fast rise
+                    bands[i] = bands[i] * 0.3 + raw[i] * 0.7
                 } else {
-                    bands[i] = bands[i] * 0.85 + raw[i] * 0.15 // slow fall
+                    bands[i] = bands[i] * 0.85 + raw[i] * 0.15
                 }
+                // Floor: snap to zero below threshold
+                if bands[i] < 0.02 { bands[i] = 0 }
             }
         }
         .animation(.linear(duration: 0.03), value: bands)
