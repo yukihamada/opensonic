@@ -431,45 +431,69 @@ struct ProDashboardView: View {
         UserDefaults.standard.bool(forKey: "isProSubscribed")
     }
 
+    @State private var useCustomChannel = false
+    private var purchasedChannel: String? {
+        UserDefaults.standard.string(forKey: "purchasedChannel")
+    }
+
     private var channelsSection: some View {
         proCard(title: "MY CHANNEL", icon: "antenna.radiowaves.left.and.right") {
             VStack(spacing: 12) {
-                // Channel name: PRO = custom input, Free = random only
-                if isPro {
+                // Channel type switcher
+                HStack(spacing: 6) {
+                    channelTab("Random", icon: "dice", active: !useCustomChannel) {
+                        useCustomChannel = false
+                        generateRandomChannel()
+                    }
+                    channelTab(
+                        isPro ? (purchasedChannel ?? "Custom") : "Custom",
+                        icon: "crown.fill",
+                        active: useCustomChannel,
+                        locked: !isPro
+                    ) {
+                        if isPro {
+                            useCustomChannel = true
+                            if let name = purchasedChannel {
+                                broadcastChannel = name
+                                setBroadcastChannel()
+                            }
+                        } else {
+                            showUpgrade = true
+                        }
+                    }
+                }
+
+                // Channel display
+                if useCustomChannel && isPro {
+                    // Custom channel input (Pro)
                     HStack(spacing: 8) {
-                        Image(systemName: "number")
-                            .font(.system(size: 12))
-                            .foregroundColor(.proAccent)
-                        TextField("Channel name", text: $broadcastChannel)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 14, weight: .medium, design: .monospaced))
-                            .foregroundColor(.proText)
-                            .onSubmit { setBroadcastChannel() }
                         Image(systemName: "crown.fill")
                             .font(.system(size: 10))
                             .foregroundColor(.yellow)
+                        TextField("Channel name", text: $broadcastChannel)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            .foregroundColor(.proAccent)
+                            .onSubmit { setBroadcastChannel() }
                     }
                     .padding(8)
                     .background(Color.proBg)
                     .cornerRadius(4)
                     .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proAccent.opacity(0.3)))
                 } else {
+                    // Random channel
                     HStack(spacing: 8) {
                         Image(systemName: "number")
                             .font(.system(size: 12))
                             .foregroundColor(.proTextDim)
-                        Text(broadcastChannel.isEmpty ? "live-xxxxxx" : broadcastChannel)
+                        Text(broadcastChannel)
                             .font(.system(size: 14, weight: .medium, design: .monospaced))
-                            .foregroundColor(.proTextDim)
+                            .foregroundColor(.proText)
                         Spacer()
                         Button { generateRandomChannel() } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "dice")
-                                    .font(.system(size: 10))
-                                Text("Random")
-                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            }
-                            .foregroundColor(.proAccent)
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 11))
+                                .foregroundColor(.proAccent)
                         }
                         .buttonStyle(.plain)
                     }
@@ -477,19 +501,6 @@ struct ProDashboardView: View {
                     .background(Color.proBg)
                     .cornerRadius(4)
                     .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.proBorder))
-
-                    // Upgrade hint
-                    Button { showUpgrade = true } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "crown.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(.yellow)
-                            Text("Upgrade to PRO for custom channel names")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.proTextDim)
-                        }
-                    }
-                    .buttonStyle(.plain)
                 }
 
                 // Audio source picker
@@ -562,6 +573,30 @@ struct ProDashboardView: View {
 
     private var isBroadcasting: Bool {
         receiver.isMicTransmitting || receiver.isShmTransmitting
+    }
+
+    private func channelTab(_ label: String, icon: String, active: Bool, locked: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 10))
+                    .foregroundColor(locked ? .proTextDim : (active ? .white : .proTextDim))
+                Text(label)
+                    .font(.system(size: 11, weight: active ? .bold : .medium, design: .monospaced))
+                    .foregroundColor(active ? .white : .proTextDim)
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 8))
+                        .foregroundColor(.proTextDim)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(active ? Color.proAccent.opacity(0.3) : Color.proBg)
+            .cornerRadius(4)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(active ? Color.proAccent.opacity(0.5) : Color.proBorder))
+        }
+        .buttonStyle(.plain)
     }
 
     private var latencySettingsPanel: some View {
