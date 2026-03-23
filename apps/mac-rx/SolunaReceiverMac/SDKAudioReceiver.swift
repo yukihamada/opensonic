@@ -503,12 +503,19 @@ final class SDKAudioReceiver: ObservableObject {
         }
     }
 
-    /// Dynamic prefill threshold: base prefill + extra buffer to compensate for low-latency devices.
-    /// All devices target the same total latency (targetTotalLatencyMs).
-    /// High-latency devices (Bluetooth) get less extra buffer; low-latency devices (wired) get more.
+    /// Whether the output device latency exceeds the target (BT can't meet sync)
+    @Published private(set) var latencyExceeded: Bool = false
+
+    /// Dynamic prefill threshold with BT latency compensation.
     private var dynamicPrefillThreshold: Int {
-        let extraMs = max(0, targetTotalLatencyMs - outputLatencyMs)
-        let extraFrames = Int(extraMs * 48.0)
+        let gap = targetTotalLatencyMs - outputLatencyMs
+        if gap < 0 {
+            // BT latency exceeds target — can't sync, minimize prefill
+            latencyExceeded = true
+            return Int(max(20, targetTotalLatencyMs) * 48.0)
+        }
+        latencyExceeded = false
+        let extraFrames = Int(gap * 48.0)
         return basePrefillThreshold + extraFrames
     }
 

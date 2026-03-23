@@ -62,7 +62,7 @@ struct ChannelSettingsView: View {
                 }
 
                 Section {
-                    Text("Lower latency = more real-time but may cause audio gaps on slow connections. Radio mode (300ms) is recommended for music streaming.")
+                    Text("Lower latency = more real-time but may cause audio gaps on slow connections. Radio mode (300ms) is recommended for music streaming.\n\nIf a listener's Bluetooth latency exceeds this target, their device will play at the lowest achievable latency with a sync warning.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
