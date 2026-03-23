@@ -372,7 +372,13 @@ final class SDKAudioReceiver: ObservableObject {
         var magnitudes = [Float](repeating: 0, count: halfN)
         vDSP_zvmags(&splitComplex, 1, &magnitudes, 1, vDSP_Length(halfN))
 
-        // Convert to dB scale (10 * log10)
+        // Normalize by FFT size squared (energy scaling)
+        var scale: Float = 4.0 / Float(fftSize * fftSize)
+        vDSP_vsmul(magnitudes, 1, &scale, &magnitudes, 1, vDSP_Length(halfN))
+
+        // Add epsilon to avoid log(0), then convert to dB
+        var epsilon: Float = 1e-10
+        vDSP_vsadd(magnitudes, 1, &epsilon, &magnitudes, 1, vDSP_Length(halfN))
         var one: Float = 1.0
         vDSP_vdbcon(magnitudes, 1, &one, &magnitudes, 1, vDSP_Length(halfN), 0)
 
@@ -395,8 +401,8 @@ final class SDKAudioReceiver: ObservableObject {
                 for b in binLow...binHigh {
                     maxVal = max(maxVal, magnitudes[b])
                 }
-                // Normalize: -60dB..0dB → 0.0..1.0
-                bands[i] = max(0, min(1, (maxVal + 60) / 60))
+                // Normalize: -80dB..0dB → 0.0..1.0
+                bands[i] = max(0, min(1, (maxVal + 80) / 80))
             }
         }
 
