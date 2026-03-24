@@ -1,0 +1,18 @@
+[package]
+name = "soluna-quic-relay"
+version = "0.1.0"
+edition = "2021"
+description = "QUIC-to-UDP bridge for Soluna relay server, with WebTransport support"
+
+[[bin]]
+name = "soluna-quic-bridge"
+path = "src/main.rs"
+
+[dependencies]
+soluna-core = { path = "../soluna-core", features = ["quic"] }
+quinn = "0.11"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros", "signal"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rcgen = "0.13"
+ring = "0.17"
+wtransport = "0.7"

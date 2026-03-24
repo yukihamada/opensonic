@@ -2022,10 +2022,14 @@ static int rx_main(int argc, char** argv) {
         total_rx++;
         metrics.pkts_rx++;
 
-        // Decode samples into int32 (ring buffer native format — matched with iOS/Mac)
+        uint8_t pt = rtp->m_pt & 0x7F;
+        // Only decode PT=96 (S24 PCM stereo). Skip everything else.
+        if (pt != 96) continue;
+
+        // Decode samples into int32 (ring buffer native format)
         size_t frames;
         if (is_ostp) {
-            // OSTP: int32 samples (24-bit range), keep as-is
+            // PT=96: S24-in-S32LE stereo PCM
             frames = payload_n / (sizeof(int32_t) * channels);
             size_t samples = frames * channels;
             size_t max_samples = sizeof(decode_buf) / sizeof(int32_t);

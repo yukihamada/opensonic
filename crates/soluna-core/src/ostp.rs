@@ -35,7 +35,9 @@ pub struct OstpPacket<'a> {
     pub rtp: RtpHeader,
     pub ostp: OstpHeader,
     pub payload: &'a [u8],
-    /// Number of TX channels decoded from stream_id upper 4 bits.
+    /// Deck ID decoded from stream_id bits [15:14].
+    pub deck_id: u8,
+    /// Number of TX channels decoded from stream_id bits [13:10].
     /// 0 = legacy (assume 2ch).
     pub tx_channels: u32,
 }
@@ -46,6 +48,8 @@ pub const PT_F32: u8 = 97;
 pub const PT_OPUS: u8 = 98;
 pub const PT_AES67_L24: u8 = 10;
 pub const PT_AES67_L16: u8 = 11;
+pub const PT_ADPCM_STEREO: u8 = 115;
+pub const PT_ADPCM_MONO: u8 = 116;
 
 const OSTP_PROFILE: u16 = 0x4F53; // "OS"
 const RTP_HEADER_SIZE: usize = 12;
@@ -117,28 +121,21 @@ pub fn parse(data: &[u8]) -> Option<OstpPacket<'_>> {
 
     let payload_start = ostp_off + OSTP_HEADER_SIZE;
 
-    // Determine payload end (check for CRC-32 trailer)
-    // C++ stores CRC in big-endian, computed over payload only
-    let (payload_end, has_crc) = if data.len() >= payload_start + CRC_TRAILER_SIZE + 1 {
-        let crc_off = data.len() - CRC_TRAILER_SIZE;
-        let stored_crc = u32::from_be_bytes([
-            data[crc_off],
-            data[crc_off + 1],
-            data[crc_off + 2],
-            data[crc_off + 3],
-        ]);
-        let payload_data = &data[payload_start..crc_off];
-        let computed = crc32_ieee(payload_data);
-        if stored_crc == computed {
-            (crc_off, true)
-        } else {
-            // CRC doesn't match — treat entire remainder as payload (no CRC)
-            (data.len(), false)
-        }
+    // Determine payload end (check for CRC-32 trailer).
+    // C++ OSTP packets include a CRC-32 trailer (big-endian, over payload).
+    // Verify CRC and strip if valid. If CRC doesn't match, still strip the
+    // last 4 bytes — they are almost certainly a CRC trailer with bit errors.
+    // This matches the JS decoder behavior (channel.html) which unconditionally
+    // removes the last 4 bytes.
+    let payload_end = if data.len() >= payload_start + CRC_TRAILER_SIZE + 1 {
+        // Always strip the last 4 bytes. All OSTP packets include CRC.
+        // CRC verification failure (bit errors) should not include the
+        // CRC bytes as part of the payload, as that corrupts codecs like
+        // ADPCM which decode nibble-by-nibble.
+        data.len() - CRC_TRAILER_SIZE
     } else {
-        (data.len(), false)
+        data.len()
     };
-    let _ = has_crc;
 
     if payload_end <= payload_start {
         return None;
@@ -146,20 +143,24 @@ pub fn parse(data: &[u8]) -> Option<OstpPacket<'_>> {
 
     let payload = &data[payload_start..payload_end];
 
-    // Decode TX channel count from stream_id upper 4 bits
-    let ch_code = (ostp.stream_id >> 12) & 0xF;
+    // Decode deck_id from stream_id bits [15:14]
+    let deck_id = ((ostp.stream_id >> 14) & 0x3) as u8;
+    // Decode TX channel count from stream_id bits [13:10]
+    let ch_code = (ostp.stream_id >> 10) & 0xF;
     let tx_channels = if ch_code == 0 { 2 } else { ch_code as u32 }; // 0 = legacy 2ch
 
     Some(OstpPacket {
         rtp,
         ostp,
         payload,
+        deck_id,
         tx_channels,
     })
 }
 
 /// IEEE 802.3 CRC-32.
-fn crc32_ieee(data: &[u8]) -> u32 {
+/// Used to compute CRC-32 trailer for OSTP packets.
+pub fn crc32_ieee(data: &[u8]) -> u32 {
     let mut crc: u32 = 0xFFFF_FFFF;
     for &b in data {
         crc ^= b as u32;

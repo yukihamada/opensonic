@@ -263,7 +263,9 @@ impl SolunaPlayer {
         let pkt = match ostp::parse(data) {
             Some(p) => p,
             None => {
-                self.push_raw_s16(data);
+                // Not a valid OSTP packet — drop silently.
+                // Previously this called push_raw_s16() which interpreted raw
+                // bytes (including RTP headers) as S16LE audio, producing noise.
                 return;
             }
         };
@@ -315,9 +317,14 @@ impl SolunaPlayer {
         }
 
         // Convert payload based on payload type
-        let tx_ch = pkt.tx_channels as usize;
+        let mut tx_ch = pkt.tx_channels as usize;
         match pkt.rtp.payload_type {
-            ostp::PT_PCM24 | ostp::PT_AES67_L24 => {
+            ostp::PT_PCM24 => {
+                // OSTP PT=96: S24-in-S32LE (24-bit values in 4-byte containers)
+                convert::s24_in_s32le_to_f32(pkt.payload, &mut self.conv_buf);
+            }
+            ostp::PT_AES67_L24 => {
+                // AES67: packed 3-byte S24LE
                 convert::s24le_to_f32(pkt.payload, &mut self.conv_buf);
             }
             ostp::PT_AES67_L16 => {
@@ -326,8 +333,23 @@ impl SolunaPlayer {
             ostp::PT_F32 => {
                 convert::f32le_to_f32(pkt.payload, &mut self.conv_buf);
             }
+            ostp::PT_ADPCM_MONO => {
+                // ADPCM mono: decoder always produces mono samples.
+                // Force tx_ch=1 regardless of stream_id to avoid misinterpreting
+                // mono samples as interleaved stereo in write_pcm_to_ring.
+                convert::adpcm_to_f32(pkt.payload, &mut self.conv_buf);
+                tx_ch = 1;
+            }
+            ostp::PT_ADPCM_STEREO => {
+                // ADPCM stereo: decoder produces interleaved samples.
+                convert::adpcm_to_f32(pkt.payload, &mut self.conv_buf);
+                tx_ch = 2;
+            }
             _ => {
-                convert::s32le_to_f32(pkt.payload, &mut self.conv_buf);
+                // Unknown payload type (NACK=126, FEC=127, etc.) — skip.
+                // Previously this decoded as S32LE, injecting garbage into the
+                // ring buffer from control packets.
+                return;
             }
         }
 
@@ -398,34 +420,33 @@ impl SolunaPlayer {
     }
 
     /// Update sync target based on media_timestamp.
-    /// Matches iOS AudioReceiverBridge.mm L1793-1840.
+    /// media_ts is wall-clock milliseconds (32-bit, ~49.7 day rollover).
     fn update_sync_target(&mut self, media_ts: u32, now_ms: f64) {
-        // Convert JS wall-clock (ms) to 32-bit nanosecond (same truncation as iOS CLOCK_REALTIME)
-        let now_ns64 = (now_ms * 1_000_000.0) as u64;
-        let now_ns32 = (now_ns64 & 0xFFFF_FFFF) as u32;
+        // Work in milliseconds throughout (media_ts is ms from TX)
+        let now_ms32 = (now_ms as u64 & 0xFFFF_FFFF) as u32;
 
-        // Apply clock offset correction: adjust local time to relay/TX time frame
-        let offset_ns32 = (self.clock_offset_ns & 0xFFFF_FFFF) as i32;
-        let net_delay_ns = (now_ns32.wrapping_sub(media_ts) as i32) + offset_ns32;
+        // Apply clock offset correction (convert ns offset to ms)
+        let offset_ms = (self.clock_offset_ns / 1_000_000) as i32;
+        let net_delay_ms = (now_ms32.wrapping_sub(media_ts) as i32) + offset_ms;
 
         // Reject absurd values (negative or > 2 seconds)
-        if net_delay_ns < 0 || net_delay_ns > 2_000_000_000 {
+        if net_delay_ms < 0 || net_delay_ms > 2000 {
             return;
         }
 
-        self.net_delay_ns = net_delay_ns;
+        // Store as ns for API compatibility
+        self.net_delay_ns = net_delay_ms * 1_000_000;
 
-        // Median filter: store in history
+        // Median filter: store in history (as ns)
         let idx = (self.sync_history_idx % 5) as usize;
-        self.sync_history[idx] = net_delay_ns;
+        self.sync_history[idx] = self.net_delay_ns;
         self.sync_history_idx += 1;
 
         // Compute target buffer fill from sync delay
-        let sync_delay_ns = (self.sync_delay_ms as i32) * 1_000_000;
-        let buffer_ns = sync_delay_ns - net_delay_ns;
-        let buffer_ns = buffer_ns.max(5_000_000); // 5ms floor
+        let buffer_ms = (self.sync_delay_ms as i32) - net_delay_ms;
+        let buffer_ms = buffer_ms.max(5); // 5ms floor
 
-        let target = ((buffer_ns as i64 * SAMPLE_RATE as i64) / 1_000_000_000) as u32;
+        let target = ((buffer_ms as i64 * SAMPLE_RATE as i64) / 1000) as u32;
 
         // Adaptive EMA (matches iOS)
         let prev = self.target_fill_frames;
@@ -446,6 +467,8 @@ impl SolunaPlayer {
     }
 
     /// Fallback: push raw S16LE PCM (no OSTP header).
+    /// Currently unused — invalid OSTP packets are silently dropped.
+    #[allow(dead_code)]
     fn push_raw_s16(&mut self, data: &[u8]) {
         convert::s16le_to_f32(data, &mut self.conv_buf);
         let ch = self.tx_channels as usize;
@@ -787,7 +810,8 @@ impl SolunaTx {
     #[wasm_bindgen(constructor)]
     pub fn new(channels: u32, stream_id_base: u16) -> Self {
         let ch = channels.max(1).min(8);
-        let stream_id = ((ch as u16) << 12) | (stream_id_base & 0x0FFF);
+        let deck_id: u16 = 0; // TODO: make configurable
+        let stream_id = (deck_id << 14) | ((ch as u16) << 10) | (stream_id_base & 0x03FF);
         let ssrc = (js_sys::Date::now() as u32) ^ 0xDEAD_BEEF;
         Self {
             channels: ch,

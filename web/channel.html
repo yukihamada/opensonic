@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="Listen to Soluna Radio — tap to play.">
+    <meta name="theme-color" content="#05060a">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Soluna Radio</title>
+
+    <meta property="og:title" content="Soluna Radio">
+    <meta property="og:description" content="Real-time audio streaming. Tap to listen.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --blue-d: #1d4ed8;
+            --cyan:   #06b6d4;
+            --green:  #10b981;
+            --red:    #ef4444;
+            --amber:  #f59e0b;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { height: 100%; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100%;
+            line-height: 1.5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+        }
+
+        /* ── Ambient background ── */
+        .ambient {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .ambient::before {
+            content: '';
+            position: absolute;
+            top: -40%; left: -20%;
+            width: 80%; height: 80%;
+            background: radial-gradient(ellipse, rgba(59,130,246,0.10) 0%, transparent 70%);
+            animation: drift 20s ease-in-out infinite alternate;
+        }
+        .ambient::after {
+            content: '';
+            position: absolute;
+            bottom: -30%; right: -20%;
+            width: 70%; height: 70%;
+            background: radial-gradient(ellipse, rgba(6,182,212,0.07) 0%, transparent 70%);
+            animation: drift 25s ease-in-out infinite alternate-reverse;
+        }
+        @keyframes drift {
+            0%   { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(40px, -30px) scale(1.1); }
+        }
+
+        /* ── Player container ── */
+        .player {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 420px;
+            padding: 32px 24px 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+        }
+
+        /* ── Logo ── */
+        .logo {
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--text3);
+        }
+
+        /* ── Channel name ── */
+        .channel-name {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            text-transform: capitalize;
+        }
+
+        /* ── Status ── */
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: var(--text2);
+        }
+        .status-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--text3);
+            transition: background 0.3s;
+        }
+        .status-dot.connected {
+            background: var(--green);
+            box-shadow: 0 0 6px var(--green);
+        }
+        .status-dot.error { background: var(--red); }
+        .listener-badge {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: 12px;
+        }
+        .listener-badge svg { width: 14px; height: 14px; }
+
+        /* ── Visualizer canvas ── */
+        .viz-wrap {
+            width: 220px;
+            height: 220px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #vizCanvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ── Play button ── */
+        .play-btn {
+            position: absolute;
+            width: 88px;
+            height: 88px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            background: var(--blue);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s, box-shadow 0.15s, background 0.2s;
+            box-shadow: 0 4px 24px rgba(59,130,246,0.35);
+        }
+        .play-btn:hover {
+            transform: scale(1.06);
+            box-shadow: 0 6px 32px rgba(59,130,246,0.5);
+        }
+        .play-btn:active { transform: scale(0.96); }
+        .play-btn.playing { background: var(--s3); box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+        .play-btn svg { width: 36px; height: 36px; fill: currentColor; }
+
+        /* ── Volume ── */
+        .volume-row {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 8px;
+        }
+        .volume-row svg {
+            width: 18px; height: 18px;
+            color: var(--text3);
+            flex-shrink: 0;
+        }
+        .volume-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            flex: 1;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--s3);
+            outline: none;
+        }
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: var(--text);
+            cursor: pointer;
+        }
+        .volume-slider::-moz-range-thumb {
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            border: none;
+            background: var(--text);
+            cursor: pointer;
+        }
+
+        /* ── Buffer bar ── */
+        .buffer-row {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.75rem;
+            color: var(--text3);
+        }
+        .buffer-track {
+            flex: 1;
+            height: 3px;
+            background: var(--s3);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .buffer-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--blue);
+            border-radius: 2px;
+            transition: width 0.15s;
+        }
+
+        /* ── Action buttons ── */
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .action-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 999px;
+            border: 1px solid var(--border2);
+            background: var(--s2);
+            color: var(--text2);
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .action-btn:hover { background: var(--s3); color: var(--text); }
+        .action-btn svg { width: 16px; height: 16px; }
+
+        /* ── QR section ── */
+        .qr-section {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 20px;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            width: 100%;
+        }
+        .qr-section.visible { display: flex; }
+        .qr-section canvas {
+            border-radius: 8px;
+        }
+        .qr-label {
+            font-size: 0.75rem;
+            color: var(--text3);
+            text-align: center;
+        }
+
+        /* ── Deep link ── */
+        .deep-link {
+            margin-top: 4px;
+        }
+        .deep-link a {
+            font-size: 0.78rem;
+            color: var(--blue);
+            text-decoration: none;
+        }
+        .deep-link a:hover { text-decoration: underline; }
+
+        /* ── Toast ── */
+        .toast {
+            position: fixed;
+            bottom: 32px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--s2);
+            border: 1px solid var(--border2);
+            color: var(--text);
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-size: 0.82rem;
+            z-index: 100;
+            opacity: 0;
+            transition: transform 0.3s, opacity 0.3s;
+            pointer-events: none;
+        }
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        /* ── Tap overlay ── */
+        .tap-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            background: rgba(5,6,10,0.92);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+        .tap-overlay.hidden { opacity: 0; pointer-events: none; }
+        .tap-channel {
+            font-size: 1.1rem;
+            color: var(--text2);
+        }
+        .tap-cta {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: var(--blue);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 60px rgba(59,130,246,0.3);
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+        .tap-cta svg { width: 44px; height: 44px; fill: #fff; }
+        .tap-label {
+            font-size: 0.85rem;
+            color: var(--text3);
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 40px rgba(59,130,246,0.3); }
+            50%      { box-shadow: 0 0 80px rgba(59,130,246,0.5); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="ambient"></div>
+
+<!-- Tap overlay (required for AudioContext user gesture) -->
+<div class="tap-overlay" id="tapOverlay">
+    <div class="tap-channel" id="tapChannel">jazz</div>
+    <div class="tap-cta">
+        <svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>
+    </div>
+    <div class="tap-label">Tap to play</div>
+</div>
+
+<!-- Main player -->
+<div class="player">
+    <div class="logo">SOLUNA RADIO</div>
+    <div class="channel-name" id="channelName">jazz</div>
+
+    <div class="status-row">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Ready</span>
+        <span class="listener-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span id="listenerCount">--</span>
+        </span>
+    </div>
+
+    <div class="viz-wrap">
+        <canvas id="vizCanvas" width="440" height="440"></canvas>
+        <button class="play-btn" id="playBtn">
+            <svg id="iconPlay" viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>
+            <svg id="iconStop" viewBox="0 0 24 24" style="display:none"><rect x="5" y="3" width="4" height="18" rx="1"/><rect x="15" y="3" width="4" height="18" rx="1"/></svg>
+        </button>
+    </div>
+
+    <div class="volume-row">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/></svg>
+        <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="80">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+    </div>
+
+    <div class="buffer-row">
+        <span id="bufferStatus">Idle</span>
+        <div class="buffer-track"><div class="buffer-fill" id="bufferFill"></div></div>
+    </div>
+
+    <div class="codec-row" style="display:flex;justify-content:center;gap:6px;margin:8px 0;flex-wrap:wrap">
+        <button class="codec-btn" data-pt="111" style="padding:6px 12px;border-radius:8px;border:1px solid var(--s3,#555);background:transparent;color:var(--text,#fff);font-size:0.75rem;cursor:pointer">Opus 320k</button>
+        <button class="codec-btn" data-pt="112" style="padding:6px 12px;border-radius:8px;border:1px solid var(--s3,#555);background:transparent;color:var(--text,#fff);font-size:0.75rem;cursor:pointer">Opus 64k</button>
+        <button class="codec-btn" data-pt="96" style="padding:6px 12px;border-radius:8px;border:1px solid var(--s3,#555);background:transparent;color:var(--text,#fff);font-size:0.75rem;cursor:pointer">PCM 24bit</button>
+        <button class="codec-btn" data-pt="116" style="padding:6px 12px;border-radius:8px;border:1px solid var(--s3,#555);background:transparent;color:var(--text,#fff);font-size:0.75rem;cursor:pointer">ADPCM</button>
+    </div>
+
+    <div class="actions">
+        <button class="action-btn" id="shareBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Share
+        </button>
+        <button class="action-btn" id="qrBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><line x1="21" y1="14" x2="21" y2="21"/><line x1="14" y1="21" x2="21" y2="21"/></svg>
+            QR
+        </button>
+    </div>
+
+    <div class="qr-section" id="qrSection">
+        <canvas id="qrCanvas" width="200" height="200"></canvas>
+        <div class="qr-label" id="qrLabel">solun.art/c/jazz</div>
+    </div>
+
+    <div class="deep-link">
+        <a id="deepLink" href="soluna://channel/jazz">Open in Soluna app</a>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Transport layer for WebTransport/WebSocket -->
+<script src="/wasm/soluna-transport.js"></script>
+
+<script>
+(function() {
+    'use strict';
+
+    const SAMPLE_RATE = 48000;
+    const PREFILL_MS = 200;
+    const PREFILL_SAMPLES = Math.ceil(SAMPLE_RATE * PREFILL_MS / 1000);
+    const WS_BASE = 'wss://relay.solun.art/ws/audio';
+
+    // ── IMA-ADPCM decode tables (matches soluna-radio encoder) ──
+    const _adpcmStepTable = [7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,73,80,88,97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,408,449,494,544,598,658,724,796,876,963,1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,8630,9493,10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,27086,29794,32767];
+    const _adpcmIndexTable = [-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8];
+
+    // ── DOM refs ──
+    const $ = (id) => document.getElementById(id);
+    const tapOverlay   = $('tapOverlay');
+    const tapChannel   = $('tapChannel');
+    const statusDot    = $('statusDot');
+    const statusText   = $('statusText');
+    const channelNameEl= $('channelName');
+    const playBtn      = $('playBtn');
+    const iconPlay     = $('iconPlay');
+    const iconStop     = $('iconStop');
+    const volumeSlider = $('volumeSlider');
+    const listenerCount= $('listenerCount');
+    const bufferStatus = $('bufferStatus');
+    const bufferFill   = $('bufferFill');
+    const vizCanvas    = $('vizCanvas');
+    const shareBtn     = $('shareBtn');
+    const qrBtn        = $('qrBtn');
+    const qrSection    = $('qrSection');
+    const qrCanvas     = $('qrCanvas');
+    const qrLabel      = $('qrLabel');
+    const deepLink     = $('deepLink');
+    const toast        = $('toast');
+
+    // ── State ──
+    let channelName = 'jazz';
+    let isPlaying = false;
+    let wasmEngine = null;  // SolunaAudio instance (WASM path)
+    let useWasm = false;
+
+
+    // JS fallback state
+    let ws = null;
+    let audioCtx = null;
+
+    // ── Adaptive codec selection ──
+    var preferredPT = 111; // Start with Opus stereo (best quality/bandwidth)
+    var underrunCount = 0;
+    var totalPulls = 0;
+    var codecSent = false; // Whether we've sent CODEC command to relay
+
+    function sendCodecPreference(ptVal) {
+        var msg = 'CODEC:' + (ptVal < 0 ? 'all' : ptVal) + '\n';
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(msg);
+            codecSent = true;
+        }
+        if (transport && transport.sendControl) {
+            transport.sendControl(msg);
+            codecSent = true;
+        }
+    }
+
+    function checkAdaptiveCodec() {
+        // Every 5 seconds, check underrun rate
+        if (totalPulls < 100) return; // not enough data
+        var underrunRate = underrunCount / totalPulls;
+        if (underrunRate > 0.05 && preferredPT === 96) {
+            // >5% underruns on PCM — switch to ADPCM (lower bandwidth)
+            preferredPT = 116;
+            sendCodecPreference(116);
+            bufferStatus.textContent = 'Switched to ADPCM (bandwidth)';
+        } else if (underrunRate < 0.01 && preferredPT === 116) {
+            // <1% underruns on ADPCM — try PCM again
+            preferredPT = 96;
+            sendCodecPreference(96);
+        }
+        underrunCount = 0;
+        totalPulls = 0;
+    }
+
+    // ── Shared decoded audio output handler ──
+    function handleDecodedAudio(audioData, codecName) {
+        var frames = audioData.numberOfFrames;
+        var ch = audioData.numberOfChannels;
+        var L = new Float32Array(frames);
+        audioData.copyTo(L, { planeIndex: 0, format: 'f32-planar' });
+        var R;
+        if (ch >= 2) {
+            R = new Float32Array(frames);
+            audioData.copyTo(R, { planeIndex: 1, format: 'f32-planar' });
+        } else {
+            R = L; // mono: duplicate
+        }
+        audioData.close();
+        feedStereoSamples(L, R, frames, codecName);
+    }
+
+    function feedStereoSamples(L, R, frames, codecName) {
+        if (workletNode && !useScriptProcessor) {
+            workletNode.port.postMessage({ type: 'stereo', l: L, r: R });
+        } else if (useScriptProcessor) {
+            for (var j = 0; j < frames; j++) {
+                fallbackRing[fallbackWritePos] = (L[j] + R[j]) * 0.5;
+                fallbackWritePos = (fallbackWritePos + 1) % fallbackRing.length;
+            }
+            fallbackBuffered += frames;
+            if (fallbackBuffered > fallbackRing.length) fallbackBuffered = fallbackRing.length;
+        }
+        bufferedSamples += frames;
+        if (!prefillReached && bufferedSamples >= PREFILL_SAMPLES) {
+            prefillReached = true;
+        }
+        if (prefillReached) {
+            var mode = (transport && !ws) ? 'WebTransport' : 'WebSocket';
+            var syncInfo = '';
+            if (syncLocked && netDelayHistory.length > 0) {
+                var median = netDelayHistory.slice().sort(function(a,b){return a-b;})[Math.floor(netDelayHistory.length/2)];
+                syncInfo = ' | Sync ' + Math.round(median) + 'ms';
+            }
+            bufferStatus.textContent = mode + ' | ' + codecName + syncInfo;
+        }
+        updateBufferBar();
+    }
+
+    // ── Opus decoders (WebCodecs) ──
+    var opusDecoder = null;
+    var opusDecoderReady = false;
+    var opusTimestamp = 0;
+    var opusMonoDecoder = null;
+    var opusMonoDecoderReady = false;
+    var opusMonoTimestamp = 0;
+
+    // ── AAC decoder (WebCodecs) ──
+    var aacDecoder = null;
+    var aacDecoderReady = false;
+    var aacTimestamp = 0;
+
+    function initOpusDecoder() {
+        if (typeof AudioDecoder === 'undefined') return;
+        // Stereo 320k decoder
+        opusDecoder = new AudioDecoder({
+            output: function(audioData) { handleDecodedAudio(audioData, 'Opus 320k'); },
+            error: function(e) { console.warn('[Opus] decode error:', e.message); }
+        });
+        opusDecoder.configure({
+            codec: 'opus',
+            sampleRate: 48000,
+            numberOfChannels: 2,
+        });
+        opusDecoderReady = true;
+        console.log('[Channel] Opus stereo decoder initialized');
+
+        // Mono 64k decoder
+        opusMonoDecoder = new AudioDecoder({
+            output: function(audioData) { handleDecodedAudio(audioData, 'Opus 64k'); },
+            error: function(e) { console.warn('[Opus-lo] decode error:', e.message); }
+        });
+        opusMonoDecoder.configure({
+            codec: 'opus',
+            sampleRate: 48000,
+            numberOfChannels: 1,
+        });
+        opusMonoDecoderReady = true;
+        console.log('[Channel] Opus mono decoder initialized');
+    }
+
+    function initAacDecoder() {
+        if (typeof AudioDecoder === 'undefined') return;
+        try {
+            aacDecoder = new AudioDecoder({
+                output: function(audioData) { handleDecodedAudio(audioData, 'AAC 256k'); },
+                error: function(e) { console.warn('[AAC] decode error:', e.message); }
+            });
+            aacDecoder.configure({
+                codec: 'mp4a.40.2',
+                sampleRate: 48000,
+                numberOfChannels: 2,
+            });
+            aacDecoderReady = true;
+            console.log('[Channel] AAC decoder initialized (WebCodecs)');
+        } catch (e) {
+            console.warn('[Channel] AAC decoder not supported:', e.message);
+            aacDecoderReady = false;
+        }
+    }
+
+    // ── FLAC decoder (WebCodecs AudioDecoder) ──
+    var flacDecoder = null;
+    var flacDecoderReady = false;
+    var flacTimestamp = 0;
+    var flacFirstPacket = true; // First packet contains STREAMINFO + frame
+
+    function initFlacDecoder() {
+        if (typeof AudioDecoder === 'undefined') return;
+        try {
+            flacDecoder = new AudioDecoder({
+                output: function(audioData) { handleDecodedAudio(audioData, 'FLAC'); },
+                error: function(e) { console.warn('[FLAC] decode error:', e.message); }
+            });
+            // Build STREAMINFO description (34 bytes) for 48kHz stereo 24-bit, blocksize 256
+            var desc = new Uint8Array(34);
+            var dv = new DataView(desc.buffer);
+            dv.setUint16(0, 256);  // min block size
+            dv.setUint16(2, 256);  // max block size
+            // bytes 4-6: min frame size (0), bytes 7-9: max frame size (0)
+            // byte 10-13: sample_rate(20) | channels-1(3) | bps-1(5) | total_samples_hi(4)
+            // 48000 = 0xBB80, channels-1=1, bps-1=23
+            // packed = (48000 << 12) | (1 << 9) | (23 << 4) | 0
+            var packed = (48000 << 12) | (1 << 9) | (23 << 4);
+            dv.setUint32(10, packed >>> 0);
+            // bytes 14-17: total samples low 32 bits (0 = unknown)
+            // bytes 18-33: MD5 (zeros)
+
+            flacDecoder.configure({
+                codec: 'flac',
+                sampleRate: 48000,
+                numberOfChannels: 2,
+                description: desc,
+            });
+            flacDecoderReady = true;
+            console.log('[Channel] FLAC decoder initialized (WebCodecs)');
+        } catch(e) {
+            console.warn('[FLAC] init failed:', e.message);
+        }
+    }
+
+    function decodeFLACPacket(payloadBuf) {
+        if (!flacDecoderReady || !flacDecoder) return;
+        var bytes = new Uint8Array(payloadBuf);
+
+        // First packet from FLAC encoder includes STREAMINFO header + first frame
+        // Skip to the frame sync (0xFFF8 or 0xFFF9)
+        var frameOff = 0;
+        if (bytes.length > 4) {
+            for (var i = 0; i < bytes.length - 2; i++) {
+                if (bytes[i] === 0xFF && (bytes[i+1] & 0xFC) === 0xF8) {
+                    frameOff = i;
+                    break;
+                }
+            }
+        }
+
+        var frameData = payloadBuf.slice ? payloadBuf.slice(frameOff) : payloadBuf;
+        try {
+            var chunk = new EncodedAudioChunk({
+                type: 'key',
+                timestamp: flacTimestamp,
+                data: new Uint8Array(frameData),
+            });
+            flacTimestamp += 5333; // 256 samples @ 48kHz = 5.333ms in microseconds
+            flacDecoder.decode(chunk);
+        } catch(e) {
+            console.warn('[FLAC] chunk error:', e.message);
+        }
+    }
+
+    // ── Clock sync state ──
+    var syncDelayMs = 150; // target buffer delay (ms) — same as iOS default
+    var clockOffsetMs = 0; // estimated clock offset between local and relay
+    var syncPingCount = 0;
+    var syncTimer = null;
+    var netDelayHistory = [];
+    var syncLocked = false;
+    let gainNode = null;
+    let analyser = null;
+    let workletNode = null;
+    let workletReady = false;
+    let useScriptProcessor = false;
+    let scriptNode = null;
+    let vizAnimId = null;
+    let listenerPollId = null;
+    const fallbackRing = new Float32Array(192000);
+    let fallbackWritePos = 0;
+    let fallbackReadPos = 0;
+    let fallbackBuffered = 0;
+    let bufferedSamples = 0;
+    let prefillReached = false;
+
+    // ── Parse channel from URL ──
+    function getChannelFromURL() {
+        const path = window.location.pathname;
+        const m = path.match(/\/c\/([a-zA-Z0-9_-]+)/);
+        if (m) return m[1];
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('ch')) return params.get('ch');
+        return 'jazz';
+    }
+
+    // ── UI updates ──
+    function updateUI() {
+        channelNameEl.textContent = channelName;
+        tapChannel.textContent = channelName;
+        document.title = channelName + ' — Soluna Radio';
+        const url = window.location.origin + '/c/' + channelName;
+        qrLabel.textContent = 'solun.art/c/' + channelName;
+        deepLink.href = 'soluna://channel/' + channelName;
+
+        // Update OG
+        const ogUrl = document.querySelector('meta[property="og:url"]');
+        if (ogUrl) ogUrl.content = url;
+        const ogTitle = document.querySelector('meta[property="og:title"]');
+        if (ogTitle) ogTitle.content = channelName + ' — Soluna Radio';
+    }
+
+    function setStatus(state) {
+        statusDot.className = 'status-dot';
+        switch (state) {
+            case 'connected':
+                statusDot.classList.add('connected');
+                statusText.textContent = 'Connected';
+                break;
+            case 'connecting':
+                statusText.textContent = 'Connecting...';
+                break;
+            case 'reconnecting':
+                statusText.textContent = 'Reconnecting...';
+                break;
+            case 'disconnected':
+                statusText.textContent = 'Disconnected';
+                break;
+            case 'error':
+                statusDot.classList.add('error');
+                statusText.textContent = 'Error';
+                break;
+            default:
+                statusText.textContent = 'Ready';
+        }
+    }
+
+    function showToast(msg) {
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(function() { toast.classList.remove('show'); }, 2500);
+    }
+
+    // ── WASM playback path ──
+    async function playWasm() {
+        try {
+            wasmEngine = new window.SolunaAudio();
+            await wasmEngine.init(2, SAMPLE_RATE);
+            wasmEngine.setSyncEnabled(false);
+            wasmEngine.setVolume(volumeSlider.value / 100);
+            wasmEngine.onStateChange = function(state) {
+                setStatus(state);
+            };
+            wasmEngine.onStats = function(s) {
+                if (s.packets > 0) prefillReached = true;
+                var mode = s.syncLocked ? 'WASM Sync ' + s.netDelayMs.toFixed(0) + 'ms' : 'WASM';
+                bufferStatus.textContent = mode;
+                bufferFill.style.width = '100%';
+            };
+            var wsUrl = WS_BASE + '?channel=' + encodeURIComponent(channelName);
+            wasmEngine.connect(wsUrl);
+            useWasm = true;
+            setStatus('connecting');
+            startVisualizerWasm();
+            return true;
+        } catch (e) {
+            console.warn('[Channel] WASM init failed, falling back to JS:', e);
+            if (wasmEngine) { try { wasmEngine.destroy(); } catch(_) {} wasmEngine = null; }
+            return false;
+        }
+    }
+
+    function stopWasm() {
+        if (wasmEngine) {
+            wasmEngine.destroy();
+            wasmEngine = null;
+        }
+        useWasm = false;
+    }
+
+    function startVisualizerWasm() {
+        if (!wasmEngine || !wasmEngine.getAnalyser()) return;
+        var an = wasmEngine.getAnalyser();
+        an.fftSize = 256;
+        drawVisualizer(an);
+    }
+
+    // ── JS fallback playback path ──
+    function ensureAudioContext() {
+        if (audioCtx) {
+            if (audioCtx.state === 'suspended') audioCtx.resume().catch(function(){});
+            return;
+        }
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = (volumeSlider.value / 100) * 0.7; // prevent clipping
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        gainNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+    }
+
+    async function startAudioOutputJS() {
+        ensureAudioContext();
+        if (!audioCtx) return;
+        try {
+            if (!workletReady) {
+                await audioCtx.audioWorklet.addModule('/soluna-worklet.js');
+                workletReady = true;
+            }
+            workletNode = new AudioWorkletNode(audioCtx, 'soluna-processor', { outputChannelCount: [2] });
+            workletNode.connect(gainNode);
+        } catch (e) {
+            useScriptProcessor = true;
+            var bufSize = 2048;
+            scriptNode = audioCtx.createScriptProcessor(bufSize, 1, 1);
+            scriptNode.onaudioprocess = function(ev) {
+                var output = ev.outputBuffer.getChannelData(0);
+                if (fallbackBuffered < PREFILL_SAMPLES) { output.fill(0); return; }
+                for (var i = 0; i < output.length; i++) {
+                    if (fallbackBuffered > 0) {
+                        output[i] = fallbackRing[fallbackReadPos];
+                        fallbackReadPos = (fallbackReadPos + 1) % fallbackRing.length;
+                        fallbackBuffered--;
+                    } else { output[i] = 0; }
+                }
+            };
+            scriptNode.connect(gainNode);
+        }
+        drawVisualizer(analyser);
+    }
+
+    function stopAudioOutputJS() {
+        if (workletNode) { workletNode.disconnect(); workletNode = null; }
+        if (scriptNode) { scriptNode.disconnect(); scriptNode = null; }
+        fallbackWritePos = 0; fallbackReadPos = 0; fallbackBuffered = 0;
+        useScriptProcessor = false;
+        stopVisualizer();
+    }
+
+    function decodeOSTPPacket(data) {
+        var bytes = new Uint8Array(data);
+        var n = bytes.length;
+        if (n < 12) return;
+        if ((bytes[0] & 0xC0) !== 0x80) return;
+        var pt = bytes[1] & 0x7F;
+
+        // Parse header: skip RTP extension if present
+        var off = 12;
+        var mediaTs = 0;
+        var txChannels = 1;
+        if ((bytes[0] & 0x10) !== 0 && n >= 16) {
+            var extLen = (bytes[14] << 8 | bytes[15]) * 4;
+            off = 16 + extLen;
+            if (off >= n) return;
+            if (n >= 24) {
+                var hdv = new DataView(data);
+                // OSTP stream_id (bytes 16-17, big-endian): bits[13:10] = channel count
+                var streamId = hdv.getUint16(16, false);
+                var chCode = (streamId >> 10) & 0xF;
+                txChannels = chCode === 0 ? 2 : chCode; // 0=legacy 2ch
+                // media_timestamp (bytes 20-23, big-endian, wall-clock ms)
+                mediaTs = hdv.getUint32(20, false);
+            }
+        }
+        // Strip CRC-32 trailer (last 4 bytes)
+        var end = n - 4;
+        if (end <= off) return;
+
+        // ── Sync: compute network delay from media_timestamp ──
+        if (mediaTs !== 0) {
+            var nowMs32 = (Date.now() + clockOffsetMs) & 0xFFFFFFFF;
+            var delay = ((nowMs32 - mediaTs) & 0xFFFFFFFF);
+            if (delay > 0x7FFFFFFF) delay -= 0x100000000; // handle wrap
+            if (delay >= 0 && delay < 2000) {
+                netDelayHistory.push(delay);
+                if (netDelayHistory.length > 20) netDelayHistory.shift();
+                if (netDelayHistory.length >= 5) syncLocked = true;
+            }
+        }
+
+        // Adaptive: only decode the preferred PT, skip others
+        var knownPTs = [96, 111, 112, 113, 114, 116];
+        if (pt !== preferredPT && knownPTs.indexOf(pt) !== -1) return;
+
+        var payloadBuf = data.slice(off, end);
+        var samples;
+
+        if (pt === 96) {
+            // PT 96 = S24-in-S32LE (24-bit lossless PCM)
+            var view = new DataView(payloadBuf);
+            var scale = 1.0 / 8388608.0;
+            var count = Math.floor(payloadBuf.byteLength / 4);
+            if (count <= 0) return;
+            samples = new Float32Array(count);
+            for (var i = 0; i < count; i++) {
+                samples[i] = view.getInt32(i * 4, true) * scale;
+            }
+        } else if (pt === 116) {
+            // PT 116 = IMA-ADPCM stereo
+            var dv = new DataView(payloadBuf);
+            if (payloadBuf.byteLength < 4) return;
+            var valprev = dv.getInt16(0, true);
+            var index = dv.getUint8(2);
+            var nibbleStart = 4;
+            var nibbleBytes = payloadBuf.byteLength - nibbleStart;
+            var sampleCount = nibbleBytes * 2;
+            samples = new Float32Array(sampleCount);
+            var si = 0;
+            for (var bi = 0; bi < nibbleBytes; bi++) {
+                var b = dv.getUint8(nibbleStart + bi);
+                for (var half = 0; half < 2; half++) {
+                    var nib = half === 0 ? (b & 0x0F) : ((b >> 4) & 0x0F);
+                    var step = _adpcmStepTable[index];
+                    var diff = step >> 3;
+                    if (nib & 4) diff += step;
+                    if (nib & 2) diff += (step >> 1);
+                    if (nib & 1) diff += (step >> 2);
+                    valprev += (nib & 8) ? -diff : diff;
+                    if (valprev > 32767) valprev = 32767;
+                    if (valprev < -32768) valprev = -32768;
+                    index += _adpcmIndexTable[nib];
+                    if (index < 0) index = 0;
+                    if (index > 88) index = 88;
+                    if (si < sampleCount) { samples[si] = valprev / 32768; si++; }
+                }
+            }
+            samples = samples.subarray(0, si);
+        } else if (pt === 111) {
+            // PT 111 = Opus stereo 320kbps — decode via WebCodecs
+            if (!opusDecoderReady) return;
+            try {
+                var chunk = new EncodedAudioChunk({
+                    type: 'key',
+                    timestamp: opusTimestamp,
+                    data: new Uint8Array(payloadBuf),
+                });
+                opusTimestamp += 20000;
+                opusDecoder.decode(chunk);
+            } catch(e) { console.warn('[Opus] chunk error:', e); }
+            return;
+        } else if (pt === 112) {
+            // PT 112 = Opus mono 64kbps — decode via WebCodecs
+            if (!opusMonoDecoderReady) return;
+            try {
+                var chunk = new EncodedAudioChunk({
+                    type: 'key',
+                    timestamp: opusMonoTimestamp,
+                    data: new Uint8Array(payloadBuf),
+                });
+                opusMonoTimestamp += 20000;
+                opusMonoDecoder.decode(chunk);
+            } catch(e) { console.warn('[Opus-lo] chunk error:', e); }
+            return;
+        } else if (pt === 113) {
+            // PT 113 = FLAC lossless — decode via AudioContext.decodeAudioData
+            decodeFLACPacket(payloadBuf);
+            return;
+        } else if (pt === 114) {
+            // PT 114 = AAC-LC 256kbps — decode via WebCodecs
+            if (!aacDecoderReady) return;
+            try {
+                var chunk = new EncodedAudioChunk({
+                    type: 'key',
+                    timestamp: aacTimestamp,
+                    data: new Uint8Array(payloadBuf),
+                });
+                aacTimestamp += 21333; // ~1024 samples at 48kHz in microseconds
+                aacDecoder.decode(chunk);
+            } catch(e) { console.warn('[AAC] chunk error:', e); }
+            return;
+        } else {
+            return;
+        }
+
+        // Deinterleave stereo → send L/R to worklet
+        if (txChannels >= 2 && samples.length >= 2) {
+            var frames = Math.floor(samples.length / txChannels);
+            var L = new Float32Array(frames);
+            var R = new Float32Array(frames);
+            for (var m = 0; m < frames; m++) {
+                L[m] = samples[m * txChannels];
+                R[m] = samples[m * txChannels + 1];
+            }
+            if (workletNode && !useScriptProcessor) {
+                workletNode.port.postMessage({ type: 'stereo', l: L, r: R });
+            } else if (useScriptProcessor) {
+                // ScriptProcessor fallback: downmix to mono
+                for (var j = 0; j < frames; j++) {
+                    fallbackRing[fallbackWritePos] = (L[j] + R[j]) * 0.5;
+                    fallbackWritePos = (fallbackWritePos + 1) % fallbackRing.length;
+                }
+                fallbackBuffered += frames;
+                if (fallbackBuffered > fallbackRing.length) fallbackBuffered = fallbackRing.length;
+            }
+            bufferedSamples += frames;
+        } else {
+            // Mono path
+            if (workletNode && !useScriptProcessor) {
+                workletNode.port.postMessage({ type: 'samples', samples: samples });
+            } else if (useScriptProcessor) {
+                for (var j = 0; j < samples.length; j++) {
+                    fallbackRing[fallbackWritePos] = samples[j];
+                    fallbackWritePos = (fallbackWritePos + 1) % fallbackRing.length;
+                }
+                fallbackBuffered += samples.length;
+                if (fallbackBuffered > fallbackRing.length) fallbackBuffered = fallbackRing.length;
+            }
+            bufferedSamples += samples.length;
+        }
+        if (!prefillReached && bufferedSamples >= PREFILL_SAMPLES) {
+            prefillReached = true;
+        }
+        if (prefillReached) {
+            var mode = (transport && !ws) ? 'WebTransport' : 'WebSocket';
+            var codecNames = {111:'Opus 320k',112:'Opus 64k',113:'FLAC',114:'AAC',96:'PCM 24bit',116:'ADPCM'};
+            var codec = codecNames[preferredPT] || 'PT=' + preferredPT;
+            var syncInfo = '';
+            if (syncLocked && netDelayHistory.length > 0) {
+                var median = netDelayHistory.slice().sort(function(a,b){return a-b;})[Math.floor(netDelayHistory.length/2)];
+                syncInfo = ' | Sync ' + Math.round(median) + 'ms';
+            }
+            bufferStatus.textContent = mode + ' | ' + codec + syncInfo;
+        }
+        updateBufferBar();
+
+    }
+
+    function updateBufferBar() {
+        var pct = Math.min(100, (bufferedSamples / PREFILL_SAMPLES) * 100);
+        bufferFill.style.width = pct + '%';
+    }
+
+    var transport = null; // SolunaTransport instance
+
+    var wtFailed = false;
+    var wtFailed = false;
+    function connectTransport() {
+        if (ws) { ws.onclose = null; ws.close(); ws = null; }
+        setStatus('connecting');
+        resetBufferJS();
+
+        if (!wtFailed && window.SolunaTransport &&
+            SolunaTransport.WebTransportTransport.isSupported()) {
+            var wtUrl = 'https://relay.solun.art:4443/wt?channel=' + encodeURIComponent(channelName);
+            transport = new SolunaTransport.WebTransportTransport();
+            var wtOk = false;
+            var gotData = false;
+            transport.onPacket = function(data) {
+                gotData = true;
+                var buf = (data instanceof ArrayBuffer) ? data : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+                decodeOSTPPacket(buf);
+            };
+            transport.onStateChange = function(state) {
+                if (state === 'connected') { wtOk = true; setStatus('connected'); }
+                else if (state === 'disconnected' && isPlaying) {
+                    wtFailed = true; transport = null; connectWSFallback();
+                }
+            };
+            transport.connect(wtUrl);
+            // If connected but no data after 3s, fall back
+            setTimeout(function() {
+                if (wtOk && !gotData && isPlaying) {
+                    console.log('[Channel] WebTransport connected but no data, falling back');
+                    if (transport) { transport.disconnect(); transport = null; }
+                    wtFailed = true; connectWSFallback();
+                } else if (!wtOk && isPlaying) {
+                    if (transport) { transport.disconnect(); transport = null; }
+                    wtFailed = true; connectWSFallback();
+                }
+            }, 3000);
+            return;
+        }
+        connectWSFallback();
+    }
+
+    function connectWSFallback() {
+        if (ws) { ws.onclose = null; ws.close(); ws = null; }
+        setStatus('connecting');
+        var url = WS_BASE + '?channel=' + encodeURIComponent(channelName);
+        ws = new WebSocket(url);
+        ws.binaryType = 'arraybuffer';
+        ws.onopen = function() {
+            setStatus('connected');
+            bufferStatus.textContent = 'WebSocket...';
+            startClockSync();
+            // Tell relay our preferred codec
+            sendCodecPreference(preferredPT);
+            // Adaptive codec check every 5 seconds
+            setInterval(checkAdaptiveCodec, 5000);
+        };
+        ws.onmessage = function(ev) {
+            if (ev.data instanceof ArrayBuffer && ev.data.byteLength > 0) {
+                var u8 = new Uint8Array(ev.data);
+                // Clock sync pong (PT=125, 25 bytes)
+                if (u8.length === 25 && u8[0] === 0x7D) {
+                    handleSyncPong(u8);
+                    return;
+                }
+                decodeOSTPPacket(ev.data);
+            } else if (typeof ev.data === 'string') {
+                try {
+                    var msg = JSON.parse(ev.data);
+                    if (msg.listeners !== undefined) listenerCount.textContent = msg.listeners;
+                } catch(_) {}
+            }
+        };
+        ws.onerror = function() { setStatus('error'); };
+        ws.onclose = function() {
+            setStatus('disconnected');
+            if (isPlaying) setTimeout(connectWSFallback, 2000);
+        };
+    }
+
+    // ── NTP-like clock sync over WebSocket ──
+    function startClockSync() {
+        if (syncTimer) clearInterval(syncTimer);
+        syncPingCount = 0;
+        sendSyncPing();
+        syncTimer = setInterval(sendSyncPing, 5000);
+    }
+
+    function stopClockSync() {
+        if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
+    }
+
+    function sendSyncPing() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        var buf = new ArrayBuffer(25);
+        var view = new DataView(buf);
+        view.setUint8(0, 0x7D); // PT=125 sync marker
+        var nowMs = Date.now();
+        var nowNsHi = Math.floor(nowMs * 1e6 / 4294967296);
+        var nowNsLo = (nowMs * 1e6) >>> 0;
+        view.setUint32(1, nowNsLo, true);
+        view.setUint32(5, nowNsHi, true);
+        ws.send(buf);
+    }
+
+    function handleSyncPong(data) {
+        var t4Ms = Date.now();
+        var t4Ns = t4Ms * 1e6;
+        var dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+        var t1Ns = dv.getUint32(5, true) * 4294967296 + dv.getUint32(1, true);
+        var t2Ns = dv.getUint32(13, true) * 4294967296 + dv.getUint32(9, true);
+        var t3Ns = dv.getUint32(21, true) * 4294967296 + dv.getUint32(17, true);
+        if (t2Ns === 0 || t3Ns === 0) return;
+        var offsetNs = ((t2Ns - t1Ns) + (t3Ns - t4Ns)) / 2;
+        var rttNs = (t4Ns - t1Ns) - (t3Ns - t2Ns);
+        if (rttNs < 0 || rttNs > 500e6) return;
+        var offsetMs = offsetNs / 1e6;
+        syncPingCount++;
+        if (syncPingCount === 1) {
+            clockOffsetMs = offsetMs;
+        } else {
+            var alpha = syncPingCount < 5 ? 0.3 : 0.1;
+            clockOffsetMs = clockOffsetMs * (1 - alpha) + offsetMs * alpha;
+        }
+    }
+
+    function resetBufferJS() {
+        bufferedSamples = 0;
+        prefillReached = false;
+        bufferStatus.textContent = 'Buffering...';
+        bufferFill.style.width = '0%';
+        if (workletNode) workletNode.port.postMessage({ type: 'reset' });
+        fallbackWritePos = 0; fallbackReadPos = 0; fallbackBuffered = 0;
+    }
+
+    async function playJS() {
+        ensureAudioContext();
+        try { initOpusDecoder(); } catch(e) { console.warn('Opus init:', e); }
+        try { initFlacDecoder(); } catch(e) { console.warn('FLAC init:', e); }
+        await startAudioOutputJS();
+        connectTransport();
+    }
+
+    function stopJS() {
+        stopClockSync();
+        if (transport) { transport.disconnect(); transport = null; }
+        if (ws) { ws.onclose = null; ws.close(); ws = null; }
+        stopAudioOutputJS();
+        setStatus('disconnected');
+        resetBufferJS();
+        listenerCount.textContent = '--';
+    }
+
+    // ── Visualizer (shared) ──
+    function drawVisualizer(an) {
+        if (!an || vizAnimId) return;
+        var ctx = vizCanvas.getContext('2d');
+        var w = vizCanvas.width;
+        var h = vizCanvas.height;
+        var cx = w / 2;
+        var cy = h / 2;
+        var radius = 70;
+        var bars = an.frequencyBinCount;
+        var dataArray = new Uint8Array(bars);
+
+        function draw() {
+            vizAnimId = requestAnimationFrame(draw);
+            an.getByteFrequencyData(dataArray);
+            ctx.clearRect(0, 0, w, h);
+
+            var sliceAngle = (2 * Math.PI) / bars;
+            for (var i = 0; i < bars; i++) {
+                var val = dataArray[i] / 255;
+                var barLen = val * 30 + 2;
+                var angle = i * sliceAngle - Math.PI / 2;
+                var x1 = cx + Math.cos(angle) * radius;
+                var y1 = cy + Math.sin(angle) * radius;
+                var x2 = cx + Math.cos(angle) * (radius + barLen);
+                var y2 = cy + Math.sin(angle) * (radius + barLen);
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = 'rgba(59, 130, 246, ' + (0.3 + val * 0.7) + ')';
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+        }
+        draw();
+    }
+
+    function stopVisualizer() {
+        if (vizAnimId) { cancelAnimationFrame(vizAnimId); vizAnimId = null; }
+        var ctx = vizCanvas.getContext('2d');
+        ctx.clearRect(0, 0, vizCanvas.width, vizCanvas.height);
+    }
+
+    // ── Play / Stop ──
+    async function play() {
+        if (isPlaying) return;
+        isPlaying = true;
+        bufferStatus.textContent = 'Buffering...';
+
+        await playJS();
+
+        iconPlay.style.display = 'none';
+        iconStop.style.display = 'block';
+        playBtn.classList.add('playing');
+    }
+
+    function stop() {
+        isPlaying = false;
+        if (useWasm) { stopWasm(); } else { stopJS(); }
+        stopVisualizer();
+        setStatus('disconnected');
+        bufferStatus.textContent = 'Idle';
+        bufferFill.style.width = '0%';
+        iconPlay.style.display = 'block';
+        iconStop.style.display = 'none';
+        playBtn.classList.remove('playing');
+        listenerCount.textContent = '--';
+    }
+
+    // ── Event listeners ──
+    playBtn.addEventListener('click', function() {
+        if (isPlaying) stop(); else play();
+    });
+
+    volumeSlider.addEventListener('input', function() {
+        var v = volumeSlider.value / 100;
+        if (useWasm && wasmEngine) { wasmEngine.setVolume(v); }
+        else if (gainNode) { gainNode.gain.value = v; }
+    });
+
+    tapOverlay.addEventListener('click', function() {
+        tapOverlay.classList.add('hidden');
+        play();
+    });
+
+    // Codec switching
+    document.querySelectorAll('.codec-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var pt = parseInt(this.dataset.pt);
+            preferredPT = pt;
+            sendCodecPreference(pt);
+            // Highlight active
+            document.querySelectorAll('.codec-btn').forEach(function(b) {
+                b.style.background = 'transparent';
+                b.style.fontWeight = 'normal';
+            });
+            this.style.background = 'var(--s3, #444)';
+            this.style.fontWeight = 'bold';
+        });
+    });
+    // Highlight default (Opus)
+    document.querySelector('.codec-btn[data-pt="111"]').style.background = 'var(--s3, #444)';
+    document.querySelector('.codec-btn[data-pt="111"]').style.fontWeight = 'bold';
+
+    // Share
+    shareBtn.addEventListener('click', function() {
+        var url = window.location.origin + '/c/' + channelName;
+        if (navigator.share) {
+            navigator.share({ title: channelName + ' — Soluna Radio', url: url }).catch(function(){});
+        } else if (navigator.clipboard) {
+            navigator.clipboard.writeText(url).then(function() {
+                showToast('Link copied');
+            }).catch(function() { showToast('Could not copy'); });
+        } else {
+            showToast(url);
+        }
+    });
+
+    // QR toggle
+    qrBtn.addEventListener('click', function() {
+        var visible = qrSection.classList.toggle('visible');
+        if (visible) generateQR();
+    });
+
+    // ── Minimal QR Code Generator ──
+    // Generates a QR Code (Version 2, ECC L, alphanumeric/byte mode) entirely in JS.
+    // Only supports short URLs. Uses a simplified encoder.
+    function generateQR() {
+        var url = window.location.origin + '/c/' + channelName;
+        qrLabel.textContent = url.replace(/^https?:\/\//, '');
+
+        var canvas = qrCanvas;
+        var ctx = canvas.getContext('2d');
+        var size = 200;
+        canvas.width = size;
+        canvas.height = size;
+
+        // Use the minimal QR encoder below
+        try {
+            var modules = encodeQR(url);
+            var modCount = modules.length;
+            var cellSize = Math.floor((size - 16) / modCount);
+            var offset = Math.floor((size - cellSize * modCount) / 2);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, size, size);
+            ctx.fillStyle = '#000000';
+
+            for (var r = 0; r < modCount; r++) {
+                for (var c = 0; c < modCount; c++) {
+                    if (modules[r][c]) {
+                        ctx.fillRect(offset + c * cellSize, offset + r * cellSize, cellSize, cellSize);
+                    }
+                }
+            }
+        } catch (e) {
+            // Fallback: show URL text
+            ctx.fillStyle = '#12151f';
+            ctx.fillRect(0, 0, size, size);
+            ctx.fillStyle = '#e8eaf2';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(url, size / 2, size / 2);
+        }
+    }
+
+    // ── Minimal QR Encoder (byte mode, version 1-4 ECC L) ──
+    // Adapted from minimal open-source QR implementations.
+    function encodeQR(text) {
+        var data = [];
+        for (var i = 0; i < text.length; i++) data.push(text.charCodeAt(i));
+
+        // Pick version (1-4) that can hold the data in byte mode, ECC L
+        var capacities = [17, 32, 53, 78]; // max bytes for V1-4 ECC L byte mode
+        var version = 0;
+        for (var v = 0; v < capacities.length; v++) {
+            if (data.length <= capacities[v]) { version = v + 1; break; }
+        }
+        if (version === 0) throw new Error('Data too long for QR V1-4');
+
+        var sizes = [21, 25, 29, 33];
+        var modCount = sizes[version - 1];
+
+        // Total codewords, EC codewords per block (ECC L)
+        var totalCW  = [26, 44, 70, 100][version - 1];
+        var ecCW     = [7, 10, 15, 20][version - 1];
+        var dataCW   = totalCW - ecCW;
+
+        // Build data bitstream: mode(4) + charcount(8 for V1-9 byte) + data + terminator
+        var bits = [];
+        function pushBits(val, len) {
+            for (var b = len - 1; b >= 0; b--) bits.push((val >> b) & 1);
+        }
+
+        pushBits(0b0100, 4); // byte mode
+        pushBits(data.length, 8); // char count
+        for (var d = 0; d < data.length; d++) pushBits(data[d], 8);
+        pushBits(0, Math.min(4, dataCW * 8 - bits.length)); // terminator
+
+        // Pad to byte boundary
+        while (bits.length % 8 !== 0) bits.push(0);
+
+        // Pad to fill data codewords
+        var padBytes = [0xEC, 0x11];
+        var pi = 0;
+        while (bits.length < dataCW * 8) {
+            pushBits(padBytes[pi % 2], 8);
+            pi++;
+        }
+
+        // Convert to bytes
+        var dataBytes = [];
+        for (var bi = 0; bi < bits.length; bi += 8) {
+            var byte = 0;
+            for (var j = 0; j < 8; j++) byte = (byte << 1) | (bits[bi + j] || 0);
+            dataBytes.push(byte);
+        }
+
+        // Reed-Solomon EC
+        var ecBytes = rsEncode(dataBytes, ecCW);
+
+        // Interleave (single block for V1-4 ECC L)
+        var allBytes = dataBytes.concat(ecBytes);
+
+        // Create module grid
+        var grid = [];
+        var reserved = [];
+        for (var row = 0; row < modCount; row++) {
+            grid.push(new Array(modCount).fill(false));
+            reserved.push(new Array(modCount).fill(false));
+        }
+
+        // Place finder patterns
+        function placeFinder(r, c) {
+            for (var dr = -1; dr <= 7; dr++) {
+                for (var dc = -1; dc <= 7; dc++) {
+                    var rr = r + dr, cc = c + dc;
+                    if (rr < 0 || rr >= modCount || cc < 0 || cc >= modCount) continue;
+                    var on = (dr >= 0 && dr <= 6 && (dc === 0 || dc === 6)) ||
+                             (dc >= 0 && dc <= 6 && (dr === 0 || dr === 6)) ||
+                             (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4);
+                    grid[rr][cc] = on;
+                    reserved[rr][cc] = true;
+                }
+            }
+        }
+        placeFinder(0, 0);
+        placeFinder(0, modCount - 7);
+        placeFinder(modCount - 7, 0);
+
+        // Alignment patterns (V2+ only)
+        if (version >= 2) {
+            var alignPos = [6, modCount - 7];
+            for (var ai = 0; ai < alignPos.length; ai++) {
+                for (var aj = 0; aj < alignPos.length; aj++) {
+                    var ar = alignPos[ai], ac = alignPos[aj];
+                    if (reserved[ar][ac]) continue;
+                    for (var adr = -2; adr <= 2; adr++) {
+                        for (var adc = -2; adc <= 2; adc++) {
+                            var on2 = Math.abs(adr) === 2 || Math.abs(adc) === 2 || (adr === 0 && adc === 0);
+                            grid[ar + adr][ac + adc] = on2;
+                            reserved[ar + adr][ac + adc] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Timing patterns
+        for (var t = 8; t < modCount - 8; t++) {
+            grid[6][t] = (t % 2 === 0);
+            reserved[6][t] = true;
+            grid[t][6] = (t % 2 === 0);
+            reserved[t][6] = true;
+        }
+
+        // Dark module
+        grid[modCount - 8][8] = true;
+        reserved[modCount - 8][8] = true;
+
+        // Reserve format info areas
+        for (var fi = 0; fi < 9; fi++) {
+            reserved[8][fi] = true;
+            reserved[fi][8] = true;
+        }
+        for (var fj = 0; fj < 8; fj++) {
+            reserved[8][modCount - 1 - fj] = true;
+            reserved[modCount - 1 - fj][8] = true;
+        }
+
+        // Reserve version info (V7+, not needed here)
+
+        // Place data bits
+        var bitStream = [];
+        for (var ab = 0; ab < allBytes.length; ab++) {
+            for (var abj = 7; abj >= 0; abj--) bitStream.push((allBytes[ab] >> abj) & 1);
+        }
+
+        var bitIdx = 0;
+        var upward = true;
+        for (var col = modCount - 1; col >= 0; col -= 2) {
+            if (col === 6) col = 5; // skip timing column
+            for (var cnt = 0; cnt < modCount; cnt++) {
+                var rowIdx = upward ? (modCount - 1 - cnt) : cnt;
+                for (var dx = 0; dx <= 1; dx++) {
+                    var cc2 = col - dx;
+                    if (cc2 < 0) continue;
+                    if (reserved[rowIdx][cc2]) continue;
+                    if (bitIdx < bitStream.length) {
+                        grid[rowIdx][cc2] = bitStream[bitIdx] === 1;
+                    }
+                    bitIdx++;
+                }
+            }
+            upward = !upward;
+        }
+
+        // Apply mask 0 (checkerboard): (row + col) % 2 === 0
+        for (var mr = 0; mr < modCount; mr++) {
+            for (var mc = 0; mc < modCount; mc++) {
+                if (!reserved[mr][mc] && (mr + mc) % 2 === 0) {
+                    grid[mr][mc] = !grid[mr][mc];
+                }
+            }
+        }
+
+        // Place format info (ECC L, mask 0)
+        var formatBits = getFormatBits(0, 0); // ECC L=01, mask=000 → but we use precomputed
+        placeFormatInfo(grid, modCount, formatBits);
+
+        return grid;
+    }
+
+    function getFormatBits(eccLevel, maskPattern) {
+        // Precomputed format strings for ECC L (01) masks 0-7
+        var formats = [
+            0x77C4, 0x72F3, 0x7DAA, 0x789D, 0x662F, 0x6318, 0x6C41, 0x6976
+        ];
+        return formats[maskPattern];
+    }
+
+    function placeFormatInfo(grid, size, bits) {
+        // Horizontal (row 8)
+        var positions = [
+            [8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],
+            [8,size-8],[8,size-7],[8,size-6],[8,size-5],[8,size-4],[8,size-3],[8,size-2],[8,size-1]
+        ];
+        for (var i = 0; i < 15; i++) {
+            var p = positions[i];
+            grid[p[0]][p[1]] = ((bits >> (14 - i)) & 1) === 1;
+        }
+        // Vertical (col 8)
+        var vpositions = [
+            [0,8],[1,8],[2,8],[3,8],[4,8],[5,8],[7,8],
+            [size-8,8],[size-7,8],[size-6,8],[size-5,8],[size-4,8],[size-3,8],[size-2,8],[size-1,8]
+        ];
+        // Format bits for vertical: same bits but read from MSB
+        // Actually vertical uses the same 15 bits
+        for (var vi = 0; vi < 15; vi++) {
+            var vp = vpositions[vi];
+            grid[vp[0]][vp[1]] = ((bits >> (14 - vi)) & 1) === 1;
+        }
+    }
+
+    // ── Reed-Solomon GF(256) ──
+    function rsEncode(data, ecLen) {
+        // GF(256) with primitive polynomial 0x11d
+        var gfExp = new Array(512);
+        var gfLog = new Array(256);
+        var x = 1;
+        for (var i = 0; i < 255; i++) {
+            gfExp[i] = x;
+            gfLog[x] = i;
+            x <<= 1;
+            if (x >= 256) x ^= 0x11d;
+        }
+        for (var j = 255; j < 512; j++) gfExp[j] = gfExp[j - 255];
+
+        function gfMul(a, b) {
+            if (a === 0 || b === 0) return 0;
+            return gfExp[gfLog[a] + gfLog[b]];
+        }
+
+        // Generator polynomial
+        var gen = [1];
+        for (var g = 0; g < ecLen; g++) {
+            var newGen = new Array(gen.length + 1).fill(0);
+            for (var gi = 0; gi < gen.length; gi++) {
+                newGen[gi] ^= gen[gi];
+                newGen[gi + 1] ^= gfMul(gen[gi], gfExp[g]);
+            }
+            gen = newGen;
+        }
+
+        // Divide
+        var remainder = new Array(ecLen).fill(0);
+        for (var di = 0; di < data.length; di++) {
+            var coef = data[di] ^ remainder[0];
+            remainder.shift();
+            remainder.push(0);
+            if (coef !== 0) {
+                for (var ri = 0; ri < remainder.length; ri++) {
+                    remainder[ri] ^= gfMul(gen[ri + 1], coef);
+                }
+            }
+        }
+        return remainder;
+    }
+
+    // ── Init ──
+    function init() {
+        channelName = getChannelFromURL();
+        updateUI();
+        tapOverlay.classList.remove('hidden');
+    }
+
+    init();
+})();
+</script>
+
+</body>
+</html>

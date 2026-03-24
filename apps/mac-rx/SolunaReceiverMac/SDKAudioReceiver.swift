@@ -541,7 +541,7 @@ final class SDKAudioReceiver: ObservableObject {
             }
             guard n > 12 else { continue }
             guard (buf[0] & 0xC0) == 0x80 else { continue }  // RTP version=2
-            guard (buf[1] & 0x7F) == 96 else { continue }    // PT=96 (S24)
+            let pt = buf[1] & 0x7F
 
             // Extract RTP timestamp (bytes 4-7, big-endian uint32)
             let rtpTs = UInt32(buf[4]) << 24 | UInt32(buf[5]) << 16 | UInt32(buf[6]) << 8 | UInt32(buf[7])
@@ -557,24 +557,63 @@ final class SDKAudioReceiver: ObservableObject {
             if buf[0] & 0x10 != 0 && n >= 16 {
                 let extLen = (Int(buf[14]) << 8 | Int(buf[15])) * 4
                 off = 16 + extLen
-                guard off < n else { continue }  // malformed extension
+                guard off < n else { continue }
             }
 
             // Strip CRC-32 trailer
             let end = n - 4
             guard end > off else { continue }
 
-            // Decode S24-in-S32LE to mono float (pre-allocated buffer)
-            var count = 0
-            var i = off
-            while i + 3 < end && count < decodeCap {
-                let v = Int32(buf[i]) | (Int32(buf[i+1]) << 8) | (Int32(buf[i+2]) << 16) | (Int32(buf[i+3]) << 24)
-                decodeBuf[count] = Float(v) * scale
-                count += 1
-                i += 4
+            if pt == 96 || pt == 97 {
+                // PT=96: S24-in-S32LE / PT=97: Float32
+                var count = 0
+                var i = off
+                while i + 3 < end && count < decodeCap {
+                    let v = Int32(buf[i]) | (Int32(buf[i+1]) << 8) | (Int32(buf[i+2]) << 16) | (Int32(buf[i+3]) << 24)
+                    decodeBuf[count] = Float(v) * scale
+                    count += 1
+                    i += 4
+                }
+                ringWrite(decodeBuf, count: count)
+            } else if pt == 116 || pt == 115 {
+                // IMA-ADPCM decode (inline, no SDK dependency)
+                guard end - off >= 4 else { continue }
+                var vp = Int32(Int16(bitPattern: UInt16(buf[off]) | (UInt16(buf[off+1]) << 8)))
+                var si = Int(buf[off+2]); if si > 88 { si = 88 }
+                let sT: [Int32] = [7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,73,80,88,97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,408,449,494,544,598,658,724,796,876,963,1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,8630,9493,10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,27086,29794,32767]
+                let iT: [Int] = [-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8]
+                var count = 0
+                for bi in (off+4)..<end {
+                    let byte = buf[bi]
+                    for half in 0..<2 {
+                        guard count < decodeCap else { break }
+                        let nib = Int(half == 0 ? (byte & 0x0F) : ((byte >> 4) & 0x0F))
+                        let step = sT[si]; var diff = step >> 3
+                        if nib & 4 != 0 { diff += step }
+                        if nib & 2 != 0 { diff += step >> 1 }
+                        if nib & 1 != 0 { diff += step >> 2 }
+                        if nib & 8 != 0 { vp -= diff } else { vp += diff }
+                        if vp > 32767 { vp = 32767 }; if vp < -32768 { vp = -32768 }
+                        si += iT[nib]; if si < 0 { si = 0 }; if si > 88 { si = 88 }
+                        decodeBuf[count] = Float(vp) / 32768.0; count += 1
+                    }
+                }
+                ringWrite(decodeBuf, count: count)
+            } else if pt == 98 || pt == 111 || pt == 112 {
+                // PT=98/111/112: Opus — decode to float and write to ring buffer
+                let payload = Array(buf[off..<end])
+                let opusCh = (pt == 111) ? 2 : 1
+                if let samples = decodeOpusToFloat(payload, channels: opusCh) {
+                    ringWrite(samples, count: samples.count)
+                }
+            } else {
+                continue // Unknown PT
             }
 
-            ringWrite(decodeBuf, count: count)
+            // Only count ringWrite-based packets (non-Opus)
+            if pt != 98 && pt != 111 && pt != 112 {
+                // ringWrite already called above
+            }
             OSAtomicIncrement64(&_packetsReceivedAtomic)
 
             // Signal first packet (atomic, safe from any thread)
@@ -586,6 +625,36 @@ final class SDKAudioReceiver: ObservableObject {
                 }
             }
         }
+    }
+
+    // MARK: - Opus Decode
+
+    private func decodeOpusToFloat(_ payload: [UInt8], channels: Int) -> [Float]? {
+        var opusDesc = AudioStreamBasicDescription(
+            mSampleRate: 48000, mFormatID: kAudioFormatOpus, mFormatFlags: 0,
+            mBytesPerPacket: 0, mFramesPerPacket: 960, mBytesPerFrame: 0,
+            mChannelsPerFrame: UInt32(channels), mBitsPerChannel: 0, mReserved: 0
+        )
+        guard let opusFormat = AVAudioFormat(streamDescription: &opusDesc) else { return nil }
+        let monoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
+        guard let converter = AVAudioConverter(from: opusFormat, to: monoFormat) else { return nil }
+
+        let compressed = AVAudioCompressedBuffer(format: opusFormat, packetCapacity: 1, maximumPacketSize: payload.count)
+        compressed.byteLength = UInt32(payload.count)
+        compressed.packetCount = 1
+        memcpy(compressed.data, payload, payload.count)
+        compressed.packetDescriptions![0].mStartOffset = 0
+        compressed.packetDescriptions![0].mDataByteSize = UInt32(payload.count)
+        compressed.packetDescriptions![0].mVariableFramesInPacket = 960
+
+        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: 960) else { return nil }
+        var error: NSError?
+        converter.convert(to: pcmBuffer, error: &error) { _, outStatus in
+            outStatus.pointee = .haveData
+            return compressed
+        }
+        guard error == nil, pcmBuffer.frameLength > 0, let data = pcmBuffer.floatChannelData?[0] else { return nil }
+        return Array(UnsafeBufferPointer(start: data, count: Int(pcmBuffer.frameLength)))
     }
 
     // MARK: - Output Latency Measurement (Bluetooth compensation)

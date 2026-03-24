@@ -242,7 +242,7 @@ std::string hmac_sha256_hex(const std::string& key, const std::string& message) 
 static constexpr uint16_t kDefaultPort       = 5100;
 static constexpr uint16_t kHttpPort          = 5102;
 static constexpr size_t   kMaxPktSize        = 65536;
-static constexpr int      kStaleTimeoutSec   = 15;   // member timeout
+static constexpr int      kStaleTimeoutSec   = 60;   // member timeout (must be > client HELLO interval of 30s)
 static constexpr int      kCleanupIntervalSec = 10;  // cleanup cycle
 static constexpr size_t   kDefaultMaxGroups  = 100;
 static constexpr size_t   kDefaultMaxMembers = 1000000;
@@ -287,6 +287,7 @@ struct Member {
     bool mic_allowed = false;  // per-device mic permission (Owner/DJ always implicitly allowed)
     std::string session_token;  // 16-char hex, issued on JOIN, required for wallet ops
     uint32_t net_delay_ms = 0;  // reported network delay for sync mode coordination
+    int preferred_pt = -1;  // codec filter: -1 = forward all PTs, >=0 = only forward this PT (+ FEC/control)
     sockaddr_in backup_parent{};     // secondary parent for dual-parent reception
     bool has_backup_parent = false;
     std::chrono::steady_clock::time_point last_primary_packet;  // for churn detection
@@ -482,7 +483,8 @@ struct SwarmNode {
     int depth = 0;                     // 0 = root (gets audio from DJ/relay)
     sockaddr_in parent_addr{};         // who sends audio to this node
     std::vector<sockaddr_in> children; // who this node sends audio to (max kSwarmFanOut)
-    bool is_relay_capable = true;      // false if NAT/firewall prevents forwarding
+    bool is_relay_capable = true;      // false if bandwidth/battery prevents forwarding
+    bool relay_mediated = false;       // true = symmetric NAT; relay forwards to children on behalf
     uint64_t bytes_relayed = 0;
     std::chrono::steady_clock::time_point joined;
 };
@@ -503,6 +505,7 @@ static const std::vector<std::string> kFreeNames = {
     "opensonic", "api", "help", "support", "status", "debug",
     "music", "audio", "home", "live", "studio", "party", "zen",
     "bass", "beat", "jazz", "rock", "pop", "mix", "dj",
+    "bjj", "chill", "dance", "lofi", "yuki",  // radio channels
     "room", "cafe", "bar", "club", "lounge", "lobby",
     "office", "work", "lab", "gym", "spa", "pool",
     "kitchen", "bedroom", "garden", "garage", "patio",
@@ -2593,9 +2596,22 @@ static void handle_swarm_ready(const sockaddr_in& from) {
     }
 }
 
-// Handle SWARM_UNABLE: client can't relay (symmetric NAT, mobile data saver).
+// Handle SWARM_UNABLE: client can't relay.
+// Format: "SWARM_UNABLE\n" or "SWARM_UNABLE:reason\n"
+// Reasons: symmetric_nat → relay_mediated (relay proxies to children)
+//          cellular, battery_saver, low_upload, user_declined → leaf-only
 // Caller acquires g_mutex inside.
-static void handle_swarm_unable(const sockaddr_in& from) {
+static void handle_swarm_unable(const char* msg, size_t len, const sockaddr_in& from) {
+    // Parse reason (after "SWARM_UNABLE:" if present)
+    std::string reason;
+    if (len > 13 && msg[12] == ':') {
+        reason = std::string(msg + 13, len - 13);
+        while (!reason.empty() && (reason.back() == '\n' || reason.back() == '\r'))
+            reason.pop_back();
+    }
+
+    bool use_mediated = (reason == "symmetric_nat");
+
     std::lock_guard<std::shared_mutex> lock(g_mutex);
     auto _rk = g_addr_to_group.find(addr_key(from));
     std::string gname = (_rk != g_addr_to_group.end()) ? _rk->second : "";
@@ -2607,54 +2623,79 @@ static void handle_swarm_unable(const sockaddr_in& from) {
 
     for (size_t i = 0; i < group.swarm_tree.size(); i++) {
         if (addr_equal(group.swarm_tree[i].addr, from)) {
-            group.swarm_tree[i].is_relay_capable = false;
-            // If this node has children, they need to be reassigned
-            if (!group.swarm_tree[i].children.empty()) {
-                // Collect and reassign children
-                std::vector<sockaddr_in> orphans = group.swarm_tree[i].children;
-                group.swarm_tree[i].children.clear();
+            if (use_mediated) {
+                // Symmetric NAT: node stays in tree as parent, relay proxies to children
+                group.swarm_tree[i].relay_mediated = true;
+                group.swarm_tree[i].is_relay_capable = true;  // can still be assigned children
+                fprintf(stderr, "[swarm] Node %s set to relay-mediated (symmetric NAT) — "
+                        "relay will proxy to %zu children\n",
+                        addr_str(from).c_str(), group.swarm_tree[i].children.size());
 
-                for (const auto& orphan_addr : orphans) {
-                    size_t orphan_idx = SIZE_MAX;
+                // Notify children: their parent is now the relay (0.0.0.0:0)
+                // so they listen for audio from relay instead of P2P parent
+                for (const auto& child_addr : group.swarm_tree[i].children) {
                     for (size_t j = 0; j < group.swarm_tree.size(); j++) {
-                        if (addr_equal(group.swarm_tree[j].addr, orphan_addr)) {
-                            orphan_idx = j;
+                        if (addr_equal(group.swarm_tree[j].addr, child_addr)) {
+                            memset(&group.swarm_tree[j].parent_addr, 0, sizeof(sockaddr_in));
+                            send_swarm_assign(group.swarm_tree[j]);
                             break;
                         }
                     }
-                    if (orphan_idx == SIZE_MAX) continue;
+                }
+            } else {
+                // Cellular/battery_saver/etc: true leaf — no relay at all
+                group.swarm_tree[i].is_relay_capable = false;
+                group.swarm_tree[i].relay_mediated = false;
+                fprintf(stderr, "[swarm] Node %s set to leaf-only (reason: %s)\n",
+                        addr_str(from).c_str(), reason.empty() ? "unknown" : reason.c_str());
 
-                    // Find new parent
-                    int best_depth = INT_MAX;
-                    size_t best_parent = SIZE_MAX;
-                    for (size_t j = 0; j < group.swarm_tree.size(); j++) {
-                        if (j == orphan_idx || j == i) continue;
-                        if (!group.swarm_tree[j].is_relay_capable) continue;
-                        if (group.swarm_tree[j].children.size() < kSwarmFanOut &&
-                            group.swarm_tree[j].depth < best_depth) {
-                            best_depth = group.swarm_tree[j].depth;
-                            best_parent = j;
+                // Reassign children to other parents
+                if (!group.swarm_tree[i].children.empty()) {
+                    std::vector<sockaddr_in> orphans = group.swarm_tree[i].children;
+                    group.swarm_tree[i].children.clear();
+
+                    for (const auto& orphan_addr : orphans) {
+                        size_t orphan_idx = SIZE_MAX;
+                        for (size_t j = 0; j < group.swarm_tree.size(); j++) {
+                            if (addr_equal(group.swarm_tree[j].addr, orphan_addr)) {
+                                orphan_idx = j;
+                                break;
+                            }
                         }
-                    }
+                        if (orphan_idx == SIZE_MAX) continue;
 
-                    if (best_parent != SIZE_MAX) {
-                        group.swarm_tree[orphan_idx].parent_addr = group.swarm_tree[best_parent].addr;
-                        group.swarm_tree[orphan_idx].depth = group.swarm_tree[best_parent].depth + 1;
-                        group.swarm_tree[best_parent].children.push_back(orphan_addr);
+                        // Find new parent
+                        int best_depth = INT_MAX;
+                        size_t best_parent = SIZE_MAX;
+                        for (size_t j = 0; j < group.swarm_tree.size(); j++) {
+                            if (j == orphan_idx || j == i) continue;
+                            if (!group.swarm_tree[j].is_relay_capable) continue;
+                            if (group.swarm_tree[j].children.size() < kSwarmFanOut &&
+                                group.swarm_tree[j].depth < best_depth) {
+                                best_depth = group.swarm_tree[j].depth;
+                                best_parent = j;
+                            }
+                        }
 
-                        std::string promote_msg = "SWARM_PROMOTE:" + addr_str(group.swarm_tree[best_parent].addr) + "\n";
-                        sendto(g_udp_sock, promote_msg.c_str(), promote_msg.size(), 0,
-                               (const sockaddr*)&orphan_addr, sizeof(orphan_addr));
-                        std::string add_msg = "SWARM_ADD_CHILD:" + addr_str(orphan_addr) + "\n";
-                        sendto(g_udp_sock, add_msg.c_str(), add_msg.size(), 0,
-                               (const sockaddr*)&group.swarm_tree[best_parent].addr,
-                               sizeof(group.swarm_tree[best_parent].addr));
-                    } else {
-                        group.swarm_tree[orphan_idx].depth = 0;
-                        memset(&group.swarm_tree[orphan_idx].parent_addr, 0, sizeof(sockaddr_in));
-                        std::string promote_msg = "SWARM_PROMOTE:0.0.0.0:0\n";
-                        sendto(g_udp_sock, promote_msg.c_str(), promote_msg.size(), 0,
-                               (const sockaddr*)&orphan_addr, sizeof(orphan_addr));
+                        if (best_parent != SIZE_MAX) {
+                            group.swarm_tree[orphan_idx].parent_addr = group.swarm_tree[best_parent].addr;
+                            group.swarm_tree[orphan_idx].depth = group.swarm_tree[best_parent].depth + 1;
+                            group.swarm_tree[best_parent].children.push_back(orphan_addr);
+
+                            std::string promote_msg = "SWARM_PROMOTE:" + addr_str(group.swarm_tree[best_parent].addr) + "\n";
+                            sendto(g_udp_sock, promote_msg.c_str(), promote_msg.size(), 0,
+                                   (const sockaddr*)&orphan_addr, sizeof(orphan_addr));
+                            std::string add_msg = "SWARM_ADD_CHILD:" + addr_str(orphan_addr) + "\n";
+                            sendto(g_udp_sock, add_msg.c_str(), add_msg.size(), 0,
+                                   (const sockaddr*)&group.swarm_tree[best_parent].addr,
+                                   sizeof(group.swarm_tree[best_parent].addr));
+                        } else {
+                            group.swarm_tree[orphan_idx].depth = 0;
+                            memset(&group.swarm_tree[orphan_idx].parent_addr, 0, sizeof(sockaddr_in));
+                            std::string promote_msg = "SWARM_PROMOTE:0.0.0.0:0\n";
+                            sendto(g_udp_sock, promote_msg.c_str(), promote_msg.size(), 0,
+                                   (const sockaddr*)&orphan_addr, sizeof(orphan_addr));
+                        }
                     }
                 }
             }
@@ -5402,17 +5443,49 @@ static void forward_audio(const uint8_t* data, size_t len, const sockaddr_in& fr
         // Build destination list under lock
         local_dests.reserve(group.members.size());
 
+        // Per-client codec filter: skip non-matching PTs for members with preferred_pt set.
+        // Control packets (FEC=127, NACK=126, SYNC=125) always pass through.
+        uint8_t pkt_pt = ostp.payload_type;
+        bool is_control_pt = (pkt_pt == kPT_FEC || pkt_pt == kPT_NACK || pkt_pt == kPT_SYNC);
+
         if (group.swarm_active && !group.swarm_tree.empty()) {
             is_swarm = true;
+            // Build addr_key → preferred_pt lookup for codec filtering (swarm path)
+            std::unordered_map<uint64_t, int> codec_filter;
+            if (!is_control_pt) {
+                for (const auto& m : group.members) {
+                    if (m.preferred_pt >= 0)
+                        codec_filter[addr_key(m.addr)] = m.preferred_pt;
+                }
+            }
+            // Collect addresses of children belonging to relay-mediated parents
+            std::unordered_set<uint64_t> mediated_children;
+            for (const auto& sn : group.swarm_tree) {
+                if (sn.relay_mediated) {
+                    for (const auto& child : sn.children) {
+                        mediated_children.insert(addr_key(child));
+                    }
+                }
+            }
             for (const auto& sn : group.swarm_tree) {
                 if (addr_equal(sn.addr, from)) continue;
-                if (sn.depth == 0) local_dests.push_back(sn.addr);
+                // Send to: depth-0 nodes (direct from relay) OR children of mediated parents
+                if (sn.depth == 0 || mediated_children.count(addr_key(sn.addr))) {
+                    // Codec filter: skip if member wants a different PT
+                    if (!is_control_pt) {
+                        auto cf = codec_filter.find(addr_key(sn.addr));
+                        if (cf != codec_filter.end() && cf->second != (int)pkt_pt) continue;
+                    }
+                    local_dests.push_back(sn.addr);
+                }
             }
             size_t full_count = group.members.size() - 1;
             swarm_saved = (full_count > local_dests.size()) ? full_count - local_dests.size() : 0;
         } else {
             for (const auto& m : group.members) {
                 if (addr_equal(m.addr, from)) continue;
+                // Codec filter: skip if member wants a different PT
+                if (!is_control_pt && m.preferred_pt >= 0 && m.preferred_pt != (int)pkt_pt) continue;
                 local_dests.push_back(m.addr);
             }
         }
@@ -5697,10 +5770,13 @@ static void print_stats() {
             }
             if (group_max_depth > global_max_depth) global_max_depth = group_max_depth;
             size_t root_count = 0;
+            size_t mediated_count = 0;
             for (const auto& sn : group.swarm_tree) {
                 if (sn.depth == 0) root_count++;
+                if (sn.relay_mediated) mediated_count++;
             }
-            fprintf(stderr, " [SWARM: depth=%d, roots=%zu]", group_max_depth, root_count);
+            fprintf(stderr, " [SWARM: depth=%d, roots=%zu, mediated=%zu]",
+                    group_max_depth, root_count, mediated_count);
         }
         fprintf(stderr, "\n");
         for (const auto& m : group.members) {
@@ -5940,6 +6016,30 @@ static void handle_sync(const char* msg, size_t len, const sockaddr_in& from) {
 // Format: "DELAY:<net_delay_ms>\n" — receiver reports its network delay
 // Relay computes group max and broadcasts "MAXDELAY:<ms>\n" to all members.
 // This allows sync mode to align all devices to the slowest one (up to 2000ms).
+// ── CODEC filter handler ─────────────────────────────────────────────────────
+// "CODEC:<pt>\n" — set per-client payload-type filter.
+// Only packets matching the requested PT (plus FEC/NACK/control) are forwarded.
+// "CODEC:all\n" or "CODEC:-1\n" resets to forward everything (default).
+static void handle_codec(const char* msg, size_t len, const sockaddr_in& from) {
+    std::string payload(msg + 6, len - 6);  // skip "CODEC:"
+    while (!payload.empty() && (payload.back() == '\n' || payload.back() == '\r'))
+        payload.pop_back();
+
+    int pt = -1;  // default: no filter
+    if (payload != "all") {
+        try { pt = std::stoi(payload); } catch (...) { return; }
+        if (pt < 0 || pt > 127) pt = -1;  // invalid range → reset to all
+    }
+
+    std::lock_guard<std::shared_mutex> lock(g_mutex);
+    auto rk = g_addr_to_group.find(addr_key(from));
+    if (rk == g_addr_to_group.end()) return;
+    auto it = g_groups.find(rk->second);
+    if (it == g_groups.end()) return;
+    Member* m = find_member(it->second, from);
+    if (m) m->preferred_pt = pt;
+}
+
 static void handle_delay(const char* msg, size_t len, const sockaddr_in& from) {
     std::string payload(msg + 6, len - 6);
     while (!payload.empty() && (payload.back() == '\n' || payload.back() == '\r'))
@@ -7268,6 +7368,7 @@ static void print_usage(const char* prog) {
         "  REPLAY:<offset_sec>\\n            Replay last N seconds of audio\n"
         "  RECORD:<group>\\n                 Start server-side recording\n"
         "  RECORD_STOP:<group>\\n            Stop server-side recording\n"
+        "  CODEC:<pt>\\n                     Filter forwarding to payload type (all=reset)\n"
         "  PING:<addr>:<ts>\\n               Latency probe (forwarded to target)\n"
         "  ROUTE:<addr>:<p2p|relay>\\n       Path preference (informational)\n"
         "  CASCADE_JOIN:<group>:<id>:<secret>\\n  Downstream relay subscribes\n"
@@ -9791,6 +9892,9 @@ int main(int argc, char** argv) {
             } else if (n >= 5 && memcmp(pkt, "SYNC:", 5) == 0) {
                 // File-sync: play/pause/seek command
                 handle_sync((const char*)pkt, (size_t)n, from);
+            } else if (n >= 6 && memcmp(pkt, "CODEC:", 6) == 0) {
+                // Per-client codec filter: only forward matching PT
+                handle_codec((const char*)pkt, (size_t)n, from);
             } else if (n >= 6 && memcmp(pkt, "DELAY:", 6) == 0) {
                 // Sync mode: device reports its network delay
                 handle_delay((const char*)pkt, (size_t)n, from);
@@ -9859,7 +9963,7 @@ int main(int argc, char** argv) {
                 handle_swarm_ready(from);
             } else if (n >= 13 && memcmp(pkt, "SWARM_UNABLE", 12) == 0) {
                 // P2P Swarm: client can't relay (symmetric NAT, data saver)
-                handle_swarm_unable(from);
+                handle_swarm_unable((const char*)pkt, (size_t)n, from);
             } else if (n >= 10 && memcmp(pkt, "SWARM_ACK:", 10) == 0) {
                 // P2P Swarm: client confirms receiving from assigned parent
                 handle_swarm_ack((const char*)pkt, (size_t)n, from);

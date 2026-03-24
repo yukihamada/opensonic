@@ -21,6 +21,16 @@
 #include <mutex>
 #include <atomic>
 #include <csignal>
+#include <opus/opus.h>
+
+#ifdef HAVE_FLAC
+#include <FLAC/stream_encoder.h>
+#endif
+
+#ifdef HAVE_FDK_AAC
+#include <fdk-aac/aacenc_lib.h>
+#endif
+
 #include <dirent.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -93,13 +103,17 @@ static std::vector<ChannelConfig> parse_config(const std::string& path) {
 // ── Constants ──
 
 static const uint32_t SAMPLE_RATE = 48000;
-static const uint32_t CHANNELS    = 1;
-static const uint32_t FRAMES_PER_PKT = 96;  // 2ms at 48kHz mono (96*1*4=384 bytes/pkt, ~500pps)
+static const uint32_t CHANNELS    = 2;  // Stereo
+static const uint32_t FRAMES_PER_PKT = 96;  // 2ms at 48kHz mono
 static const uint8_t  PT_L24     = 96;      // OSTP 24-bit linear PCM
-static const uint8_t  PT_ADPCM   = 116;     // IMA-ADPCM mono (OSTP S4.9)
+static const uint8_t  PT_OPUS_STEREO = 111; // Opus stereo 320kbps
+static const uint8_t  PT_OPUS_MONO   = 112; // Opus mono 64kbps (low bandwidth)
+static const uint8_t  PT_FLAC       = 113;  // FLAC lossless
+static const uint8_t  PT_AAC        = 114;  // AAC-LC 256kbps stereo
+static const uint8_t  PT_ADPCM   = 116;     // IMA-ADPCM stereo (OSTP S4.9)
 static const uint32_t SSRC       = 0x524144;  // "RAD"
 static const uint16_t OSTP_PROFILE = 0x4F53;  // "OS"
-static const uint32_t RAW_FIRST_PKTS = 5;  // S4.9: 5 raw PCM packets then switch to ADPCM
+static const uint32_t RAW_FIRST_PKTS = UINT32_MAX;  // PCM only (ADPCM disabled)
 
 // ── IMA-ADPCM inline encoder (from soluna/codec/adpcm.h) ──
 
@@ -268,6 +282,25 @@ static void signal_handler(int) {
     g_running.store(false);
 }
 
+// ── FLAC write callback: captures encoded bytes into a buffer ──
+
+#ifdef HAVE_FLAC
+struct FlacWriteCtx {
+    std::vector<uint8_t> buf;
+};
+
+static FLAC__StreamEncoderWriteStatus flac_write_cb(
+    const FLAC__StreamEncoder* /*encoder*/,
+    const FLAC__byte buffer[], size_t bytes,
+    uint32_t /*samples*/, uint32_t /*current_frame*/,
+    void* client_data)
+{
+    auto* ctx = static_cast<FlacWriteCtx*>(client_data);
+    ctx->buf.insert(ctx->buf.end(), buffer, buffer + bytes);
+    return FLAC__STREAM_ENCODER_WRITE_STATUS_OK;
+}
+#endif
+
 // ── RadioChannel: encapsulates one channel's streaming state and loop ──
 
 struct RadioChannel {
@@ -308,7 +341,7 @@ struct RadioChannel {
         last_join = time(nullptr);
         fprintf(stderr, "[radio:%s] Started streaming\n", name.c_str());
 
-        uint8_t pkt[2048];
+        uint8_t pkt[8192]; // Large enough for FLAC frames
 
         for (size_t idx = 0; g_running.load(); idx = (idx + 1) % files.size()) {
             const auto& filepath = files[idx];
@@ -320,7 +353,7 @@ struct RadioChannel {
                     name.c_str(), filename.c_str(), idx + 1, files.size());
             send_meta(sock, relay_addr, name, filename);
 
-            // ffmpeg: decode to 48kHz mono s32le
+            // ffmpeg: decode to 48kHz stereo s32le
             char cmd[2048];
             snprintf(cmd, sizeof(cmd),
                 "ffmpeg -v error -i '%s' -f s32le -acodec pcm_s32le -ar %u -ac %u - 2>/dev/null",
@@ -333,7 +366,94 @@ struct RadioChannel {
                 continue;
             }
 
+            // Opus encoder: high quality stereo 320kbps
+            int opus_err;
+            OpusEncoder* opus_enc = opus_encoder_create(
+                SAMPLE_RATE, CHANNELS, OPUS_APPLICATION_AUDIO, &opus_err);
+            if (opus_err != OPUS_OK || !opus_enc) {
+                fprintf(stderr, "[radio:%s] Opus encoder failed: %d\n", name.c_str(), opus_err);
+                pclose(pipe);
+                continue;
+            }
+            opus_encoder_ctl(opus_enc, OPUS_SET_BITRATE(320000));
+            opus_encoder_ctl(opus_enc, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC));
+
+            // Opus encoder: low bandwidth mono 64kbps
+            int opus_lo_err;
+            OpusEncoder* opus_lo_enc = opus_encoder_create(
+                SAMPLE_RATE, 1, OPUS_APPLICATION_AUDIO, &opus_lo_err);
+            if (opus_lo_err != OPUS_OK || !opus_lo_enc) {
+                fprintf(stderr, "[radio:%s] Opus-lo encoder failed: %d\n", name.c_str(), opus_lo_err);
+                opus_lo_enc = nullptr;
+            } else {
+                opus_encoder_ctl(opus_lo_enc, OPUS_SET_BITRATE(64000));
+                opus_encoder_ctl(opus_lo_enc, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC));
+            }
+
+#ifdef HAVE_FLAC
+            // FLAC encoder: lossless, frame-by-frame
+            FLAC__StreamEncoder* flac_enc = FLAC__stream_encoder_new();
+            FlacWriteCtx flac_ctx;
+            bool flac_ok = false;
+            if (flac_enc) {
+                FLAC__stream_encoder_set_channels(flac_enc, CHANNELS);
+                FLAC__stream_encoder_set_bits_per_sample(flac_enc, 24);
+                FLAC__stream_encoder_set_sample_rate(flac_enc, SAMPLE_RATE);
+                FLAC__stream_encoder_set_compression_level(flac_enc, 1); // fast for real-time
+                FLAC__stream_encoder_set_blocksize(flac_enc, 256);       // 5.3ms, ~800B fits QUIC datagram MTU
+                FLAC__stream_encoder_set_streamable_subset(flac_enc, true);
+                auto status = FLAC__stream_encoder_init_stream(
+                    flac_enc, flac_write_cb, nullptr, nullptr, nullptr, &flac_ctx);
+                if (status == FLAC__STREAM_ENCODER_INIT_STATUS_OK) {
+                    flac_ok = true;
+                    fprintf(stderr, "[radio:%s] FLAC encoder initialized\n", name.c_str());
+                } else {
+                    fprintf(stderr, "[radio:%s] FLAC init failed: %d\n", name.c_str(), (int)status);
+                    FLAC__stream_encoder_delete(flac_enc);
+                    flac_enc = nullptr;
+                }
+            }
+            // FLAC accumulator: 960 samples per channel (20ms)
+            FLAC__int32 flac_int_buf[256 * CHANNELS];
+            int flac_int_pos = 0;
+#endif
+
+#ifdef HAVE_FDK_AAC
+            // AAC encoder: AAC-LC 256kbps stereo via fdk-aac
+            HANDLE_AACENCODER aac_enc = nullptr;
+            bool aac_ok = false;
+            AACENC_InfoStruct aac_info = {};
+            if (aacEncOpen(&aac_enc, 0, CHANNELS) == AACENC_OK) {
+                aacEncoder_SetParam(aac_enc, AACENC_AOT, 2);           // AAC-LC
+                aacEncoder_SetParam(aac_enc, AACENC_SAMPLERATE, SAMPLE_RATE);
+                aacEncoder_SetParam(aac_enc, AACENC_CHANNELMODE, MODE_2);
+                aacEncoder_SetParam(aac_enc, AACENC_BITRATE, 256000);
+                aacEncoder_SetParam(aac_enc, AACENC_TRANSMUX, 0);      // raw AAC frames
+                if (aacEncEncode(aac_enc, nullptr, nullptr, nullptr, nullptr) == AACENC_OK) {
+                    aacEncInfo(aac_enc, &aac_info);
+                    aac_ok = true;
+                    fprintf(stderr, "[radio:%s] AAC encoder initialized (frameLength=%u)\n",
+                            name.c_str(), aac_info.frameLength);
+                } else {
+                    fprintf(stderr, "[radio:%s] AAC encode init failed\n", name.c_str());
+                    aacEncClose(&aac_enc);
+                    aac_enc = nullptr;
+                }
+            }
+            // AAC accumulator: frameLength samples per channel (typically 1024)
+            uint32_t aac_frame_len = aac_ok ? aac_info.frameLength : 1024;
+            std::vector<int16_t> aac_pcm_buf(aac_frame_len * CHANNELS);
+            int aac_pcm_pos = 0;
+            std::vector<uint8_t> aac_out_buf(aac_ok ? aac_info.maxOutBufBytes : 2048);
+#endif
+
             int32_t pcm_buf[FRAMES_PER_PKT * CHANNELS];
+            // Opus accumulator: 960 samples/ch = 10 PCM packets of 96 samples
+            float opus_float_buf[960 * CHANNELS];
+            int opus_float_pos = 0;
+            float opus_lo_mono_buf[960]; // mono downmix for low-bitrate Opus
+            unsigned char opus_out[4000];
+            unsigned char opus_lo_out[2000];
             AdpcmState adpcm_state;
             uint32_t pkt_count = 0;
 
@@ -350,7 +470,6 @@ struct RadioChannel {
                 size_t frames = nread / CHANNELS;
 
                 // OSTP convention: 24-bit PCM stored in int32_t (range +/-8388607).
-                // ffmpeg s32le uses full 32-bit range -> shift right 8 bits.
                 for (size_t i = 0; i < nread; i++)
                     pcm_buf[i] >>= 8;
 
@@ -365,36 +484,10 @@ struct RadioChannel {
                 uint8_t pt;
                 uint8_t adpcm_buf[4 + FRAMES_PER_PKT];
 
-                if (pkt_count < RAW_FIRST_PKTS) {
-                    // S4.9 Raw First: send raw PCM for instant DMA playback
-                    payload = reinterpret_cast<const uint8_t*>(pcm_buf);
-                    payload_size = nread * sizeof(int32_t);
-                    pt = PT_L24;
-
-                    // Seed ADPCM state from last sample
-                    int16_t last_sample = (int16_t)(pcm_buf[nread - 1] >> 8);
-                    adpcm_state.valprev = last_sample;
-                    adpcm_state.index = 40;
-                } else {
-                    // ADPCM mode: 4:1 bandwidth reduction
-                    int16_t pcm16[FRAMES_PER_PKT * CHANNELS];
-                    for (size_t i = 0; i < nread; i++)
-                        pcm16[i] = (int16_t)(pcm_buf[i] >> 8);
-
-                    adpcm_buf[0] = (uint8_t)(adpcm_state.valprev & 0xFF);
-                    adpcm_buf[1] = (uint8_t)((adpcm_state.valprev >> 8) & 0xFF);
-                    adpcm_buf[2] = (uint8_t)adpcm_state.index;
-                    adpcm_buf[3] = 0;
-                    for (size_t i = 0; i < nread; i++) {
-                        uint8_t nib = adpcm_encode_one(pcm16[i], adpcm_state);
-                        if (i & 1) adpcm_buf[4 + i/2] |= (nib << 4);
-                        else       adpcm_buf[4 + i/2] = nib;
-                    }
-
-                    payload = adpcm_buf;
-                    payload_size = 4 + (nread + 1) / 2;
-                    pt = PT_ADPCM;
-                }
+                // === Always send PCM (lossless, PT=96) ===
+                payload = reinterpret_cast<const uint8_t*>(pcm_buf);
+                payload_size = nread * sizeof(int32_t);
+                pt = PT_L24;
 
                 size_t pkt_size = build_ostp_packet(
                     pkt, sizeof(pkt),
@@ -405,9 +498,163 @@ struct RadioChannel {
                 if (pkt_size > 0) {
                     send_packet(sock, relay_addr, pkt, pkt_size);
                 }
-
                 seq++;
                 if (seq == 0) seq_ext++;
+
+                // === Also send ADPCM (compressed, PT=116) for low-bandwidth clients ===
+                if (pkt_count < RAW_FIRST_PKTS) {
+                    // Seed ADPCM state
+                    int16_t last_sample = (int16_t)(pcm_buf[nread - 1] >> 8);
+                    adpcm_state.valprev = last_sample;
+                    adpcm_state.index = 40;
+                } else {
+                    int16_t pcm16[FRAMES_PER_PKT * CHANNELS];
+                    for (size_t i = 0; i < nread; i++)
+                        pcm16[i] = (int16_t)(pcm_buf[i] >> 8);
+                    adpcm_buf[0] = (uint8_t)(adpcm_state.valprev & 0xFF);
+                    adpcm_buf[1] = (uint8_t)((adpcm_state.valprev >> 8) & 0xFF);
+                    adpcm_buf[2] = (uint8_t)adpcm_state.index;
+                    adpcm_buf[3] = 0;
+                    for (size_t i = 0; i < nread; i++) {
+                        uint8_t nib = adpcm_encode_one(pcm16[i], adpcm_state);
+                        if (i & 1) adpcm_buf[4 + i/2] |= (nib << 4);
+                        else       adpcm_buf[4 + i/2] = nib;
+                    }
+
+                    size_t adpcm_pkt_size = build_ostp_packet(
+                        pkt, sizeof(pkt),
+                        SSRC, seq, rtp_ts,
+                        PT_ADPCM, stream_id, seq_ext, media_ts,
+                        adpcm_buf, 4 + (nread + 1) / 2);
+
+                    if (adpcm_pkt_size > 0) {
+                        send_packet(sock, relay_addr, pkt, adpcm_pkt_size);
+                    }
+                    seq++;
+                    if (seq == 0) seq_ext++;
+                }
+                // === Opus: accumulate 960 samples (20ms), encode, send ===
+                for (size_t i = 0; i < nread; i++) {
+                    opus_float_buf[opus_float_pos++] = pcm_buf[i] / 8388608.0f;
+                }
+                if (opus_float_pos >= 960 * (int)CHANNELS) {
+                    int opus_len = opus_encode_float(opus_enc, opus_float_buf,
+                        960, opus_out, sizeof(opus_out));
+                    if (opus_len > 0) {
+                        size_t opus_pkt_size = build_ostp_packet(
+                            pkt, sizeof(pkt),
+                            SSRC, seq, rtp_ts,
+                            PT_OPUS_STEREO, stream_id, seq_ext, media_ts,
+                            opus_out, (size_t)opus_len);
+                        if (opus_pkt_size > 0) {
+                            send_packet(sock, relay_addr, pkt, opus_pkt_size);
+                        }
+                        seq++;
+                        if (seq == 0) seq_ext++;
+                    }
+                    opus_float_pos = 0;
+
+                    // === Opus low-bandwidth mono (PT=112): downmix stereo to mono ===
+                    if (opus_lo_enc) {
+                        for (int k = 0; k < 960; k++) {
+                            opus_lo_mono_buf[k] = (opus_float_buf[k * CHANNELS] +
+                                                   opus_float_buf[k * CHANNELS + 1]) * 0.5f;
+                        }
+                        int opus_lo_len = opus_encode_float(opus_lo_enc, opus_lo_mono_buf,
+                            960, opus_lo_out, sizeof(opus_lo_out));
+                        if (opus_lo_len > 0) {
+                            size_t lo_pkt_size = build_ostp_packet(
+                                pkt, sizeof(pkt),
+                                SSRC, seq, rtp_ts,
+                                PT_OPUS_MONO, stream_id, seq_ext, media_ts,
+                                opus_lo_out, (size_t)opus_lo_len);
+                            if (lo_pkt_size > 0) {
+                                send_packet(sock, relay_addr, pkt, lo_pkt_size);
+                            }
+                            seq++;
+                            if (seq == 0) seq_ext++;
+                        }
+                    }
+                }
+
+#ifdef HAVE_FLAC
+                // === FLAC: accumulate 960 samples (20ms), encode frame, send ===
+                if (flac_ok && flac_enc) {
+                    for (size_t i = 0; i < nread; i++) {
+                        flac_int_buf[flac_int_pos++] = pcm_buf[i]; // already 24-bit range
+                    }
+                    if (flac_int_pos >= 256 * (int)CHANNELS) {
+                        flac_ctx.buf.clear();
+                        FLAC__stream_encoder_process_interleaved(flac_enc, flac_int_buf, 256);
+                        if (!flac_ctx.buf.empty()) {
+                            size_t flac_pkt_size = build_ostp_packet(
+                                pkt, sizeof(pkt),
+                                SSRC, seq, rtp_ts,
+                                PT_FLAC, stream_id, seq_ext, media_ts,
+                                flac_ctx.buf.data(), flac_ctx.buf.size());
+                            if (flac_pkt_size > 0) {
+                                send_packet(sock, relay_addr, pkt, flac_pkt_size);
+                            }
+                            seq++;
+                            if (seq == 0) seq_ext++;
+                        }
+                        flac_int_pos = 0;
+                    }
+                }
+#endif
+
+#ifdef HAVE_FDK_AAC
+                // === AAC: accumulate frameLength samples, encode, send ===
+                if (aac_ok && aac_enc) {
+                    for (size_t i = 0; i < nread; i++) {
+                        // Convert 24-bit to 16-bit for fdk-aac
+                        aac_pcm_buf[aac_pcm_pos++] = (int16_t)(pcm_buf[i] >> 8);
+                    }
+                    if (aac_pcm_pos >= (int)(aac_frame_len * CHANNELS)) {
+                        // Set up input buffer descriptor
+                        AACENC_BufDesc in_buf = {}, out_buf = {};
+                        AACENC_InArgs in_args = {};
+                        AACENC_OutArgs out_args = {};
+
+                        void* in_ptr = aac_pcm_buf.data();
+                        int in_size = aac_frame_len * CHANNELS * sizeof(int16_t);
+                        int in_id = IN_AUDIO_DATA;
+                        int in_elem_size = sizeof(int16_t);
+                        in_buf.numBufs = 1;
+                        in_buf.bufs = &in_ptr;
+                        in_buf.bufferIdentifiers = &in_id;
+                        in_buf.bufSizes = &in_size;
+                        in_buf.bufElSizes = &in_elem_size;
+                        in_args.numInSamples = aac_frame_len * CHANNELS;
+
+                        void* out_ptr = aac_out_buf.data();
+                        int out_size = (int)aac_out_buf.size();
+                        int out_id = OUT_BITSTREAM_DATA;
+                        int out_elem_size = 1;
+                        out_buf.numBufs = 1;
+                        out_buf.bufs = &out_ptr;
+                        out_buf.bufferIdentifiers = &out_id;
+                        out_buf.bufSizes = &out_size;
+                        out_buf.bufElSizes = &out_elem_size;
+
+                        auto aac_err = aacEncEncode(aac_enc, &in_buf, &out_buf, &in_args, &out_args);
+                        if (aac_err == AACENC_OK && out_args.numOutBytes > 0) {
+                            size_t aac_pkt_size = build_ostp_packet(
+                                pkt, sizeof(pkt),
+                                SSRC, seq, rtp_ts,
+                                PT_AAC, stream_id, seq_ext, media_ts,
+                                aac_out_buf.data(), (size_t)out_args.numOutBytes);
+                            if (aac_pkt_size > 0) {
+                                send_packet(sock, relay_addr, pkt, aac_pkt_size);
+                            }
+                            seq++;
+                            if (seq == 0) seq_ext++;
+                        }
+                        aac_pcm_pos = 0;
+                    }
+                }
+#endif
+
                 rtp_ts += (uint32_t)frames;
                 pkt_count++;
 
@@ -428,6 +675,17 @@ struct RadioChannel {
             }
 
             pclose(pipe);
+            opus_encoder_destroy(opus_enc);
+            if (opus_lo_enc) opus_encoder_destroy(opus_lo_enc);
+#ifdef HAVE_FLAC
+            if (flac_enc) {
+                FLAC__stream_encoder_finish(flac_enc);
+                FLAC__stream_encoder_delete(flac_enc);
+            }
+#endif
+#ifdef HAVE_FDK_AAC
+            if (aac_enc) aacEncClose(&aac_enc);
+#endif
             fprintf(stderr, "[radio:%s] Track finished: %s\n",
                     name.c_str(), filename.c_str());
             send_join(sock, relay_addr, name);
