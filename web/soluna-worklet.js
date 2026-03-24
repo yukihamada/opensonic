@@ -9,7 +9,7 @@ class SolunaProcessor extends AudioWorkletProcessor {
     this.readPos = 0;
     this.buffered = 0;
     this.prefillReached = false;
-    this.prefillThreshold = 9600; // 200ms
+    this.prefillThreshold = 14400; // 300ms — match iOS/Mac for cross-device sync
 
     this.port.onmessage = (e) => {
       if (e.data.type === 'stereo') {

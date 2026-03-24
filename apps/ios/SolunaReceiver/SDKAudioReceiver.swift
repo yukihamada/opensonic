@@ -108,13 +108,13 @@ final class SDKAudioReceiver: ObservableObject {
     private let playbackFormat: AVAudioFormat
     private var headphoneMotionManager: CMHeadphoneMotionManager?
 
-    // MARK: - Ring Buffer (lock-free SPSC, 4s @ 48 kHz mono)
+    // MARK: - Ring Buffer (lock-free SPSC, 4s @ 48 kHz stereo interleaved L,R,L,R...)
 
-    private let ringCapacity = 192_000
+    private let ringCapacity = 384_000  // 4s * 48kHz * 2ch
     private let ringBuffer: UnsafeMutablePointer<Float>
     private var writePos: Int64 = 0
     private var readPos: Int64 = 0
-    private let basePrefillThreshold = 14400  // 300 ms — enough for WAN jitter
+    private let basePrefillThreshold = 28800  // 300ms * 2ch
 
     // MARK: - Codec selection
     /// Preferred payload type: 96=PCM 24bit, 116=ADPCM (mono/stereo).
@@ -128,7 +128,7 @@ final class SDKAudioReceiver: ObservableObject {
 
     // Pre-allocated scratch buffer for audio callback (no malloc on RT thread)
     private let scratchBuffer: UnsafeMutablePointer<Float>
-    private let scratchCapacity = 4096
+    private let scratchCapacity = 8192
 
     // MARK: - Network
 
@@ -149,7 +149,7 @@ final class SDKAudioReceiver: ObservableObject {
 
     // Pre-allocated decode buffer for recv loop
     private let decodeBuffer: UnsafeMutablePointer<Float>
-    private let decodeCapacity = 256
+    private let decodeCapacity = 512
 
     // MARK: - Init / Deinit
 
@@ -409,36 +409,37 @@ final class SDKAudioReceiver: ObservableObject {
                 return noErr
             }
 
-            // Read mono, duplicate to stereo
-            let readCount = min(frames, scratchCap)
+            // Read stereo interleaved samples (2 per frame)
+            let samplesNeeded = frames * 2
+            let readCount = min(samplesNeeded, scratchCap)
             let got = self.ringRead(scratch, count: readCount)
+            let stereoFrames = got / 2
 
-            // Apply crossfade envelope
+            // Apply crossfade envelope (on stereo pairs)
             let phase = self.fadePhase
-            if phase != .none && got > 0 {
+            if phase != .none && stereoFrames > 0 {
                 let fadeDur = Float(self.fadeDurationSamples)
                 var progress = self.fadeProgress
-                for i in 0..<got {
+                for i in 0..<stereoFrames {
                     let t = min(progress / fadeDur, 1.0)
                     let multiplier: Float
                     switch phase {
                     case .fadingOut:
-                        multiplier = 1.0 - t  // 1.0 -> 0.0
+                        multiplier = 1.0 - t
                     case .fadingIn:
-                        multiplier = t         // 0.0 -> 1.0
+                        multiplier = t
                     case .none:
                         multiplier = 1.0
                     }
-                    scratch[i] *= multiplier
+                    scratch[i * 2] *= multiplier
+                    scratch[i * 2 + 1] *= multiplier
                     progress += 1.0
                 }
                 self.fadeProgress = progress
                 self._fadeMultiplier = (phase == .fadingOut) ? max(0, 1.0 - progress / fadeDur) : min(1.0, progress / fadeDur)
 
-                // Check if fade phase completed
                 if progress >= fadeDur {
                     if phase == .fadingOut {
-                        // Trigger channel switch on recvQueue
                         DispatchQueue.main.async { [weak self] in
                             self?.completeFadeOutAndSwitch()
                         }
@@ -450,10 +451,24 @@ final class SDKAudioReceiver: ObservableObject {
                 }
             }
 
-            for ch in 0..<ablp.count {
-                if let dst = ablp[ch].mData?.assumingMemoryBound(to: Float.self) {
-                    if got > 0 { memcpy(dst, scratch, got * MemoryLayout<Float>.size) }
-                    if got < frames { memset(dst.advanced(by: got), 0, (frames - got) * MemoryLayout<Float>.size) }
+            // De-interleave [L,R,L,R,...] into separate L/R channel buffers
+            if ablp.count >= 2,
+               let dL = ablp[0].mData?.assumingMemoryBound(to: Float.self),
+               let dR = ablp[1].mData?.assumingMemoryBound(to: Float.self) {
+                for i in 0..<stereoFrames {
+                    dL[i] = scratch[i * 2]
+                    dR[i] = scratch[i * 2 + 1]
+                }
+                if stereoFrames < frames {
+                    memset(dL.advanced(by: stereoFrames), 0, (frames - stereoFrames) * 4)
+                    memset(dR.advanced(by: stereoFrames), 0, (frames - stereoFrames) * 4)
+                }
+            } else {
+                for ch in 0..<ablp.count {
+                    if let dst = ablp[ch].mData?.assumingMemoryBound(to: Float.self) {
+                        for i in 0..<stereoFrames { dst[i] = scratch[i * 2] }
+                        if stereoFrames < frames { memset(dst.advanced(by: stereoFrames), 0, (frames - stereoFrames) * 4) }
+                    }
                 }
             }
             return noErr
@@ -726,19 +741,31 @@ final class SDKAudioReceiver: ObservableObject {
         }
     }
 
-    // MARK: - Opus Decode
+    // MARK: - Opus Decode (cached converter to avoid per-packet alloc)
 
+    private var opusConverter: AVAudioConverter?
+    private var opusCompressedBuf: AVAudioCompressedBuffer?
+    private var opusPCMBuf: AVAudioPCMBuffer?
+    private var opusCachedChannels: Int = 0
+    private let opusStereoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 2, interleaved: false)!
+
+    /// Decode Opus to stereo interleaved [L,R,L,R,...] for ring buffer
     private func decodeOpusToFloat(_ payload: [UInt8], channels: Int) -> [Float]? {
-        var opusDesc = AudioStreamBasicDescription(
-            mSampleRate: 48000, mFormatID: kAudioFormatOpus, mFormatFlags: 0,
-            mBytesPerPacket: 0, mFramesPerPacket: 960, mBytesPerFrame: 0,
-            mChannelsPerFrame: UInt32(channels), mBitsPerChannel: 0, mReserved: 0
-        )
-        guard let opusFormat = AVAudioFormat(streamDescription: &opusDesc) else { return nil }
-        let monoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
-        guard let converter = AVAudioConverter(from: opusFormat, to: monoFormat) else { return nil }
+        if opusConverter == nil || opusCachedChannels != channels {
+            var opusDesc = AudioStreamBasicDescription(
+                mSampleRate: 48000, mFormatID: kAudioFormatOpus, mFormatFlags: 0,
+                mBytesPerPacket: 0, mFramesPerPacket: 960, mBytesPerFrame: 0,
+                mChannelsPerFrame: UInt32(channels), mBitsPerChannel: 0, mReserved: 0
+            )
+            guard let opusFmt = AVAudioFormat(streamDescription: &opusDesc) else { return nil }
+            guard let conv = AVAudioConverter(from: opusFmt, to: opusStereoFormat) else { return nil }
+            opusConverter = conv
+            opusCompressedBuf = AVAudioCompressedBuffer(format: opusFmt, packetCapacity: 1, maximumPacketSize: 4000)
+            opusPCMBuf = AVAudioPCMBuffer(pcmFormat: opusStereoFormat, frameCapacity: 960)
+            opusCachedChannels = channels
+        }
+        guard let conv = opusConverter, let compressed = opusCompressedBuf, let pcmBuffer = opusPCMBuf else { return nil }
 
-        let compressed = AVAudioCompressedBuffer(format: opusFormat, packetCapacity: 1, maximumPacketSize: payload.count)
         compressed.byteLength = UInt32(payload.count)
         compressed.packetCount = 1
         memcpy(compressed.data, payload, payload.count)
@@ -746,14 +773,22 @@ final class SDKAudioReceiver: ObservableObject {
         compressed.packetDescriptions![0].mDataByteSize = UInt32(payload.count)
         compressed.packetDescriptions![0].mVariableFramesInPacket = 960
 
-        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: 960) else { return nil }
+        pcmBuffer.frameLength = 0
         var error: NSError?
-        converter.convert(to: pcmBuffer, error: &error) { _, outStatus in
+        conv.convert(to: pcmBuffer, error: &error) { _, outStatus in
             outStatus.pointee = .haveData
             return compressed
         }
-        guard error == nil, pcmBuffer.frameLength > 0, let data = pcmBuffer.floatChannelData?[0] else { return nil }
-        return Array(UnsafeBufferPointer(start: data, count: Int(pcmBuffer.frameLength)))
+        guard error == nil, pcmBuffer.frameLength > 0 else { return nil }
+        let frames = Int(pcmBuffer.frameLength)
+        guard let chL = pcmBuffer.floatChannelData?[0],
+              let chR = pcmBuffer.floatChannelData?[1] else { return nil }
+        var result = [Float](repeating: 0, count: frames * 2)
+        for i in 0..<frames {
+            result[i * 2] = chL[i]
+            result[i * 2 + 1] = chR[i]
+        }
+        return result
     }
 
     // MARK: - Receive Loop
@@ -891,7 +926,7 @@ final class SDKAudioReceiver: ObservableObject {
                 for bi in (off+4)..<end {
                     let byte = buf[bi]
                     for half in 0..<2 {
-                        guard count < decodeCap else { break }
+                        guard count + 1 < decodeCap else { break }
                         let nib = Int(half == 0 ? (byte & 0x0F) : ((byte >> 4) & 0x0F))
                         let step = stepTable[stepIndex]
                         var diff = step >> 3
@@ -904,8 +939,8 @@ final class SDKAudioReceiver: ObservableObject {
                         stepIndex += indexTable[nib]
                         if stepIndex < 0 { stepIndex = 0 }
                         if stepIndex > 88 { stepIndex = 88 }
-                        decodeBuf[count] = Float(vp) / 32768.0
-                        count += 1
+                        let s = Float(vp) / 32768.0
+                        decodeBuf[count] = s; decodeBuf[count + 1] = s; count += 2
                     }
                 }
             } else {
@@ -922,19 +957,22 @@ final class SDKAudioReceiver: ObservableObject {
                 }
                 var i = off
                 if srcChannels == 2 {
-                    // Stereo: average L+R into mono, stride = 8 bytes per frame
-                    while i + 7 < end && count < decodeCap {
+                    // Stereo: write L,R interleaved pairs
+                    while i + 7 < end && count + 1 < decodeCap {
                         let l = Int32(buf[i]) | (Int32(buf[i+1]) << 8) | (Int32(buf[i+2]) << 16) | (Int32(buf[i+3]) << 24)
                         let r = Int32(buf[i+4]) | (Int32(buf[i+5]) << 8) | (Int32(buf[i+6]) << 16) | (Int32(buf[i+7]) << 24)
-                        decodeBuf[count] = Float(l / 2 + r / 2) * scale
-                        count += 1
+                        decodeBuf[count] = Float(l) * scale      // L
+                        decodeBuf[count + 1] = Float(r) * scale  // R
+                        count += 2
                         i += 8
                     }
                 } else {
-                    while i + 3 < end && count < decodeCap {
+                    // Mono: duplicate to both channels
+                    while i + 3 < end && count + 1 < decodeCap {
                         let v = Int32(buf[i]) | (Int32(buf[i+1]) << 8) | (Int32(buf[i+2]) << 16) | (Int32(buf[i+3]) << 24)
-                        decodeBuf[count] = Float(v) * scale
-                        count += 1
+                        let s = Float(v) * scale
+                        decodeBuf[count] = s; decodeBuf[count + 1] = s
+                        count += 2
                         i += 4
                     }
                 }

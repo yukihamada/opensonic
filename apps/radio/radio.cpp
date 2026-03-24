@@ -113,7 +113,7 @@ static const uint8_t  PT_AAC        = 114;  // AAC-LC 256kbps stereo
 static const uint8_t  PT_ADPCM   = 116;     // IMA-ADPCM stereo (OSTP S4.9)
 static const uint32_t SSRC       = 0x524144;  // "RAD"
 static const uint16_t OSTP_PROFILE = 0x4F53;  // "OS"
-static const uint32_t RAW_FIRST_PKTS = UINT32_MAX;  // PCM only (ADPCM disabled)
+static const uint32_t RAW_FIRST_PKTS = 0;  // Send ADPCM from start (after state init)
 
 // ── IMA-ADPCM inline encoder (from soluna/codec/adpcm.h) ──
 
@@ -501,31 +501,31 @@ struct RadioChannel {
                 seq++;
                 if (seq == 0) seq_ext++;
 
-                // === Also send ADPCM (compressed, PT=116) for low-bandwidth clients ===
-                if (pkt_count < RAW_FIRST_PKTS) {
-                    // Seed ADPCM state
-                    int16_t last_sample = (int16_t)(pcm_buf[nread - 1] >> 8);
-                    adpcm_state.valprev = last_sample;
-                    adpcm_state.index = 40;
-                } else {
-                    int16_t pcm16[FRAMES_PER_PKT * CHANNELS];
-                    for (size_t i = 0; i < nread; i++)
-                        pcm16[i] = (int16_t)(pcm_buf[i] >> 8);
+                // === Also send ADPCM mono (compressed, PT=116) for low-bandwidth clients ===
+                // Downmix stereo→mono then ADPCM-encode FRAMES_PER_PKT samples
+                {
+                    size_t frames = nread / CHANNELS;
+                    int16_t pcm16_mono[FRAMES_PER_PKT];
+                    for (size_t i = 0; i < frames; i++) {
+                        int32_t l = pcm_buf[i * CHANNELS]     >> 8;
+                        int32_t r = pcm_buf[i * CHANNELS + 1] >> 8;
+                        pcm16_mono[i] = (int16_t)((l + r) / 2);
+                    }
                     adpcm_buf[0] = (uint8_t)(adpcm_state.valprev & 0xFF);
                     adpcm_buf[1] = (uint8_t)((adpcm_state.valprev >> 8) & 0xFF);
                     adpcm_buf[2] = (uint8_t)adpcm_state.index;
                     adpcm_buf[3] = 0;
-                    for (size_t i = 0; i < nread; i++) {
-                        uint8_t nib = adpcm_encode_one(pcm16[i], adpcm_state);
+                    for (size_t i = 0; i < frames; i++) {
+                        uint8_t nib = adpcm_encode_one(pcm16_mono[i], adpcm_state);
                         if (i & 1) adpcm_buf[4 + i/2] |= (nib << 4);
                         else       adpcm_buf[4 + i/2] = nib;
                     }
-
+                    size_t mono_stream_id = (1 << 10);  // ch_count=1 (mono)
                     size_t adpcm_pkt_size = build_ostp_packet(
                         pkt, sizeof(pkt),
                         SSRC, seq, rtp_ts,
-                        PT_ADPCM, stream_id, seq_ext, media_ts,
-                        adpcm_buf, 4 + (nread + 1) / 2);
+                        PT_ADPCM, (uint16_t)mono_stream_id, seq_ext, media_ts,
+                        adpcm_buf, 4 + (frames + 1) / 2);
 
                     if (adpcm_pkt_size > 0) {
                         send_packet(sock, relay_addr, pkt, adpcm_pkt_size);
