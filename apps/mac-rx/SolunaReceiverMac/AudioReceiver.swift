@@ -400,9 +400,6 @@ final class AudioReceiver: ObservableObject {
         errorMessage = nil
         state = .connecting
 
-        // C++ bridge disabled — SDK handles all audio
-
-        // Start SDK audio player immediately (mono ring buffer + AVAudioSourceNode)
         let ch = UserDefaults.standard.string(forKey: "channel") ?? "soluna"
         let sdk = SDKAudioReceiver.shared
         sdk.channel = ch

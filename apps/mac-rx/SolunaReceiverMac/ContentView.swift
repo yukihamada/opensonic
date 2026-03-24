@@ -409,6 +409,20 @@ struct ContentView: View {
             ToolbarItemGroup(placement: .automatic) {
                 Spacer()
 
+                // Codec picker
+                Picker("Codec", selection: Binding<UInt8>(
+                    get: { SDKAudioReceiver.shared.preferredPT },
+                    set: { SDKAudioReceiver.shared.setCodec($0) }
+                )) {
+                    Text("PCM").tag(UInt8(96))
+                    Text("ADPCM").tag(UInt8(116))
+                    Text("Opus HQ").tag(UInt8(111))
+                    Text("Opus Lo").tag(UInt8(112))
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 240)
+                .help("Audio codec")
+
                 Button { showDevicePicker = true } label: {
                     Image(systemName: "globe")
                 }

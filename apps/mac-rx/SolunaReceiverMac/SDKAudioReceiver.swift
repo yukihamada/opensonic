@@ -41,6 +41,10 @@ final class SDKAudioReceiver: ObservableObject {
 
     var isPlaying: Bool { state == .receiving || state == .connecting }
 
+    /// Preferred payload type for relay CODEC filter
+    @Published private(set) var preferredPT: UInt8 = 96
+    nonisolated(unsafe) private var prefPT: UInt8 = 96  // recv-thread copy
+
     // Stubs referenced by ContentView
     @Published private(set) var errorMessage: String?
     @Published var bufferMs: UInt32 = 60
@@ -170,7 +174,7 @@ final class SDKAudioReceiver: ObservableObject {
 
     func start() {
         guard state == .stopped || state == .error else { return }
-        Self.loadChannelConfig()  // Fetch server config on first start
+        Self.loadChannelConfig()
         errorMessage = nil
         state = .connecting
         _packetsReceivedAtomic = 0
@@ -221,10 +225,6 @@ final class SDKAudioReceiver: ObservableObject {
         // Capture raw pointers for RT audio callback (no weak self — avoid GC stalls)
         let ringBuf = ringBuffer
         let ringCap = ringCapacity
-        var rPos = UnsafeMutablePointer<Int64>.allocate(capacity: 1)
-        rPos.initialize(to: 0)
-        let wPosPtr = UnsafeMutablePointer<Int64>.allocate(capacity: 1)
-        // We'll use the instance's writePos/readPos directly via pointer
         let wpAddr = withUnsafeMutablePointer(to: &writePos) { $0 }
         let rpAddr = withUnsafeMutablePointer(to: &readPos) { $0 }
         // Dynamic prefill pointer: updated by stats polling with BT latency compensation
@@ -244,7 +244,6 @@ final class SDKAudioReceiver: ObservableObject {
             let prefill = Int(OSAtomicAdd64(0, prefillPtr))
             if avail < prefill {
                 if avail == 0 && fpReceived.value {
-                    // Buffer ran dry — re-enter prefill mode to rebuild buffer
                     fpReceived.set(false)
                 }
                 for c in 0..<ablp.count {
@@ -482,9 +481,10 @@ final class SDKAudioReceiver: ObservableObject {
             var tv = timeval(tv_sec: 0, tv_usec: 50000)
             setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
-            // JOIN
+            // JOIN + CODEC filter (only receive PCM from relay)
             let deviceName = Host.current().localizedName ?? "SolunaSDK-Mac"
             self.sendUDP("JOIN:\(ch)::\(deviceName)\n", sock: sock, addr: &self.relayAddr)
+            self.sendUDP("CODEC:\(self.prefPT)\n", sock: sock, addr: &self.relayAddr)
 
             self.running.set(true)
             DispatchQueue.main.async { self.relayState = "connected" }
@@ -502,6 +502,20 @@ final class SDKAudioReceiver: ObservableObject {
             // Receive loop
             self.recvLoop()
         }
+    }
+
+    /// Select codec: 96=PCM, 116=ADPCM, 111=Opus stereo, 112=Opus mono.
+    /// Sends CODEC filter to relay and resets buffer.
+    func setCodec(_ pt: UInt8) {
+        prefPT = pt
+        DispatchQueue.main.async { self.preferredPT = pt }
+        recvQueue.async { [weak self] in
+            guard let self, self.udpSocket >= 0 else { return }
+            self.sendUDP("CODEC:\(pt)\n", sock: self.udpSocket, addr: &self.relayAddr)
+        }
+        flushRing()
+        firstPacketReceived.set(false)
+        ClockSync.shared.reset()
     }
 
     private func disconnectRelay() {
@@ -532,8 +546,15 @@ final class SDKAudioReceiver: ObservableObject {
         let scale: Float = 1.0 / 8388608.0  // 2^23 for S24-in-S32LE
         let decodeBuf = decodeBuffer
         let decodeCap = decodeCapacity
+        var lastHello = DispatchTime.now()
 
         while running.value && udpSocket >= 0 {
+            // Inline heartbeat — recvQueue is blocked by this loop so DispatchSourceTimer can't fire
+            let now = DispatchTime.now()
+            if now.uptimeNanoseconds - lastHello.uptimeNanoseconds > 5_000_000_000 {
+                sendUDP("HELLO\n", sock: udpSocket, addr: &relayAddr)
+                lastHello = now
+            }
             let n = withUnsafeMutablePointer(to: &sender) { sp -> Int in
                 sp.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
                     recvfrom(udpSocket, &buf, buf.count, 0, sa, &senderLen)
@@ -564,15 +585,45 @@ final class SDKAudioReceiver: ObservableObject {
             let end = n - 4
             guard end > off else { continue }
 
-            if pt == 96 || pt == 97 {
-                // PT=96: S24-in-S32LE / PT=97: Float32
+            // PT filter: only accept preferred codec (relay also filters via CODEC command)
+            let pref = prefPT
+            if pref == 116 {
+                guard pt == 116 || pt == 115 else { continue }
+            } else if pref == 111 || pref == 112 {
+                guard pt == pref else { continue }
+            } else {
+                guard pt == 96 else { continue }
+            }
+
+            if pt == 96 {
+                // PT=96: S24-in-S32LE — same decode as iOS (handles both mono and stereo)
+                let srcChannels: Int
+                if buf[0] & 0x10 != 0 && n >= 18 {
+                    let streamId = UInt16(buf[16]) << 8 | UInt16(buf[17])
+                    let chCount = Int((streamId >> 10) & 0x0F)
+                    srcChannels = (chCount == 0 || chCount >= 2) ? 2 : 1
+                } else {
+                    srcChannels = 1
+                }
                 var count = 0
                 var i = off
-                while i + 3 < end && count < decodeCap {
-                    let v = Int32(buf[i]) | (Int32(buf[i+1]) << 8) | (Int32(buf[i+2]) << 16) | (Int32(buf[i+3]) << 24)
-                    decodeBuf[count] = Float(v) * scale
-                    count += 1
-                    i += 4
+                if srcChannels == 2 {
+                    // Stereo: average L+R into mono, stride = 8 bytes per frame
+                    while i + 7 < end && count < decodeCap {
+                        let l = Int32(buf[i]) | (Int32(buf[i+1]) << 8) | (Int32(buf[i+2]) << 16) | (Int32(buf[i+3]) << 24)
+                        let r = Int32(buf[i+4]) | (Int32(buf[i+5]) << 8) | (Int32(buf[i+6]) << 16) | (Int32(buf[i+7]) << 24)
+                        decodeBuf[count] = Float(l / 2 + r / 2) * scale
+                        count += 1
+                        i += 8
+                    }
+                } else {
+                    // Mono: read all samples directly
+                    while i + 3 < end && count < decodeCap {
+                        let v = Int32(buf[i]) | (Int32(buf[i+1]) << 8) | (Int32(buf[i+2]) << 16) | (Int32(buf[i+3]) << 24)
+                        decodeBuf[count] = Float(v) * scale
+                        count += 1
+                        i += 4
+                    }
                 }
                 ringWrite(decodeBuf, count: count)
             } else if pt == 116 || pt == 115 {
@@ -599,20 +650,13 @@ final class SDKAudioReceiver: ObservableObject {
                     }
                 }
                 ringWrite(decodeBuf, count: count)
-            } else if pt == 98 || pt == 111 || pt == 112 {
-                // PT=98/111/112: Opus — decode to float and write to ring buffer
+            } else if pt == 111 || pt == 112 {
+                // Opus stereo (111) / mono (112)
                 let payload = Array(buf[off..<end])
                 let opusCh = (pt == 111) ? 2 : 1
                 if let samples = decodeOpusToFloat(payload, channels: opusCh) {
                     ringWrite(samples, count: samples.count)
                 }
-            } else {
-                continue // Unknown PT
-            }
-
-            // Only count ringWrite-based packets (non-Opus)
-            if pt != 98 && pt != 111 && pt != 112 {
-                // ringWrite already called above
             }
             OSAtomicIncrement64(&_packetsReceivedAtomic)
 
@@ -767,6 +811,7 @@ final class SDKAudioReceiver: ObservableObject {
                 recvQueue.async { [weak self] in
                     guard let self, self.udpSocket >= 0 else { return }
                     self.sendUDP("JOIN:\(ch)::\(deviceName)\n", sock: self.udpSocket, addr: &self.relayAddr)
+                    self.sendUDP("CODEC:\(self.prefPT)\n", sock: self.udpSocket, addr: &self.relayAddr)
                 }
                 staleTicks = 0  // Reset to avoid repeated re-JOINs
             }

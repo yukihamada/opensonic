@@ -116,6 +116,16 @@ final class SDKAudioReceiver: ObservableObject {
     private var readPos: Int64 = 0
     private let basePrefillThreshold = 14400  // 300 ms — enough for WAN jitter
 
+    // MARK: - Codec selection
+    /// Preferred payload type: 96=PCM 24bit, 116=ADPCM (mono/stereo).
+    @Published private(set) var preferredPT: UInt8 = 96
+    nonisolated(unsafe) private var prefPT: UInt8 = 96  // recv-thread copy
+
+    // MARK: - Sync calibration from media_timestamp
+    /// Prefill override computed from OSTP media_timestamp for cross-device sync.
+    /// Set once on first OSTP packet; 0 = use basePrefillThreshold (fallback).
+    nonisolated(unsafe) private var _syncBasePrefill: Int = 0
+
     // Pre-allocated scratch buffer for audio callback (no malloc on RT thread)
     private let scratchBuffer: UnsafeMutablePointer<Float>
     private let scratchCapacity = 4096
@@ -317,6 +327,7 @@ final class SDKAudioReceiver: ObservableObject {
             setsockopt(self.udpSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
             self.sendUDP("JOIN:\(ch)::\(deviceName)\n")
+            self.sendUDP("CODEC:\(self.prefPT)\n")
             self.running.set(true)
 
             DispatchQueue.main.async {
@@ -613,8 +624,9 @@ final class SDKAudioReceiver: ObservableObject {
             var tv = timeval(tv_sec: 0, tv_usec: 50000)  // 50ms recv timeout for WAN
             setsockopt(self.udpSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
-            // JOIN
+            // JOIN + CODEC filter (only receive preferred PT from relay)
             self.sendUDP("JOIN:\(ch)::\(deviceName)\n")
+            self.sendUDP("CODEC:\(self.prefPT)\n")
 
             self.running.set(true)
             DispatchQueue.main.async {
@@ -691,6 +703,17 @@ final class SDKAudioReceiver: ObservableObject {
         }
     }
 
+    /// Select codec: 96=PCM 24bit, 116=ADPCM. Sends CODEC filter to relay and resets buffer.
+    func setCodec(_ pt: UInt8) {
+        prefPT = pt
+        DispatchQueue.main.async { self.preferredPT = pt }
+        sendUDP("CODEC:\(pt)\n")
+        flushRing()
+        firstPacketReceived.set(false)
+        _syncBasePrefill = 0
+        ClockSync.shared.reset()
+    }
+
     /// Send a raw string over the relay UDP socket (used by ChatManager).
     func sendUDP(_ msg: String) {
         guard udpSocket >= 0 else { return }
@@ -703,6 +726,36 @@ final class SDKAudioReceiver: ObservableObject {
         }
     }
 
+    // MARK: - Opus Decode
+
+    private func decodeOpusToFloat(_ payload: [UInt8], channels: Int) -> [Float]? {
+        var opusDesc = AudioStreamBasicDescription(
+            mSampleRate: 48000, mFormatID: kAudioFormatOpus, mFormatFlags: 0,
+            mBytesPerPacket: 0, mFramesPerPacket: 960, mBytesPerFrame: 0,
+            mChannelsPerFrame: UInt32(channels), mBitsPerChannel: 0, mReserved: 0
+        )
+        guard let opusFormat = AVAudioFormat(streamDescription: &opusDesc) else { return nil }
+        let monoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
+        guard let converter = AVAudioConverter(from: opusFormat, to: monoFormat) else { return nil }
+
+        let compressed = AVAudioCompressedBuffer(format: opusFormat, packetCapacity: 1, maximumPacketSize: payload.count)
+        compressed.byteLength = UInt32(payload.count)
+        compressed.packetCount = 1
+        memcpy(compressed.data, payload, payload.count)
+        compressed.packetDescriptions![0].mStartOffset = 0
+        compressed.packetDescriptions![0].mDataByteSize = UInt32(payload.count)
+        compressed.packetDescriptions![0].mVariableFramesInPacket = 960
+
+        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: 960) else { return nil }
+        var error: NSError?
+        converter.convert(to: pcmBuffer, error: &error) { _, outStatus in
+            outStatus.pointee = .haveData
+            return compressed
+        }
+        guard error == nil, pcmBuffer.frameLength > 0, let data = pcmBuffer.floatChannelData?[0] else { return nil }
+        return Array(UnsafeBufferPointer(start: data, count: Int(pcmBuffer.frameLength)))
+    }
+
     // MARK: - Receive Loop
 
     private func recvLoop() {
@@ -712,8 +765,15 @@ final class SDKAudioReceiver: ObservableObject {
         let scale: Float = 1.0 / 8388608.0
         let decodeBuf = decodeBuffer
         let decodeCap = decodeCapacity
+        var lastHello = DispatchTime.now()
 
         while running.value && udpSocket >= 0 {
+            // Inline heartbeat — recvQueue is blocked by this loop so DispatchSourceTimer can't fire
+            let now = DispatchTime.now()
+            if now.uptimeNanoseconds - lastHello.uptimeNanoseconds > 5_000_000_000 {
+                sendUDP("HELLO\n")
+                lastHello = now
+            }
             var n = 0
 
             // Try LAN unicast first (1ms timeout, ~1-5ms latency via Bonjour-discovered transmitter)
@@ -765,14 +825,44 @@ final class SDKAudioReceiver: ObservableObject {
             guard n > 12 else { continue }
             guard (buf[0] & 0xC0) == 0x80 else { continue }  // RTP version=2
             let pt = buf[1] & 0x7F
-            guard pt == 96 || pt == 116 || pt == 115 else { continue }  // S24, ADPCM mono/stereo
+            guard pt == 96 || pt == 116 || pt == 115 || pt == 111 || pt == 112 else { continue }
+            // Codec filter: skip packets not matching preferred PT
+            let pref = prefPT
+            if pref == 116 {
+                guard pt == 116 || pt == 115 else { continue }
+            } else if pref == 111 || pref == 112 {
+                guard pt == pref else { continue }
+            } else {
+                guard pt == 96 else { continue }
+            }
 
             // Extract RTP timestamp (bytes 4-7, big-endian uint32)
             let rtpTs = UInt32(buf[4]) << 24 | UInt32(buf[5]) << 16 | UInt32(buf[6]) << 8 | UInt32(buf[7])
 
-            // Set clock reference on first packet
+            // Parse OSTP media_timestamp (bytes 20-23, wall-clock ms) for cross-device sync
+            var mediaTs32: UInt32 = 0
+            if buf[0] & 0x10 != 0 && n >= 24 && buf[12] == 0x4F && buf[13] == 0x53 {
+                mediaTs32 = UInt32(buf[20]) << 24 | UInt32(buf[21]) << 16 | UInt32(buf[22]) << 8 | UInt32(buf[23])
+            }
+
+            // Set clock reference on first packet — use TX wall-clock (media_timestamp) for cross-device sync
             if !ClockSync.shared.hasReference {
-                ClockSync.shared.setReference(rtpTimestamp: rtpTs, wallClockNs: ClockSync.shared.wallClockNs)
+                if mediaTs32 != 0 {
+                    let nowMs = ClockSync.shared.wallClockNs / 1_000_000
+                    let nowMs32 = UInt32(nowMs & 0xFFFFFFFF)
+                    let msAgo = Int32(bitPattern: nowMs32 &- mediaTs32)  // signed, handles 32-bit wrap
+                    if msAgo >= 0 && msAgo < 2000 {
+                        let mediaFullNs = (nowMs - UInt64(msAgo)) * 1_000_000
+                        ClockSync.shared.setReference(rtpTimestamp: rtpTs, wallClockNs: mediaFullNs)
+                        // Calibrate buffer: all devices target same TX→ear latency
+                        let bufMs = max(250, Int(targetTotalLatencyMs) - Int(msAgo))
+                        _syncBasePrefill = bufMs * 48
+                    } else {
+                        ClockSync.shared.setReference(rtpTimestamp: rtpTs, wallClockNs: ClockSync.shared.wallClockNs)
+                    }
+                } else {
+                    ClockSync.shared.setReference(rtpTimestamp: rtpTs, wallClockNs: ClockSync.shared.wallClockNs)
+                }
             }
 
             // Extension header offset
@@ -820,16 +910,46 @@ final class SDKAudioReceiver: ObservableObject {
                 }
             } else {
                 // PT=96: S24-in-S32LE decode
+                // Detect stereo from OSTP stream_id bits[13:10] = actual channel count
+                // Encoding: (ch_count << 10) | stream_idx. 0=legacy(2ch), 2=2ch, 1=1ch
+                let srcChannels: Int
+                if buf[0] & 0x10 != 0 && n >= 18 {
+                    let streamId = UInt16(buf[16]) << 8 | UInt16(buf[17])
+                    let chCount = Int((streamId >> 10) & 0x0F)
+                    srcChannels = (chCount == 0 || chCount >= 2) ? 2 : 1
+                } else {
+                    srcChannels = 1
+                }
                 var i = off
-                while i + 3 < end && count < decodeCap {
-                    let v = Int32(buf[i]) | (Int32(buf[i+1]) << 8) | (Int32(buf[i+2]) << 16) | (Int32(buf[i+3]) << 24)
-                    decodeBuf[count] = Float(v) * scale
-                    count += 1
-                    i += 4
+                if srcChannels == 2 {
+                    // Stereo: average L+R into mono, stride = 8 bytes per frame
+                    while i + 7 < end && count < decodeCap {
+                        let l = Int32(buf[i]) | (Int32(buf[i+1]) << 8) | (Int32(buf[i+2]) << 16) | (Int32(buf[i+3]) << 24)
+                        let r = Int32(buf[i+4]) | (Int32(buf[i+5]) << 8) | (Int32(buf[i+6]) << 16) | (Int32(buf[i+7]) << 24)
+                        decodeBuf[count] = Float(l / 2 + r / 2) * scale
+                        count += 1
+                        i += 8
+                    }
+                } else {
+                    while i + 3 < end && count < decodeCap {
+                        let v = Int32(buf[i]) | (Int32(buf[i+1]) << 8) | (Int32(buf[i+2]) << 16) | (Int32(buf[i+3]) << 24)
+                        decodeBuf[count] = Float(v) * scale
+                        count += 1
+                        i += 4
+                    }
                 }
             }
 
-            writeSamples(decodeBuf, count: count)
+            if pt == 111 || pt == 112 {
+                // Opus decode — use AVAudioConverter
+                let payload = Array(buf[off..<end])
+                let opusCh = (pt == 111) ? 2 : 1
+                if let samples = decodeOpusToFloat(payload, channels: opusCh) {
+                    writeSamples(samples, count: samples.count)
+                }
+            } else {
+                writeSamples(decodeBuf, count: count)
+            }
 
             let pktCount = OSAtomicIncrement64(&_packetsReceivedAtomic)
 

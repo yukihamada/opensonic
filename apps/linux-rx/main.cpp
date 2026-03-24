@@ -97,6 +97,47 @@ static constexpr float    kFadeIn          = 0.002f; // matched with iOS/Mac
 static constexpr float    kFadeOut         = 0.004f; // matched with iOS/Mac
 static constexpr float    kSampleScale     = 8388608.0f; // 2^23 — matched with iOS/Mac
 
+static constexpr uint8_t PT_PCM   = 96;   // S24-in-S32LE PCM
+static constexpr uint8_t PT_ADPCM = 116;  // IMA-ADPCM mono
+
+// Preferred payload type: runtime-settable via --codec / WS codec.set
+static std::atomic<uint8_t> g_preferred_pt{PT_PCM};
+
+// IMA-ADPCM decode: mono nibble stream, OSTP framing
+// Header: valprev(LE int16), stepIndex(uint8), pad(uint8)
+// Returns number of MONO frames decoded (caller handles stereo upmix)
+static size_t adpcm_decode_mono(const uint8_t* p, size_t n, int32_t* out, size_t max_out) {
+    static const int32_t step_tbl[89] = {
+        7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,
+        73,80,88,97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,
+        408,449,494,544,598,658,724,796,876,963,1060,1166,1282,1411,1552,
+        1707,1878,2066,2272,2499,2749,3024,3327,3660,4026,4428,4871,5358,
+        5894,6484,7132,7845,8630,9493,10442,11487,12635,13899,15289,16818,
+        18500,20350,22385,24623,27086,29794,32767
+    };
+    static const int8_t idx_tbl[16] = {-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8};
+    if (n < 4) return 0;
+    int32_t vp = (int32_t)(int16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+    int si = p[2]; if (si > 88) si = 88;
+    size_t cnt = 0;
+    for (size_t bi = 4; bi < n && cnt < max_out; bi++) {
+        for (int h = 0; h < 2 && cnt < max_out; h++) {
+            int nib = (h == 0) ? (p[bi] & 0x0F) : ((p[bi] >> 4) & 0x0F);
+            int step = step_tbl[si];
+            int diff = step >> 3;
+            if (nib & 4) diff += step;
+            if (nib & 2) diff += step >> 1;
+            if (nib & 1) diff += step >> 2;
+            if (nib & 8) vp -= diff; else vp += diff;
+            if (vp > 32767) vp = 32767; if (vp < -32768) vp = -32768;
+            si += idx_tbl[nib];
+            if (si < 0) si = 0; if (si > 88) si = 88;
+            out[cnt++] = vp << 8;  // int16 → int32 (24-bit range)
+        }
+    }
+    return cnt;
+}
+
 // ── Lock-free SPSC ring buffer ────────────────────────────────────────────────
 // Single-producer (network thread), single-consumer (ALSA playback thread).
 
@@ -417,8 +458,8 @@ static snd_pcm_t* alsa_open(const char* device, unsigned rate, unsigned channels
     snd_pcm_hw_params_set_rate(pcm, hw, rate, 0);
     // Set period size close to our target for consistent callback timing
     snd_pcm_hw_params_set_period_size_near(pcm, hw, &period_frames, nullptr);
-    // 4 periods in buffer
-    snd_pcm_uframes_t buffer_frames = period_frames * 4;
+    // 8 periods in buffer for USB audio robustness
+    snd_pcm_uframes_t buffer_frames = period_frames * 8;
     snd_pcm_hw_params_set_buffer_size_near(pcm, hw, &buffer_frames);
     if (snd_pcm_hw_params(pcm, hw) < 0) {
         fprintf(stderr, "[rx] ALSA hw_params failed\n");
@@ -449,6 +490,7 @@ struct PlaybackState {
     uint32_t target_fill_frames = 0; // set from --buffer
     bool     use_alsa = true;
     bool     use_pipewire = false;
+    std::string alsa_dev = "default";
     std::atomic<float> volume{1.0f};
     std::atomic<bool>  muted{false};
 
@@ -483,7 +525,7 @@ static void playback_thread_func(PlaybackState* st) {
 #ifdef __linux__
     snd_pcm_t* pcm = nullptr;
     if (st->use_alsa) {
-        pcm = alsa_open("default", st->rate, ch, frame_count);
+        pcm = alsa_open(st->alsa_dev.c_str(), st->rate, ch, frame_count);
         if (!pcm) {
             fprintf(stderr, "[rx] ALSA playback thread: open failed, exiting\n");
             return;
@@ -1340,6 +1382,22 @@ struct WsControlServer {
             snprintf(resp, sizeof(resp), "{\"id\":%d,\"result\":{\"ok\":true}}", id);
             send_ws_json(fd, resp);
         }
+        else if (method == "codec.set") {
+            std::string codec = find_str("codec");
+            uint8_t pt = (codec == "adpcm" || codec == "116") ? PT_ADPCM : PT_PCM;
+            g_preferred_pt.store(pt);
+            snprintf(resp, sizeof(resp),
+                "{\"id\":%d,\"result\":{\"ok\":true,\"codec\":\"%s\",\"pt\":%d}}",
+                id, pt == PT_ADPCM ? "adpcm" : "pcm", pt);
+            send_ws_json(fd, resp);
+        }
+        else if (method == "codec.get") {
+            uint8_t pt = g_preferred_pt.load();
+            snprintf(resp, sizeof(resp),
+                "{\"id\":%d,\"result\":{\"codec\":\"%s\",\"pt\":%d}}",
+                id, pt == PT_ADPCM ? "adpcm" : "pcm", pt);
+            send_ws_json(fd, resp);
+        }
         else if (method == "mode.get") {
             snprintf(resp, sizeof(resp),
                 "{\"id\":%d,\"result\":{\"mode\":\"sync\"}}", id);
@@ -1504,6 +1562,11 @@ static int rx_main(int argc, char** argv) {
         }
         else if (a == "--group-name")     relay_group = next();
         else if (a == "--group-password") relay_password = next();
+        else if (a == "--codec") {
+            std::string codec = next();
+            if (codec == "adpcm" || codec == "116") g_preferred_pt.store(PT_ADPCM);
+            else g_preferred_pt.store(PT_PCM);
+        }
         else if (a == "--dlna")          dlna_enabled = true;
         else if (a == "--dlna-name")     dlna_name = next();
         else if (a == "--airplay")       airplay_enabled = true;
@@ -1544,6 +1607,7 @@ static int rx_main(int argc, char** argv) {
                 "  --group-name <name>    Group name for WAN relay (default: default)\n"
                 "  --group-password <pw>  Group password for WAN relay (optional)\n"
                 "  --channels <n>         Channels        (default: 2)\n"
+                "  --codec pcm|adpcm      Preferred codec (default: pcm)\n"
                 "  --output alsa          Output to ALSA  (default)\n"
                 "  --output pipewire      Output via PipeWire\n"
                 "  --output pipe          Output raw S16LE to stdout\n"
@@ -1627,8 +1691,16 @@ static int rx_main(int argc, char** argv) {
         join_msg += "\n";
         sendto(sock, join_msg.c_str(), join_msg.size(), 0,
                (sockaddr*)&relay_addr, sizeof(relay_addr));
-        fprintf(stderr, "[rx] WAN relay: %s:%u group='%s'\n",
-                relay_host.c_str(), relay_port, relay_group.c_str());
+
+        // Send CODEC filter so relay only forwards preferred PT
+        uint8_t pref_pt = g_preferred_pt.load();
+        char codec_msg[32];
+        snprintf(codec_msg, sizeof(codec_msg), "CODEC:%u\n", pref_pt);
+        sendto(sock, codec_msg, strlen(codec_msg), 0,
+               (sockaddr*)&relay_addr, sizeof(relay_addr));
+
+        fprintf(stderr, "[rx] WAN relay: %s:%u group='%s' codec=%u\n",
+                relay_host.c_str(), relay_port, relay_group.c_str(), pref_pt);
     } else if (peer_mode) {
         sockaddr_in bind_addr{};
         bind_addr.sin_family = AF_INET;
@@ -1803,6 +1875,7 @@ static int rx_main(int argc, char** argv) {
     pstate.target_fill_frames = target_fill_frames;
     pstate.use_alsa = use_alsa;
     pstate.use_pipewire = use_pipewire;
+    pstate.alsa_dev = alsa_dev;
     pstate.wav = &wav;
     pstate.record_frames_max = record_frames_max;
 #ifdef SOLUNA_HAS_AIRPLAY
@@ -2023,13 +2096,30 @@ static int rx_main(int argc, char** argv) {
         metrics.pkts_rx++;
 
         uint8_t pt = rtp->m_pt & 0x7F;
-        // Only decode PT=96 (S24 PCM stereo). Skip everything else.
-        if (pt != 96) continue;
+        uint8_t pref = g_preferred_pt.load();
+        if (pt != pref) continue;  // skip non-preferred codec
 
         // Decode samples into int32 (ring buffer native format)
-        size_t frames;
-        if (is_ostp) {
-            // PT=96: S24-in-S32LE stereo PCM
+        size_t frames = 0;
+        if (pt == PT_ADPCM && is_ostp) {
+            // IMA-ADPCM mono → upmix to stereo for ring buffer
+            static int32_t adpcm_mono[4096];
+            size_t max_mono = sizeof(adpcm_mono) / sizeof(int32_t);
+            size_t mono_frames = adpcm_decode_mono(payload, payload_n, adpcm_mono, max_mono);
+            // Upmix mono → stereo (duplicate L to R)
+            size_t max_samples = sizeof(decode_buf) / sizeof(int32_t);
+            size_t stereo_samples = mono_frames * channels;
+            if (stereo_samples > max_samples) {
+                mono_frames = max_samples / channels;
+                stereo_samples = mono_frames * channels;
+            }
+            for (size_t i = 0; i < mono_frames; i++) {
+                for (uint32_t ch = 0; ch < channels; ch++)
+                    decode_buf[i * channels + ch] = adpcm_mono[i];
+            }
+            frames = mono_frames;
+        } else if (pt == PT_PCM && is_ostp) {
+            // S24-in-S32LE stereo PCM
             frames = payload_n / (sizeof(int32_t) * channels);
             size_t samples = frames * channels;
             size_t max_samples = sizeof(decode_buf) / sizeof(int32_t);

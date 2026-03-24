@@ -533,6 +533,9 @@ struct ContentView: View {
     private var listenTab: some View {
         VStack(spacing: 16) {
             nowPlayingHero.padding(.horizontal, 16)
+            if isPlaying {
+                codecPicker.padding(.horizontal, 16)
+            }
             if receiver.sdkReceiver?.latencyExceeded == true {
                 latencyWarningBanner.padding(.horizontal, 16)
             }
@@ -918,6 +921,28 @@ struct ContentView: View {
             }.tint(LinearGradient.solLunaGradient)
             Image(systemName: "speaker.wave.3.fill").font(.system(size: 12)).foregroundColor(.white.opacity(0.4))
         }.padding(.horizontal, 16).padding(.vertical, 10).glassCard()
+    }
+
+    // MARK: - Codec Picker
+
+    private var codecPicker: some View {
+        HStack(spacing: 6) {
+            Text("Codec").font(.system(size: 10, weight: .medium)).foregroundColor(.white.opacity(0.4))
+            ForEach([("PCM", UInt8(96)), ("ADPCM", UInt8(116)), ("Opus", UInt8(111))], id: \.0) { label, pt in
+                let selected = (receiver.sdkReceiver?.preferredPT ?? 96) == pt
+                Button {
+                    receiver.setCodec(pt)
+                } label: {
+                    Text(label)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(selected ? .black : .white.opacity(0.6))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(selected ? Color.white : Color.white.opacity(0.1))
+                        .clipShape(Capsule())
+                }
+            }
+            Spacer()
+        }.padding(.horizontal, 12).padding(.vertical, 6).glassCard()
     }
 
     // MARK: - Quick Actions
