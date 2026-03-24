@@ -437,7 +437,8 @@
     'use strict';
 
     const SAMPLE_RATE = 48000;
-    const PREFILL_MS = 300;  // Match iOS/Mac prefill for cross-device sync
+    const PREFILL_MS = 315;  // Initial prefill — adaptive sync maintains this level
+    const TARGET_BUFFER_MS = 800; // Target buffer level for cross-device sync
     const PREFILL_SAMPLES = Math.ceil(SAMPLE_RATE * PREFILL_MS / 1000);
     const WS_BASE = 'wss://relay.solun.art/ws/audio';
 
@@ -698,6 +699,7 @@
     var syncTimer = null;
     var netDelayHistory = [];
     var syncLocked = false;
+    var syncAdjustTimer = null;
     let gainNode = null;
     let analyser = null;
     let workletNode = null;
@@ -834,11 +836,33 @@
         if (!audioCtx) return;
         try {
             if (!workletReady) {
-                await audioCtx.audioWorklet.addModule('/soluna-worklet.js');
+                await audioCtx.audioWorklet.addModule('/soluna-worklet.js?v=' + Date.now());
                 workletReady = true;
             }
             workletNode = new AudioWorkletNode(audioCtx, 'soluna-processor', { outputChannelCount: [2] });
             workletNode.connect(gainNode);
+
+            // Clock sync: use media_timestamp network delay to dynamically adjust target buffer
+            workletNode.port.onmessage = function(e) {
+                if (e.data.type === 'buffered') {
+                    var bufMs = (e.data.frames / 48) | 0;
+                    if (!syncLocked || netDelayHistory.length < 5) return;
+                    var sorted = netDelayHistory.slice().sort(function(a,b){return a-b;});
+                    var netDelayMs = sorted[Math.floor(sorted.length / 2)];
+                    // iOS/Mac total latency ≈ netDelay + 300ms prefill + 20ms output ≈ netDelay + 320ms
+                    // Web total latency = netDelay + bufMs + ~5ms output
+                    // To match: bufMs + 5 ≈ 320ms → targetBuf = 315ms
+                    // But network delay cancels out since both receive from same relay
+                    var targetMs = 315; // match iOS/Mac: 300ms prefill + ~15ms output
+                    var targetFrames = Math.round(targetMs * 48);
+                    workletNode.port.postMessage({ type: 'setTarget', frames: targetFrames });
+                }
+            };
+            // Poll buffer level every 2s for adaptive sync
+            if (syncAdjustTimer) clearInterval(syncAdjustTimer);
+            syncAdjustTimer = setInterval(function() {
+                if (workletNode) workletNode.port.postMessage({ type: 'getBuffered' });
+            }, 2000);
         } catch (e) {
             useScriptProcessor = true;
             var bufSize = 2048;
@@ -1136,9 +1160,24 @@
         };
         ws.onerror = function() { setStatus('error'); };
         ws.onclose = function() {
-            setStatus('disconnected');
-            if (isPlaying) setTimeout(connectWSFallback, 2000);
+            setStatus('reconnecting');
+            // Fast reconnect — reset buffer and reconnect immediately
+            if (isPlaying) {
+                resetBufferJS();
+                if (workletNode) workletNode.port.postMessage({ type: 'reset' });
+                bufferedSamples = 0;
+                prefillReached = false;
+                setTimeout(connectWSFallback, 500);
+            }
         };
+        // WebSocket keepalive ping every 20s (prevent intermediate proxies from closing)
+        var wsPingTimer = setInterval(function() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('HELLO\n');
+            } else {
+                clearInterval(wsPingTimer);
+            }
+        }, 20000);
     }
 
     // ── NTP-like clock sync over WebSocket ──
