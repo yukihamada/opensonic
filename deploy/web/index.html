@@ -1,916 +1,576 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Soluna Dashboard</title>
-    <meta name="description" content="ブラウザから全スピーカーを操作。WebSocket リアルタイム統計。">
-    <meta property="og:title" content="Soluna Dashboard — リアルタイム音声配信コントロール">
-    <meta property="og:description" content="ブラウザから全スピーカーを操作。WebSocket リアルタイム統計。">
+    <title>Soluna - あなたの音楽が、みんなに届く</title>
+    <meta name="description" content="Solunaはリアルタイム音楽ストリーミング。アプリをダウンロードして、今すぐ聴こう。">
+    <meta property="og:title" content="Soluna - あなたの音楽が、みんなに届く">
+    <meta property="og:description" content="リアルタイム音楽ストリーミング。タップひとつで、世界中の音楽チャンネルにアクセス。">
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://solun.art/dashboard">
+    <meta property="og:url" content="https://solun.art">
     <meta property="og:image" content="https://solun.art/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:site_name" content="Soluna">
     <meta property="og:locale" content="ja_JP">
-    <meta name="keywords" content="ダッシュボード,音声配信,スピーカー,WebSocket,リアルタイム,コントロール,Soluna,オープンソース">
-    <meta name="author" content="Soluna Project">
-    <meta name="robots" content="index, follow">
-    <meta name="theme-color" content="#05060a">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Soluna Dashboard — リアルタイム音声配信コントロール">
-    <meta name="twitter:description" content="ブラウザから全スピーカーを操作。WebSocket リアルタイム統計。">
+    <meta name="twitter:title" content="Soluna - あなたの音楽が、みんなに届く">
+    <meta name="twitter:description" content="リアルタイム音楽ストリーミング。タップひとつで、世界中の音楽チャンネルにアクセス。">
     <meta name="twitter:image" content="https://solun.art/og-image.png">
-    <link rel="canonical" href="https://solun.art/dashboard">
+    <link rel="canonical" href="https://solun.art">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="stylesheet" href="/style.css">
     <style>
-    /* ── Now Playing ─────────────────────────────────── */
-    .np-card {
-        background:linear-gradient(135deg, var(--s2), var(--s1));
-        border:1px solid var(--border);border-radius:var(--r-sm);
-        padding:16px;margin-bottom:12px;position:relative;overflow:hidden;
+    /* ── App Landing Page ─────────────────────────────── */
+    .hero {
+        text-align: center;
+        padding: 64px 24px 40px;
+        max-width: 600px;
+        margin: 0 auto;
     }
-    .np-header { display:flex;align-items:center;gap:8px;margin-bottom:12px }
-    .np-live-dot {
-        width:8px;height:8px;border-radius:50%;background:#10b981;
-        box-shadow:0 0 8px rgba(16,185,129,0.6);
-        animation:pulse-dot 2s ease-in-out infinite;
+    .hero-logo {
+        font-size: 3rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        background: linear-gradient(135deg, #f59e0b, #ec4899, #8b5cf6, #06b6d4);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 12px;
     }
-    .np-title-row { font-size:0.78rem;font-weight:600;color:var(--text);text-transform:uppercase;letter-spacing:0.06em }
+    .hero-tagline {
+        font-size: 1.2rem;
+        color: var(--text);
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+    .hero-sub {
+        font-size: 0.9rem;
+        color: var(--text3);
+        margin-bottom: 32px;
+        line-height: 1.6;
+    }
+    .hero-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        align-items: center;
+    }
+    .dl-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        max-width: 300px;
+        padding: 14px 24px;
+        border-radius: 12px;
+        font-size: 1rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: transform 0.15s, box-shadow 0.15s;
+        border: none;
+        cursor: pointer;
+        font-family: inherit;
+    }
+    .dl-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .dl-btn:active { transform: scale(0.97); }
+    .dl-btn-primary {
+        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        color: #fff;
+    }
+    .dl-btn-secondary {
+        background: var(--s2);
+        color: var(--text);
+        border: 1px solid var(--border2);
+    }
+    .dl-btn-disabled {
+        background: var(--s2);
+        color: var(--text3);
+        border: 1px solid var(--border);
+        cursor: default;
+        opacity: 0.6;
+    }
+    .dl-btn-disabled:hover { transform: none; box-shadow: none; }
+    .dl-btn-icon {
+        font-size: 1.3rem;
+        flex-shrink: 0;
+    }
+    .dl-btn-label { text-align: left; line-height: 1.2; }
+    .dl-btn-label small {
+        display: block;
+        font-size: 0.7rem;
+        font-weight: 400;
+        opacity: 0.7;
+    }
 
-    .np-body { display:flex;gap:14px;align-items:flex-start }
-    .np-art {
-        width:80px;height:80px;border-radius:8px;flex-shrink:0;
-        background:linear-gradient(135deg,#8b5cf6,#06b6d4);
-        display:flex;align-items:center;justify-content:center;
-        font-size:2rem;color:rgba(255,255,255,0.7);
+    /* ── Section headings ───────────────────────────── */
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 16px;
+        padding: 0 4px;
     }
-    .np-art img { width:100%;height:100%;object-fit:cover;border-radius:8px }
-    .np-meta { flex:1;min-width:0 }
-    .np-song-title { font-size:1.1rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
-    .np-artist { font-size:0.85rem;color:var(--text2);margin-top:2px }
-    .np-album { font-size:0.75rem;color:var(--text3);margin-top:2px }
-    .np-conf-row { display:flex;align-items:center;gap:10px;margin-top:8px }
-    .np-conf-bar { flex:1;height:4px;background:var(--s2);border-radius:2px;overflow:hidden }
-    .np-conf-fill { height:100%;background:var(--green);border-radius:2px;transition:width 0.5s ease }
-    .np-conf-pct { font-size:0.7rem;color:var(--green);font-weight:600;min-width:32px;text-align:right }
-    .np-listeners { font-size:0.72rem;color:var(--text3);margin-top:6px }
-    .np-listeners span { color:var(--blue);font-weight:600 }
-
-    .np-yt-wrap { margin-top:12px;border-radius:8px;overflow:hidden;background:#000 }
-    .np-yt-wrap iframe { display:block;width:100%;height:170px;border:none }
-    .np-yt-link {
-        display:inline-flex;align-items:center;gap:6px;margin-top:10px;
-        padding:6px 12px;border-radius:6px;background:rgba(255,0,0,0.12);
-        color:#f44;font-size:0.75rem;font-weight:600;text-decoration:none;
-        border:1px solid rgba(255,0,0,0.2);transition:background 0.2s;
-    }
-    .np-yt-link:hover { background:rgba(255,0,0,0.2) }
-
-    .np-credit { font-size:0.62rem;color:var(--text3);margin-top:10px;opacity:0.7 }
-
-    .np-rev-split { display:flex;gap:6px;margin-top:10px }
-    .np-rev-chip {
-        font-size:0.62rem;font-weight:600;padding:2px 8px;border-radius:999px;
-        color:#fff;
+    .section-sub {
+        font-size: 0.8rem;
+        color: var(--text3);
+        margin-top: -12px;
+        margin-bottom: 16px;
+        padding: 0 4px;
     }
 
-    /* Equalizer animation */
-    .np-eq { display:flex;align-items:flex-end;gap:2px;height:16px }
-    .np-eq-bar {
-        width:3px;border-radius:1px;background:var(--green);
-        animation:eq-bounce 0.8s ease-in-out infinite alternate;
+    /* ── Quick Listen channel grid ──────────────────── */
+    .ql-section {
+        padding: 0 16px;
+        max-width: 600px;
+        margin: 0 auto 40px;
     }
-    .np-eq-bar:nth-child(1) { height:60%;animation-delay:0s }
-    .np-eq-bar:nth-child(2) { height:100%;animation-delay:0.15s }
-    .np-eq-bar:nth-child(3) { height:40%;animation-delay:0.3s }
-    .np-eq-bar:nth-child(4) { height:80%;animation-delay:0.1s }
-    .np-eq-bar:nth-child(5) { height:50%;animation-delay:0.25s }
+    .ql-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+    @media (min-width: 600px) {
+        .ql-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    .ql-card {
+        position: relative;
+        padding: 20px 14px 16px;
+        border: none;
+        border-radius: 16px;
+        color: #fff;
+        cursor: pointer;
+        text-align: left;
+        transition: all 0.2s;
+        overflow: hidden;
+        font-family: inherit;
+    }
+    .ql-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .ql-card:active { transform: scale(0.97); }
+    .ql-active {
+        box-shadow: 0 0 0 2px #fff, 0 8px 32px rgba(139,92,246,0.4) !important;
+    }
+    .ql-icon { font-size: 2rem; margin-bottom: 8px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
+    .ql-name { font-size: 1rem; font-weight: 700; }
+    .ql-desc { font-size: 0.72rem; opacity: 0.75; margin-top: 2px; }
+    .ql-play {
+        position: absolute;
+        bottom: 12px;
+        right: 12px;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        transition: background 0.2s;
+    }
+    .ql-card:hover .ql-play { background: rgba(255,255,255,0.35); }
+    .ql-eq {
+        display: flex;
+        align-items: flex-end;
+        gap: 2px;
+        height: 14px;
+        position: absolute;
+        bottom: 14px;
+        right: 14px;
+    }
+    .ql-eq span {
+        width: 3px;
+        border-radius: 1px;
+        background: #fff;
+        opacity: 0.6;
+    }
+    .ql-active .ql-eq span {
+        animation: eq-bounce 0.6s ease-in-out infinite alternate;
+        opacity: 0.9;
+    }
+    .ql-active .ql-eq span:nth-child(1) { height: 40%; animation-delay: 0s; }
+    .ql-active .ql-eq span:nth-child(2) { height: 80%; animation-delay: 0.1s; }
+    .ql-active .ql-eq span:nth-child(3) { height: 50%; animation-delay: 0.2s; }
+    .ql-active .ql-eq span:nth-child(4) { height: 100%; animation-delay: 0.15s; }
+    .ql-active .ql-play { display: none; }
     @keyframes eq-bounce {
-        0% { transform:scaleY(0.3) }
-        100% { transform:scaleY(1.0) }
+        0% { transform: scaleY(0.3); }
+        100% { transform: scaleY(1.0); }
     }
 
-    .np-empty { text-align:center;padding:1.5rem 1rem;color:var(--text3) }
-    .np-empty-icon { font-size:1.8rem;margin-bottom:0.3rem;opacity:0.3 }
-    .np-empty-text { font-size:0.82rem;color:var(--text2) }
-    .np-empty-sub { font-size:0.7rem;margin-top:0.2rem }
-
-    /* Song History */
-    .sh-list { list-style:none;padding:0;margin:0 }
-    .sh-item {
-        display:flex;align-items:center;gap:10px;padding:8px 0;
-        border-bottom:1px solid var(--border);font-size:0.78rem;
+    /* ── Download CTA ───────────────────────────────── */
+    .cta-section {
+        padding: 40px 16px;
+        max-width: 600px;
+        margin: 0 auto;
+        text-align: center;
     }
-    .sh-item:last-child { border-bottom:none }
-    .sh-art-sm {
-        width:36px;height:36px;border-radius:6px;flex-shrink:0;
-        background:linear-gradient(135deg,#6366f1,#8b5cf6);
-        display:flex;align-items:center;justify-content:center;
-        font-size:0.9rem;color:rgba(255,255,255,0.6);
+    .cta-section .section-title {
+        font-size: 1.3rem;
+        margin-bottom: 8px;
     }
-    .sh-meta { flex:1;min-width:0 }
-    .sh-song { color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
-    .sh-artist-sm { color:var(--text3);font-size:0.7rem }
-    .sh-time { color:var(--text3);font-size:0.68rem;flex-shrink:0;font-variant-numeric:tabular-nums }
-
-    /* ── Fingerprint Detection ────────────────────────── */
-    .fp-pulse { width:8px;height:8px;border-radius:50%;background:var(--text3);display:inline-block }
-    .fp-pulse.active { background:var(--green);box-shadow:0 0 8px rgba(16,185,129,0.6);animation:pulse-dot 2s ease-in-out infinite }
-
-    .fp-stats-bar {
-        display:flex;align-items:center;gap:0;
-        background:var(--s2);border:1px solid var(--border);border-radius:var(--r-sm);
-        padding:10px 0;margin-bottom:12px;
+    .cta-sub {
+        font-size: 0.85rem;
+        color: var(--text3);
+        margin-bottom: 24px;
     }
-    .fp-stat-item { flex:1;text-align:center }
-    .fp-stat-num { display:block;font-size:1.1rem;font-weight:700;color:var(--blue);font-variant-numeric:tabular-nums }
-    .fp-stat-lbl { font-size:0.65rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em }
-    .fp-stat-sep { width:1px;height:28px;background:var(--border) }
-
-    .fp-matches { display:flex;flex-direction:column;gap:8px }
-
-    .fp-match-card {
-        background:var(--s2);border:1px solid var(--border);border-radius:var(--r-sm);
-        padding:12px 14px;animation:card-in 0.25s ease both;
-    }
-    .fp-match-top { display:flex;align-items:center;justify-content:space-between;margin-bottom:8px }
-    .fp-match-ch { font-size:0.85rem;font-weight:600;color:var(--text) }
-    .fp-match-conf {
-        font-size:0.7rem;font-weight:600;padding:2px 8px;border-radius:999px;
-        background:var(--green-d);border:1px solid rgba(16,185,129,0.3);color:var(--green);
-    }
-    .fp-match-conf.low { background:rgba(245,158,11,0.15);border-color:rgba(245,158,11,0.3);color:var(--amber) }
-    .fp-match-fp {
-        font-size:0.75rem;color:var(--text2);font-family:"SF Mono","Fira Code",monospace;
-        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px;
-    }
-    .fp-match-meta { display:flex;gap:16px;font-size:0.72rem;color:var(--text3) }
-    .fp-match-meta span { font-variant-numeric:tabular-nums }
-    .fp-match-val { color:var(--text2);font-weight:500 }
-
-    .fp-empty { text-align:center;padding:2rem 1rem;color:var(--text3) }
-    .fp-empty-icon { font-size:2rem;margin-bottom:0.4rem;opacity:0.4 }
-    .fp-empty-text { font-size:0.88rem;font-weight:500;color:var(--text2);margin-bottom:0.2rem }
-    .fp-empty-sub { font-size:0.72rem }
-
-    /* ── Broadcast TX button ───────────────────────────── */
-    .btx-active {
-        background:linear-gradient(135deg,#ef4444,#dc2626) !important;
-        box-shadow:0 0 12px rgba(239,68,68,0.5);
-        animation:pulse-dot 1.5s ease-in-out infinite;
+    .cta-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        max-width: 360px;
+        margin: 0 auto;
     }
 
-    /* ── Protocol Badges ───────────────────────────────── */
-    .proto-badges { display:flex;flex-wrap:wrap;gap:6px;padding:0 2px }
-    .proto-badge {
-        display:inline-flex;align-items:center;gap:4px;
-        font-size:0.68rem;font-weight:600;
-        padding:3px 10px;border-radius:999px;
-        background:var(--s2);border:1px solid var(--border);
-        color:var(--text2);letter-spacing:0.02em;
-        transition:border-color 0.2s, color 0.2s;
+    /* ── Features ────────────────────────────────────── */
+    .features-section {
+        padding: 40px 16px;
+        max-width: 600px;
+        margin: 0 auto;
     }
-    .proto-badge .proto-check { color:var(--green);font-size:0.72rem }
+    .features-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    @media (min-width: 480px) {
+        .features-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    .feature-card {
+        background: var(--s1);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 24px 20px;
+        text-align: center;
+    }
+    .feature-icon {
+        font-size: 2rem;
+        margin-bottom: 12px;
+    }
+    .feature-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 6px;
+    }
+    .feature-desc {
+        font-size: 0.78rem;
+        color: var(--text3);
+        line-height: 1.5;
+    }
 
-    .fp-revenue,.fp-timeline { margin-top:12px }
-    .fp-rev-header { font-size:0.72rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;font-weight:600 }
-    .fp-rev-bar { display:flex;height:24px;border-radius:var(--r-xs);overflow:hidden;margin-bottom:8px }
-    .fp-rev-seg {
-        display:flex;align-items:center;justify-content:center;
-        font-size:0.65rem;font-weight:700;color:#fff;
+    /* ── Footer ──────────────────────────────────────── */
+    .site-footer {
+        padding: 32px 16px 48px;
+        text-align: center;
+        border-top: 1px solid var(--border);
+        max-width: 600px;
+        margin: 40px auto 0;
     }
-    .fp-rev-rights { background:#10b981 }
-    .fp-rev-dj { background:#06b6d4 }
-    .fp-rev-platform { background:#8b5cf6 }
-    .fp-rev-legend { display:flex;gap:14px;flex-wrap:wrap }
-    .fp-rev-leg-item { display:flex;align-items:center;gap:5px;font-size:0.68rem;color:var(--text2) }
-    .fp-rev-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0 }
+    .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px 20px;
+        margin-bottom: 16px;
+    }
+    .footer-links a {
+        font-size: 0.78rem;
+        color: var(--text3);
+        text-decoration: none;
+        transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--text); }
+    .footer-copy {
+        font-size: 0.7rem;
+        color: var(--text3);
+        opacity: 0.6;
+    }
 
-    .fp-log { list-style:none;max-height:180px;overflow-y:auto }
-    .fp-log li {
-        display:flex;align-items:center;gap:10px;padding:6px 0;
-        border-bottom:1px solid var(--border);font-size:0.75rem;
+    /* ── Listen bar (browser playback) ──────────────── */
+    .listen-bar {
+        display: none;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 20;
+        background: rgba(15,17,23,0.95);
+        backdrop-filter: blur(20px);
+        border-top: 1px solid var(--border2);
+        padding: 10px 16px;
     }
-    .fp-log li:last-child { border-bottom:none }
-    .fp-log-time { color:var(--text3);font-family:"SF Mono","Fira Code",monospace;font-size:0.68rem;min-width:52px;flex-shrink:0 }
-    .fp-log-ch { color:var(--green);font-weight:600;min-width:70px;flex-shrink:0 }
-    .fp-log-fp { color:var(--text2);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
-    .fp-log-conf { color:var(--blue);font-weight:600;flex-shrink:0 }
+    .listen-bar.active { display: flex; align-items: center; gap: 12px; }
+    .listen-bar-info { flex: 1; min-width: 0; }
+    .listen-bar-ch { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+    .listen-bar-status { font-size: 0.7rem; color: var(--green); }
+    .listen-bar-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: none;
+        background: var(--green);
+        color: #fff;
+        font-size: 1.1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: transform 0.15s;
+    }
+    .listen-bar-btn:hover { transform: scale(1.1); }
+    .listen-bar-vu {
+        width: 80px;
+        height: 32px;
+        flex-shrink: 0;
+    }
+
+    /* ── Hide default header elements ───────────────── */
+    .tx-pill, .ws-badge, #btn-add-rx, .guide-link { display: none !important; }
+    header .header-right { gap: 0; }
     </style>
 </head>
 <body>
     <header>
         <div class="header-left">
-            <span class="logo">◈ Soluna</span>
-            <div class="tx-pill" id="tx-pill">
-                <span class="tx-dot" id="tx-dot"></span>
-                <span id="tx-label">TX —</span>
-                <span class="tx-pkts" id="tx-pkts"></span>
-            </div>
+            <span class="logo">Soluna</span>
         </div>
-        <div class="header-right">
-            <a href="/guide.html" class="guide-link" title="セットアップガイド">?</a>
-            <span class="ws-badge" id="ws-badge">●&nbsp;Connecting</span>
-            <button class="icon-btn" id="btn-add-rx" title="Add receiver">＋</button>
-        </div>
+        <div class="header-right"></div>
     </header>
 
     <main>
-        <!-- Channel Card (merged: quick switch + channel name) -->
-        <div id="channel-switcher" class="audio-ctrl-card">
-            <div class="ac-header"><span class="ac-title">Channel</span></div>
-            <div style="padding:8px 12px">
-                <div style="display:flex;gap:6px;align-items:center">
-                    <input type="text" id="qs-ch-input" placeholder="channel name"
-                           style="flex:1;padding:6px 10px;border:1px solid var(--border,#444);border-radius:6px;background:var(--s2,#1a1a2e);color:var(--text,#fff);font-size:14px"
-                           maxlength="20">
-                    <button id="qs-switch-btn"
-                            style="padding:6px 14px;border:none;border-radius:6px;background:linear-gradient(135deg,#10b981,#06b6d4);color:#fff;font-weight:600;cursor:pointer;font-size:13px;white-space:nowrap">
-                        Switch
-                    </button>
-                    <button id="ch-random-btn"
-                            style="padding:6px 10px;border:none;border-radius:6px;background:var(--s2,#1a1a2e);color:var(--text2,#aaa);cursor:pointer;font-size:13px;border:1px solid var(--border,#444)"
-                            title="Random Channel (Free)">
-                        Random
-                    </button>
-                </div>
-                <div id="qs-recent" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px"></div>
-                <div id="ch-random-result" style="font-size:12px;color:#10b981;margin-top:4px;display:none"></div>
+        <!-- Hero -->
+        <section class="hero">
+            <div class="hero-logo">Soluna</div>
+            <h1 class="hero-tagline">あなたの音楽が、みんなに届く。</h1>
+            <p class="hero-sub">
+                リアルタイム音楽ストリーミング。<br>
+                タップひとつで、世界中の音楽チャンネルに接続。
+            </p>
+            <div class="hero-buttons">
+                <a href="https://testflight.apple.com/join/PYbefDSE" class="dl-btn dl-btn-primary">
+                    <span class="dl-btn-icon">&#63743;</span>
+                    <span class="dl-btn-label">iPhone / iPad<small>TestFlightで今すぐ試す</small></span>
+                </a>
+                <a href="https://github.com/yukihamada/opensonic/releases" class="dl-btn dl-btn-secondary">
+                    <span class="dl-btn-icon">&#9000;</span>
+                    <span class="dl-btn-label">Mac<small>GitHub Releasesからダウンロード</small></span>
+                </a>
             </div>
-        </div>
+        </section>
 
-        <!-- Listen Card (browser audio - core feature) -->
-        <div id="listen-card" class="audio-ctrl-card" style="margin-top:12px">
-            <div class="ac-header"><span class="ac-title">Listen</span></div>
-            <div style="padding:12px">
-                <div class="ba-hero">
-                    <button id="ba-btn" class="ba-play-btn" title="Listen in browser">
-                        <span id="ba-icon">&#9654;</span>
-                    </button>
-                    <div class="ba-status">
-                        <div id="ba-label">Click to listen</div>
-                        <div id="ba-fmt" class="ba-fmt">48 kHz &middot; Stereo</div>
-                    </div>
-                </div>
-                <div class="ba-viz-row" style="margin-top:8px">
-                    <canvas id="ba-vu" class="ba-vu" width="600" height="44"></canvas>
-                    <button id="ba-viz-toggle" class="ba-viz-btn" title="Switch to Spectrum">Spec</button>
-                </div>
-                <div id="ba-controls" class="ba-controls" style="display:none">
-                    <div class="ba-ctrl-row">
-                        <span class="ba-ctrl-label">Volume</span>
-                        <input type="range" id="ba-volume" class="ba-slider" min="0" max="1" step="0.02" value="1">
-                        <span id="ba-vol-val" class="ba-mono">100%</span>
-                    </div>
-                    <div class="ba-ctrl-row">
-                        <span class="ba-ctrl-label">Buffer</span>
-                        <span id="ba-buf-val" class="ba-mono">&mdash;</span>
-                        <span class="ba-ctrl-label" style="margin-left:16px">Latency</span>
-                        <span id="ba-latency" class="ba-mono">&mdash;</span>
-                    </div>
-                    <div class="ba-ctrl-row">
-                        <span class="ba-ctrl-label">Chunks</span>
-                        <span id="ba-pkt-val" class="ba-mono">0</span>
-                        <span class="ba-ctrl-label" style="margin-left:16px">Underruns</span>
-                        <span id="ba-underrun" class="ba-mono">0</span>
-                    </div>
-                </div>
-                <div id="ba-settings" class="ba-controls" style="display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
-                    <div style="font-size:0.72rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Audio Settings</div>
-                    <div class="tune-toggle-row" style="padding:4px 0">
-                        <div>
-                            <div class="tune-toggle-label" style="font-size:0.78rem">Opus Codec</div>
-                            <div class="tune-toggle-desc" style="font-size:0.68rem;color:var(--text3)">WebCodecs Opus encode/decode</div>
-                        </div>
-                        <label class="toggle green"><input type="checkbox" id="ba-opus-sw" checked><span class="toggle-track"></span></label>
-                    </div>
-                    <div class="tune-toggle-row" style="padding:4px 0">
-                        <div>
-                            <div class="tune-toggle-label" style="font-size:0.78rem">Sync Mode</div>
-                            <div class="tune-toggle-desc" style="font-size:0.68rem;color:var(--text3)">media_timestamp + NTP clock sync</div>
-                        </div>
-                        <label class="toggle green"><input type="checkbox" id="ba-sync-sw" checked><span class="toggle-track"></span></label>
-                    </div>
-                    <div class="ba-ctrl-row" style="padding:4px 0">
-                        <span class="ba-ctrl-label" style="font-size:0.78rem">Output</span>
-                        <select id="ba-output-ch" style="font-size:0.75rem;background:var(--s2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 6px">
-                            <option value="1">Mono</option>
-                            <option value="2">Stereo</option>
-                        </select>
-                    </div>
-                    <div class="ba-ctrl-row" style="padding:4px 0">
-                        <span class="ba-ctrl-label" style="font-size:0.78rem">Sync Delay</span>
-                        <input type="range" id="ba-sync-delay" class="ba-slider" min="0" max="200" step="5" value="0" style="flex:1">
-                        <span id="ba-sync-delay-val" class="ba-mono" style="min-width:36px">0 ms</span>
-                    </div>
-                </div>
-                <!-- Talk Mode (multi-speaker) -->
-                <div id="ba-talk-section" class="ba-controls" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
-                    <div class="tune-toggle-row" style="padding:4px 0">
-                        <div>
-                            <div class="tune-toggle-label" style="font-size:0.78rem">Talk Mode</div>
-                            <div class="tune-toggle-desc" style="font-size:0.68rem;color:var(--text3)">Everyone can speak simultaneously</div>
-                        </div>
-                        <label class="toggle green"><input type="checkbox" id="ba-talk-sw"><span class="toggle-track"></span></label>
-                    </div>
-                    <div id="ba-talk-info" style="display:none;font-size:0.7rem;color:var(--text3);padding:4px 0">
-                        <span id="ba-talk-count">0</span> active speakers
-                    </div>
-                </div>
-                <div class="ba-hint">
-                    <p>Share <code id="ba-url">http://localhost:8400</code> to listen on any device.</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Speakers -->
-        <div id="rx-grid" class="rx-grid"></div>
-        <div id="rx-empty" class="empty-state" style="display:none">
-            <p>No receivers.<br>Click <strong>+</strong> to add one.</p>
-        </div>
-
-        <!-- Audio Controls card (collapsed by default) -->
-        <div id="audio-ctrl" class="audio-ctrl-card" style="margin-top:12px">
-            <div class="ac-header" id="ac-header-toggle" style="cursor:pointer">
-                <span class="ac-title">Audio Controls</span>
-                <button class="ac-expand-btn" id="ac-expand" title="Settings">&#9881;</button>
-            </div>
-            <div id="ac-body" style="display:none">
-                <div class="ac-toggles">
-                    <label class="ac-toggle"><input type="checkbox" id="ac-fec" checked><span class="ac-sw"></span><span class="ac-lbl">FEC</span></label>
-                    <label class="ac-toggle"><input type="checkbox" id="ac-nack" checked><span class="ac-sw"></span><span class="ac-lbl">NACK</span></label>
-                    <label class="ac-toggle"><input type="checkbox" id="ac-plc" checked><span class="ac-sw"></span><span class="ac-lbl">PLC</span></label>
-                    <label class="ac-toggle"><input type="checkbox" id="ac-dup" checked><span class="ac-sw"></span><span class="ac-lbl">Dup Send</span></label>
-                    <label class="ac-toggle"><input type="checkbox" id="ac-deglitch"><span class="ac-sw"></span><span class="ac-lbl">Deglitch</span></label>
-                    <label class="ac-toggle"><input type="checkbox" id="ac-adaptive" checked><span class="ac-sw"></span><span class="ac-lbl">Adaptive Buf</span></label>
-                </div>
-                <!-- Settings detail (hidden by default) -->
-                <div class="ac-detail" id="ac-detail" style="display:none">
-                    <div class="ac-detail-row">
-                        <span class="ac-detail-label">Click &#963;</span>
-                        <input type="range" id="ac-sigma" class="ac-slider" min="2" max="12" step="0.5" value="6">
-                        <span class="ac-detail-val" id="ac-sigma-val">6.0</span>
-                    </div>
-                    <div class="ac-detail-row">
-                        <span class="ac-detail-label">Crossfade</span>
-                        <input type="range" id="ac-xfade" class="ac-slider" min="4" max="64" step="4" value="16">
-                        <span class="ac-detail-val" id="ac-xfade-val">16</span>
-                    </div>
-                    <div class="ac-detail-row">
-                        <span class="ac-detail-label">DLL Ratio</span>
-                        <span class="ac-detail-val ac-mono" id="ac-dll-ratio">&mdash;</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Channel Name card (hidden, used by initChannelUI for custom names) -->
-        <div id="channel-card" class="audio-ctrl-card" style="margin-top:12px;display:none">
-            <div class="ac-header">
-                <span class="ac-title">Custom Channel Name</span>
-            </div>
-            <div style="padding:8px 12px">
-                <div style="display:flex;gap:8px;align-items:center">
-                    <input type="text" id="ch-name-input" placeholder="my-channel"
-                           style="flex:1;padding:6px 10px;border:1px solid #444;border-radius:6px;background:#1a1a2e;color:#fff;font-size:14px"
-                           maxlength="20">
-                    <span id="ch-avail" style="font-size:18px"></span>
-                </div>
-                <div id="ch-rules" style="font-size:11px;color:#888;margin-top:4px">
-                    3-20 chars, letters/numbers/hyphens &middot; Custom names: $4.99/yr
-                </div>
-                <button id="ch-claim-btn" disabled
-                        style="margin-top:8px;width:100%;padding:8px;border:none;border-radius:6px;background:#4a4af0;color:#fff;font-weight:600;cursor:pointer;opacity:0.5">
-                    Purchase Custom Channel &mdash; $4.99/yr
+        <!-- Quick Listen -->
+        <section class="ql-section">
+            <div class="section-title">Quick Listen</div>
+            <p class="section-sub">ブラウザで試聴。アプリならもっと高音質。</p>
+            <div class="ql-grid" id="quick-play">
+                <button class="ql-card" data-ch="soluna" onclick="quickPlay('soluna')" style="background:linear-gradient(145deg,#6d28d9,#0891b2)">
+                    <div class="ql-icon">&#9670;</div>
+                    <div class="ql-name">Soluna</div>
+                    <div class="ql-desc">Official Mix</div>
+                    <div class="ql-play">&#9654;</div>
+                    <div class="ql-eq"><span></span><span></span><span></span><span></span></div>
                 </button>
-                <div id="ch-status" style="font-size:12px;margin-top:4px;color:#888"></div>
+                <button class="ql-card" data-ch="jazz" onclick="quickPlay('jazz')" style="background:linear-gradient(145deg,#b45309,#9a3412)">
+                    <div class="ql-icon">&#127927;</div>
+                    <div class="ql-name">Jazz</div>
+                    <div class="ql-desc">Smooth & Soulful</div>
+                    <div class="ql-play">&#9654;</div>
+                    <div class="ql-eq"><span></span><span></span><span></span><span></span></div>
+                </button>
+                <button class="ql-card" data-ch="lofi" onclick="quickPlay('lofi')" style="background:linear-gradient(145deg,#9333ea,#db2777)">
+                    <div class="ql-icon">&#127925;</div>
+                    <div class="ql-name">Lo-fi</div>
+                    <div class="ql-desc">Beats to Relax</div>
+                    <div class="ql-play">&#9654;</div>
+                    <div class="ql-eq"><span></span><span></span><span></span><span></span></div>
+                </button>
+                <button class="ql-card" data-ch="chill" onclick="quickPlay('chill')" style="background:linear-gradient(145deg,#0e7490,#047857)">
+                    <div class="ql-icon">&#127754;</div>
+                    <div class="ql-name">Chill</div>
+                    <div class="ql-desc">Ambient Waves</div>
+                    <div class="ql-play">&#9654;</div>
+                    <div class="ql-eq"><span></span><span></span><span></span><span></span></div>
+                </button>
+                <button class="ql-card" data-ch="dance" onclick="quickPlay('dance')" style="background:linear-gradient(145deg,#dc2626,#d97706)">
+                    <div class="ql-icon">&#128171;</div>
+                    <div class="ql-name">Dance</div>
+                    <div class="ql-desc">Electronic Pulse</div>
+                    <div class="ql-play">&#9654;</div>
+                    <div class="ql-eq"><span></span><span></span><span></span><span></span></div>
+                </button>
+                <button class="ql-card" data-ch="bjj" onclick="quickPlay('bjj')" style="background:linear-gradient(145deg,#059669,#065f46)">
+                    <div class="ql-icon">&#129354;</div>
+                    <div class="ql-name">BJJ</div>
+                    <div class="ql-desc">Training Energy</div>
+                    <div class="ql-play">&#9654;</div>
+                    <div class="ql-eq"><span></span><span></span><span></span><span></span></div>
+                </button>
             </div>
-        </div>
+        </section>
 
-        <!-- Now Playing section (hidden until data arrives) -->
-        <div id="np-section" class="audio-ctrl-card" style="margin-top:12px;display:none">
-            <div class="ac-header">
-                <span class="ac-title" style="display:flex;align-items:center;gap:8px">
-                    Now Playing
-                    <div id="np-eq" class="np-eq" style="display:none">
-                        <div class="np-eq-bar"></div><div class="np-eq-bar"></div>
-                        <div class="np-eq-bar"></div><div class="np-eq-bar"></div>
-                        <div class="np-eq-bar"></div>
-                    </div>
+        <!-- Download CTA -->
+        <section class="cta-section">
+            <div class="section-title">アプリをダウンロード</div>
+            <p class="cta-sub">ロスレス48kHz。バックグラウンド再生。オフラインでも。</p>
+            <div class="cta-grid">
+                <a href="https://testflight.apple.com/join/PYbefDSE" class="dl-btn dl-btn-primary">
+                    <span class="dl-btn-icon">&#63743;</span>
+                    <span class="dl-btn-label">iOS (TestFlight)<small>iPhone / iPad</small></span>
+                </a>
+                <a href="https://github.com/yukihamada/opensonic/releases" class="dl-btn dl-btn-secondary">
+                    <span class="dl-btn-icon">&#128187;</span>
+                    <span class="dl-btn-label">Mac<small>macOS 13+</small></span>
+                </a>
+                <span class="dl-btn dl-btn-disabled">
+                    <span class="dl-btn-icon">&#9654;</span>
+                    <span class="dl-btn-label">Android<small>Coming Soon</small></span>
                 </span>
-                <span id="np-live" class="np-live-dot" style="display:none"></span>
             </div>
+        </section>
 
-            <!-- Now Playing card -->
-            <div id="np-card" class="np-card" style="display:none">
-                <div class="np-body">
-                    <div id="np-art" class="np-art">&#9835;</div>
-                    <div class="np-meta">
-                        <div id="np-song" class="np-song-title">--</div>
-                        <div id="np-artist" class="np-artist">--</div>
-                        <div id="np-album" class="np-album"></div>
-                        <div class="np-conf-row">
-                            <div class="np-conf-bar"><div id="np-conf-fill" class="np-conf-fill" style="width:0%"></div></div>
-                            <span id="np-conf-pct" class="np-conf-pct">0%</span>
-                        </div>
-                        <div class="np-listeners" id="np-listeners"></div>
-                    </div>
+        <!-- Features -->
+        <section class="features-section">
+            <div class="section-title">3つの体験</div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">&#127911;</div>
+                    <div class="feature-title">Listen</div>
+                    <div class="feature-desc">タップして即再生。<br>ロスレス48kHzのライブ音楽を、いつでもどこでも。</div>
                 </div>
-
-                <!-- YouTube embed / link -->
-                <div id="np-yt" style="display:none">
-                    <div id="np-yt-embed" class="np-yt-wrap"></div>
-                    <a id="np-yt-link" class="np-yt-link" href="#" target="_blank" rel="noopener">&#9654; Watch on YouTube</a>
+                <div class="feature-card">
+                    <div class="feature-icon">&#127942;</div>
+                    <div class="feature-title">Fan Rank</div>
+                    <div class="feature-desc">聴くほどランクアップ。<br>リスナーとしての活動がリワードに。</div>
                 </div>
-
-                <!-- Revenue split chips -->
-                <div class="np-rev-split">
-                    <span class="np-rev-chip" style="background:#10b981">Rights 70%</span>
-                    <span class="np-rev-chip" style="background:#06b6d4">DJ 20%</span>
-                    <span class="np-rev-chip" style="background:#8b5cf6">Platform 10%</span>
-                </div>
-
-                <div class="np-credit">Powered by AcoustID + MusicBrainz</div>
-            </div>
-
-            <!-- Empty state -->
-            <div id="np-empty" class="np-empty">
-                <div class="np-empty-icon">&#9835;</div>
-                <div class="np-empty-text">Listening for music...</div>
-                <div class="np-empty-sub">Song identification will appear here when audio is detected</div>
-            </div>
-        </div>
-
-        <!-- Song History section (collapsed when empty) -->
-        <div id="sh-section" class="audio-ctrl-card" style="margin-top:12px;display:none">
-            <div class="ac-header">
-                <span class="ac-title">Song History</span>
-                <span id="sh-count" style="font-size:0.7rem;color:var(--text3)"></span>
-            </div>
-            <ul id="sh-list" class="sh-list">
-                <li class="np-empty" style="padding:1rem"><span class="np-empty-sub">No songs identified yet</span></li>
-            </ul>
-        </div>
-
-        <!-- Fingerprint Detection section (collapsed when empty) -->
-        <div id="fp-section" class="audio-ctrl-card" style="margin-top:12px;display:none">
-            <div class="ac-header">
-                <span class="ac-title">Fingerprint Detection</span>
-                <span id="fp-pulse" class="fp-pulse"></span>
-            </div>
-
-            <!-- Compact stats bar -->
-            <div class="fp-stats-bar">
-                <div class="fp-stat-item"><span class="fp-stat-num" id="fp-total-det">0</span><span class="fp-stat-lbl">Total Detections</span></div>
-                <div class="fp-stat-sep"></div>
-                <div class="fp-stat-item"><span class="fp-stat-num" id="fp-active-ch">0</span><span class="fp-stat-lbl">Active Channels</span></div>
-                <div class="fp-stat-sep"></div>
-                <div class="fp-stat-item"><span class="fp-stat-num" id="fp-total-rev">$0.00</span><span class="fp-stat-lbl">Total Revenue</span></div>
-            </div>
-
-            <!-- Match cards container -->
-            <div id="fp-matches" class="fp-matches"></div>
-
-            <!-- Empty placeholder -->
-            <div id="fp-empty" class="fp-empty">
-                <div class="fp-empty-icon">&#x1f50d;</div>
-                <div class="fp-empty-text">No active detections</div>
-                <div class="fp-empty-sub">Fingerprint matches will appear here in real time</div>
-            </div>
-
-            <!-- Revenue split breakdown -->
-            <div id="fp-revenue" class="fp-revenue" style="display:none">
-                <div class="fp-rev-header">Revenue Split</div>
-                <div class="fp-rev-bar">
-                    <div class="fp-rev-seg fp-rev-rights" style="width:70%">70%</div>
-                    <div class="fp-rev-seg fp-rev-dj" style="width:20%">20%</div>
-                    <div class="fp-rev-seg fp-rev-platform" style="width:10%">10%</div>
-                </div>
-                <div class="fp-rev-legend">
-                    <span class="fp-rev-leg-item"><span class="fp-rev-dot" style="background:#10b981"></span>Rights Holder 70%</span>
-                    <span class="fp-rev-leg-item"><span class="fp-rev-dot" style="background:#06b6d4"></span>DJ 20%</span>
-                    <span class="fp-rev-leg-item"><span class="fp-rev-dot" style="background:#8b5cf6"></span>Platform 10%</span>
+                <div class="feature-card">
+                    <div class="feature-icon">&#127908;</div>
+                    <div class="feature-title">For Artists</div>
+                    <div class="feature-desc">収益の70%がアーティストへ。<br>公平な分配で音楽を届けよう。</div>
                 </div>
             </div>
-
-            <!-- Detection timeline / log -->
-            <div id="fp-timeline" class="fp-timeline" style="display:none">
-                <div class="fp-rev-header">Recent Detections</div>
-                <ul id="fp-log" class="fp-log"></ul>
-            </div>
-        </div>
+        </section>
     </main>
 
-    <nav class="bottom-nav">
-        <button class="bnav active" data-panel="dashboard">Dashboard</button>
-        <button class="bnav" data-panel="player">Player</button>
-        <button class="bnav" data-panel="stats">Stats</button>
-    </nav>
+    <!-- Footer -->
+    <footer class="site-footer">
+        <nav class="footer-links">
+            <a href="/channels">Channels</a>
+            <a href="/for-artists">For Artists</a>
+            <a href="/for-stores">For Stores</a>
+            <a href="/protocol">Protocol</a>
+            <a href="/privacy">Privacy</a>
+            <a href="/terms">Terms</a>
+        </nav>
+        <p class="footer-copy">Soluna Project. Open Source.</p>
+    </footer>
 
-    <!-- Music Player panel -->
-    <div id="panel-player" class="panel-overlay hidden">
-        <div class="panel-header">
-            <h2>Music Player</h2>
-            <button class="icon-btn close-panel">✕</button>
+    <!-- Listen bar (shows when playing via browser) -->
+    <div id="listen-bar" class="listen-bar">
+        <div class="listen-bar-info">
+            <div class="listen-bar-ch" id="lb-channel">--</div>
+            <div class="listen-bar-status" id="lb-status">Connecting...</div>
         </div>
-        <div class="panel-body">
-            <!-- Now Playing -->
-            <div class="mp-now-playing">
-                <div id="mp-art" class="mp-art mp-art-placeholder"></div>
-                <div class="mp-track-meta">
-                    <div id="mp-title" class="mp-np-title">No Track Selected</div>
-                    <div id="mp-artist" class="mp-np-artist">—</div>
-                    <div id="mp-fmt" class="mp-np-fmt"></div>
-                </div>
-            </div>
-
-            <!-- Spectrum Analyzer -->
-            <canvas id="mp-spectrum" class="mp-spectrum"></canvas>
-
-            <!-- Seek bar -->
-            <div class="mp-seek-row">
-                <span id="mp-curr" class="mp-time">0:00</span>
-                <input type="range" id="mp-seek" class="mp-seek-bar" min="0" max="1000" value="0">
-                <span id="mp-dur" class="mp-time">0:00</span>
-            </div>
-
-            <!-- Transport controls -->
-            <div class="mp-transport">
-                <button id="mp-btn-shuffle" class="mp-ctrl-btn" title="Shuffle">⇄</button>
-                <button id="mp-btn-prev" class="mp-ctrl-btn mp-ctrl-lg" title="Previous">⏮</button>
-                <button id="mp-btn-play" class="mp-play-btn" title="Play/Pause">
-                    <span id="mp-play-icon">▶</span>
-                </button>
-                <button id="mp-btn-next" class="mp-ctrl-btn mp-ctrl-lg" title="Next">⏭</button>
-                <button id="mp-btn-repeat" class="mp-ctrl-btn" title="Repeat Off">↻</button>
-            </div>
-
-            <!-- Volume -->
-            <div class="mp-vol-row">
-                <span id="mp-vol-icon" class="mp-vol-icon">♪</span>
-                <input type="range" id="mp-volume" class="mp-vol-bar" min="0" max="1" step="0.01" value="1">
-                <span id="mp-vol-val" class="mp-time">100%</span>
-            </div>
-
-            <!-- Drop zone -->
-            <div id="mp-drop-zone" class="mp-drop-zone">
-                <input type="file" id="mp-file-input" accept=".mp3,.flac,.wav,.aac,.m4a,.ogg,.opus,.aiff,.mp4" multiple style="display:none">
-                <div class="mp-drop-icon">♫</div>
-                <div class="mp-drop-text">Drop audio files here or click to browse</div>
-                <div class="mp-drop-formats">MP3 · FLAC · WAV · AAC · OGG · Opus · AIFF</div>
-            </div>
-
-            <!-- Playlist -->
-            <div id="mp-playlist-header" class="mp-playlist-header" style="display:none">
-                <span id="mp-playlist-count" class="mp-playlist-count"></span>
-                <button id="mp-btn-clear" class="mp-clear-btn">Clear all</button>
-            </div>
-            <ul id="mp-playlist" class="mp-playlist"></ul>
-        </div>
+        <canvas id="ba-vu" class="listen-bar-vu" width="160" height="64"></canvas>
+        <button class="listen-bar-btn" id="ba-btn" title="Stop">&#9632;</button>
     </div>
 
-    <!-- Browser audio panel (kept for legacy routing, content moved to main) -->
-    <div id="panel-browser" class="panel-overlay hidden">
-        <div class="panel-header">
-            <h2>Browser Audio</h2>
-            <button class="icon-btn close-panel">&#10005;</button>
-        </div>
-        <div class="panel-body">
-            <p style="padding:1rem;color:var(--text3);text-align:center;font-size:0.85rem">
-                Browser audio controls have moved to the main dashboard.
-            </p>
-        </div>
-    </div>
-
-    <!-- Stats panel (hidden) -->
-    <div id="panel-stats" class="panel-overlay hidden">
-        <div class="panel-header">
-            <h2>System Stats</h2>
-            <button class="icon-btn close-panel">&#10005;</button>
-        </div>
-        <div class="panel-body">
-            <div class="stats-grid">
-                <div class="stat-card"><div class="stat-label">Devices</div><div class="stat-val" id="stat-devices">—</div></div>
-                <div class="stat-card"><div class="stat-label">Streams</div><div class="stat-val" id="stat-streams">—</div></div>
-                <div class="stat-card"><div class="stat-label">Routes</div><div class="stat-val" id="stat-routes">—</div></div>
-                <div class="stat-card"><div class="stat-label">Bandwidth</div><div class="stat-val" id="stat-bw">—</div></div>
-                <div class="stat-card"><div class="stat-label">PTP</div><div class="stat-val" id="stat-ptp">—</div></div>
-                <div class="stat-card"><div class="stat-label">Offset</div><div class="stat-val" id="stat-offset">—</div></div>
-            </div>
-            <h3 style="margin:16px 0 8px;font-size:14px;color:#888">Audio Quality Engine</h3>
-            <div class="stats-grid">
-                <div class="stat-card"><div class="stat-label">Jitter Buffer</div><div class="stat-val" id="stat-jitter" style="font-size:12px">Lock-free</div></div>
-                <div class="stat-card"><div class="stat-label">Clock Sync</div><div class="stat-val" id="stat-dll" style="font-size:12px">DLL</div></div>
-                <div class="stat-card"><div class="stat-label">DLL Ratio</div><div class="stat-val" id="stat-dll-ratio">—</div></div>
-                <div class="stat-card"><div class="stat-label">Opus FEC</div><div class="stat-val" id="stat-fec">ON</div></div>
-                <div class="stat-card"><div class="stat-label">PLC Chain</div><div class="stat-val" id="stat-plc" style="font-size:11px">FEC→PLC→WSOLA</div></div>
-                <div class="stat-card"><div class="stat-label">Deglitch</div><div class="stat-val" id="stat-deglitch">OFF</div></div>
-            </div>
-            <h3 style="margin:16px 0 8px;font-size:14px;color:#888">Supported Protocols</h3>
-            <div class="proto-badges">
-                <span class="proto-badge">OSTP <span class="proto-check">&#10003;</span></span>
-                <span class="proto-badge">AES67 <span class="proto-check">&#10003;</span></span>
-                <span class="proto-badge">Ravenna <span class="proto-check">&#10003;</span></span>
-                <span class="proto-badge">AirPlay 2 <span class="proto-check">&#10003;</span></span>
-                <span class="proto-badge">DLNA/UPnP <span class="proto-check">&#10003;</span></span>
-                <span class="proto-badge">PipeWire <span class="proto-check">&#10003;</span></span>
-            </div>
-            <h3 style="margin:16px 0 8px;font-size:14px;color:#888">Routing</h3>
-            <div class="route-add-row">
-                <input id="route-src" placeholder="source (dev:ch)">
-                <input id="route-dst" placeholder="sink (dev:ch)">
-                <input id="route-gain" type="number" value="0" step="1" placeholder="dB">
-                <button id="btn-route-add" class="btn">Add</button>
-            </div>
-            <table id="route-table">
-                <thead><tr><th>Source</th><th>Sink</th><th>Gain</th><th>Muted</th><th></th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </div>
+    <!-- Hidden elements needed by app.js -->
+    <div style="display:none">
+        <span id="ba-icon"></span>
+        <span id="ba-label"></span>
+        <span id="ba-fmt"></span>
+        <span id="ba-vol-val"></span>
+        <span id="ba-buf-val"></span>
+        <span id="ba-latency"></span>
+        <span id="ba-pkt-val"></span>
+        <span id="ba-underrun"></span>
+        <span id="ba-url"></span>
+        <input type="range" id="ba-volume" min="0" max="1" step="0.02" value="1">
+        <input type="checkbox" id="ba-opus-sw" checked>
+        <input type="checkbox" id="ba-sync-sw" checked>
+        <select id="ba-output-ch"><option value="2">Stereo</option></select>
+        <input type="range" id="ba-sync-delay" min="0" max="200" step="5" value="0">
+        <span id="ba-sync-delay-val"></span>
+        <input type="checkbox" id="ba-talk-sw">
+        <span id="ba-talk-count"></span>
+        <button id="ba-viz-toggle"></button>
+        <span id="tx-dot"></span>
+        <span id="tx-label"></span>
+        <span id="tx-pkts"></span>
+        <span id="ws-badge"></span>
     </div>
 
     <script>
-    // ── Fingerprint Detection polling ─────────────────────
-    (function() {
-        const API = 'https://relay.solun.art/api/fingerprint/matches';
-        const POLL_MS = 10000;
-        const MAX_LOG = 30;
-        const fpLog = [];
-
-        function $(id) { return document.getElementById(id); }
-
-        function timeAgo(ts) {
-            const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-            if (s < 5) return 'just now';
-            if (s < 60) return s + 's ago';
-            if (s < 3600) return Math.floor(s / 60) + 'm ago';
-            return Math.floor(s / 3600) + 'h ago';
-        }
-
-        function fmtTime(ts) {
-            const d = new Date(ts);
-            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        }
-
-        function truncFp(fp) {
-            if (!fp) return '--';
-            return fp.length > 24 ? fp.slice(0, 12) + '...' + fp.slice(-8) : fp;
-        }
-
-        function renderMatches(matches) {
-            var container = $('fp-matches');
-            var empty = $('fp-empty');
-            var revenue = $('fp-revenue');
-            var timeline = $('fp-timeline');
-            var pulse = $('fp-pulse');
-            var section = $('fp-section');
-
-            if (!matches || matches.length === 0) {
-                container.innerHTML = '';
-                empty.style.display = '';
-                revenue.style.display = 'none';
-                timeline.style.display = fpLog.length ? '' : 'none';
-                pulse.className = 'fp-pulse';
-                $('fp-total-det').textContent = fpLog.length || '0';
-                $('fp-active-ch').textContent = '0';
-                // Show section only if there are logged detections
-                if (section) section.style.display = fpLog.length ? '' : 'none';
-                renderLog();
-                return;
-            }
-            // Show section when we have matches
-            if (section) section.style.display = '';
-
-            empty.style.display = 'none';
-            revenue.style.display = '';
-            timeline.style.display = '';
-            pulse.className = 'fp-pulse active';
-
-            // Stats
-            var channels = new Set();
-            var totalRev = 0;
-            matches.forEach(function(m) { channels.add(m.channel); totalRev += (m.revenue || 0); });
-
-            // Add new matches to log
-            matches.forEach(function(m) {
-                var key = m.channel + ':' + m.fingerprint + ':' + m.detected_at;
-                if (!fpLog.find(function(l) { return l._key === key; })) {
-                    fpLog.unshift(Object.assign({ _key: key }, m));
-                }
-            });
-            while (fpLog.length > MAX_LOG) fpLog.pop();
-
-            $('fp-total-det').textContent = fpLog.length;
-            $('fp-active-ch').textContent = channels.size;
-            $('fp-total-rev').textContent = '$' + totalRev.toFixed(2);
-
-            // Render match cards
-            container.innerHTML = matches.map(function(m) {
-                var confPct = Math.round((m.confidence || 0) * 100);
-                var confCls = confPct < 70 ? 'fp-match-conf low' : 'fp-match-conf';
-                return '<div class="fp-match-card">'
-                    + '<div class="fp-match-top">'
-                    + '<span class="fp-match-ch">' + esc(m.channel || '--') + '</span>'
-                    + '<span class="' + confCls + '">' + confPct + '%</span>'
-                    + '</div>'
-                    + '<div class="fp-match-fp">' + esc(truncFp(m.fingerprint)) + '</div>'
-                    + '<div class="fp-match-meta">'
-                    + '<span>Listeners: <span class="fp-match-val">' + (m.listeners || 0) + '</span></span>'
-                    + '<span>Detected: <span class="fp-match-val">' + timeAgo(m.detected_at) + '</span></span>'
-                    + '</div>'
-                    + '</div>';
-            }).join('');
-
-            renderLog();
-        }
-
-        function renderLog() {
-            var logEl = $('fp-log');
-            if (!fpLog.length) { logEl.innerHTML = ''; return; }
-            logEl.innerHTML = fpLog.map(function(m) {
-                var confPct = Math.round((m.confidence || 0) * 100);
-                return '<li>'
-                    + '<span class="fp-log-time">' + fmtTime(m.detected_at) + '</span>'
-                    + '<span class="fp-log-ch">' + esc(m.channel || '--') + '</span>'
-                    + '<span class="fp-log-fp">' + esc(truncFp(m.fingerprint)) + '</span>'
-                    + '<span class="fp-log-conf">' + confPct + '%</span>'
-                    + '</li>';
-            }).join('');
-        }
-
-        function esc(s) {
-            var d = document.createElement('div');
-            d.textContent = s;
-            return d.innerHTML;
-        }
-
-        function poll() {
-            fetch(API).then(function(r) {
-                if (!r.ok) throw new Error(r.status);
-                return r.json();
-            }).then(function(data) {
-                var matches = Array.isArray(data) ? data : (data.matches || []);
-                renderMatches(matches);
-            }).catch(function() {
-                renderMatches([]);
-            });
-        }
-
-        poll();
-        setInterval(poll, POLL_MS);
-    })();
-
-    // ── Now Playing + Song History polling ─────────────────────
+    // ── Now Playing polling (minimal, updates listen bar) ──
     (function() {
         var NP_API = 'https://relay.solun.art/api/now-playing';
-        var SH_API = 'https://relay.solun.art/api/songs';
         var NP_POLL = 10000;
-        var SH_POLL = 30000;
-        var lastVideoId = '';
-
-        function $(id) { return document.getElementById(id); }
-
-        function esc(s) {
-            var d = document.createElement('div');
-            d.textContent = s;
-            return d.innerHTML;
-        }
-
-        function timeAgo(ts) {
-            var s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-            if (s < 5) return 'just now';
-            if (s < 60) return s + 's ago';
-            if (s < 3600) return Math.floor(s / 60) + 'm ago';
-            return Math.floor(s / 3600) + 'h ago';
-        }
-
-        function renderNowPlaying(data) {
-            var card = $('np-card');
-            var empty = $('np-empty');
-            var eq = $('np-eq');
-            var live = $('np-live');
-            var section = $('np-section');
-
-            if (!data || !data.title) {
-                card.style.display = 'none';
-                empty.style.display = 'none';
-                eq.style.display = 'none';
-                live.style.display = 'none';
-                if (section) section.style.display = 'none';
-                return;
-            }
-            if (section) section.style.display = '';
-
-            card.style.display = '';
-            empty.style.display = 'none';
-            eq.style.display = 'flex';
-            live.style.display = '';
-
-            $('np-song').textContent = data.title || '--';
-            $('np-artist').textContent = data.artist || '--';
-            $('np-album').textContent = data.album || '';
-
-            var conf = Math.round((data.confidence || 0) * 100);
-            $('np-conf-fill').style.width = conf + '%';
-            $('np-conf-pct').textContent = conf + '%';
-
-            var listenersEl = $('np-listeners');
-            if (data.listeners != null) {
-                listenersEl.innerHTML = '<span>' + data.listeners + '</span> listener' + (data.listeners !== 1 ? 's' : '') + ' right now';
-            } else {
-                listenersEl.textContent = '';
-            }
-
-            // Album art
-            var artEl = $('np-art');
-            if (data.album_art) {
-                artEl.innerHTML = '<img src="' + esc(data.album_art) + '" alt="Album art">';
-            } else {
-                artEl.innerHTML = '&#9835;';
-            }
-
-            // YouTube
-            var ytWrap = $('np-yt');
-            var ytEmbed = $('np-yt-embed');
-            var ytLink = $('np-yt-link');
-            var videoId = data.youtube_id || '';
-            if (videoId) {
-                ytWrap.style.display = '';
-                ytLink.href = 'https://www.youtube.com/watch?v=' + encodeURIComponent(videoId);
-                // Only reload iframe if video changed
-                if (videoId !== lastVideoId) {
-                    ytEmbed.innerHTML = '<iframe width="300" height="170" src="https://www.youtube.com/embed/'
-                        + esc(videoId) + '?autoplay=0" frameborder="0" allowfullscreen loading="lazy"></iframe>';
-                    lastVideoId = videoId;
-                }
-            } else {
-                ytWrap.style.display = 'none';
-                ytEmbed.innerHTML = '';
-                lastVideoId = '';
-            }
-        }
-
-        function renderSongHistory(songs) {
-            var list = $('sh-list');
-            var count = $('sh-count');
-            var section = $('sh-section');
-            if (!songs || !songs.length) {
-                list.innerHTML = '<li class="np-empty" style="padding:1rem"><span class="np-empty-sub">No songs identified yet</span></li>';
-                count.textContent = '';
-                if (section) section.style.display = 'none';
-                return;
-            }
-            if (section) section.style.display = '';
-            count.textContent = songs.length + ' song' + (songs.length !== 1 ? 's' : '');
-            list.innerHTML = songs.map(function(s) {
-                return '<li class="sh-item">'
-                    + '<div class="sh-art-sm">'
-                    + (s.album_art ? '<img src="' + esc(s.album_art) + '" style="width:100%;height:100%;object-fit:cover;border-radius:6px">' : '&#9835;')
-                    + '</div>'
-                    + '<div class="sh-meta">'
-                    + '<div class="sh-song">' + esc(s.title || '--') + '</div>'
-                    + '<div class="sh-artist-sm">' + esc(s.artist || '--') + '</div>'
-                    + '</div>'
-                    + '<div class="sh-time">' + (s.detected_at ? timeAgo(s.detected_at) : '') + '</div>'
-                    + '</li>';
-            }).join('');
-        }
 
         function pollNowPlaying() {
             fetch(NP_API).then(function(r) {
                 if (!r.ok) throw new Error(r.status);
                 return r.json();
             }).then(function(data) {
-                renderNowPlaying(data);
-            }).catch(function() {
-                renderNowPlaying(null);
-            });
-        }
-
-        function pollSongHistory() {
-            fetch(SH_API).then(function(r) {
-                if (!r.ok) throw new Error(r.status);
-                return r.json();
-            }).then(function(data) {
-                var songs = Array.isArray(data) ? data : (data.songs || []);
-                renderSongHistory(songs);
-            }).catch(function() {
-                renderSongHistory([]);
-            });
+                // Update listen bar if playing
+                if (data && data.title) {
+                    var ch = document.getElementById('lb-channel');
+                    var st = document.getElementById('lb-status');
+                    if (ch && st) {
+                        st.textContent = data.title + (data.artist ? ' - ' + data.artist : '');
+                    }
+                }
+            }).catch(function() {});
         }
 
         pollNowPlaying();
-        pollSongHistory();
         setInterval(pollNowPlaying, NP_POLL);
-        setInterval(pollSongHistory, SH_POLL);
+    })();
+
+    // ── Channel card active state management ──
+    (function() {
+        var cards = document.querySelectorAll('.ql-card');
+        var origQuickPlay = window.quickPlay;
+        window._qlSetActive = function(ch) {
+            cards.forEach(function(c) {
+                if (c.dataset.ch === ch) {
+                    c.classList.add('ql-active');
+                } else {
+                    c.classList.remove('ql-active');
+                }
+            });
+            // Show listen bar
+            var bar = document.getElementById('listen-bar');
+            var lbCh = document.getElementById('lb-channel');
+            if (bar) bar.classList.add('active');
+            if (lbCh) lbCh.textContent = ch;
+        };
+        // Hook into quickPlay after app.js loads
+        var checkInterval = setInterval(function() {
+            if (typeof quickPlay === 'function' && quickPlay !== origQuickPlay) {
+                var realQuickPlay = quickPlay;
+                window.quickPlay = function(ch) {
+                    window._qlSetActive(ch);
+                    return realQuickPlay(ch);
+                };
+                clearInterval(checkInterval);
+            }
+        }, 200);
     })();
     </script>
+    <script src="/wasm/soluna-opus-wasm.js"></script>
     <script src="/wasm/soluna-opus-bridge.js"></script>
     <script src="/wasm/soluna-audio.js"></script>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=20260319b"></script>
 </body>
 </html>

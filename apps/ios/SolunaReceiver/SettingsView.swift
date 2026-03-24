@@ -1,6 +1,6 @@
 //
 //  SettingsView.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Settings screen for configuring audio reception
 //
@@ -37,6 +37,19 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             Form {
+                // MARK: - About
+                Section(header: Text(NSLocalizedString("settings.about", comment: ""))) {
+                    HStack {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.solunaGradientStart)
+                            .frame(width: 28)
+                        Text(NSLocalizedString("settings.version", comment: ""))
+                        Spacer()
+                        Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"))")
+                            .foregroundColor(.secondary)
+                    }
+                }
+
                 // MARK: - Essential
 
                 Section(header: Text("Channel"),

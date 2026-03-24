@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna for Artists — 収益の70%がアーティストに直接還元。全ての支払いは公開監査で透明。">
+    <meta property="og:title" content="Soluna for Artists — あなたの音楽を、世界へ。">
+    <meta property="og:description" content="収益の70%がアーティストに直接還元。全ての支払いは公開監査で透明。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/for-artists">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="ja_JP">
+    <meta name="keywords" content="アーティスト,音楽配信,収益,ロイヤリティ,透明,公開監査,Soluna,ファンランク">
+    <meta name="author" content="Soluna Project">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#05060a">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Soluna for Artists — あなたの音楽を、世界へ。">
+    <meta name="twitter:description" content="収益の70%がアーティストに直接還元。全ての支払いは公開監査で透明。">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+    <link rel="canonical" href="https://solun.art/for-artists">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Soluna for Artists — あなたの音楽を、世界へ。</title>
+    <style>
+        :root {
+            --bg: #05060a; --s1: #0c0e16; --s2: #12151f; --s3: #1a1e2e;
+            --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.12);
+            --text: #e8eaf2; --text2: #8b91a8; --text3: #50566e;
+            --blue: #3b82f6; --cyan: #06b6d4; --green: #10b981;
+            --purple: #8b5cf6; --amber: #f59e0b; --pink: #ec4899;
+            font-synthesis: none; -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+
+        .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 0 max(20px, calc(50% - 580px)); height: 60px; background: rgba(5,6,10,0.7); backdrop-filter: blur(24px) saturate(1.8); border-bottom: 1px solid var(--border); }
+        .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; }
+        .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .nav-links a { color: var(--text2); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--amber); }
+        .nav-cta { padding: 8px 18px; background: linear-gradient(135deg, var(--amber), var(--pink)); color: #fff !important; border-radius: 10px; font-weight: 600; font-size: 13px !important; box-shadow: 0 2px 12px rgba(245,158,11,0.3); }
+
+        .section { padding: 100px max(20px, calc(50% - 580px)); }
+        .section-label { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; background: linear-gradient(90deg, var(--amber), var(--pink)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        h1 { font-size: clamp(40px, 8vw, 72px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.05; margin-bottom: 28px; }
+        h2 { font-size: clamp(28px, 5vw, 44px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 16px; }
+        .h1-grad { background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .h1-accent { background: linear-gradient(135deg, var(--amber), var(--pink), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 200% auto; animation: grad-shift 4s ease-in-out infinite; }
+        @keyframes grad-shift { 0%, 100% { background-position: 0% center; } 50% { background-position: 100% center; } }
+        .sub { font-size: 17px; color: var(--text2); line-height: 1.7; max-width: 560px; margin-bottom: 48px; }
+
+        .hero { position: relative; padding: 160px max(20px, calc(50% - 580px)) 100px; overflow: hidden; }
+        .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+        .hero-orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.15; animation: orb-float 20s ease-in-out infinite; }
+        .hero-orb-1 { width: 500px; height: 500px; background: var(--amber); top: -10%; right: 10%; }
+        .hero-orb-2 { width: 400px; height: 400px; background: var(--pink); bottom: -5%; left: 5%; animation-delay: -7s; }
+        @keyframes orb-float { 0%, 100% { transform: translate(0, 0) scale(1); } 33% { transform: translate(30px, -20px) scale(1.05); } 66% { transform: translate(-20px, 15px) scale(0.95); } }
+        .hero-content { position: relative; z-index: 1; }
+        .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); color: #fbbf24; font-size: 13px; font-weight: 600; padding: 6px 16px; border-radius: 24px; margin-bottom: 32px; }
+        .hero-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .btn-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 12px; font-size: 15px; font-weight: 600; text-decoration: none; transition: transform 0.2s, opacity 0.2s; }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-primary { background: linear-gradient(135deg, var(--amber), var(--pink)); color: #fff; box-shadow: 0 4px 20px rgba(245,158,11,0.3); }
+        .btn-secondary { background: var(--s2); color: var(--text); border: 1px solid var(--border2); }
+
+        /* ── Stats comparison ── */
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 48px; }
+        .stat-card { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 36px 28px; text-align: center; }
+        .stat-card.highlight { border-color: rgba(245,158,11,0.3); background: linear-gradient(135deg, rgba(245,158,11,0.04), rgba(236,72,153,0.04)); }
+        .stat-value { font-size: clamp(40px, 6vw, 64px); font-weight: 900; letter-spacing: -0.03em; line-height: 1; margin-bottom: 8px; }
+        .stat-value.gold { background: linear-gradient(135deg, var(--amber), var(--pink)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .stat-value.dim { color: var(--text3); }
+        .stat-label { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+        .stat-desc { font-size: 13px; color: var(--text3); }
+
+        /* ── Steps ── */
+        .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-top: 48px; counter-reset: step; }
+        .step { position: relative; padding: 32px; background: var(--s1); border: 1px solid var(--border); border-radius: 16px; counter-increment: step; }
+        .step::before { content: counter(step); position: absolute; top: 16px; right: 20px; font-size: 48px; font-weight: 900; color: rgba(245,158,11,0.08); }
+        .step h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+        .step p { font-size: 14px; color: var(--text2); }
+
+        /* ── Fan Rank ── */
+        .rank-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-top: 48px; }
+        .rank-card { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 28px 20px; text-align: center; transition: border-color 0.3s, transform 0.3s; }
+        .rank-card:hover { transform: translateY(-4px); }
+        .rank-icon { font-size: 40px; margin-bottom: 12px; }
+        .rank-name { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+        .rank-cond { font-size: 12px; color: var(--text3); }
+        .rank-bronze { border-color: rgba(205,127,50,0.2); }
+        .rank-bronze .rank-name { color: #cd7f32; }
+        .rank-silver { border-color: rgba(192,192,192,0.2); }
+        .rank-silver .rank-name { color: #c0c0c0; }
+        .rank-gold { border-color: rgba(255,215,0,0.2); }
+        .rank-gold .rank-name { color: #ffd700; }
+        .rank-platinum { border-color: rgba(180,210,230,0.2); }
+        .rank-platinum .rank-name { color: #b4d2e6; }
+        .rank-diamond { border-color: rgba(185,242,255,0.3); }
+        .rank-diamond .rank-name { background: linear-gradient(135deg, #b9f2ff, #e0c3fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+        /* ── Calculator ── */
+        .calc-box { background: var(--s1); border: 1px solid var(--border); border-radius: 20px; padding: 48px; margin-top: 48px; max-width: 640px; }
+        .calc-example { font-size: 14px; color: var(--text2); margin-bottom: 24px; line-height: 1.8; }
+        .calc-result { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+        .calc-amount { font-size: clamp(36px, 6vw, 56px); font-weight: 900; background: linear-gradient(135deg, var(--amber), var(--pink)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; letter-spacing: -0.02em; }
+        .calc-period { font-size: 18px; color: var(--text2); font-weight: 600; }
+        .calc-breakdown { font-size: 13px; color: var(--text3); line-height: 1.8; }
+        .calc-slider-group { margin-bottom: 32px; }
+        .calc-slider-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 14px; color: var(--text2); }
+        .calc-slider-value { font-weight: 700; color: var(--text); font-size: 16px; }
+        .calc-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 3px; background: var(--s3); outline: none; }
+        .calc-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: linear-gradient(135deg, var(--amber), var(--pink)); cursor: pointer; box-shadow: 0 2px 10px rgba(245,158,11,0.4); }
+
+        /* ── CTA ── */
+        .cta-section { text-align: center; padding: 120px max(20px, calc(50% - 580px)); background: radial-gradient(ellipse at center, rgba(245,158,11,0.06) 0%, transparent 70%); }
+        .cta-section h2 { margin-bottom: 16px; }
+        .cta-section .sub { margin: 0 auto 48px; }
+        .cta-section .btn-row { justify-content: center; }
+
+        /* ── Footer ── */
+        footer { padding: 60px max(20px, calc(50% - 580px)) 40px; border-top: 1px solid var(--border); }
+        .footer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 32px; margin-bottom: 40px; }
+        .footer-col h4 { font-size: 13px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 16px; }
+        .footer-col a { display: block; color: var(--text2); text-decoration: none; font-size: 14px; padding: 4px 0; transition: color 0.2s; }
+        .footer-col a:hover { color: var(--text); }
+        .footer-bottom { display: flex; justify-content: space-between; align-items: center; color: var(--text3); font-size: 13px; flex-wrap: wrap; gap: 12px; }
+
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .hero { padding-top: 120px; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .rank-grid { grid-template-columns: repeat(2, 1fr); }
+            .calc-box { padding: 28px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/app">App</a>
+        <a href="/for-djs">DJs</a>
+        <a href="/for-artists" class="active">Artists</a>
+        <a href="/for-venues">Venues</a>
+        <a href="/for-developers">Developers</a>
+        <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+        <a href="/dashboard" class="nav-cta">ダッシュボード</a>
+    </div>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+    </div>
+    <div class="hero-content">
+        <div class="hero-badge"><span class="dot"></span> アーティスト向け</div>
+        <h1><span class="h1-grad">あなたの音楽を、</span><br><span class="h1-accent">世界へ。</span></h1>
+        <p class="sub">収益の70%がアーティストに直接還元。全ての支払いは公開監査。中間マージンの不透明さから、あなたの音楽を解放する。</p>
+        <div class="btn-row">
+            <a href="#register" class="btn btn-primary">アーティスト登録（無料）</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE" class="btn btn-secondary">TestFlightで試す</a>
+        </div>
+    </div>
+</section>
+
+<!-- ── Revenue Comparison ── -->
+<section class="section">
+    <div class="reveal">
+        <div class="section-label">収益比較</div>
+        <h2>アーティストが受け取る割合</h2>
+        <p class="sub">あなたの音楽が生み出す収益のうち、実際にいくら受け取れるか。</p>
+    </div>
+    <div class="stats-grid">
+        <div class="stat-card highlight reveal reveal-delay-1">
+            <div class="stat-value gold">70%</div>
+            <div class="stat-label">Soluna</div>
+            <div class="stat-desc">公開監査で全額を透明化</div>
+        </div>
+        <div class="stat-card reveal reveal-delay-2">
+            <div class="stat-value dim">30%</div>
+            <div class="stat-label">Spotify</div>
+            <div class="stat-desc">レーベル経由で大幅に減額</div>
+        </div>
+        <div class="stat-card reveal reveal-delay-3">
+            <div class="stat-value dim">0%</div>
+            <div class="stat-label">USEN</div>
+            <div class="stat-desc">アーティストへの直接還元なし</div>
+        </div>
+    </div>
+</section>
+
+<!-- ── How it works ── -->
+<section class="section" style="background: var(--s1);">
+    <div class="reveal">
+        <div class="section-label">使い方</div>
+        <h2>4ステップで配信開始</h2>
+        <p class="sub">機材もスタジオも不要。Macとあなたの音楽だけでいい。</p>
+    </div>
+    <div class="steps">
+        <div class="step reveal reveal-delay-1">
+            <h3>Soluna.app を開く</h3>
+            <p>Macにアプリをインストール。セットアップは2分で完了する。</p>
+        </div>
+        <div class="step reveal reveal-delay-2">
+            <h3>音楽を流す</h3>
+            <p>再生するだけで自動的にあなたのチャンネルに配信される。</p>
+        </div>
+        <div class="step reveal reveal-delay-3">
+            <h3>リスナーが聴く</h3>
+            <p>リスナーがPro会員になると、あなたに収益が発生する。</p>
+        </div>
+        <div class="step reveal reveal-delay-4">
+            <h3>公開監査で透明</h3>
+            <p>毎月の支払い内訳はすべて公開。誰でも監査できる。</p>
+        </div>
+    </div>
+</section>
+
+<!-- ── Fan Rank ── -->
+<section class="section">
+    <div class="reveal">
+        <div class="section-label">ファンランク</div>
+        <h2>あなたのファンが、ランクアップしていく</h2>
+        <p class="sub">リスナーが聴けば聴くほどランクが上がる。熱心なファンが可視化され、アーティストとファンの関係がもっと近くなる。</p>
+    </div>
+    <div class="rank-grid">
+        <div class="rank-card rank-bronze reveal reveal-delay-1">
+            <div class="rank-icon">&#127941;</div>
+            <div class="rank-name">Bronze</div>
+            <div class="rank-cond">聴き始めたばかり</div>
+        </div>
+        <div class="rank-card rank-silver reveal reveal-delay-2">
+            <div class="rank-icon">&#129351;</div>
+            <div class="rank-name">Silver</div>
+            <div class="rank-cond">10時間以上</div>
+        </div>
+        <div class="rank-card rank-gold reveal reveal-delay-3">
+            <div class="rank-icon">&#129352;</div>
+            <div class="rank-name">Gold</div>
+            <div class="rank-cond">50時間以上</div>
+        </div>
+        <div class="rank-card rank-platinum reveal reveal-delay-4">
+            <div class="rank-icon">&#128142;</div>
+            <div class="rank-name">Platinum</div>
+            <div class="rank-cond">200時間以上</div>
+        </div>
+        <div class="rank-card rank-diamond reveal reveal-delay-1">
+            <div class="rank-icon">&#10024;</div>
+            <div class="rank-name">Diamond</div>
+            <div class="rank-cond">500時間以上</div>
+        </div>
+    </div>
+</section>
+
+<!-- ── Revenue Calculator ── -->
+<section class="section" style="background: var(--s1);">
+    <div class="reveal">
+        <div class="section-label">収益シミュレーション</div>
+        <h2>あなたの収益を計算</h2>
+        <p class="sub">Pro会員があなたのチャンネルを聴いた場合の月額収益。</p>
+    </div>
+    <div class="calc-box reveal">
+        <div class="calc-slider-group">
+            <div class="calc-slider-label">
+                <span>Pro会員リスナー数</span>
+                <span class="calc-slider-value" id="listener-display">1,000人</span>
+            </div>
+            <input type="range" class="calc-slider" id="listener-slider" min="100" max="10000" step="100" value="1000">
+        </div>
+        <div class="calc-result">
+            <span class="calc-amount" id="revenue-display">&yen;175,000</span>
+            <span class="calc-period">/ 月</span>
+        </div>
+        <div class="calc-breakdown" id="calc-breakdown">
+            Pro会員の月額 &yen;500 &times; 1,000人 = &yen;500,000<br>
+            うちアーティスト分 70% &rarr; <strong>&yen;350,000</strong><br>
+            チャンネル聴取割合 50%（目安）&rarr; <strong>&yen;175,000</strong>
+        </div>
+    </div>
+</section>
+
+<!-- ── CTA ── -->
+<section class="cta-section" id="register">
+    <div class="reveal">
+        <h2><span class="h1-grad">音楽で、正当な収益を。</span></h2>
+        <p class="sub">登録は無料。あなたの音楽を流すだけで、リスナーに届き、収益が生まれる。</p>
+        <div class="btn-row">
+            <a href="https://testflight.apple.com/join/PYbefDSE" class="btn btn-primary">アーティスト登録（無料）</a>
+            <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary">GitHub</a>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="footer-grid">
+        <div class="footer-col">
+            <h4>Soluna</h4>
+            <a href="/">メインサイト</a>
+            <a href="https://github.com/yukihamada/opensonic">GitHub</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">TestFlight</a>
+            <a href="https://github.com/yukihamada/opensonic/blob/main/docs/protocol.md">プロトコル仕様</a>
+        </div>
+        <div class="footer-col">
+            <h4>活用シーン別</h4>
+            <a href="/for-djs">DJs</a>
+            <a href="/for-artists">アーティスト</a>
+            <a href="/for-venues">店舗・施設</a>
+            <a href="/for-events">イベント</a>
+            <a href="/for-developers">開発者</a>
+        </div>
+        <div class="footer-col">
+            <h4>ダウンロード</h4>
+            <a href="https://github.com/yukihamada/opensonic/releases/latest">Mac (.pkg)</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">iOS (TestFlight)</a>
+            <a href="https://github.com/yukihamada/opensonic/releases/latest">Android (.apk)</a>
+        </div>
+    </div>
+    <div class="footer-bottom">
+        <span>&#9670; Soluna &mdash; Open Source Network Audio</span>
+        <span>MIT License</span>
+    </div>
+</footer>
+
+<script>
+const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.15 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+// Revenue calculator
+const slider = document.getElementById('listener-slider');
+const listenerDisplay = document.getElementById('listener-display');
+const revenueDisplay = document.getElementById('revenue-display');
+const breakdownDisplay = document.getElementById('calc-breakdown');
+
+function formatNum(n) { return n.toLocaleString('ja-JP'); }
+
+slider.addEventListener('input', () => {
+    const listeners = parseInt(slider.value);
+    const total = 500 * listeners;
+    const artistShare = Math.round(total * 0.7);
+    const estimated = Math.round(artistShare * 0.5);
+
+    listenerDisplay.textContent = formatNum(listeners) + '人';
+    revenueDisplay.textContent = '\u00a5' + formatNum(estimated);
+    breakdownDisplay.innerHTML =
+        'Pro会員の月額 \u00a5500 \u00d7 ' + formatNum(listeners) + '人 = \u00a5' + formatNum(total) + '<br>' +
+        'うちアーティスト分 70% \u2192 <strong>\u00a5' + formatNum(artistShare) + '</strong><br>' +
+        'チャンネル聴取割合 50%（目安）\u2192 <strong>\u00a5' + formatNum(estimated) + '</strong>';
+});
+</script>
+</body>
+</html>

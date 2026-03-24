@@ -1,6 +1,6 @@
 //
 //  NowPlayingView.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Fetches song identification data from the relay server and displays
 //  "Now Playing" info including title, artist, YouTube link, and listener count.

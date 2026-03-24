@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#050510"/>
+      <stop offset="100%" stop-color="#0f0a2a"/>
+    </linearGradient>
+    <linearGradient id="gem2" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="50%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg2)"/>
+  <!-- Diamond / gem shape -->
+  <path d="M512 200 L720 420 L512 780 L304 420 Z" fill="none" stroke="url(#gem2)" stroke-width="10" stroke-linejoin="round"/>
+  <!-- Inner facets -->
+  <path d="M512 200 L512 780" stroke="url(#gem2)" stroke-width="3" opacity="0.4"/>
+  <path d="M304 420 L720 420" stroke="url(#gem2)" stroke-width="3" opacity="0.4"/>
+  <path d="M512 200 L304 420 M512 200 L720 420" stroke="url(#gem2)" stroke-width="4" opacity="0.5"/>
+  <!-- Glow effect -->
+  <circle cx="512" cy="460" r="80" fill="url(#gem2)" opacity="0.15"/>
+  <!-- Small sound waves from diamond -->
+  <path d="M740 400 Q780 420 740 440" fill="none" stroke="#06b6d4" stroke-width="6" opacity="0.6" stroke-linecap="round"/>
+  <path d="M770 380 Q820 420 770 460" fill="none" stroke="#06b6d4" stroke-width="5" opacity="0.4" stroke-linecap="round"/>
+  <path d="M284 400 Q244 420 284 440" fill="none" stroke="#8b5cf6" stroke-width="6" opacity="0.6" stroke-linecap="round"/>
+  <path d="M254 380 Q204 420 254 460" fill="none" stroke="#8b5cf6" stroke-width="5" opacity="0.4" stroke-linecap="round"/>
+</svg>

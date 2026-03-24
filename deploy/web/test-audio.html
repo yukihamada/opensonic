@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Audio Test</title></head>
+<body>
+<h2>Audio Test - Record then Play</h2>
+<button onclick="record()">1. Record 5s of jazz</button>
+<button onclick="playback()">2. Play recorded</button>
+<pre id="log" style="max-height:300px;overflow:auto"></pre>
+<script>
+var S=[7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,73,80,88,97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,408,449,494,544,598,658,724,796,876,963,1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,8630,9493,10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,27086,29794,32767];
+var X=[-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8];
+function L(m){var l=document.getElementById('log');l.textContent+=m+'\n';l.scrollTop=99999;}
+
+var allSamples = [];
+
+function record(){
+  allSamples = [];
+  L('Recording 5 seconds...');
+  var ws=new WebSocket('wss://relay.solun.art/ws/audio?channel=jazz');
+  ws.binaryType='arraybuffer';
+  var pkts=0;
+  ws.onopen=function(){L('Connected');};
+  ws.onmessage=function(ev){
+    if(!(ev.data instanceof ArrayBuffer))return;
+    var b=new Uint8Array(ev.data);
+    if(b.length<12||(b[0]&0xC0)!==0x80)return;
+    var pt=b[1]&0x7F;
+    if(pt!==116&&pt!==96)return;
+    var off=12;
+    if((b[0]&0x10)&&b.length>=16){off=16+(b[14]<<8|b[15])*4;}
+    var end=b.length-4;if(end<=off)return;
+    if(pt===116){
+      var dv=new DataView(ev.data,off,end-off);if(dv.byteLength<4)return;
+      var vp=dv.getInt16(0,true),ix=dv.getUint8(2),nb=dv.byteLength-4;
+      for(var bi=0;bi<nb;bi++){var bb=dv.getUint8(4+bi);for(var h=0;h<2;h++){
+        var n=h===0?(bb&0xF):((bb>>4)&0xF);var st=S[ix],d=st>>3;
+        if(n&4)d+=st;if(n&2)d+=st>>1;if(n&1)d+=st>>2;
+        vp+=(n&8)?-d:d;if(vp>32767)vp=32767;if(vp<-32768)vp=-32768;
+        ix+=X[n];if(ix<0)ix=0;if(ix>88)ix=88;allSamples.push(vp/32768);}}
+    }else{
+      var dv2=new DataView(ev.data,off,end-off);var cnt=dv2.byteLength/4|0;
+      for(var i=0;i<cnt;i++)allSamples.push(dv2.getInt32(i*4,true)/8388608);
+    }
+    pkts++;
+  };
+  setTimeout(function(){
+    ws.close();
+    L('Recorded '+allSamples.length+' samples ('+
+      (allSamples.length/48000).toFixed(1)+'s) from '+pkts+' pkts');
+  },5000);
+}
+
+function playback(){
+  if(allSamples.length===0){L('Nothing recorded');return;}
+  var ctx=new AudioContext({sampleRate:48000});
+  var buf=ctx.createBuffer(1,allSamples.length,48000);
+  var d=buf.getChannelData(0);
+  for(var i=0;i<allSamples.length;i++)d[i]=allSamples[i];
+  var src=ctx.createBufferSource();src.buffer=buf;
+  src.connect(ctx.destination);src.start();
+  L('Playing '+allSamples.length+' samples...');
+}
+</script>
+</body></html>

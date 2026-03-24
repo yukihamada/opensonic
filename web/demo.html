@@ -1,386 +1,482 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OSTP Demo — Soluna Receiver</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna SDK WebSocket Demo — ブラウザでリアルタイム音声を受信・再生。ADPCM デコード、RTP/OSTP パース、Web Audio API。">
+    <meta property="og:title" content="Soluna SDK Demo — ブラウザでライブ音声を体験。">
+    <meta property="og:description" content="WebSocket 経由でリアルタイム音声ストリームを受信・再生するライブデモ。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/demo">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="ja_JP">
+    <meta name="theme-color" content="#05060a">
+    <link rel="canonical" href="https://solun.art/demo">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Soluna SDK Demo — ブラウザでライブ音声を体験。</title>
+    <style>
+        :root {
+            --bg: #05060a; --s1: #0c0e16; --s2: #12151f; --s3: #1a1e2e;
+            --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.12);
+            --text: #e8eaf2; --text2: #8b91a8; --text3: #50566e;
+            --blue: #3b82f6; --cyan: #06b6d4; --green: #10b981;
+            --purple: #8b5cf6; --amber: #f59e0b; --pink: #ec4899;
+            font-synthesis: none; -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0d0d12;
-      color: #e0e0e0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
+        nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 0 max(20px, calc(50% - 580px)); height: 60px; background: rgba(5,6,10,0.7); backdrop-filter: blur(24px) saturate(1.8); border-bottom: 1px solid var(--border); }
+        .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .nav-links a { color: var(--text2); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--green); }
+        .nav-cta { padding: 8px 18px; background: linear-gradient(135deg, var(--green), var(--cyan)); color: #fff !important; border-radius: 10px; font-weight: 600; font-size: 13px !important; box-shadow: 0 2px 12px rgba(16,185,129,0.3); }
 
-    .card {
-      background: #16161f;
-      border: 1px solid #2a2a3a;
-      border-radius: 16px;
-      padding: 36px;
-      width: 100%;
-      max-width: 480px;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
-    }
+        .section { padding: 100px max(20px, calc(50% - 580px)); }
+        .section-label { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; background: linear-gradient(90deg, var(--green), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        h1 { font-size: clamp(32px, 6vw, 56px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.05; margin-bottom: 16px; }
+        h2 { font-size: clamp(24px, 4vw, 36px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 16px; }
+        .h1-grad { background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .h1-accent { background: linear-gradient(135deg, var(--green), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .sub { font-size: 16px; color: var(--text2); line-height: 1.7; max-width: 560px; margin-bottom: 32px; }
 
-    h1 {
-      font-size: 1.4rem;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-      margin-bottom: 6px;
-      color: #fff;
-    }
+        /* Player UI */
+        .player-wrap { max-width: 680px; margin: 0 auto; padding-top: 100px; }
+        .player-card { background: var(--s1); border: 1px solid var(--border); border-radius: 20px; padding: 32px; margin-bottom: 32px; }
 
-    .subtitle {
-      font-size: 0.8rem;
-      color: #555;
-      margin-bottom: 28px;
-    }
+        .channel-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+        .preset-btn { background: var(--s2); border: 1px solid var(--border2); border-radius: 8px; padding: 6px 14px; color: var(--text2); font-size: 13px; cursor: pointer; transition: all 0.2s; font-family: inherit; }
+        .preset-btn:hover { border-color: var(--green); color: var(--text); }
+        .preset-btn.active { background: rgba(16,185,129,0.1); border-color: var(--green); color: var(--green); }
 
-    label {
-      display: block;
-      font-size: 0.75rem;
-      font-weight: 500;
-      color: #888;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      margin-bottom: 6px;
-    }
+        .input-row { display: flex; gap: 8px; margin-bottom: 20px; }
+        .channel-input { flex: 1; background: var(--bg); border: 1px solid var(--border2); border-radius: 10px; color: var(--text); font-size: 15px; padding: 12px 16px; outline: none; font-family: inherit; transition: border-color 0.2s; }
+        .channel-input:focus { border-color: var(--green); }
+        .play-btn { background: linear-gradient(135deg, var(--green), var(--cyan)); border: none; border-radius: 10px; color: #fff; font-size: 15px; font-weight: 700; padding: 12px 28px; cursor: pointer; transition: transform 0.2s, opacity 0.2s; font-family: inherit; min-width: 100px; }
+        .play-btn:hover { transform: translateY(-1px); }
+        .play-btn.stop { background: linear-gradient(135deg, #ef4444, #f97316); }
 
-    .input-row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
-    }
+        .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text3); transition: background 0.3s; flex-shrink: 0; }
+        .status-dot.connecting { background: var(--amber); animation: pulse-dot 1s infinite; }
+        .status-dot.live { background: var(--green); animation: pulse-dot 2s infinite; }
+        .status-dot.error { background: #ef4444; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .status-text { font-size: 14px; color: var(--text2); }
 
-    input[type="text"] {
-      flex: 1;
-      background: #0d0d12;
-      border: 1px solid #2a2a3a;
-      border-radius: 8px;
-      color: #e0e0e0;
-      font-size: 0.95rem;
-      padding: 10px 14px;
-      outline: none;
-      transition: border-color 0.2s;
-    }
+        /* Visualizer */
+        .visualizer { display: flex; align-items: flex-end; justify-content: center; gap: 2px; height: 80px; margin-bottom: 24px; background: var(--bg); border-radius: 12px; padding: 8px; }
+        .viz-bar { width: 100%; min-width: 2px; background: var(--green); border-radius: 2px 2px 0 0; transition: height 0.05s ease; height: 2px; }
 
-    input[type="text"]:focus {
-      border-color: #6c63ff;
-    }
+        /* Stats */
+        .stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+        .stat-chip { background: var(--s2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 14px; font-size: 12px; color: var(--text2); }
+        .stat-chip span { color: var(--text); font-weight: 600; }
 
-    button {
-      background: #6c63ff;
-      border: none;
-      border-radius: 8px;
-      color: #fff;
-      cursor: pointer;
-      font-size: 0.9rem;
-      font-weight: 600;
-      padding: 10px 20px;
-      transition: background 0.2s, opacity 0.2s;
-      white-space: nowrap;
-    }
+        /* Event log */
+        .log-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; }
+        .event-log { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; height: 160px; overflow-y: auto; font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; color: var(--text3); line-height: 1.6; }
+        .log-line { margin-bottom: 1px; }
+        .log-line.info { color: #7a9aff; }
+        .log-line.ok { color: var(--green); }
+        .log-line.warn { color: var(--amber); }
+        .log-line.error { color: #ef4444; }
 
-    button:hover:not(:disabled) { background: #7c74ff; }
-    button:disabled { opacity: 0.4; cursor: not-allowed; }
+        /* Code section */
+        .code-block { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-top: 16px; overflow-x: auto; font-family: "SF Mono", "Fira Code", "Consolas", monospace; font-size: 13px; line-height: 1.7; color: var(--text2); }
+        .code-block .comment { color: var(--text3); }
+        .code-block .keyword { color: var(--purple); }
+        .code-block .string { color: var(--green); }
+        .code-block .func { color: var(--cyan); }
+        .code-block .num { color: var(--amber); }
 
-    button.disconnect {
-      background: #3a1e1e;
-      color: #ff6b6b;
-    }
-    button.disconnect:hover:not(:disabled) { background: #4a2424; }
+        footer { padding: 60px max(20px, calc(50% - 580px)) 40px; border-top: 1px solid var(--border); }
+        .footer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 32px; margin-bottom: 40px; }
+        .footer-col h4 { font-size: 13px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 16px; }
+        .footer-col a { display: block; color: var(--text2); text-decoration: none; font-size: 14px; padding: 4px 0; transition: color 0.2s; }
+        .footer-col a:hover { color: var(--text); }
+        .footer-bottom { display: flex; justify-content: space-between; align-items: center; color: var(--text3); font-size: 13px; flex-wrap: wrap; gap: 12px; }
 
-    /* Status indicator */
-    .status-bar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: #0d0d12;
-      border: 1px solid #2a2a3a;
-      border-radius: 8px;
-      padding: 12px 14px;
-      margin-bottom: 16px;
-      min-height: 46px;
-    }
-
-    .dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #333;
-      flex-shrink: 0;
-      transition: background 0.3s;
-    }
-
-    .dot.idle     { background: #444; }
-    .dot.loading  { background: #f0a500; animation: pulse 1s infinite; }
-    .dot.live     { background: #3ecf7e; animation: pulse 2s infinite; }
-    .dot.error    { background: #ff4444; }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0.4; }
-    }
-
-    .status-text {
-      font-size: 0.85rem;
-      color: #aaa;
-      flex: 1;
-    }
-
-    /* Log */
-    .log-label {
-      font-size: 0.7rem;
-      font-weight: 500;
-      color: #555;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      margin-bottom: 6px;
-    }
-
-    .log {
-      background: #0a0a10;
-      border: 1px solid #1e1e28;
-      border-radius: 8px;
-      padding: 10px 12px;
-      height: 140px;
-      overflow-y: auto;
-      font-family: "SF Mono", "Fira Code", monospace;
-      font-size: 0.72rem;
-      color: #6a6a8a;
-    }
-
-    .log-entry { margin-bottom: 2px; line-height: 1.5; }
-    .log-entry.info  { color: #7a9aff; }
-    .log-entry.error { color: #ff6b6b; }
-    .log-entry.warn  { color: #f0a500; }
-    .log-entry.ok    { color: #3ecf7e; }
-
-    /* Info chips */
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-bottom: 16px;
-    }
-
-    .chip {
-      background: #1e1e2e;
-      border: 1px solid #2a2a3a;
-      border-radius: 20px;
-      font-size: 0.7rem;
-      color: #888;
-      padding: 4px 10px;
-    }
-
-    .chip span { color: #ccc; font-weight: 500; }
-
-    footer {
-      margin-top: 20px;
-      font-size: 0.68rem;
-      color: #444;
-      text-align: center;
-    }
-
-    footer a { color: #555; text-decoration: none; }
-    footer a:hover { color: #888; }
-  </style>
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .player-wrap { padding-top: 80px; }
+        }
+    </style>
 </head>
 <body>
-<div class="card">
-  <h1>Soluna OSTP Receiver</h1>
-  <p class="subtitle">Open Sonic Transport Protocol — browser demo</p>
 
-  <label for="channelInput">Channel</label>
-  <div class="input-row">
-    <input
-      type="text"
-      id="channelInput"
-      placeholder="e.g. soluna/stage-a"
-      value="soluna/stage-a"
-      autocomplete="off"
-      spellcheck="false"
-    />
-    <button id="connectBtn">Listen</button>
-    <button id="disconnectBtn" class="disconnect" disabled>Stop</button>
-  </div>
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/app" class="hide-sm">App</a>
+        <a href="/sdk" class="hide-sm">SDK</a>
+        <a href="/demo" class="hide-sm active">Demo</a>
+        <a href="/for-developers" class="hide-sm">Developers</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/dashboard" class="nav-cta">Dashboard</a>
+    </div>
+</nav>
 
-  <div class="status-bar">
-    <div class="dot idle" id="statusDot"></div>
-    <div class="status-text" id="statusText">Not connected</div>
-  </div>
+<div class="player-wrap">
+    <div style="text-align:center;margin-bottom:32px">
+        <h1><span class="h1-grad">Soluna SDK</span> <span class="h1-accent">Live Demo</span></h1>
+        <p class="sub" style="margin:0 auto 0">WebSocket + ADPCM + Web Audio API</p>
+    </div>
 
-  <div class="chips" id="infoChips" style="display:none">
-    <div class="chip">Bitrate <span id="chipBitrate">—</span></div>
-    <div class="chip">Sample rate <span id="chipSampleRate">—</span></div>
-    <div class="chip">Buffer <span id="chipBuffer">—</span></div>
-    <div class="chip">Network <span id="chipNetwork">—</span></div>
-  </div>
+    <div class="player-card">
+        <div class="log-label">Channel Presets</div>
+        <div class="channel-presets" id="presets">
+            <button class="preset-btn active" data-ch="soluna">soluna</button>
+            <button class="preset-btn" data-ch="sunset-chill">sunset-chill</button>
+            <button class="preset-btn" data-ch="deep-focus">deep-focus</button>
+            <button class="preset-btn" data-ch="tokyo-nights">tokyo-nights</button>
+            <button class="preset-btn" data-ch="avicii">avicii</button>
+            <button class="preset-btn" data-ch="fkj">fkj</button>
+            <button class="preset-btn" data-ch="nujabes">nujabes</button>
+        </div>
 
-  <div class="log-label">Log</div>
-  <div class="log" id="logEl"></div>
+        <div class="input-row">
+            <input type="text" class="channel-input" id="channelInput" value="soluna" placeholder="channel name" autocomplete="off" spellcheck="false">
+            <button class="play-btn" id="playBtn">Play</button>
+        </div>
 
-  <footer>
-    <a href="https://solun.art/" target="_blank">solun.art</a>
-    &nbsp;·&nbsp;
-    <a href="../OSTP-SPEC.md" target="_blank">OSTP-SPEC</a>
-    &nbsp;·&nbsp;
-    OSTP v0.9 draft
-  </footer>
+        <div class="status-row">
+            <div class="status-dot" id="statusDot"></div>
+            <div class="status-text" id="statusText">Not connected</div>
+        </div>
+
+        <div class="visualizer" id="visualizer"></div>
+
+        <div class="stats-row">
+            <div class="stat-chip">Packets <span id="statPackets">0</span></div>
+            <div class="stat-chip">Received <span id="statKB">0</span> KB</div>
+            <div class="stat-chip">Buffer <span id="statLatency">--</span> ms</div>
+        </div>
+
+        <div class="log-label">Event Log</div>
+        <div class="event-log" id="eventLog"></div>
+    </div>
+
+    <!-- Code example -->
+    <div class="section" style="padding:0 0 60px">
+        <div class="section-label">How It Works</div>
+        <h2>WebSocket + ADPCM Decoder</h2>
+        <p class="sub">This demo runs entirely in-browser with no external imports. It connects to the Soluna relay via WebSocket, decodes ADPCM audio from RTP/OSTP packets, and plays back through the Web Audio API at 48kHz.</p>
+        <div class="code-block">
+<span class="comment">// 1. Connect via WebSocket</span>
+<span class="keyword">const</span> ws = <span class="keyword">new</span> <span class="func">WebSocket</span>(<span class="string">`wss://relay.solun.art/ws/audio?channel=${name}`</span>);
+ws.binaryType = <span class="string">'arraybuffer'</span>;
+
+<span class="comment">// 2. On message: parse RTP/OSTP header, decode ADPCM, play</span>
+ws.<span class="func">onmessage</span> = (e) =&gt; {
+  <span class="keyword">const</span> data = <span class="keyword">new</span> <span class="func">Uint8Array</span>(e.data);
+  <span class="keyword">const</span> payload = <span class="func">parseRTP</span>(data);   <span class="comment">// strip header + CRC</span>
+  <span class="keyword">const</span> pcm = <span class="func">decodeADPCM</span>(payload); <span class="comment">// IMA ADPCM → Int16</span>
+
+  <span class="comment">// 3. Play via Web Audio API</span>
+  <span class="keyword">const</span> buf = ctx.<span class="func">createBuffer</span>(<span class="num">1</span>, pcm.length, <span class="num">48000</span>);
+  <span class="keyword">const</span> ch = buf.<span class="func">getChannelData</span>(<span class="num">0</span>);
+  <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="num">0</span>; i &lt; pcm.length; i++)
+    ch[i] = pcm[i] / <span class="num">32768</span>;
+  <span class="keyword">const</span> src = ctx.<span class="func">createBufferSource</span>();
+  src.buffer = buf;
+  src.<span class="func">connect</span>(ctx.destination);
+  src.<span class="func">start</span>(nextTime);
+};
+        </div>
+    </div>
 </div>
 
-<script type="module">
-import { SolunaReceiver } from './soluna.js';
+<footer>
+    <div class="footer-grid">
+        <div class="footer-col">
+            <h4>Soluna</h4>
+            <a href="/">Home</a>
+            <a href="/app">App</a>
+            <a href="https://github.com/yukihamada/opensonic">GitHub</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">TestFlight</a>
+        </div>
+        <div class="footer-col">
+            <h4>Developers</h4>
+            <a href="/sdk">SDK</a>
+            <a href="/demo">Demo</a>
+            <a href="/for-developers">Developers</a>
+            <a href="/api-docs">API</a>
+        </div>
+        <div class="footer-col">
+            <h4>Download</h4>
+            <a href="https://github.com/yukihamada/opensonic/releases/latest">Mac (.pkg)</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">iOS (TestFlight)</a>
+            <a href="https://app.koe.live/">Koe (Web)</a>
+        </div>
+    </div>
+    <div class="footer-bottom">
+        <span>&#9670; Soluna &mdash; Open Source Network Audio</span>
+        <span>MIT License</span>
+    </div>
+</footer>
 
-// ── DOM refs ──────────────────────────────────────────────────────────────────
-const channelInput  = document.getElementById('channelInput');
-const connectBtn    = document.getElementById('connectBtn');
-const disconnectBtn = document.getElementById('disconnectBtn');
-const statusDot     = document.getElementById('statusDot');
-const statusText    = document.getElementById('statusText');
-const logEl         = document.getElementById('logEl');
-const infoChips     = document.getElementById('infoChips');
-const chipBitrate   = document.getElementById('chipBitrate');
-const chipSampleRate= document.getElementById('chipSampleRate');
-const chipBuffer    = document.getElementById('chipBuffer');
-const chipNetwork   = document.getElementById('chipNetwork');
+<script>
+// ── ADPCM Decoder ──────────────────────────────────────────────────────────────
+const STEP_TABLE = [
+    7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31,
+    34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143,
+    157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658,
+    724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024,
+    3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899,
+    15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
+];
+const INDEX_TABLE = [-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8];
 
-// ── Log helper ────────────────────────────────────────────────────────────────
-function appendLog(msg, level = '') {
-  const el = document.createElement('div');
-  el.className = `log-entry ${level}`;
-  const ts = new Date().toISOString().slice(11, 23);
-  el.textContent = `[${ts}] ${msg}`;
-  logEl.appendChild(el);
-  logEl.scrollTop = logEl.scrollHeight;
-}
-
-function setStatus(text, dotClass) {
-  statusText.textContent = text;
-  statusDot.className = `dot ${dotClass}`;
-}
-
-// ── Receiver ──────────────────────────────────────────────────────────────────
-let rx = null;
-
-function initReceiver() {
-  rx = new SolunaReceiver({ verbose: true });
-
-  rx.on('connected', (info) => {
-    appendLog(`Connected to "${info.channel}"`, 'ok');
-    appendLog(`Connection type: ${info.connectionType}`, 'info');
-    appendLog(`Target latency: ${info.targetLatencyMs} ms`, 'info');
-    setStatus(`Live — ${info.channel}`, 'live');
-
-    connectBtn.disabled    = true;
-    disconnectBtn.disabled = false;
-    channelInput.disabled  = true;
-
-    // Update chips
-    infoChips.style.display = 'flex';
-    chipNetwork.textContent = info.connectionType;
-    chipBuffer.textContent  = `${info.targetLatencyMs} ms`;
-
-    if (info.streamInfo) {
-      chipBitrate.textContent    = info.streamInfo.bitrate_kbps
-        ? `${info.streamInfo.bitrate_kbps} kbps` : '—';
-      chipSampleRate.textContent = info.streamInfo.sample_rate
-        ? `${info.streamInfo.sample_rate} Hz` : '—';
+function decodeADPCM(adpcmData) {
+    const out = new Int16Array(adpcmData.length * 2);
+    let predictor = 0, stepIndex = 0, outIdx = 0;
+    for (let i = 0; i < adpcmData.length; i++) {
+        const byte = adpcmData[i];
+        for (let nibbleIdx = 0; nibbleIdx < 2; nibbleIdx++) {
+            const nibble = nibbleIdx === 0 ? (byte & 0x0F) : ((byte >> 4) & 0x0F);
+            const step = STEP_TABLE[stepIndex];
+            let diff = step >> 3;
+            if (nibble & 1) diff += step >> 2;
+            if (nibble & 2) diff += step >> 1;
+            if (nibble & 4) diff += step;
+            if (nibble & 8) diff = -diff;
+            predictor += diff;
+            if (predictor > 32767) predictor = 32767;
+            if (predictor < -32768) predictor = -32768;
+            out[outIdx++] = predictor;
+            stepIndex += INDEX_TABLE[nibble];
+            if (stepIndex < 0) stepIndex = 0;
+            if (stepIndex > 88) stepIndex = 88;
+        }
     }
-  });
-
-  rx.on('disconnected', (info) => {
-    const reason = info?.reason || info?.code || 'unknown';
-    appendLog(`Disconnected (${reason})`, reason === 'client' ? '' : 'warn');
-    setStatus('Disconnected', 'idle');
-    resetButtons();
-  });
-
-  rx.on('error', (err) => {
-    appendLog(`Error [${err.type}]: ${err.message}`, 'error');
-    setStatus(`Error: ${err.message}`, 'error');
-  });
-
-  rx.on('status', (s) => {
-    const level = s.type === 'warning' ? 'warn' : (s.type === 'error' ? 'error' : 'info');
-    appendLog(s.message, level);
-    if (s.streamInfo?.bitrate_kbps) {
-      chipBitrate.textContent    = `${s.streamInfo.bitrate_kbps} kbps`;
-      chipSampleRate.textContent = `${s.streamInfo.sample_rate || 48000} Hz`;
-    }
-    if (s.message === 'Stream ended') {
-      setStatus('Stream ended', 'idle');
-      resetButtons();
-    }
-  });
+    return out.subarray(0, outIdx);
 }
 
-function resetButtons() {
-  connectBtn.disabled    = false;
-  disconnectBtn.disabled = true;
-  channelInput.disabled  = false;
+// ── RTP/OSTP Parser ────────────────────────────────────────────────────────────
+function parseRTP(data) {
+    if (data.length < 12) return data;
+    const v = (data[0] >> 6) & 0x03;
+    if (v !== 2) return data;
+    const x = (data[0] >> 4) & 0x01;
+    const cc = data[0] & 0x0F;
+    let offset = 12 + cc * 4;
+    if (x && offset + 4 <= data.length) {
+        const extLen = (data[offset + 2] << 8) | data[offset + 3];
+        offset += 4 + extLen * 4;
+    }
+    // Strip trailing CRC (4 bytes) if present
+    let end = data.length;
+    if (end - offset > 4) end -= 4;
+    if (offset >= end) return new Uint8Array(0);
+    return data.subarray(offset, end);
 }
 
-// ── Button handlers ───────────────────────────────────────────────────────────
-connectBtn.addEventListener('click', async () => {
-  const channel = channelInput.value.trim();
-  if (!channel) {
-    appendLog('Please enter a channel name.', 'warn');
-    return;
-  }
+// ── DOM ────────────────────────────────────────────────────────────────────────
+const channelInput = document.getElementById('channelInput');
+const playBtn = document.getElementById('playBtn');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const eventLog = document.getElementById('eventLog');
+const visualizer = document.getElementById('visualizer');
+const statPackets = document.getElementById('statPackets');
+const statKB = document.getElementById('statKB');
+const statLatency = document.getElementById('statLatency');
 
-  // Destroy previous receiver if any
-  if (rx) {
-    rx.disconnect();
-    rx = null;
-  }
+// Create 48 visualizer bars
+const NUM_BARS = 48;
+const bars = [];
+for (let i = 0; i < NUM_BARS; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'viz-bar';
+    visualizer.appendChild(bar);
+    bars.push(bar);
+}
 
-  initReceiver();
-  setStatus('Connecting…', 'loading');
-  connectBtn.disabled = true;
-  appendLog(`Connecting to channel: ${channel}`);
-
-  try {
-    await rx.connect(channel);
-  } catch (err) {
-    appendLog(`Connect failed: ${err.message}`, 'error');
-    setStatus('Connection failed', 'error');
-    resetButtons();
-  }
+// Preset buttons
+document.getElementById('presets').addEventListener('click', (e) => {
+    const btn = e.target.closest('.preset-btn');
+    if (!btn) return;
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    channelInput.value = btn.dataset.ch;
 });
 
-disconnectBtn.addEventListener('click', () => {
-  if (rx) {
-    rx.disconnect();
-    rx = null;
-  }
+function log(msg, level = '') {
+    const el = document.createElement('div');
+    el.className = `log-line ${level}`;
+    const ts = new Date().toISOString().slice(11, 23);
+    el.textContent = `[${ts}] ${msg}`;
+    eventLog.appendChild(el);
+    eventLog.scrollTop = eventLog.scrollHeight;
+}
+
+function setStatus(text, cls) {
+    statusText.textContent = text;
+    statusDot.className = `status-dot ${cls}`;
+}
+
+// ── Audio Engine ───────────────────────────────────────────────────────────────
+let ws = null;
+let ctx = null;
+let playing = false;
+let packets = 0;
+let bytesReceived = 0;
+let nextPlayTime = 0;
+
+function connect(channel) {
+    if (ws) disconnect();
+    playing = true;
+    packets = 0;
+    bytesReceived = 0;
+    statPackets.textContent = '0';
+    statKB.textContent = '0';
+    statLatency.textContent = '--';
+
+    playBtn.textContent = 'Stop';
+    playBtn.classList.add('stop');
+    setStatus('Connecting...', 'connecting');
+    log(`Connecting to channel: ${channel}`, 'info');
+
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+    nextPlayTime = 0;
+
+    const url = `wss://relay.solun.art/ws/audio?channel=${encodeURIComponent(channel)}`;
+    ws = new WebSocket(url);
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = () => {
+        setStatus(`Live — ${channel}`, 'live');
+        log(`Connected to ${channel}`, 'ok');
+    };
+
+    ws.onmessage = (e) => {
+        const raw = new Uint8Array(e.data);
+        packets++;
+        bytesReceived += raw.byteLength;
+        statPackets.textContent = packets;
+        statKB.textContent = (bytesReceived / 1024).toFixed(1);
+
+        const payload = parseRTP(raw);
+        if (payload.length === 0) return;
+
+        const pcm16 = decodeADPCM(payload);
+        if (pcm16.length === 0) return;
+
+        // Play via Web Audio
+        const buffer = ctx.createBuffer(1, pcm16.length, 48000);
+        const channelData = buffer.getChannelData(0);
+        let maxAmp = 0;
+        for (let i = 0; i < pcm16.length; i++) {
+            const v = pcm16[i] / 32768;
+            channelData[i] = v;
+            const a = Math.abs(v);
+            if (a > maxAmp) maxAmp = a;
+        }
+
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(ctx.destination);
+
+        const now = ctx.currentTime;
+        if (nextPlayTime < now) nextPlayTime = now + 0.02;
+        src.start(nextPlayTime);
+        const bufferLatency = ((nextPlayTime - now) * 1000).toFixed(0);
+        statLatency.textContent = bufferLatency;
+        nextPlayTime += buffer.duration;
+
+        // Update visualizer
+        updateVisualizer(pcm16, maxAmp);
+    };
+
+    ws.onerror = (err) => {
+        log('WebSocket error', 'error');
+        setStatus('Error', 'error');
+    };
+
+    ws.onclose = (e) => {
+        if (playing) {
+            log(`Connection closed (code: ${e.code})`, 'warn');
+            setStatus('Disconnected', '');
+            disconnect();
+        }
+    };
+}
+
+function disconnect() {
+    playing = false;
+    if (ws) { ws.close(); ws = null; }
+    if (ctx) { ctx.close().catch(() => {}); ctx = null; }
+    playBtn.textContent = 'Play';
+    playBtn.classList.remove('stop');
+    setStatus('Not connected', '');
+    log('Disconnected', '');
+    // Reset bars
+    bars.forEach(b => { b.style.height = '2px'; b.style.background = 'var(--green)'; });
+}
+
+function updateVisualizer(pcm16, maxAmp) {
+    const segSize = Math.floor(pcm16.length / NUM_BARS);
+    for (let i = 0; i < NUM_BARS; i++) {
+        let sum = 0;
+        const start = i * segSize;
+        for (let j = start; j < start + segSize && j < pcm16.length; j++) {
+            sum += Math.abs(pcm16[j]);
+        }
+        const avg = sum / segSize / 32768;
+        const h = Math.max(2, avg * 160);
+        bars[i].style.height = h + 'px';
+        // Color shifts with intensity
+        const intensity = Math.min(1, avg * 4);
+        if (intensity > 0.7) {
+            bars[i].style.background = `linear-gradient(to top, var(--cyan), var(--pink))`;
+        } else if (intensity > 0.4) {
+            bars[i].style.background = `linear-gradient(to top, var(--green), var(--cyan))`;
+        } else {
+            bars[i].style.background = 'var(--green)';
+        }
+    }
+}
+
+// ── Event handlers ─────────────────────────────────────────────────────────────
+playBtn.addEventListener('click', () => {
+    if (playing) {
+        disconnect();
+    } else {
+        const ch = channelInput.value.trim();
+        if (!ch) { log('Enter a channel name', 'warn'); return; }
+        connect(ch);
+    }
 });
 
-// Allow pressing Enter in the input to connect
 channelInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !connectBtn.disabled) connectBtn.click();
+    if (e.key === 'Enter') {
+        if (playing) disconnect();
+        else {
+            const ch = channelInput.value.trim();
+            if (ch) connect(ch);
+        }
+    }
 });
 
-// ── Initial log ───────────────────────────────────────────────────────────────
-appendLog('OSTP Demo ready. Enter a channel and press Listen.', 'info');
-appendLog(`Browser: ${navigator.userAgent.split(' ').pop()}`, '');
+// Sync preset highlight with input
+channelInput.addEventListener('input', () => {
+    const val = channelInput.value.trim();
+    document.querySelectorAll('.preset-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.ch === val);
+    });
+});
 
-const conn = navigator.connection || navigator.mozConnection;
-if (conn) {
-  appendLog(`Network: ${conn.effectiveType || conn.type || 'unknown'}`, '');
-}
-
-if (typeof AudioDecoder !== 'undefined') {
-  appendLog('AudioDecoder API: available', 'ok');
-} else {
-  appendLog('AudioDecoder API: not available (playback limited)', 'warn');
-}
+log('Soluna SDK Demo ready. Select a channel and press Play.', 'info');
 </script>
 </body>
 </html>

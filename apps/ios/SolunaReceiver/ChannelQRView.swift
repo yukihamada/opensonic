@@ -1,6 +1,6 @@
 //
 //  ChannelQRView.swift
-//  SolunaReceiver
+//  Soluna
 //
 
 import SwiftUI

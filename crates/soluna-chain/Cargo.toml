@@ -1,0 +1,11 @@
+[package]
+name = "soluna-chain"
+version = "0.1.0"
+edition = "2021"
+description = "Solana client for Soluna PoL, Mining, and Stream-to-Own"
+
+[dependencies]
+soluna-core = { path = "../soluna-core" }
+solana-sdk = "2.2"
+solana-client = "2.2"
+borsh = "1.5"

@@ -9,6 +9,31 @@
 
     const WASM_URL = '/wasm/pkg/soluna_wasm_bg.wasm';
     const WORKLET_URL = '/wasm/soluna-worklet.js';
+    const WORKLET_SAB_URL = '/wasm/soluna-worklet-sab.js';
+    const WORKLET_WASM_URL = '/wasm/soluna-worklet-wasm.js';
+
+    // Audio engine modes (in priority order)
+    var MODE_WASM_IN_WORKLET = 'wasm-in-worklet'; // WASM runs inside AudioWorklet thread
+    var MODE_SAB = 'sab';                          // SharedArrayBuffer zero-copy
+    var MODE_POSTMESSAGE = 'postmessage';          // postMessage fallback
+
+    // SharedArrayBuffer ring buffer capacity (samples per channel).
+    // 131072 samples @ 48kHz = ~2.73 seconds of audio.
+    const SAB_CAPACITY = 131072;
+
+    // SAB layout: 8 bytes header (2 x Int32 for writeHead/readHead)
+    //           + CAPACITY * 4 bytes (L channel Float32)
+    //           + CAPACITY * 4 bytes (R channel Float32)
+    const SAB_HEADER_BYTES = 8;
+    const SAB_TOTAL_BYTES = SAB_HEADER_BYTES + SAB_CAPACITY * 2 * 4;
+
+    /**
+     * Check if SharedArrayBuffer is available for AudioWorklet use.
+     * Requires both SAB support AND cross-origin isolation (COOP + COEP headers).
+     */
+    function sabAvailable() {
+        return typeof SharedArrayBuffer !== 'undefined' && self.crossOriginIsolated === true;
+    }
 
     let wasmInstance = null;
     let wasmMemory = null;
@@ -109,7 +134,8 @@
         // Run wasm init
         wasmInstance.exports.__wbindgen_start();
 
-        // Signal Opus bridge availability to WASM
+        // Signal Opus bridge availability to WASM.
+        // isSupported() returns true for both WebCodecs and WASM libopus fallback.
         if (globalThis.SolunaOpusBridge && globalThis.SolunaOpusBridge.isSupported()) {
             wasmInstance.exports.set_opus_bridge_available(1);
             console.log('[SolunaAudio] Opus bridge detected and enabled');
@@ -202,41 +228,84 @@
             this.gainNode = null;
             this.analyser = null;
             this.ws = null;
+            this._transport = null;    // SolunaTransport instance (WebTransport or WebSocket)
             this.active = false;
             this.pktCount = 0;
             this.underruns = 0;
             this.opusEnabled = false;
             this.onStats = null;
             this.onStateChange = null;
-            // Clock sync state (NTP-like over WebSocket)
+            this.transportType = null; // 'webtransport' | 'websocket' | null
+            // Clock sync state (NTP-like over WebSocket/WebTransport)
             this._syncTimer = null;
             this._syncPingCount = 0;
             this._clockOffsetMs = 0;
+            // SharedArrayBuffer zero-copy ring buffer (null if not supported)
+            this._sab = null;
+            this._sabHeadView = null; // Int32Array [writeHead, readHead]
+            this._sabL = null;        // Float32Array for L channel
+            this._sabR = null;        // Float32Array for R channel
+            this._useSab = false;
+            // WASM-in-worklet mode state
+            this._mode = MODE_POSTMESSAGE;
+            this._wasmBytes = null; // cached WASM binary for worklet mode
         }
 
         async init(outChannels, sampleRate) {
             outChannels = outChannels || 2;
             sampleRate = sampleRate || 48000;
 
-            await loadWasm();
-            this.player = new SolunaPlayer(outChannels);
-
-            // Initialize Opus decoder bridge if available
-            if (globalThis.SolunaOpusBridge && globalThis.SolunaOpusBridge.isSupported()) {
-                var opusOk = await globalThis.SolunaOpusBridge.initDecoder(this.player);
-                if (opusOk) {
-                    this.opusEnabled = true;
-                    console.log('[SolunaAudio] Opus decoding enabled via WebCodecs');
-                }
-            }
-
             this.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate });
             if (this.ctx.state === 'suspended') await this.ctx.resume().catch(function(){});
 
-            // Load AudioWorklet
-            await this.ctx.audioWorklet.addModule(WORKLET_URL);
+            // Try modes in priority order:
+            // 1. WASM-in-worklet (best: zero data transfer, WASM runs on audio thread)
+            // 2. SAB (good: zero-copy shared memory)
+            // 3. postMessage (fallback: works everywhere)
+            var wasmInWorkletOk = await this._tryWasmInWorklet(outChannels);
 
-            this.worklet = new AudioWorkletNode(this.ctx, 'soluna-wasm', { outputChannelCount: [2] });
+            if (!wasmInWorkletOk) {
+                // Fall back to main-thread WASM modes
+                await loadWasm();
+                this.player = new SolunaPlayer(outChannels);
+
+                // Initialize Opus decoder bridge if available (main-thread only).
+                // initDecoder() tries WebCodecs first, then WASM libopus fallback.
+                if (globalThis.SolunaOpusBridge && globalThis.SolunaOpusBridge.isSupported()) {
+                    var opusOk = await globalThis.SolunaOpusBridge.initDecoder(this.player);
+                    if (opusOk) {
+                        this.opusEnabled = true;
+                        var decoderType = globalThis.SolunaOpusBridge.wasmFallback ? 'WASM libopus' : 'WebCodecs';
+                        console.log('[SolunaAudio] Opus decoding enabled via ' + decoderType);
+                    }
+                }
+
+                // Choose worklet: SAB (zero-copy) if available, else postMessage fallback
+                this._useSab = sabAvailable();
+                if (this._useSab) {
+                    this._mode = MODE_SAB;
+                    // Create SharedArrayBuffer and typed-array views
+                    this._sab = new SharedArrayBuffer(SAB_TOTAL_BYTES);
+                    this._sabHeadView = new Int32Array(this._sab, 0, 2);
+                    this._sabL = new Float32Array(this._sab, SAB_HEADER_BYTES, SAB_CAPACITY);
+                    this._sabR = new Float32Array(this._sab, SAB_HEADER_BYTES + SAB_CAPACITY * 4, SAB_CAPACITY);
+                    Atomics.store(this._sabHeadView, 0, 0);
+                    Atomics.store(this._sabHeadView, 1, 0);
+
+                    await this.ctx.audioWorklet.addModule(WORKLET_SAB_URL);
+                    this.worklet = new AudioWorkletNode(this.ctx, 'soluna-wasm-sab', { outputChannelCount: [2] });
+                    this.worklet.port.postMessage(
+                        { type: 'init-sab', sab: this._sab, capacity: SAB_CAPACITY }
+                    );
+                    console.log('[SolunaAudio] Using SharedArrayBuffer zero-copy ring buffer');
+                } else {
+                    this._mode = MODE_POSTMESSAGE;
+                    await this.ctx.audioWorklet.addModule(WORKLET_URL);
+                    this.worklet = new AudioWorkletNode(this.ctx, 'soluna-wasm', { outputChannelCount: [2] });
+                    console.log('[SolunaAudio] Using postMessage fallback (crossOriginIsolated=' + self.crossOriginIsolated + ')');
+                }
+            }
+
             this.gainNode = this.ctx.createGain();
             this.analyser = this.ctx.createAnalyser();
             this.analyser.fftSize = 2048;
@@ -250,34 +319,200 @@
             this.worklet.port.onmessage = function(e) {
                 var data = e.data;
                 if (data.type === 'underrun') self.underruns++;
+                // Clock sync forwarded from worklet in WASM_IN_WORKLET mode
+                if (data.type === 'clock_sync') {
+                    self._handleSyncPong(new Uint8Array(data.data));
+                    return;
+                }
                 if (data.type === 'stats' && self.onStats) {
-                    self.onStats({
-                        fill: data.fill,
-                        packets: self.pktCount,
-                        underruns: self.underruns,
-                        txChannels: self.player ? self.player.detected_tx_channels() : 0,
-                        syncLocked: self.player ? self.player.sync_locked() : false,
-                        syncDelayMs: self.player ? self.player.sync_delay_ms() : 0,
-                        targetFill: self.player ? self.player.target_fill_frames() : 0,
-                        netDelayMs: self.player ? self.player.net_delay_ms() : 0,
-                        clockOffsetMs: self._clockOffsetMs || 0,
-                        opusPackets: self.player ? self.player.opus_packet_count() : 0,
-                        opusDecoded: self.player ? self.player.opus_decoded_count() : 0,
-                        opusEnabled: self.opusEnabled,
-                    });
+                    if (self._mode === MODE_WASM_IN_WORKLET) {
+                        // Stats come directly from worklet-side WASM
+                        self.onStats({
+                            fill: data.fill,
+                            packets: data.packets || 0,
+                            underruns: data.underruns || 0,
+                            txChannels: data.txChannels || 0,
+                            syncLocked: data.syncLocked || false,
+                            syncDelayMs: data.syncDelayMs || 0,
+                            targetFill: data.targetFill || 0,
+                            netDelayMs: data.netDelayMs || 0,
+                            clockOffsetMs: self._clockOffsetMs || 0,
+                            opusPackets: data.opusPackets || 0,
+                            opusDecoded: data.opusDecoded || 0,
+                            opusEnabled: false, // No WebCodecs in worklet
+                        });
+                    } else {
+                        self.onStats({
+                            fill: data.fill,
+                            packets: self.pktCount,
+                            underruns: self.underruns,
+                            txChannels: self.player ? self.player.detected_tx_channels() : 0,
+                            syncLocked: self.player ? self.player.sync_locked() : false,
+                            syncDelayMs: self.player ? self.player.sync_delay_ms() : 0,
+                            targetFill: self.player ? self.player.target_fill_frames() : 0,
+                            netDelayMs: self.player ? self.player.net_delay_ms() : 0,
+                            clockOffsetMs: self._clockOffsetMs || 0,
+                            opusPackets: self.player ? self.player.opus_packet_count() : 0,
+                            opusDecoded: self.player ? self.player.opus_decoded_count() : 0,
+                            opusEnabled: self.opusEnabled,
+                            opusWasmFallback: !!(globalThis.SolunaOpusBridge && globalThis.SolunaOpusBridge.wasmFallback),
+                        });
+                    }
                 }
             };
 
             this.active = true;
         }
 
+        /**
+         * Attempt to initialize WASM-in-worklet mode.
+         * Returns true if successful, false if it should fall back.
+         */
+        async _tryWasmInWorklet(outChannels) {
+            try {
+                // Check if WebAssembly is likely available in AudioWorkletGlobalScope
+                if (typeof WebAssembly === 'undefined') return false;
+
+                // Fetch WASM binary as ArrayBuffer (needed to send to worklet)
+                var resp = await fetch(WASM_URL);
+                if (!resp.ok) return false;
+                this._wasmBytes = await resp.arrayBuffer();
+
+                // Load the WASM-in-worklet processor
+                await this.ctx.audioWorklet.addModule(WORKLET_WASM_URL);
+                this.worklet = new AudioWorkletNode(this.ctx, 'soluna-wasm-in-worklet', { outputChannelCount: [2] });
+
+                // Wait for WASM init inside the worklet
+                var initOk = await new Promise(function(resolve) {
+                    var timeout = setTimeout(function() { resolve(false); }, 5000);
+                    this.worklet.port.onmessage = function(e) {
+                        if (e.data.type === 'ready') {
+                            clearTimeout(timeout);
+                            resolve(true);
+                        } else if (e.data.type === 'error') {
+                            clearTimeout(timeout);
+                            console.warn('[SolunaAudio] WASM-in-worklet init error:', e.data.message);
+                            resolve(false);
+                        }
+                    };
+                    // Send WASM bytes to worklet for instantiation
+                    this.worklet.port.postMessage(
+                        { type: 'init', wasmBytes: this._wasmBytes, outChannels: outChannels },
+                        [this._wasmBytes]
+                    );
+                    // _wasmBytes is transferred, null it out
+                    this._wasmBytes = null;
+                }.bind(this));
+
+                if (!initOk) {
+                    // Clean up failed worklet
+                    if (this.worklet) { this.worklet.disconnect(); this.worklet = null; }
+                    return false;
+                }
+
+                this._mode = MODE_WASM_IN_WORKLET;
+                // player is null in this mode — WASM lives in the worklet
+                this.player = null;
+                console.log('[SolunaAudio] Using WASM-in-worklet mode (zero data transfer)');
+                return true;
+            } catch (err) {
+                console.warn('[SolunaAudio] WASM-in-worklet failed, falling back:', err.message || err);
+                if (this.worklet) { this.worklet.disconnect(); this.worklet = null; }
+                return false;
+            }
+        }
+
+        /**
+         * Connect using WebSocket (legacy API, preserved for backwards compatibility).
+         */
         connect(url) {
-            if (this.ws) this.disconnect();
+            if (this.ws || this._transport) this.disconnect();
             this._wsUrl = url;
             this._reconnectDelay = 1000;
             this._reconnectTimer = null;
             this._intentionalClose = false;
             this._openWs(url);
+        }
+
+        /**
+         * Connect with automatic transport selection: WebTransport → WebSocket fallback.
+         *
+         * @param {string} wsUrl - WebSocket URL (e.g. wss://relay.solun.art/ws/audio?channel=foo)
+         * @param {Object} [opts]
+         * @param {boolean} [opts.preferWebSocket=false] - Force WebSocket even if WebTransport is available
+         * @param {string}  [opts.wtUrl] - Override WebTransport URL (default: auto-converted from wsUrl)
+         */
+        connectAuto(wsUrl, opts) {
+            if (this.ws || this._transport) this.disconnect();
+            opts = opts || {};
+
+            this._wsUrl = wsUrl;
+            this._intentionalClose = false;
+
+            // Try WebTransport first (if SolunaTransport is loaded and available)
+            if (!opts.preferWebSocket && window.SolunaTransport &&
+                window.SolunaTransport.WebTransportTransport.isSupported()) {
+
+                var wtUrl = opts.wtUrl || window.SolunaTransport.wsUrlToWtUrl(wsUrl);
+                this._connectViaTransport(
+                    new window.SolunaTransport.WebTransportTransport(),
+                    wtUrl,
+                    wsUrl // fallback URL
+                );
+            } else {
+                // Direct WebSocket (same as connect())
+                this._reconnectDelay = 1000;
+                this._reconnectTimer = null;
+                this._openWs(wsUrl);
+            }
+        }
+
+        /**
+         * Connect using the SolunaTransport abstraction layer.
+         * If WebTransport fails to connect within 5 seconds, falls back to WebSocket.
+         */
+        _connectViaTransport(transport, url, fallbackWsUrl) {
+            var self = this;
+            this._transport = transport;
+            this.transportType = transport.type;
+
+            var fallbackTimer = null;
+            var connected = false;
+
+            transport.onPacket = function(data) {
+                self._handlePacket(data);
+            };
+
+            transport.onStateChange = function(state) {
+                if (state === 'connected') {
+                    connected = true;
+                    if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+                    if (self.onStateChange) self.onStateChange('connected');
+                    self._startClockSync();
+                    console.log('[SolunaAudio] connected via ' + transport.type);
+                } else if (state === 'reconnecting') {
+                    if (self.onStateChange) self.onStateChange('reconnecting');
+                } else if (state === 'disconnected') {
+                    if (self.onStateChange) self.onStateChange('disconnected');
+                }
+            };
+
+            transport.connect(url);
+
+            // If WebTransport doesn't connect within 5s, fall back to WebSocket
+            if (transport.type === 'webtransport' && fallbackWsUrl) {
+                fallbackTimer = setTimeout(function() {
+                    if (!connected && !self._intentionalClose) {
+                        console.log('[SolunaAudio] WebTransport timeout, falling back to WebSocket');
+                        transport.disconnect();
+                        self._transport = null;
+                        self.transportType = 'websocket';
+                        self._reconnectDelay = 1000;
+                        self._reconnectTimer = null;
+                        self._openWs(fallbackWsUrl);
+                    }
+                }, 5000);
+            }
         }
 
         _openWs(url) {
@@ -327,7 +562,23 @@
         }
 
         _handlePacket(data) {
-            if (!this.player || !this.active) return;
+            if (!this.active) return;
+
+            // WASM-in-worklet mode: forward raw binary to worklet, except clock sync
+            if (this._mode === MODE_WASM_IN_WORKLET) {
+                if (!this.worklet) return;
+                // Clock sync is handled by the worklet which forwards it back to us
+                var buf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+                this.worklet.port.postMessage(
+                    { type: 'packet', data: buf },
+                    [buf]
+                );
+                this.pktCount++;
+                return;
+            }
+
+            // Main-thread WASM modes (SAB / postMessage)
+            if (!this.player) return;
 
             // Clock sync pong: PT=125 (0x7D marker), exactly 25 bytes
             if (data.length === 25 && data[0] === 0x7D) {
@@ -335,24 +586,131 @@
                 return;
             }
 
+            // ── All audio PTs: decode in JS, push PCM to WASM ring buffer ──
+            // Bypass WASM's packet parser entirely — decode in JS (proven correct)
+            // and use push_decoded_opus() to feed PCM into WASM's ring buffer.
+            if (data.length >= 12 && (data[0] & 0xC0) === 0x80) {
+                var pt = data[1] & 0x7F;
+                if (pt === 116 || pt === 115 || pt === 96) {
+                    this.pktCount++;
+                    var off = 12;
+                    if ((data[0] & 0x10) !== 0 && data.length >= 16) {
+                        var extLen = (data[14] << 8 | data[15]) * 4;
+                        off = 16 + extLen;
+                    }
+                    var end = data.length - 4; // strip CRC
+                    if (end <= off) return;
+
+                    var payload = data.subarray ? data.subarray(off, end) : new Uint8Array(data.buffer, data.byteOffset + off, end - off);
+                    var pcm;
+
+                    if (pt === 116 || pt === 115) {
+                        // IMA-ADPCM decode
+                        if (payload.byteLength < 4) return;
+                        var dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+                        var valprev = dv.getInt16(0, true);
+                        var index = dv.getUint8(2);
+                        var nibbleBytes = payload.byteLength - 4;
+                        pcm = new Float32Array(nibbleBytes * 2);
+                        var si = 0;
+                        for (var bi = 0; bi < nibbleBytes; bi++) {
+                            var b = payload[4 + bi];
+                            for (var half = 0; half < 2; half++) {
+                                var nib = half === 0 ? (b & 0x0F) : ((b >> 4) & 0x0F);
+                                var step = SolunaAudio._adpcmStepTable[index];
+                                var diff = step >> 3;
+                                if (nib & 4) diff += step;
+                                if (nib & 2) diff += (step >> 1);
+                                if (nib & 1) diff += (step >> 2);
+                                valprev += (nib & 8) ? -diff : diff;
+                                if (valprev > 32767) valprev = 32767;
+                                if (valprev < -32768) valprev = -32768;
+                                index += SolunaAudio._adpcmIndexTable[nib];
+                                if (index < 0) index = 0;
+                                if (index > 88) index = 88;
+                                if (si < pcm.length) { pcm[si++] = valprev / 32768; }
+                            }
+                        }
+                        pcm = pcm.subarray(0, si);
+                    } else {
+                        // PT=96: S24-in-S32LE decode
+                        var view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+                        var count = Math.floor(payload.byteLength / 4);
+                        if (count <= 0) return;
+                        pcm = new Float32Array(count);
+                        for (var i = 0; i < count; i++) {
+                            pcm[i] = view.getInt32(i * 4, true) / 8388608.0;
+                        }
+                    }
+
+                    this.player.push_decoded_opus(pcm, 1);
+                    this._pullAndSend();
+                    return;
+                }
+            }
+
+            // Other PTs (Opus, etc.) — pass to WASM decoder
             this.player.push_packet(data);
             this.pktCount++;
+            this._pullAndSend();
+        }
 
+        _pullAndSend() {
+            if (!this.player || !this.worklet) return;
             var avail = this.player.available();
             if (avail >= 128) {
                 var frames = Math.min(avail, 960);
                 var l = new Float32Array(frames);
                 var r = new Float32Array(frames);
                 var pulled = this.player.pull_audio(l, r);
-                if (pulled > 0 && this.worklet) {
-                    var sl = l.subarray(0, pulled);
-                    var sr = r.subarray(0, pulled);
-                    this.worklet.port.postMessage(
-                        { type: 'audio', l: sl, r: sr },
-                        [sl.buffer, sr.buffer]
-                    );
+                if (pulled > 0) {
+                    if (this._useSab) {
+                        this._sabWrite(l, r, pulled);
+                    } else {
+                        var sl = l.subarray(0, pulled);
+                        var sr = r.subarray(0, pulled);
+                        this.worklet.port.postMessage(
+                            { type: 'audio', l: sl, r: sr },
+                            [sl.buffer, sr.buffer]
+                        );
+                    }
                 }
             }
+        }
+
+        /**
+         * Write decoded PCM samples into the SharedArrayBuffer ring buffer.
+         * SPSC: main thread is the sole writer.
+         */
+        _sabWrite(l, r, count) {
+            var w = Atomics.load(this._sabHeadView, 0);
+            var rd = Atomics.load(this._sabHeadView, 1);
+            var cap = SAB_CAPACITY;
+
+            // Available space (leave 1 slot to distinguish full vs empty)
+            var used = (w - rd + cap) % cap;
+            var space = cap - 1 - used;
+            if (count > space) {
+                // Buffer full — drop samples to avoid blocking
+                count = space;
+                if (count <= 0) return;
+            }
+
+            var wMasked = w % cap;
+            if (wMasked + count <= cap) {
+                // Contiguous write
+                this._sabL.set(l.subarray(0, count), wMasked);
+                this._sabR.set(r.subarray(0, count), wMasked);
+            } else {
+                // Wrap-around: write in two parts
+                var first = cap - wMasked;
+                this._sabL.set(l.subarray(0, first), wMasked);
+                this._sabL.set(l.subarray(first, count), 0);
+                this._sabR.set(r.subarray(0, first), wMasked);
+                this._sabR.set(r.subarray(first, count), 0);
+            }
+
+            Atomics.store(this._sabHeadView, 0, (w + count) % cap);
         }
 
         pushPacket(data) {
@@ -364,16 +722,37 @@
             this._intentionalClose = true;
             this._stopClockSync();
             if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+            if (this._transport) { this._transport.disconnect(); this._transport = null; }
             if (this.ws) { this.ws.close(); this.ws = null; }
             this._wsUrl = null;
+            this.transportType = null;
         }
 
         setVolume(v) { if (this.gainNode) this.gainNode.gain.value = v; }
-        setOutputChannels(ch) { if (this.player) this.player.set_output_channels(ch); }
-        setSyncEnabled(en) { if (this.player) this.player.set_sync_enabled(en); }
-        setSyncDelay(ms) { if (this.player) this.player.set_sync_delay_ms(ms); }
+        setOutputChannels(ch) {
+            if (this._mode === MODE_WASM_IN_WORKLET && this.worklet) {
+                this.worklet.port.postMessage({ type: 'config', key: 'outputChannels', value: ch });
+            } else if (this.player) {
+                this.player.set_output_channels(ch);
+            }
+        }
+        setSyncEnabled(en) {
+            if (this._mode === MODE_WASM_IN_WORKLET && this.worklet) {
+                this.worklet.port.postMessage({ type: 'config', key: 'syncEnabled', value: en });
+            } else if (this.player) {
+                this.player.set_sync_enabled(en);
+            }
+        }
+        setSyncDelay(ms) {
+            if (this._mode === MODE_WASM_IN_WORKLET && this.worklet) {
+                this.worklet.port.postMessage({ type: 'config', key: 'syncDelayMs', value: ms });
+            } else if (this.player) {
+                this.player.set_sync_delay_ms(ms);
+            }
+        }
         getAnalyser() { return this.analyser; }
         getClockOffsetMs() { return this._clockOffsetMs; }
+        getMode() { return this._mode; }
 
         // ── Clock sync (NTP-like over WebSocket, PT=125) ──────────────────
         // Sends a 25-byte binary sync ping every 5 seconds.
@@ -393,7 +772,9 @@
         }
 
         _sendSyncPing() {
-            if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+            var hasWs = this.ws && this.ws.readyState === WebSocket.OPEN;
+            var hasTransport = this._transport;
+            if (!hasWs && !hasTransport) return;
 
             // Build 25-byte sync packet: [0x7D] [T1: 8 bytes LE] [T2: 8 bytes zero] [T3: 8 bytes zero]
             var buf = new ArrayBuffer(25);
@@ -409,7 +790,12 @@
             view.setUint32(5, now_ns_hi, true);
             // T2 and T3 are zeros (relay will fill them)
 
-            this.ws.send(buf);
+            if (hasTransport) {
+                // Clock sync is small (25 bytes) — send as datagram for lowest latency
+                this._transport.send(new Uint8Array(buf));
+            } else {
+                this.ws.send(buf);
+            }
         }
 
         _handleSyncPong(data) {
@@ -453,8 +839,10 @@
                 this._clockOffsetMs = this._clockOffsetMs * (1 - alpha) + offset_ms * alpha;
             }
 
-            // Pass to WASM player
-            if (this.player) {
+            // Pass to WASM player (main-thread or worklet)
+            if (this._mode === MODE_WASM_IN_WORKLET && this.worklet) {
+                this.worklet.port.postMessage({ type: 'config', key: 'clockOffset', value: this._clockOffsetMs });
+            } else if (this.player) {
                 this.player.set_clock_offset(this._clockOffsetMs);
             }
 
@@ -462,6 +850,9 @@
                 console.log('[clock-sync] offset=' + offset_ms.toFixed(2) + 'ms rtt=' + rtt_ms.toFixed(2) + 'ms #' + this._syncPingCount);
             }
         }
+
+        /** Get the active transport type ('webtransport' or 'websocket' or null). */
+        getTransportType() { return this.transportType || (this.ws ? 'websocket' : null); }
 
         destroy() {
             this.disconnect();
@@ -472,8 +863,20 @@
             if (this.analyser) { this.analyser.disconnect(); this.analyser = null; }
             if (this.ctx) { this.ctx.close().catch(function(){}); this.ctx = null; }
             if (this.player) { this.player.free(); this.player = null; }
+            // Clean up SAB references
+            this._sab = null;
+            this._sabHeadView = null;
+            this._sabL = null;
+            this._sabR = null;
+            this._useSab = false;
+            this._mode = MODE_POSTMESSAGE;
+            this._wasmBytes = null;
         }
     }
+
+    // IMA-ADPCM decode tables (used by JS-side ADPCM decode in _handlePacket)
+    SolunaAudio._adpcmStepTable = [7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,73,80,88,97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,408,449,494,544,598,658,724,796,876,963,1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,8630,9493,10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,27086,29794,32767];
+    SolunaAudio._adpcmIndexTable = [-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8];
 
     // Expose globally
     window.SolunaAudio = SolunaAudio;

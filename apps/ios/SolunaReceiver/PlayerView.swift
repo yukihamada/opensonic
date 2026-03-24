@@ -1,6 +1,6 @@
 //
 //  PlayerView.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Music player UI: drag-and-drop / file picker → upload to daemon
 //  → auto-switch from PCM stream to local AVPlayer playback.

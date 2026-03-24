@@ -1,6 +1,6 @@
 //
 //  DaemonClient.swift
-//  SolunaReceiver / SolunaControl
+//  Soluna / SolunaControl
 //
 //  WebSocket client for solunad (ws://<host>:8400/ws or wss://<tunnel-url>/ws)
 //  Supports local IP and internet tunnel (cloudflared / ngrok).

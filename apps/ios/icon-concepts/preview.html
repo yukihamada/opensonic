@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Soluna App Icon Concepts</title>
+<style>
+body { background: #0a0a12; color: #e8eaf2; font-family: -apple-system, sans-serif; padding: 40px; }
+h1 { text-align: center; margin-bottom: 40px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 32px; max-width: 1200px; margin: 0 auto; }
+.card { background: #12151f; border-radius: 24px; padding: 24px; text-align: center; border: 1px solid rgba(255,255,255,0.06); }
+.card:hover { border-color: rgba(6,182,212,0.3); }
+.card h3 { margin: 16px 0 8px; font-size: 18px; }
+.card p { color: #8b91a8; font-size: 14px; }
+.icon-wrap { width: 200px; height: 200px; margin: 0 auto; border-radius: 44px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+.icon-wrap svg { width: 100%; height: 100%; }
+.badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>Soluna App Icon Concepts</h1>
+<div class="grid">
+
+<div class="card">
+<div class="icon-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs><linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0a0a1a"/><stop offset="100%" stop-color="#1a1040"/></linearGradient><linearGradient id="w1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg1)"/>
+  <circle cx="512" cy="512" r="120" fill="none" stroke="url(#w1)" stroke-width="8"/>
+  <circle cx="512" cy="512" r="200" fill="none" stroke="url(#w1)" stroke-width="6" opacity="0.7"/>
+  <circle cx="512" cy="512" r="280" fill="none" stroke="url(#w1)" stroke-width="5" opacity="0.5"/>
+  <circle cx="512" cy="512" r="360" fill="none" stroke="url(#w1)" stroke-width="4" opacity="0.3"/>
+  <circle cx="512" cy="512" r="50" fill="url(#w1)"/>
+  <path d="M462 400 Q512 350 562 400 Q612 450 562 500 Q512 550 462 500 Q412 450 462 400" fill="none" stroke="white" stroke-width="12" opacity="0.9"/>
+</svg>
+</div>
+<h3>1. Wave</h3>
+<p>同心円の音波 + S字</p>
+<span class="badge" style="background:rgba(6,182,212,0.2);color:#06b6d4;">音楽アプリ王道</span>
+</div>
+
+<div class="card">
+<div class="icon-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs><linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#050510"/><stop offset="100%" stop-color="#0f0a2a"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="#c084fc"/><stop offset="50%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#10b981"/></linearGradient></defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg2)"/>
+  <path d="M512 200 L720 420 L512 780 L304 420 Z" fill="none" stroke="url(#g2)" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M512 200 L512 780" stroke="url(#g2)" stroke-width="3" opacity="0.4"/>
+  <path d="M304 420 L720 420" stroke="url(#g2)" stroke-width="3" opacity="0.4"/>
+  <circle cx="512" cy="460" r="80" fill="url(#g2)" opacity="0.15"/>
+  <path d="M740 400 Q780 420 740 440" fill="none" stroke="#06b6d4" stroke-width="6" opacity="0.6" stroke-linecap="round"/>
+  <path d="M770 380 Q820 420 770 460" fill="none" stroke="#06b6d4" stroke-width="5" opacity="0.4" stroke-linecap="round"/>
+  <path d="M284 400 Q244 420 284 440" fill="none" stroke="#8b5cf6" stroke-width="6" opacity="0.6" stroke-linecap="round"/>
+  <path d="M254 380 Q204 420 254 460" fill="none" stroke="#8b5cf6" stroke-width="5" opacity="0.4" stroke-linecap="round"/>
+</svg>
+</div>
+<h3>2. Diamond</h3>
+<p>ダイヤモンド + 音波</p>
+<span class="badge" style="background:rgba(139,92,246,0.2);color:#c084fc;">プレミアム感</span>
+</div>
+
+<div class="card">
+<div class="icon-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs><linearGradient id="bg3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0c0020"/><stop offset="50%" stop-color="#1a0a3a"/><stop offset="100%" stop-color="#0a1628"/></linearGradient><linearGradient id="sun3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#ec4899"/></linearGradient><linearGradient id="moon3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg3)"/>
+  <circle cx="440" cy="480" r="140" fill="url(#sun3)" opacity="0.9"/>
+  <line x1="440" y1="300" x2="440" y2="260" stroke="#f59e0b" stroke-width="8" stroke-linecap="round" opacity="0.6"/>
+  <line x1="560" y1="360" x2="588" y2="332" stroke="#f59e0b" stroke-width="8" stroke-linecap="round" opacity="0.6"/>
+  <line x1="320" y1="360" x2="292" y2="332" stroke="#f59e0b" stroke-width="8" stroke-linecap="round" opacity="0.6"/>
+  <circle cx="580" cy="520" r="140" fill="url(#moon3)" opacity="0.8"/>
+  <circle cx="620" cy="490" r="100" fill="url(#bg3)" opacity="0.5"/>
+  <circle cx="750" cy="300" r="4" fill="white" opacity="0.6"/>
+  <circle cx="800" cy="400" r="3" fill="white" opacity="0.4"/>
+  <circle cx="700" cy="250" r="3" fill="white" opacity="0.5"/>
+</svg>
+</div>
+<h3>3. Sol + Luna</h3>
+<p>太陽と月 — 名前の由来</p>
+<span class="badge" style="background:rgba(245,158,11,0.2);color:#f59e0b;">ユニーク</span>
+</div>
+
+<div class="card">
+<div class="icon-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs><linearGradient id="bg4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#05060a"/><stop offset="100%" stop-color="#0f1020"/></linearGradient><linearGradient id="l4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg4)"/>
+  <circle cx="512" cy="480" r="40" fill="url(#l4)"/>
+  <circle cx="380" cy="360" r="20" fill="#06b6d4" opacity="0.9"/>
+  <circle cx="644" cy="360" r="20" fill="#8b5cf6" opacity="0.9"/>
+  <circle cx="380" cy="600" r="20" fill="#10b981" opacity="0.9"/>
+  <circle cx="644" cy="600" r="20" fill="#ec4899" opacity="0.9"/>
+  <circle cx="280" cy="480" r="12" fill="#06b6d4" opacity="0.6"/>
+  <circle cx="744" cy="480" r="12" fill="#8b5cf6" opacity="0.6"/>
+  <circle cx="512" cy="280" r="12" fill="#f59e0b" opacity="0.6"/>
+  <circle cx="512" cy="680" r="12" fill="#10b981" opacity="0.6"/>
+  <line x1="512" y1="480" x2="380" y2="360" stroke="url(#l4)" stroke-width="3" opacity="0.5"/>
+  <line x1="512" y1="480" x2="644" y2="360" stroke="url(#l4)" stroke-width="3" opacity="0.5"/>
+  <line x1="512" y1="480" x2="380" y2="600" stroke="url(#l4)" stroke-width="3" opacity="0.5"/>
+  <line x1="512" y1="480" x2="644" y2="600" stroke="url(#l4)" stroke-width="3" opacity="0.5"/>
+  <line x1="380" y1="360" x2="280" y2="480" stroke="#06b6d4" stroke-width="2" opacity="0.3"/>
+  <line x1="644" y1="360" x2="744" y2="480" stroke="#8b5cf6" stroke-width="2" opacity="0.3"/>
+  <line x1="380" y1="360" x2="512" y2="280" stroke="#06b6d4" stroke-width="2" opacity="0.3"/>
+  <line x1="644" y1="360" x2="512" y2="280" stroke="#8b5cf6" stroke-width="2" opacity="0.3"/>
+  <line x1="380" y1="600" x2="512" y2="680" stroke="#10b981" stroke-width="2" opacity="0.3"/>
+  <line x1="644" y1="600" x2="512" y2="680" stroke="#ec4899" stroke-width="2" opacity="0.3"/>
+  <circle cx="512" cy="480" r="70" fill="none" stroke="url(#l4)" stroke-width="2" opacity="0.3"/>
+</svg>
+</div>
+<h3>4. Mesh</h3>
+<p>P2Pネットワーク</p>
+<span class="badge" style="background:rgba(16,185,129,0.2);color:#10b981;">テック感</span>
+</div>
+
+<div class="card">
+<div class="icon-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs><linearGradient id="bg5" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#08080f"/><stop offset="100%" stop-color="#12101f"/></linearGradient><linearGradient id="s5" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#c084fc"/><stop offset="50%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#10b981"/></linearGradient></defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg5)"/>
+  <path d="M380 320 C380 320 480 280 560 340 C640 400 540 460 512 480 C484 500 384 560 464 620 C544 680 644 640 644 640" fill="none" stroke="url(#s5)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M380 320 C380 320 480 280 560 340 C640 400 540 460 512 480 C484 500 384 560 464 620 C544 680 644 640 644 640" fill="none" stroke="url(#s5)" stroke-width="60" stroke-linecap="round" opacity="0.08"/>
+</svg>
+</div>
+<h3>5. Minimal S</h3>
+<p>ミニマルなS字グラデーション</p>
+<span class="badge" style="background:rgba(192,132,252,0.2);color:#c084fc;">最もシンプル</span>
+</div>
+
+</div>
+
+<div style="text-align:center;margin-top:60px;color:#8b91a8;font-size:14px;">
+<p>apps/ios/icon-concepts/ に SVG 原本あり</p>
+<p style="margin-top:8px;">おすすめ: <strong style="color:#06b6d4;">3. Sol + Luna</strong> — 名前の意味を直接表現、他のどの音楽アプリとも被らない</p>
+</div>
+</body>
+</html>

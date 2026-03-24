@@ -860,15 +860,19 @@ export class SolunaReceiver {
     const connType = this._connectionType;
     const isMobile = this._isMobile;
 
-    if (connType === 'cellular' || isMobile) {
+    if (connType === 'cellular') {
+      // Cellular connections: leaf-only (carrier NAT, bandwidth constraints)
       this._sendSwarm({
         type:       'SWARM_UNABLE',
         channel:    this._channel,
         request_id: query.request_id,
-        reason:     connType === 'cellular' ? 'cellular' : 'user_declined',
+        reason:     'cellular',
       });
       this._swarmState = SwarmState.IDLE;
     } else {
+      // WiFi (desktop & mobile): volunteer for relay
+      // Symmetric NAT nodes will be auto-detected by relay and switched to
+      // relay-mediated mode (relay proxies to children on their behalf)
       this._sendSwarm({
         type:           'SWARM_READY',
         channel:        this._channel,

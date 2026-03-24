@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Soluna Icon Concepts — Dolby Style</title>
+<style>
+body { background: #0a0a12; color: #e8eaf2; font-family: -apple-system, sans-serif; padding: 40px; }
+h1 { text-align: center; margin-bottom: 12px; }
+p.sub { text-align: center; color: #8b91a8; margin-bottom: 40px; font-size: 14px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 32px; max-width: 1400px; margin: 0 auto; }
+.card { background: #12151f; border-radius: 24px; padding: 24px; text-align: center; border: 1px solid rgba(255,255,255,0.06); transition: border-color 0.2s; }
+.card:hover { border-color: rgba(6,182,212,0.3); }
+.card h3 { margin: 16px 0 6px; font-size: 17px; }
+.card p { color: #8b91a8; font-size: 13px; }
+.icon-wrap { width: 180px; height: 180px; margin: 0 auto; border-radius: 40px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+.icon-wrap svg { width: 100%; height: 100%; }
+.badge { display: inline-block; padding: 3px 10px; border-radius: 16px; font-size: 11px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<h1>Soluna Icon — Dolby-Inspired</h1>
+<p class="sub">ドルビーの「DD」のような音響ブランドアイコン。シンプル、力強い、一目で音楽とわかる。</p>
+<div class="grid">
+
+<!-- 1. Double S (Dolby DD style) -->
+<div class="card">
+<div class="icon-wrap">
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0c0020"/>
+      <stop offset="100%" stop-color="#0a0a18"/>
+    </linearGradient>
+    <linearGradient id="s1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="50%" stop-color="#ec4899"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#g1)"/>
+  <!-- Left S (Sol) -->
+  <path d="M300 340 C300 280 360 250 420 290 C480 330 400 380 380 400 C360 420 300 460 360 510 C420 560 480 530 480 530" fill="none" stroke="#f59e0b" stroke-width="28" stroke-linecap="round"/>
+  <!-- Right S (Luna) - mirrored -->
+  <path d="M544 340 C544 280 604 250 664 290 C724 330 644 380 624 400 C604 420 544 460 604 510 C664 560 724 530 724 530" fill="none" stroke="#8b5cf6" stroke-width="28" stroke-linecap="round"/>
+  <!-- Sound waves between -->
+  <circle cx="512" cy="620" r="30" fill="none" stroke="url(#s1)" stroke-width="4" opacity="0.6"/>
+  <circle cx="512" cy="620" r="55" fill="none" stroke="url(#s1)" stroke-width="3" opacity="0.4"/>
+  <circle cx="512" cy="620" r="80" fill="none" stroke="url(#s1)" stroke-width="2" opacity="0.2"/>
+  <!-- SOLUNA text -->
+  <text x="512" y="750" text-anchor="middle" fill="white" font-family="-apple-system,Helvetica" font-size="56" font-weight="800" letter-spacing="12" opacity="0.9">SOLUNA</text>
+</svg>
+</div>
+<h3>1. Double S</h3>
+<p>Sol + Luna の S が向かい合う。ドルビーの DD スタイル。</p>
+<span class="badge" style="background:rgba(245,158,11,0.2);color:#f59e0b;">ブランド感強</span>
+</div>
+
+<!-- 2. Sound Arc (Dolby Atmos style) -->
+<div class="card">
+<div class="icon-wrap">
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#050510"/>
+      <stop offset="100%" stop-color="#0a0820"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#g2)"/>
+  <!-- Dolby-style arcs -->
+  <path d="M280 512 C280 320 420 200 512 200 C604 200 744 320 744 512 C744 704 604 824 512 824 C420 824 280 704 280 512" fill="none" stroke="#f59e0b" stroke-width="8" opacity="0.3"/>
+  <path d="M340 512 C340 360 430 260 512 260 C594 260 684 360 684 512 C684 664 594 764 512 764 C430 764 340 664 340 512" fill="none" stroke="#ec4899" stroke-width="8" opacity="0.4"/>
+  <path d="M400 512 C400 400 450 330 512 330 C574 330 624 400 624 512 C624 624 574 694 512 694 C450 694 400 624 400 512" fill="none" stroke="#8b5cf6" stroke-width="10" opacity="0.6"/>
+  <path d="M450 512 C450 440 475 395 512 395 C549 395 574 440 574 512 C574 584 549 629 512 629 C475 629 450 584 450 512" fill="none" stroke="#06b6d4" stroke-width="14" opacity="0.9"/>
+  <!-- Center dot -->
+  <circle cx="512" cy="512" r="20" fill="#06b6d4"/>
+  <!-- S letter subtle -->
+  <text x="512" y="530" text-anchor="middle" fill="white" font-family="-apple-system,Helvetica" font-size="72" font-weight="900" opacity="0.15">S</text>
+</svg>
+</div>
+<h3>2. Sound Arc</h3>
+<p>ドルビーAtmos風の同心アーク。音が包み込む感覚。</p>
+<span class="badge" style="background:rgba(6,182,212,0.2);color:#06b6d4;">没入感</span>
+</div>
+
+<!-- 3. Monogram SL -->
+<div class="card">
+<div class="icon-wrap">
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#08080f"/>
+      <stop offset="100%" stop-color="#10081f"/>
+    </linearGradient>
+    <linearGradient id="sl3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="40%" stop-color="#ec4899"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#g3)"/>
+  <!-- Bold SL monogram -->
+  <text x="512" y="620" text-anchor="middle" fill="url(#sl3)" font-family="-apple-system,Helvetica Neue" font-size="420" font-weight="900" letter-spacing="-20">SL</text>
+  <!-- Glow -->
+  <text x="512" y="620" text-anchor="middle" fill="url(#sl3)" font-family="-apple-system,Helvetica Neue" font-size="420" font-weight="900" letter-spacing="-20" opacity="0.15" filter="blur(20px)">SL</text>
+</svg>
+</div>
+<h3>3. SL Monogram</h3>
+<p>大胆な SL 文字。Dolby の D のようなシンプルさ。</p>
+<span class="badge" style="background:rgba(236,72,153,0.2);color:#ec4899;">大胆</span>
+</div>
+
+<!-- 4. Wave Badge -->
+<div class="card">
+<div class="icon-wrap">
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g4" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0015"/>
+      <stop offset="100%" stop-color="#05050f"/>
+    </linearGradient>
+    <linearGradient id="w4" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="50%" stop-color="#ec4899"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#g4)"/>
+  <!-- Rounded rectangle badge (like Dolby Vision logo) -->
+  <rect x="200" y="300" width="624" height="424" rx="80" fill="none" stroke="url(#w4)" stroke-width="10"/>
+  <!-- Sound wave inside -->
+  <path d="M350 512 Q400 380 450 512 Q500 644 550 512 Q600 380 650 512" fill="none" stroke="url(#w4)" stroke-width="18" stroke-linecap="round"/>
+  <!-- SOLUNA text below wave -->
+  <text x="512" y="650" text-anchor="middle" fill="white" font-family="-apple-system,Helvetica" font-size="48" font-weight="800" letter-spacing="8" opacity="0.8">SOLUNA</text>
+</svg>
+</div>
+<h3>4. Wave Badge</h3>
+<p>角丸バッジの中に音波。Dolby Vision ロゴ風。</p>
+<span class="badge" style="background:rgba(139,92,246,0.2);color:#8b5cf6;">プロフェッショナル</span>
+</div>
+
+<!-- 5. Eclipse -->
+<div class="card">
+<div class="icon-wrap">
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g5" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0c0020"/>
+      <stop offset="100%" stop-color="#080812"/>
+    </linearGradient>
+    <radialGradient id="sun5" cx="0.35" cy="0.45" r="0.3">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#g5)"/>
+  <!-- Sun glow -->
+  <circle cx="420" cy="460" r="250" fill="url(#sun5)"/>
+  <!-- Moon (dark circle overlapping) -->
+  <circle cx="560" cy="520" r="200" fill="url(#g5)" stroke="#8b5cf6" stroke-width="6"/>
+  <!-- Crescent highlight -->
+  <path d="M400 320 C500 280 620 380 580 520 C540 660 400 640 360 580" fill="none" stroke="#f59e0b" stroke-width="8" opacity="0.6" stroke-linecap="round"/>
+  <!-- Sound dots along crescent -->
+  <circle cx="395" cy="350" r="6" fill="#f59e0b" opacity="0.8"/>
+  <circle cx="440" cy="310" r="5" fill="#ec4899" opacity="0.7"/>
+  <circle cx="500" cy="290" r="4" fill="#8b5cf6" opacity="0.6"/>
+  <circle cx="560" cy="300" r="3" fill="#06b6d4" opacity="0.5"/>
+</svg>
+</div>
+<h3>5. Eclipse</h3>
+<p>Sol が Luna を照らす日蝕。音の粒子が弧を描く。</p>
+<span class="badge" style="background:rgba(245,158,11,0.2);color:#f59e0b;">神秘的</span>
+</div>
+
+<!-- 6. Frequency Bars -->
+<div class="card">
+<div class="icon-wrap">
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g6" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#06060e"/>
+      <stop offset="100%" stop-color="#0a0818"/>
+    </linearGradient>
+    <linearGradient id="bar6" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="50%" stop-color="#ec4899"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#g6)"/>
+  <!-- EQ bars (like Dolby Audio logo) -->
+  <rect x="260" y="480" width="40" height="180" rx="20" fill="url(#bar6)" opacity="0.7"/>
+  <rect x="330" y="380" width="40" height="280" rx="20" fill="url(#bar6)" opacity="0.8"/>
+  <rect x="400" y="300" width="40" height="360" rx="20" fill="url(#bar6)" opacity="0.9"/>
+  <rect x="470" y="250" width="40" height="410" rx="20" fill="url(#bar6)"/>
+  <rect x="540" y="280" width="40" height="380" rx="20" fill="url(#bar6)" opacity="0.95"/>
+  <rect x="610" y="350" width="40" height="310" rx="20" fill="url(#bar6)" opacity="0.85"/>
+  <rect x="680" y="430" width="40" height="230" rx="20" fill="url(#bar6)" opacity="0.75"/>
+  <!-- S overlay -->
+  <text x="512" y="780" text-anchor="middle" fill="white" font-family="-apple-system,Helvetica" font-size="60" font-weight="900" letter-spacing="10" opacity="0.6">SOLUNA</text>
+</svg>
+</div>
+<h3>6. Frequency</h3>
+<p>イコライザーバー。Dolby Audio 認証ロゴ風。</p>
+<span class="badge" style="background:rgba(6,182,212,0.2);color:#06b6d4;">テック</span>
+</div>
+
+<!-- 7. Double Arc S -->
+<div class="card">
+<div class="icon-wrap">
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g7" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#080012"/>
+      <stop offset="100%" stop-color="#05050d"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#g7)"/>
+  <!-- Left arc (Sol side) -->
+  <path d="M350 280 C200 280 200 512 350 512 C200 512 200 744 350 744" fill="none" stroke="#f59e0b" stroke-width="32" stroke-linecap="round"/>
+  <!-- Right arc (Luna side) -->
+  <path d="M674 280 C824 280 824 512 674 512 C824 512 824 744 674 744" fill="none" stroke="#8b5cf6" stroke-width="32" stroke-linecap="round"/>
+  <!-- Center connection glow -->
+  <line x1="350" y1="512" x2="674" y2="512" stroke="#ec4899" stroke-width="4" opacity="0.3"/>
+  <circle cx="512" cy="512" r="8" fill="#ec4899" opacity="0.6"/>
+</svg>
+</div>
+<h3>7. Double Arc</h3>
+<p>ドルビーの DD を完全再解釈。左が Sol、右が Luna。</p>
+<span class="badge" style="background:rgba(236,72,153,0.2);color:#ec4899;">最もドルビー的</span>
+</div>
+
+<!-- 8. Minimal Sound Mark -->
+<div class="card">
+<div class="icon-wrap">
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g8" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#070710"/>
+      <stop offset="100%" stop-color="#0a0a16"/>
+    </linearGradient>
+    <linearGradient id="m8" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#g8)"/>
+  <!-- Single bold S curve -->
+  <path d="M340 320 C340 320 500 250 600 360 C700 470 400 500 400 560 C400 620 600 650 660 580" fill="none" stroke="url(#m8)" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Subtle glow -->
+  <path d="M340 320 C340 320 500 250 600 360 C700 470 400 500 400 560 C400 620 600 650 660 580" fill="none" stroke="url(#m8)" stroke-width="80" stroke-linecap="round" opacity="0.06"/>
+</svg>
+</div>
+<h3>8. Sound Mark</h3>
+<p>一筆の S カーブ。Beats のような最小限のマーク。</p>
+<span class="badge" style="background:rgba(139,92,246,0.2);color:#8b5cf6;">ミニマル</span>
+</div>
+
+</div>
+
+<div style="text-align:center;margin-top:48px;color:#8b91a8;font-size:13px;">
+<p>おすすめ: <strong style="color:#ec4899;">7. Double Arc</strong> — 最もドルビー的で Soluna の Sol+Luna を表現</p>
+<p style="margin-top:4px;">次点: <strong style="color:#06b6d4;">8. Sound Mark</strong> — Beats 級のミニマルブランド力</p>
+</div>
+</body>
+</html>

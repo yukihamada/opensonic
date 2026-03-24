@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0a1a"/>
+      <stop offset="100%" stop-color="#1a1040"/>
+    </linearGradient>
+    <linearGradient id="wave1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="224" fill="url(#bg1)"/>
+  <!-- Sound waves radiating from center -->
+  <circle cx="512" cy="512" r="120" fill="none" stroke="url(#wave1)" stroke-width="8" opacity="1"/>
+  <circle cx="512" cy="512" r="200" fill="none" stroke="url(#wave1)" stroke-width="6" opacity="0.7"/>
+  <circle cx="512" cy="512" r="280" fill="none" stroke="url(#wave1)" stroke-width="5" opacity="0.5"/>
+  <circle cx="512" cy="512" r="360" fill="none" stroke="url(#wave1)" stroke-width="4" opacity="0.3"/>
+  <!-- Center dot -->
+  <circle cx="512" cy="512" r="50" fill="url(#wave1)"/>
+  <!-- Subtle S shape -->
+  <path d="M462 400 Q512 350 562 400 Q612 450 562 500 Q512 550 462 500 Q412 450 462 400" fill="none" stroke="white" stroke-width="12" opacity="0.9"/>
+</svg>

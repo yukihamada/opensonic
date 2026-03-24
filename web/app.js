@@ -1,5 +1,9 @@
 'use strict';
 
+// ── IMA-ADPCM decode tables (matches soluna-radio encoder) ──
+const _adpcmStepTable = [7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,73,80,88,97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,408,449,494,544,598,658,724,796,876,963,1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,8630,9493,10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,27086,29794,32767];
+const _adpcmIndexTable = [-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8];
+
 // ── WASM Audio Engine (loaded lazily) ────────────────────────
 let wasmAudio = null;  // SolunaAudio instance (null = fallback to JS)
 let wasmReady = false;
@@ -562,6 +566,14 @@ function relayConnect(channel) {
     relayWs.onopen = () => {
         relayMode = true;
         setBadge('relay');
+        // Send JOIN message to relay so it adds us to the channel group
+        relayWs.send('JOIN:' + channel + '\n');
+        // Send periodic HELLO keepalive
+        relayWs._helloTimer = setInterval(() => {
+            if (relayWs && relayWs.readyState === WebSocket.OPEN) {
+                relayWs.send('HELLO\n');
+            }
+        }, 5000);
         const statusEl = document.getElementById('relay-status');
         if (statusEl) { statusEl.textContent = 'Relay connected: ' + channel; statusEl.style.color = '#4a4'; }
         // Auto-start browser audio if not already
@@ -585,7 +597,11 @@ function relayConnect(channel) {
 
 function relayDisconnect() {
     _fpReporter.stop();
-    if (relayWs) { relayWs.close(); relayWs = null; }
+    if (relayWs) {
+        if (relayWs._helloTimer) clearInterval(relayWs._helloTimer);
+        relayWs.close();
+        relayWs = null;
+    }
     relayMode = false;
 }
 
@@ -1436,40 +1452,85 @@ function baSubscribe() {
     });
 }
 
+let _baStarting = false;
 async function baStart() {
-    if (baActive) return;
+    if (baActive || _baStarting) return;
+    _baStarting = true;
 
+    try {
     // Create AudioContext — must resume() to satisfy autoplay policy
-    baCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: baSampleRate });
+    if (!baCtx) baCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: baSampleRate });
     if (baCtx.state === 'suspended') await baCtx.resume().catch(() => {});
     baCtx.onstatechange = () => {
         if (baCtx && baCtx.state === 'suspended') baCtx.resume().catch(() => {});
     };
 
-    // Load AudioWorklet via Blob URL (no server file needed)
-    const blob    = new Blob([BA_WORKLET_SRC], { type: 'application/javascript' });
-    const blobURL = URL.createObjectURL(blob);
-    try {
-        await baCtx.audioWorklet.addModule(blobURL);
-    } catch (e) {
-        // Fallback: AudioWorklet not supported — continue with degraded mode
-        console.warn('[ba] AudioWorklet unavailable:', e);
-    } finally {
-        URL.revokeObjectURL(blobURL);
-    }
-
-    // Audio graph: Worklet → Gain → Analyser → destination
-    baWorklet  = new AudioWorkletNode(baCtx, 'soluna', { outputChannelCount: [2] });
+    // Audio output setup — try AudioWorklet, fall back to ScriptProcessor
     baGain     = baCtx.createGain();
     baAnalyser = baCtx.createAnalyser();
     baAnalyser.fftSize = 2048;
     baAnalyser.smoothingTimeConstant = 0.7;
-    baWorklet.connect(baGain);
+
+    let workletOk = false;
+    try {
+        const blob    = new Blob([BA_WORKLET_SRC], { type: 'application/javascript' });
+        const blobURL = URL.createObjectURL(blob);
+        await baCtx.audioWorklet.addModule(blobURL);
+        URL.revokeObjectURL(blobURL);
+        baWorklet = new AudioWorkletNode(baCtx, 'soluna', { outputChannelCount: [2] });
+        baWorklet.connect(baGain);
+        workletOk = true;
+        console.log('[ba] AudioWorklet mode');
+    } catch (e) {
+        console.warn('[ba] AudioWorklet unavailable, using ScriptProcessor fallback:', e.message);
+    }
+
+    if (!workletOk) {
+        // ScriptProcessor fallback — works everywhere
+        const bufSize = 4096;
+        const scriptNode = baCtx.createScriptProcessor(bufSize, 0, 2);
+        const ringBuf = { L: new Float32Array(48000 * 2), R: new Float32Array(48000 * 2), w: 0, r: 0 };
+        scriptNode.onaudioprocess = (e) => {
+            const outL = e.outputBuffer.getChannelData(0);
+            const outR = e.outputBuffer.getChannelData(1);
+            for (let i = 0; i < outL.length; i++) {
+                if (ringBuf.r !== ringBuf.w) {
+                    const idx = ringBuf.r % ringBuf.L.length;
+                    outL[i] = ringBuf.L[idx];
+                    outR[i] = ringBuf.R[idx];
+                    ringBuf.r++;
+                } else {
+                    outL[i] = outR[i] = 0;
+                }
+            }
+        };
+        scriptNode.connect(baGain);
+        // Override baWorklet.port.postMessage to write to ring buffer
+        baWorklet = {
+            port: {
+                postMessage: (data) => {
+                    const [L, R] = data;
+                    for (let i = 0; i < L.length; i++) {
+                        const idx = ringBuf.w % ringBuf.L.length;
+                        ringBuf.L[idx] = L[i];
+                        ringBuf.R[idx] = R[i];
+                        ringBuf.w++;
+                    }
+                },
+                onmessage: null
+            },
+            connect: () => {},
+            disconnect: () => {},
+            _scriptNode: scriptNode
+        };
+        console.log('[ba] ScriptProcessor fallback mode');
+    }
+
     baGain.connect(baAnalyser);
     baAnalyser.connect(baCtx.destination);
 
-    // Messages from worklet thread
-    baWorklet.port.onmessage = ({ data }) => {
+    // Messages from worklet thread (only if real worklet)
+    if (baWorklet.port && baWorklet.port.onmessage !== undefined) baWorklet.port.onmessage = ({ data }) => {
         if (data.t === 'u') {
             baUnderruns++;
             const el = document.getElementById('ba-underrun');
@@ -1504,6 +1565,8 @@ async function baStart() {
 
     baDrawViz();
     baPingTimer = setInterval(baPing, 3000);
+    } catch(e) { console.error('[ba] baStart failed:', e); }
+    finally { _baStarting = false; }
 }
 
 function baStop() {
@@ -1542,20 +1605,83 @@ function baHandleChunk(buf) {
         return;
     }
 
-    // ── JS fallback: raw S16 PCM (no OSTP header parsing) ──
+    // ── JS fallback: OSTP/RTP packet → strip header → decode PCM ──
     if (!baWorklet || !baActive) return;
-    const s16 = new Int16Array(buf);
-    const n   = (s16.length / baChannels) | 0;
-    if (n <= 0) return;
+    const view = new DataView(buf);
+    if (buf.byteLength < 24) return;
 
-    // Deinterleave S16 → Float32 per channel, transfer ownership (zero-copy)
-    const L = new Float32Array(n), R = new Float32Array(n);
-    if (baChannels === 1) {
-        for (let i = 0; i < n; i++) L[i] = R[i] = s16[i] / 32768;
+    // Check RTP version (first 2 bits = 0b10 = version 2)
+    const b0 = view.getUint8(0);
+    const version = (b0 >> 6) & 0x03;
+    const hasExtension = (b0 >> 4) & 0x01;
+    const pt = view.getUint8(1) & 0x7F;
+
+    let headerSize = 12; // RTP base header
+    if (hasExtension) {
+        // RTP extension header (4 bytes) + OSTP header (8 bytes)
+        headerSize += 4 + 8; // = 24 total
+    }
+    if (buf.byteLength <= headerSize) return;
+
+    const payloadBuf = buf.slice(headerSize);
+
+    // Decode based on payload type
+    let L, R, n;
+    if (pt === 116) {
+        // PT 116 = IMA-ADPCM mono (soluna-radio default)
+        // Payload: [valprev:i16LE][index:u8][pad:u8][nibbles...]
+        // 96 samples per packet (4 bits each = 48 nibble bytes)
+        const dv = new DataView(payloadBuf);
+        if (payloadBuf.byteLength < 4) return;
+        let valprev = dv.getInt16(0, true);
+        let index = dv.getUint8(2);
+        const nibbleStart = 4;
+        const nibbleBytes = payloadBuf.byteLength - nibbleStart;
+        n = nibbleBytes * 2; // 2 samples per byte
+        L = new Float32Array(n); R = new Float32Array(n);
+        let si = 0;
+        for (let bi = 0; bi < nibbleBytes; bi++) {
+            const b = dv.getUint8(nibbleStart + bi);
+            for (let half = 0; half < 2; half++) {
+                const nib = half === 0 ? (b & 0x0F) : ((b >> 4) & 0x0F);
+                const step = _adpcmStepTable[index];
+                let diff = step >> 3;
+                if (nib & 4) diff += step;
+                if (nib & 2) diff += (step >> 1);
+                if (nib & 1) diff += (step >> 2);
+                valprev += (nib & 8) ? -diff : diff;
+                if (valprev > 32767) valprev = 32767;
+                if (valprev < -32768) valprev = -32768;
+                index += _adpcmIndexTable[nib];
+                if (index < 0) index = 0;
+                if (index > 88) index = 88;
+                const f = valprev / 32768;
+                if (si < n) { L[si] = R[si] = f; si++; }
+            }
+        }
+        n = si;
+        L = L.subarray(0, n);
+        R = R.subarray(0, n);
+    } else if (pt === 97) {
+        // PT 97 = f32 LE
+        const f32 = new Float32Array(payloadBuf);
+        n = (f32.length / baChannels) | 0;
+        if (n <= 0) return;
+        L = new Float32Array(n); R = new Float32Array(n);
+        if (baChannels === 1) {
+            for (let i = 0; i < n; i++) L[i] = R[i] = f32[i];
+        } else {
+            for (let i = 0; i < n; i++) { L[i] = f32[i*2]; R[i] = f32[i*2+1]; }
+        }
     } else {
+        // PT 96 = S32 LE (24-bit PCM in 32-bit container)
+        const dv = new DataView(payloadBuf);
+        n = (payloadBuf.byteLength / 4) | 0;
+        if (n <= 0) return;
+        L = new Float32Array(n); R = new Float32Array(n);
         for (let i = 0; i < n; i++) {
-            L[i] = s16[i * 2]     / 32768;
-            R[i] = s16[i * 2 + 1] / 32768;
+            const sample = dv.getInt32(i * 4, true) / 2147483648;
+            L[i] = R[i] = sample;
         }
     }
     baWorklet.port.postMessage([L, R], [L.buffer, R.buffer]);
@@ -3635,3 +3761,25 @@ const _fpReporter = (function() {
         }
     };
 })();
+
+// Quick Play — one-tap channel playback via relay WebSocket
+function quickPlay(channel) {
+    // Save channel
+    localStorage.setItem('soluna-channel', channel);
+    const input = document.getElementById('qs-ch-input');
+    if (input) input.value = channel;
+
+    // Connect to relay (this auto-starts baStart on connect)
+    relayConnect(channel);
+
+    // Update UI - highlight active card
+    document.querySelectorAll('.qp-card').forEach(b => {
+        b.classList.remove('qp-active');
+    });
+    const active = document.querySelector(`.qp-card[data-ch="${channel}"]`);
+    if (active) active.classList.add('qp-active');
+
+    // Update now-playing label
+    const label = document.getElementById('ba-label');
+    if (label) label.textContent = 'Connecting to ' + channel + '...';
+}

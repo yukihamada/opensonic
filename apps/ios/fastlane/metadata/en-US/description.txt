@@ -1,13 +1,22 @@
-Soluna Rx turns your iPhone into a high-quality WiFi audio receiver. Stream 24-bit/48kHz audio from your Mac to any speaker system over your local WiFi network.
+Your music, reaching everyone.
 
-Features:
-• Lossless 24-bit audio streaming over WiFi
-• Ultra-low latency with adaptive jitter buffering
-• Forward Error Correction (FEC) for reliable playback
-• WSOLA packet loss concealment for seamless audio
-• Auto-detection of WiFi vs wired network
-• Multi-sample-rate support (44.1/48/96 kHz)
-• Web-based control interface
-• Works with Raspberry Pi + DAC for audiophile setups
+DJ sets, store BGM, festival sound — one tap delivers to everyone's phone.
 
-Perfect for whole-home audio, studio monitoring, and audiophile listening rooms. Simply run the Soluna transmitter on your Mac and receive pristine audio on any iOS device.
+LISTEN
+Open the app and music is already playing. Tune into live channels from DJs, venues, and festivals worldwide. Audio arrives in under 50ms.
+
+FAN RANK
+The more you listen, the higher your rank. Unlock exclusive content, early access, and direct artist interaction as you progress from Bronze to Diamond.
+
+FOR ARTISTS
+70% of subscription revenue goes directly to artists — more than double what Spotify pays. Every payment is publicly auditable.
+
+FOR STORES
+Replace USEN at less than half the cost. Your BGM reaches guests' phones too. Analytics show what music works when.
+
+PLANS
+• Free: 10 hours/month, 3 channels
+• Pro (¥500/month): Unlimited, hi-fi, channel creation, full Fan Rank
+• Studio (¥2,000/month): Pro + broadcasting tools + analytics
+
+Powered by OSTP (Open Sonic Transport Protocol). Open source. MIT License.

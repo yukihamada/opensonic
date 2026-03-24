@@ -1,6 +1,6 @@
 //
 //  DevicePickerView.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Global device picker — browse TX devices across all relay servers.
 //

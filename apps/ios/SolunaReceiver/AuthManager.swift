@@ -1,6 +1,6 @@
 //
 //  AuthManager.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Passwordless email authentication manager
 //

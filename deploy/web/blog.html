@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <script>if(!sessionStorage.getItem('lang-set')&&/^en/i.test(navigator.language)){location.replace('/en/')}</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna Blog — プロダクトアップデート、技術記事、イベントレポート。">
+    <meta name="theme-color" content="#05060a">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="alternate" type="application/rss+xml" title="Soluna Blog RSS" href="/blog/feed.xml">
+    <title>Blog — Soluna</title>
+
+    <meta property="og:title" content="Blog — Soluna">
+    <meta property="og:description" content="プロダクトアップデート、技術記事、イベントレポート。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/blog">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --cyan:   #06b6d4;
+            --green:  #10b981;
+            --purple: #8b5cf6;
+            --amber:  #f59e0b;
+            --pink:   #ec4899;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg); color: var(--text);
+            line-height: 1.6; overflow-x: hidden;
+        }
+
+        .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+
+        /* ── Nav ── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 max(20px, calc(50% - 580px)); height: 60px;
+            background: rgba(5,6,10,0.7); backdrop-filter: blur(24px) saturate(1.8);
+            border-bottom: 1px solid var(--border); transition: background 0.3s;
+        }
+        .nav-logo {
+            font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+            display: flex; align-items: center; gap: 8px;
+            text-decoration: none; color: var(--text);
+        }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 24px; }
+        .nav-links a { color: var(--text2); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--text); font-weight: 600; }
+        .nav-cta {
+            padding: 8px 18px; background: linear-gradient(135deg, var(--blue), var(--purple));
+            color: #fff !important; border-radius: 10px; font-weight: 600; font-size: 13px !important;
+            transition: opacity 0.2s, transform 0.2s !important;
+            box-shadow: 0 2px 12px rgba(59,130,246,0.3);
+        }
+        .nav-cta:hover { opacity: 0.9; transform: translateY(-1px) !important; }
+
+        .section { padding: 100px max(20px, calc(50% - 580px)); }
+        .section-label {
+            font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; margin-bottom: 14px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        h2 { font-size: clamp(28px, 5vw, 44px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 16px; }
+        .sub { font-size: 17px; color: var(--text2); line-height: 1.7; max-width: 540px; margin-bottom: 48px; }
+
+        /* ── Hero ── */
+        .hero {
+            position: relative; padding: 160px max(20px, calc(50% - 580px)) 80px;
+            overflow: hidden;
+        }
+        .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+        .hero-orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.1; animation: orb-float 20s ease-in-out infinite; }
+        .hero-orb-1 { width: 400px; height: 400px; background: var(--blue); top: -10%; right: 20%; }
+        .hero-orb-2 { width: 300px; height: 300px; background: var(--cyan); bottom: 0; left: 10%; animation-delay: -7s; }
+        @keyframes orb-float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -20px) scale(1.05); }
+            66% { transform: translate(-20px, 15px) scale(0.95); }
+        }
+        .hero-content { position: relative; z-index: 1; }
+        h1 { font-size: clamp(36px, 7vw, 64px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.05; margin-bottom: 20px; }
+        .h1-grad { background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .hero-sub { font-size: clamp(16px, 2.5vw, 18px); color: var(--text2); max-width: 480px; line-height: 1.7; margin-bottom: 24px; }
+        .rss-link {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 13px; color: var(--amber); text-decoration: none;
+            padding: 6px 14px; border: 1px solid rgba(245,158,11,0.2);
+            border-radius: 8px; background: rgba(245,158,11,0.06);
+            transition: all 0.2s;
+        }
+        .rss-link:hover { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.3); }
+
+        /* ── Blog articles ── */
+        .blog-list {
+            max-width: 720px;
+            display: flex; flex-direction: column; gap: 0;
+        }
+        .blog-article {
+            padding: 40px 0;
+            border-bottom: 1px solid var(--border);
+            transition: opacity 0.3s;
+        }
+        .blog-article:first-child { padding-top: 0; }
+        .blog-article:last-child { border-bottom: none; }
+        .blog-article:hover { opacity: 1; }
+        .article-meta {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 14px; flex-wrap: wrap;
+        }
+        .article-date {
+            font-size: 13px; color: var(--text3); font-weight: 500;
+        }
+        .article-tag {
+            font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+            text-transform: uppercase; padding: 3px 10px; border-radius: 6px;
+        }
+        .article-tag.release { background: rgba(59,130,246,0.1); color: var(--blue); }
+        .article-tag.event { background: rgba(245,158,11,0.1); color: var(--amber); }
+        .article-tag.opinion { background: rgba(139,92,246,0.1); color: var(--purple); }
+        .article-title {
+            font-size: clamp(22px, 3.5vw, 30px); font-weight: 800;
+            letter-spacing: -0.02em; line-height: 1.25;
+            margin-bottom: 12px; color: var(--text);
+        }
+        .article-title a {
+            color: inherit; text-decoration: none;
+            transition: color 0.2s;
+        }
+        .article-title a:hover { color: var(--blue); }
+        .article-excerpt {
+            font-size: 16px; color: var(--text2); line-height: 1.8;
+            margin-bottom: 16px;
+        }
+        .read-more {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 14px; font-weight: 600; color: var(--blue);
+            text-decoration: none; transition: gap 0.2s;
+        }
+        .read-more:hover { gap: 10px; }
+        .read-more svg { width: 16px; height: 16px; transition: transform 0.2s; }
+        .read-more:hover svg { transform: translateX(2px); }
+
+        /* ── Featured article (first) ── */
+        .blog-article.featured {
+            padding: 40px 32px;
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            margin-bottom: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+        .blog-article.featured::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan), var(--purple));
+        }
+        .blog-article.featured .article-title {
+            font-size: clamp(26px, 4vw, 36px);
+        }
+
+        /* ── Footer ── */
+        .footer-divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(59,130,246,0.3), var(--border), transparent); }
+        footer {
+            padding: 40px max(20px, calc(50% - 580px));
+            display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;
+        }
+        footer .f-logo { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        footer .f-links { display: flex; gap: 24px; }
+        footer .f-links a { font-size: 13px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
+        footer .f-links a:hover { color: var(--text2); }
+        footer .f-copy { font-size: 12px; color: var(--text3); }
+
+        @media (max-width: 768px) {
+            .nav-links .hide-sm { display: none; }
+            .blog-article.featured { padding: 28px 20px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/live" class="hide-sm">Live</a>
+        <a href="/community" class="hide-sm">Community</a>
+        <a href="/blog" class="active hide-sm">Blog</a>
+        <a href="/for-developers" class="hide-sm">Developers</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/dashboard" class="nav-cta">ダッシュボード</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+    </div>
+    <div class="hero-content">
+        <h1><span class="h1-grad">Blog</span></h1>
+        <p class="hero-sub">
+            プロダクトアップデート、技術記事、イベントレポート。
+        </p>
+        <a href="/blog/feed.xml" class="rss-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="6.18" cy="17.82" r="2.18"/><path d="M4 4.44v2.83c7.03 0 12.73 5.7 12.73 12.73h2.83c0-8.59-6.97-15.56-15.56-15.56zm0 5.66v2.83c3.9 0 7.07 3.17 7.07 7.07h2.83c0-5.47-4.43-9.9-9.9-9.9z"/></svg>
+            RSS Feed
+        </a>
+    </div>
+</section>
+
+<!-- Blog Articles -->
+<section class="section" style="padding-top:40px">
+    <div class="blog-list">
+
+        <!-- Article 1: Featured -->
+        <article class="blog-article featured reveal">
+            <div class="article-meta">
+                <span class="article-date">2026.3.18</span>
+                <span class="article-tag release">Release</span>
+            </div>
+            <h2 class="article-title">
+                <a href="#">Soluna v0.11: QUIC Transport & Fan Rank</a>
+            </h2>
+            <p class="article-excerpt">
+                v0.11ではQUICトランスポートを正式導入。従来のUDPベースのOSTPに加え、QUIC上での暗号化配信が可能に。
+                NAT越えの成功率が大幅に向上し、モバイル環境での安定性が劇的に改善された。
+                また、ファンランクシステムを実装。リスナーの累計視聴時間に応じて
+                Sprout / Star / Crystal / Flame / Crown / Legend の6段階でランクアップ。
+                ランクに応じたリクエスト優先度やVIPチャンネルアクセスなど、聴くほど体験が豊かになる仕組みを導入した。
+            </p>
+            <a href="#" class="read-more">
+                続きを読む
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+        </article>
+
+        <!-- Article 2 -->
+        <article class="blog-article reveal reveal-delay-1">
+            <div class="article-meta">
+                <span class="article-date">2026.3.12</span>
+                <span class="article-tag event">Event</span>
+            </div>
+            <h2 class="article-title">
+                <a href="#">ZAMNA Hawaii 2026 — 10,000人同時配信への道</a>
+            </h2>
+            <p class="article-excerpt">
+                2026年9月4日、ハワイで開催されるZAMNA Hawaiiフェスティバルで、Solunaが音声配信基盤を担当することが決定した。
+                10,000人規模の同時配信は、Solunaにとって過去最大のチャレンジ。
+                P2Pメッシュとリレーサーバーのハイブリッドアーキテクチャ、
+                3リージョン（東京・LA・アムステルダム）のリレーインフラ、
+                そしてQUICによるモバイル最適化 —— その技術的なロードマップを公開する。
+            </p>
+            <a href="#" class="read-more">
+                続きを読む
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+        </article>
+
+        <!-- Article 3 -->
+        <article class="blog-article reveal reveal-delay-2">
+            <div class="article-meta">
+                <span class="article-date">2026.3.5</span>
+                <span class="article-tag opinion">Opinion</span>
+            </div>
+            <h2 class="article-title">
+                <a href="#">なぜ音楽配信にブロックチェーンは不要か</a>
+            </h2>
+            <p class="article-excerpt">
+                Web3音楽プラットフォームが次々とローンチしては消えていく。
+                なぜか？ 音楽配信の本質的な課題はレイテンシーと体験であり、トークンではない。
+                Solunaはあえてブロックチェーンを使わない選択をした。
+                OSTプロトコルによるP2Pメッシュ、10ms以下のレイテンシー、オープンソース ——
+                技術で解決すべき問題を、金融で解決しようとする誤謬について考える。
+            </p>
+            <a href="#" class="read-more">
+                続きを読む
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+        </article>
+
+    </div>
+</section>
+
+<div class="footer-divider"></div>
+
+<!-- Footer -->
+<footer style="flex-direction:column;align-items:stretch;gap:32px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:32px">
+        <div>
+            <div class="f-logo" style="margin-bottom:12px">&#9670; Soluna</div>
+            <p style="font-size:13px;color:var(--text3);line-height:1.6;max-width:240px">
+                オープンソースのネットワークオーディオ。あなたの音楽を、世界中のスピーカーへ。
+            </p>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">プロダクト</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="/app">App</a>
+                <a href="/dashboard">Dashboard</a>
+                <a href="/guide">セットアップガイド</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">ページ</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="/live">Live Events</a>
+                <a href="/community">Community</a>
+                <a href="/blog">Blog</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">リソース</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+                <a href="/for-developers">開発者向け</a>
+                <a href="/protocol">OSTP プロトコル仕様</a>
+            </div>
+        </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-top:1px solid var(--border);padding-top:24px">
+        <div class="f-copy">&copy; 2024-2026 Soluna Project &middot; MIT License &middot; Open Source</div>
+        <div style="display:flex;gap:16px;align-items:center">
+            <a href="https://github.com/yukihamada/opensonic" target="_blank" style="color:var(--text3);transition:color 0.2s" title="GitHub">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            </a>
+        </div>
+    </div>
+</footer>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+        if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); }
+    });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+window.addEventListener('scroll', () => {
+    const nav = document.querySelector('nav');
+    nav.style.background = window.scrollY > 80 ? 'rgba(5,6,10,0.92)' : 'rgba(5,6,10,0.7)';
+}, { passive: true });
+</script>
+</body>
+</html>

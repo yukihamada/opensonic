@@ -509,7 +509,7 @@
   </div>
   <div class="hero-content">
     <div class="hero-badges">
-      <span class="badge badge-blue">v0.9.3</span>
+      <span class="badge badge-blue">v0.11.0</span>
       <span class="badge badge-amber">RFC Draft — Experimental</span>
       <span class="badge badge-green">UDP / RTP</span>
       <span class="badge badge-purple">Open Source</span>
@@ -748,7 +748,7 @@
               <div class="pkt-field bf-ext" style="flex:1;"><div class="pkt-fn">X=1</div><div class="pkt-fd">extension</div><div class="pkt-fsz">1b</div></div>
               <div class="pkt-field bf-rtp" style="flex:1;"><div class="pkt-fn">CC=0</div><div class="pkt-fd">CSRC count</div><div class="pkt-fsz">4b</div></div>
               <div class="pkt-field bf-rtp" style="flex:1;"><div class="pkt-fn">M</div><div class="pkt-fd">marker</div><div class="pkt-fsz">1b</div></div>
-              <div class="pkt-field bf-rtp" style="flex:3;"><div class="pkt-fn">PT</div><div class="pkt-fd">payload type (96–98)</div><div class="pkt-fsz">7b</div></div>
+              <div class="pkt-field bf-rtp" style="flex:3;"><div class="pkt-fn">PT</div><div class="pkt-fd">payload type (96–98, 115–116, 119)</div><div class="pkt-fsz">7b</div></div>
               <div class="pkt-field bf-rtp" style="flex:6;"><div class="pkt-fn">Sequence Number</div><div class="pkt-fd">シーケンス番号</div><div class="pkt-fsz">16b</div></div>
             </div>
           </div>
@@ -782,10 +782,10 @@
           <div class="pkt-row">
             <div class="pkt-bits-label">128–159</div>
             <div class="pkt-fields">
-              <div class="pkt-field bf-ext" style="flex:1;"><div class="pkt-fn">deck_id</div><div class="pkt-fd">stream_id[15:12]</div><div class="pkt-fsz">4b</div></div>
-              <div class="pkt-field bf-ext" style="flex:1;"><div class="pkt-fn">ch_count</div><div class="pkt-fd">stream_id[11:8]</div><div class="pkt-fsz">4b</div></div>
-              <div class="pkt-field bf-ext" style="flex:2;"><div class="pkt-fn">reserved=0</div><div class="pkt-fd">stream_id[7:0]</div><div class="pkt-fsz">8b</div></div>
-              <div class="pkt-field bf-ext" style="flex:4;"><div class="pkt-fn">seq_ext</div><div class="pkt-fd">拡張シーケンス番号</div><div class="pkt-fsz">16bit</div></div>
+              <div class="pkt-field bf-ext" style="flex:2;"><div class="pkt-fn">deck_id</div><div class="pkt-fd">stream_id[15:14]</div><div class="pkt-fsz">2b</div></div>
+              <div class="pkt-field bf-ext" style="flex:4;"><div class="pkt-fn">ch_count</div><div class="pkt-fd">stream_id[13:10]</div><div class="pkt-fsz">4b</div></div>
+              <div class="pkt-field bf-ext" style="flex:10;"><div class="pkt-fn">stream_idx</div><div class="pkt-fd">stream_id[9:0]</div><div class="pkt-fsz">10b</div></div>
+              <div class="pkt-field bf-ext" style="flex:16;"><div class="pkt-fn">seq_ext</div><div class="pkt-fd">拡張シーケンス番号</div><div class="pkt-fsz">16bit</div></div>
             </div>
           </div>
 
@@ -809,17 +809,24 @@
           <div class="pkt-row">
             <div class="pkt-bits-label">末尾</div>
             <div class="pkt-fields">
-              <div class="pkt-field bf-crc" style="flex:1;"><div class="pkt-fn">CRC-32</div><div class="pkt-fd">オプション。整合性チェック</div><div class="pkt-fsz">32bit opt.</div></div>
+              <div class="pkt-field bf-crc" style="flex:1;"><div class="pkt-fn">CRC-32 (MUST)</div><div class="pkt-fd">ペイロード整合性チェック (常に付加)</div><div class="pkt-fsz">32bit</div></div>
             </div>
           </div>
+        </div>
+
+        <div class="warn">
+          <strong>CRC-32 (MUST):</strong> CRC-32 は常に付加される (4バイト, IEEE 802.3, ビッグエンディアン)。
+          ペイロードバイトのみを対象に計算する (ヘッダは含まない)。
+          CRC検証に失敗したパケットは破棄しなければならない (MUST discard, return error -2)。
+          自動検出: <code>if (payload_size % 4 == 0)</code> after stripping 4 bytes → CRC present。
         </div>
 
         <h4>stream_id フィールド詳細</h4>
         <div class="code-wrap">
           <button class="copy-btn">COPY</button>
-          <pre><span class="c-amber">stream_id[15:12]</span> = <span class="c-cyan">deck_id</span>    <span class="c-dim">// 0 = Deck A, 1 = Deck B</span>
-<span class="c-amber">stream_id[11:8]</span>  = <span class="c-cyan">ch_count</span>   <span class="c-dim">// 0=legacy 2ch, 1=mono, 2=stereo, 6=5.1, 8=7.1</span>
-<span class="c-amber">stream_id[7:0]</span>   = <span class="c-dim">reserved</span>   <span class="c-dim">// MUST be 0x00</span></pre>
+          <pre><span class="c-amber">stream_id[15:14]</span> = <span class="c-cyan">deck_id</span>      <span class="c-dim">// 0=Deck A, 1=Deck B, 2-3=reserved</span>
+<span class="c-amber">stream_id[13:10]</span> = <span class="c-cyan">ch_count</span>     <span class="c-dim">// 0=legacy 2ch, 1=mono, 2=stereo, 6=5.1, 8=7.1</span>
+<span class="c-amber">stream_id[9:0]</span>   = <span class="c-cyan">stream_idx</span>   <span class="c-dim">// ユニークストリーム識別子 (0-1023)</span></pre>
         </div>
 
         <h3>3.2 ペイロードタイプ (PT)</h3>
@@ -835,6 +842,9 @@
               <tr><td class="td-mono">10</td><td>AES67/L24</td><td>AES67 互換 24-bit PCM (互換レイヤー)</td></tr>
               <tr><td class="td-mono">11</td><td>AES67/L16</td><td>AES67 互換 16-bit PCM (互換レイヤー)</td></tr>
               <tr><td class="td-mono">126</td><td>NACK</td><td>再送要求 (RFC 4585 Generic NACK)</td></tr>
+              <tr><td class="td-mono">115</td><td>IMA-ADPCM Stereo</td><td>IMA-ADPCM 圧縮ステレオ、4:1圧縮比、IoT/低帯域向け</td></tr>
+              <tr><td class="td-mono">116</td><td>IMA-ADPCM Mono</td><td>IMA-ADPCM 圧縮モノラル、ESP32/COIN デバイス向け</td></tr>
+              <tr><td class="td-mono">119</td><td>LC3</td><td>LC3 Bluetooth LE Audio互換、liblc3 (Apache 2.0)、超低遅延5ms</td></tr>
               <tr><td class="td-mono">127</td><td>FEC/XOR</td><td>XOR パリティパケット (N=5)</td></tr>
             </tbody>
           </table>
@@ -847,6 +857,45 @@
         </p>
         <div class="warn">
           <strong>MUST NOT:</strong> 新規実装でLegacyフォーマットを送信してはならない。受信側は両形式を受け入れること (MUST accept)。
+        </div>
+
+        <h3>3.4 IMA-ADPCM ペイロード</h3>
+        <p style="color:var(--text2);font-size:14px;margin-bottom:16px;">
+          PT=115 (ステレオ) / PT=116 (モノラル) で使用される IMA-ADPCM 圧縮ペイロードのフォーマット。
+          4:1 の圧縮比により、帯域幅制約のある環境（ESP32 COIN デバイス、モバイルネットワーク等）に適する。
+        </p>
+        <div class="code-wrap">
+          <button class="copy-btn">COPY</button>
+          <pre><span class="c-cyan">IMA-ADPCM Payload Format:</span>
+
+<span class="c-amber">Header (4 bytes):</span>
+  [0:1]  predictor    <span class="c-dim">// int16 LE — 予測値 (前サンプルの復元値)</span>
+  [2]    stepIndex    <span class="c-dim">// uint8   — ステップテーブルインデックス (0-88)</span>
+  [3]    reserved     <span class="c-dim">// uint8   — MUST be 0x00</span>
+
+<span class="c-amber">Data:</span>
+  [4:]   ADPCM nibbles <span class="c-dim">// 2サンプル/バイト、low nibble first</span>
+
+<span class="c-dim">// Standard IMA step table (89 entries): 7, 8, 9, 10, 11, 12, ... 32767</span>
+<span class="c-dim">// Standard IMA index table (16 entries): -1, -1, -1, -1, 2, 4, 6, 8, ...</span>
+
+<span class="c-cyan">Use cases:</span>
+  - ESP32 COIN デバイス (低メモリ/低帯域)
+  - モバイルネットワーク (3G/低品質WiFi)
+  - 帯域幅制約のある環境全般</pre>
+        </div>
+
+        <h3>3.5 バイトオーダー</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>フィールド</th><th>バイトオーダー</th><th>理由</th></tr></thead>
+            <tbody>
+              <tr><td>RTP/OSTP ヘッダフィールド</td><td class="td-mono">ビッグエンディアン</td><td>ネットワークバイトオーダー — RFC 3550準拠</td></tr>
+              <tr><td>オーディオペイロード</td><td class="td-mono">リトルエンディアン</td><td>ネイティブ — パフォーマンス優先</td></tr>
+              <tr><td>AES67互換モード (PT=10/11)</td><td class="td-mono">ビッグエンディアン</td><td>AES67仕様準拠</td></tr>
+              <tr><td>CRC-32 トレイラー</td><td class="td-mono">ビッグエンディアン</td><td>IEEE 802.3準拠</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -918,8 +967,8 @@ JOIN:<span class="c-green">channel_name</span>:<span class="c-green">password</s
         <div class="section-number">Section 5</div>
         <h2>リレープロトコル (RSP)</h2>
         <p class="section-desc">
-          Relay Session Protocol。TCP上のテキストベースプロトコル。各コマンドは <code>\n</code> で終端。
-          接続先: <code>relay.solun.art:5100</code>
+          Relay Session Protocol。UDP上のテキストベースプロトコル。各コマンドは <code>\n</code> で区切られたテキストコマンド。
+          接続先: <code>relay.solun.art:5100</code> (UDP)
         </p>
 
         <h3>接続フロー</h3>
@@ -1003,32 +1052,24 @@ JOIN:<span class="c-green">channel_name</span>:<span class="c-green">password</s
           RFC 8085準拠のUDP輻輳制御。損失率・ジッターを監視し、ビットレートラダーを自動調整する。
         </p>
 
-        <h3>ビットレートラダー</h3>
+        <h3>WiFi品質適応テーブル</h3>
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Tier</th><th>ビットレート</th><th>品質</th><th>想定用途</th></tr>
+              <tr><th>品質レベル</th><th>ジッター</th><th>損失率</th><th>FEC</th><th>ジッターバッファ</th><th>パケットTier</th></tr>
             </thead>
             <tbody>
-              <tr><td class="td-mono">0</td><td>32 kbps</td><td>音声</td><td>緊急/低速WAN (3G等)</td></tr>
-              <tr><td class="td-mono">1</td><td>64 kbps</td><td>良好</td><td>標準モバイル (4G)</td></tr>
-              <tr><td class="td-mono">2</td><td>128 kbps</td><td>Hi-Fi</td><td><strong>デフォルト</strong> (WiFi/5G)</td></tr>
-              <tr><td class="td-mono">3</td><td>192 kbps</td><td>スタジオ</td><td>高品質WiFi/有線</td></tr>
-              <tr><td class="td-mono">4</td><td>320 kbps</td><td>マスター</td><td>録音/アーカイブ/LAN</td></tr>
+              <tr><td style="color:var(--green);font-weight:700;">Excellent</td><td>&lt;2ms</td><td>&lt;0.1%</td><td>None</td><td>20ms</td><td>PCM24/F32</td></tr>
+              <tr><td style="color:var(--cyan);font-weight:700;">Good</td><td>2–5ms</td><td>0.1–1%</td><td>XOR (N=10)</td><td>40ms</td><td>PCM24/F32</td></tr>
+              <tr><td style="color:var(--amber);font-weight:700;">Fair</td><td>5–15ms</td><td>1–5%</td><td>XOR (N=5)</td><td>80ms</td><td>Opus 128kbps</td></tr>
+              <tr><td style="color:var(--pink);font-weight:700;">Poor</td><td>15–30ms</td><td>5–10%</td><td>Reed-Solomon</td><td>120ms</td><td>Opus 64kbps</td></tr>
+              <tr><td style="color:var(--text3);font-weight:700;">Critical</td><td>&gt;30ms</td><td>&gt;10%</td><td>Reed-Solomon + NACK</td><td>200ms</td><td>Opus 32kbps</td></tr>
             </tbody>
           </table>
         </div>
 
-        <h3>状態遷移ルール</h3>
-        <div class="cards">
-          <div class="card" style="border-color:rgba(245,158,11,0.2);">
-            <div style="color:var(--amber);font-size:20px;margin-bottom:8px;">⬇ ダウングレード</div>
-            <div class="card-desc">損失率 &gt;10% が <strong>3秒間継続</strong>した場合、1ティア下げる。Opaque NACKが溢れた場合も即座にダウングレード。</div>
-          </div>
-          <div class="card" style="border-color:rgba(16,185,129,0.2);">
-            <div style="color:var(--green);font-size:20px;margin-bottom:8px;">⬆ アップグレード</div>
-            <div class="card-desc">損失率 &lt;0.5% が <strong>30秒間安定</strong>して継続した場合のみ1ティア上げる。急激なアップグレードは禁止。</div>
-          </div>
+        <div class="note">
+          <strong>Opus ビットレート適応:</strong> <span class="tag tag-planned">planned</span> — 現在の実装ではOpusビットレートの動的変更は未実装。品質レベルに応じたFEC・ジッターバッファ調整のみ動作中。
         </div>
 
         <h3>3層回復メカニズム</h3>
@@ -1252,20 +1293,20 @@ jitterBufferTarget = latency</pre>
           <div class="pkt-row">
             <div class="pkt-bits-label">stream_id</div>
             <div class="pkt-fields">
-              <div class="pkt-field bf-ext" style="flex:1;">
+              <div class="pkt-field bf-ext" style="flex:2;">
                 <div class="pkt-fn">deck_id</div>
-                <div class="pkt-fd">bits [15:12]</div>
-                <div class="pkt-fsz">4bit</div>
+                <div class="pkt-fd">bits [15:14]</div>
+                <div class="pkt-fsz">2bit</div>
               </div>
-              <div class="pkt-field bf-ext" style="flex:1;">
+              <div class="pkt-field bf-ext" style="flex:4;">
                 <div class="pkt-fn">ch_count</div>
-                <div class="pkt-fd">bits [11:8]</div>
+                <div class="pkt-fd">bits [13:10]</div>
                 <div class="pkt-fsz">4bit</div>
               </div>
-              <div class="pkt-field" style="flex:2;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;">
-                <div class="pkt-fn" style="color:var(--text3);">reserved</div>
-                <div class="pkt-fd" style="color:var(--text3);">bits [7:0]</div>
-                <div class="pkt-fsz">8bit = 0x00</div>
+              <div class="pkt-field bf-ext" style="flex:10;">
+                <div class="pkt-fn">stream_idx</div>
+                <div class="pkt-fd">bits [9:0]</div>
+                <div class="pkt-fsz">10bit</div>
               </div>
             </div>
           </div>
@@ -1273,11 +1314,11 @@ jitterBufferTarget = latency</pre>
 
         <div class="table-wrap">
           <table>
-            <thead><tr><th>deck_id</th><th>意味</th></tr></thead>
+            <thead><tr><th>deck_id (2bit)</th><th>意味</th></tr></thead>
             <tbody>
               <tr><td class="td-mono">0x0</td><td>Deck A (プライマリ)</td></tr>
               <tr><td class="td-mono">0x1</td><td>Deck B (セカンダリ)</td></tr>
-              <tr><td class="td-mono">0x2–0xF</td><td>Reserved (将来の拡張用)</td></tr>
+              <tr><td class="td-mono">0x2–0x3</td><td>Reserved (将来の拡張用)</td></tr>
             </tbody>
           </table>
         </div>
@@ -1447,6 +1488,21 @@ Authorization: Bearer &lt;token&gt;
                 <td><span class="badge badge-green" style="font-size:11px;">Dynamic</span></td>
               </tr>
               <tr>
+                <td>Payload Type 115</td>
+                <td class="td-mono">IMA-ADPCM Stereo</td>
+                <td><span class="badge badge-green" style="font-size:11px;">Dynamic</span></td>
+              </tr>
+              <tr>
+                <td>Payload Type 116</td>
+                <td class="td-mono">IMA-ADPCM Mono</td>
+                <td><span class="badge badge-green" style="font-size:11px;">Dynamic</span></td>
+              </tr>
+              <tr>
+                <td>Payload Type 119</td>
+                <td class="td-mono">LC3</td>
+                <td><span class="badge badge-green" style="font-size:11px;">Dynamic</span></td>
+              </tr>
+              <tr>
                 <td>Payload Type 126</td>
                 <td class="td-mono">NACK</td>
                 <td><span class="badge badge-green" style="font-size:11px;">Dynamic</span></td>
@@ -1581,13 +1637,13 @@ Authorization: Bearer &lt;token&gt;
 
         <div class="note" style="margin-top:24px;">
           <strong>凡例:</strong> ✅ = 実装済みかつテスト済み / 🔜 = 実装計画あり / — = 対象外<br>
-          <strong>FEC (動的)</strong>: loss率に応じ N=0/10/5/3/2 を自動切替 (OSTP v0.9.3 §3.7)<br>
+          <strong>FEC (動的)</strong>: loss率に応じ N=0/10/5/3/2 を自動切替 (OSTP v0.11.0 §3.7)<br>
           <strong>RTCP</strong>: ビットレート適応 + RFC 3550 §6.4.1 ジッタバッファ駆動<br>
-          <strong>TURN</strong>: Symmetric NAT フォールバック — <code>TURN_ALLOC</code> / <code>TURN_OK</code> (OSTP v0.9.3 §5.x)
+          <strong>TURN</strong>: Symmetric NAT フォールバック — <code>TURN_ALLOC</code> / <code>TURN_OK</code> (OSTP v0.11.0 §5.x)
         </div>
 
-        <!-- v0.9.3 変更ログ -->
-        <h3 style="margin-top:40px;">v0.9.3 実装済み修正</h3>
+        <!-- v0.11.0 変更ログ -->
+        <h3 style="margin-top:40px;">v0.11.0 実装済み修正</h3>
         <div class="table-wrap">
           <table>
             <thead>
@@ -1676,17 +1732,112 @@ Authorization: Bearer &lt;token&gt;
       </div>
     </section>
 
+    <!-- ── v0.10: QUIC + Blockchain ──────────────────────── -->
+    <section class="spec-section" id="quic-blockchain">
+      <h2 class="section-title" style="background:linear-gradient(135deg,var(--purple),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">v0.10 — QUIC + Blockchain</h2>
+      <p style="color:var(--text2);margin-bottom:2rem;">OSTP v0.10 で追加された3つのプロトコルレベル革新。</p>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.5rem;">
+        <!-- QUIC -->
+        <div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:1.5rem;">
+          <div style="font-size:1.4em;margin-bottom:0.5rem;">QUIC Transport</div>
+          <p style="color:var(--text2);font-size:14px;line-height:1.7;">
+            WAN リレー接続に QUIC (RFC 9000) を採用。Unreliable Datagram (RFC 9221) で音声、
+            Reliable Stream で制御メッセージ。TLS 1.3 暗号化、0-RTT 再接続、
+            Wi-Fi⇔セルラー切替時のコネクション移行。
+          </p>
+          <pre style="background:var(--s1);padding:1rem;border-radius:8px;font-size:12px;margin-top:1rem;overflow-x:auto;color:var(--text2);">QUIC Connection (TLS 1.3)
+├── Datagram (unreliable) → OSTP/RTP 音声
+├── Stream 0 (reliable)   → JOIN/HELLO/META
+└── Stream N (reliable)   → ファイル転送</pre>
+        </div>
+
+        <!-- PoL -->
+        <div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:1.5rem;">
+          <div style="font-size:1.4em;margin-bottom:0.5rem;">Proof of Listen (PoL)</div>
+          <p style="color:var(--text2);font-size:14px;line-height:1.7;">
+            暗号学的な再生証明。受信パケットの (seq, timestamp, ssrc, crc) から
+            SHA-256 ハッシュチェーンを構築し、Merkle Root を Solana に提出。
+            Spotify のような中央集権的な再生カウンター不要。
+          </p>
+          <pre style="background:var(--s1);padding:1rem;border-radius:8px;font-size:12px;margin-top:1rem;overflow-x:auto;color:var(--text2);">genesis = SHA-256("soluna:pol:v1:" || channel)
+tip[n]  = SHA-256(tip[n-1] || record[n])
+→ Merkle Root → Solana SubmitProof</pre>
+        </div>
+
+        <!-- Relay Mining -->
+        <div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:1.5rem;">
+          <div style="font-size:1.4em;margin-bottom:0.5rem;">Relay Mining</div>
+          <p style="color:var(--text2);font-size:14px;line-height:1.7;">
+            帯域貢献に対する ENAI トークン報酬。リレーノードが中継したバイト数に応じて
+            自動的にトークンを獲得。Koe デバイスを Wi-Fi に繋ぐだけでパッシブ収入。
+          </p>
+          <div style="margin-top:1rem;">
+            <table style="width:100%;font-size:13px;color:var(--text2);">
+              <tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:4px 8px;">Tier</th><th>倍率</th><th>1時間/170MB</th></tr>
+              <tr><td style="padding:4px 8px;">Origin</td><td style="text-align:center;">1.0x</td><td style="text-align:center;color:var(--green);">0.17 ENAI</td></tr>
+              <tr><td style="padding:4px 8px;">Region</td><td style="text-align:center;">0.5x</td><td style="text-align:center;">0.085 ENAI</td></tr>
+              <tr><td style="padding:4px 8px;">Edge</td><td style="text-align:center;">0.25x</td><td style="text-align:center;">0.0425 ENAI</td></tr>
+              <tr><td style="padding:4px 8px;">P2P Swarm</td><td style="text-align:center;">0.1x</td><td style="text-align:center;">0.017 ENAI</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- Stream-to-Own -->
+        <div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:1.5rem;">
+          <div style="font-size:1.4em;margin-bottom:0.5rem;">Stream-to-Own</div>
+          <p style="color:var(--text2);font-size:14px;line-height:1.7;">
+            聴くほど所有する。PoL で検証された再生回数に応じて、
+            リスナーが楽曲のマイクロオーナーシップを自動取得。
+            ファンとアーティストのインセンティブが完全一致。
+          </p>
+          <div style="margin-top:1rem;">
+            <table style="width:100%;font-size:13px;color:var(--text2);">
+              <tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:4px 8px;">再生回数</th><th>所有権</th></tr>
+              <tr><td style="padding:4px 8px;">&lt; 100</td><td style="text-align:center;">—</td></tr>
+              <tr><td style="padding:4px 8px;">100+</td><td style="text-align:center;">0.01%</td></tr>
+              <tr><td style="padding:4px 8px;">1,000+</td><td style="text-align:center;color:var(--cyan);">0.1%</td></tr>
+              <tr><td style="padding:4px 8px;">10,000+</td><td style="text-align:center;color:var(--green);">1.0%</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Solana Program -->
+      <div style="background:var(--s2);border:1px solid var(--border2);border-radius:12px;padding:1.5rem;margin-top:1.5rem;">
+        <div style="font-size:1.2em;margin-bottom:0.5rem;">Solana Program</div>
+        <p style="color:var(--text2);font-size:14px;margin-bottom:1rem;">
+          全機能は Solana 上のスマートコントラクトで管理。6つの instruction で構成。
+        </p>
+        <pre style="background:var(--s1);padding:1rem;border-radius:8px;font-size:12px;overflow-x:auto;color:var(--text2);">Program ID: FFpQXWd6U1h86PZ39UoCwMPi7i9TXL6EVE41x1PqHnCi
+
+Instructions:
+  1. Initialize          — プログラム初期化
+  2. SubmitProof         — PoL Merkle Root 提出
+  3. RegisterRelay       — リレーノード登録
+  4. ClaimRelayReward    — マイニング報酬請求
+  5. RegisterTrack       — 楽曲登録 (Stream-to-Own)
+  6. UpdateOwnership     — 所有権更新
+
+Account PDAs:
+  SolunaState   ["soluna"]                    — グローバル設定
+  ListenProof   ["pol", listener, channel]    — リスナーの再生証明
+  RelayNode     ["relay", operator]           — リレーノード情報
+  TrackRegistry ["track", content_hash]       — 楽曲レジストリ</pre>
+      </div>
+    </section>
+
     <!-- ── Footer ──────────────────────────────────────────── -->
     <footer class="spec-footer">
       <div class="footer-note">
         このドキュメントについて: この仕様はOpenSonic/Solunaの実装を元に作成されたIndependent Internet-Draftです。
-        IETF標準ではありませんが、RFC 3550・RFC 4585・RFC 5285・RFC 8085等の既存RFCに準拠しています。
+        IETF標準ではありませんが、RFC 3550・RFC 4585・RFC 5285・RFC 8085・RFC 9000・RFC 9221等の既存RFCに準拠しています。
         フィードバック・貢献は
         <a href="https://github.com/yukihamada/opensonic" style="color:var(--cyan);text-decoration:none;">GitHub</a>
         へ。
       </div>
       <div style="font-size:12px;color:var(--text3);">
-        OSTP v0.9.3 · draft-hamada-opensonic-ostp-00<br>
+        OSTP v0.10.0 · draft-hamada-opensonic-ostp-00<br>
         © 2026 Soluna Project · MIT License
       </div>
     </footer>

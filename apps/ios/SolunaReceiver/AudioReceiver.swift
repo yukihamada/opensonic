@@ -710,6 +710,11 @@ final class AudioReceiver: ObservableObject {
         sdkReceiver = nil
     }
 
+    /// Select codec for reception: 96=PCM 24bit, 116=ADPCM.
+    func setCodec(_ pt: UInt8) {
+        sdkReceiver?.setCodec(pt)
+    }
+
     /// Send a raw string via the SDK receiver's UDP socket (for chat messages).
     func sdkSendUDP(_ msg: String) {
         sdkReceiver?.sendUDP(msg)

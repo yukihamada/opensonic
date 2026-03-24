@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Koe COIN — 26mm の超小型メッシュネットワークノード。WiFi + Bluetooth 搭載。会場の全員がひとつの音楽体験でつながる。先行予約 ¥8,000。">
+    <meta name="theme-color" content="#05060a">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Koe COIN — 26mm。音楽メッシュネットワークの最小単位。</title>
+
+    <!-- OGP -->
+    <meta property="og:title" content="Koe COIN — 26mm。音楽メッシュネットワークの最小単位。">
+    <meta property="og:description" content="ESP32-S3搭載の超小型メッシュノード。WiFiに繋ぐだけでSolunaネットワークに参加。先行予約 ¥8,000。">
+    <meta property="og:type" content="product">
+    <meta property="og:url" content="https://solun.art/koe">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:locale" content="ja_JP">
+    <meta name="twitter:card" content="summary_large_image">
+
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --cyan:   #06b6d4;
+            --green:  #10b981;
+            --purple: #8b5cf6;
+            --amber:  #f59e0b;
+            --pink:   #ec4899;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ── Scroll reveal ── */
+        .reveal {
+            opacity: 0; transform: translateY(30px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+        }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        /* ── Nav ── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 max(20px, calc(50% - 580px));
+            height: 60px;
+            background: rgba(5,6,10,0.7);
+            backdrop-filter: blur(24px) saturate(1.8);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-logo {
+            font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+            display: flex; align-items: center; gap: 8px;
+            text-decoration: none; color: var(--text);
+        }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 24px; }
+        .nav-links a {
+            color: var(--text2); text-decoration: none; font-size: 14px;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .nav-cta {
+            padding: 8px 18px;
+            background: linear-gradient(135deg, var(--cyan), var(--blue));
+            color: #fff !important;
+            border-radius: 10px;
+            font-weight: 600; font-size: 13px !important;
+            transition: opacity 0.2s, transform 0.2s !important;
+            box-shadow: 0 2px 12px rgba(6,182,212,0.3);
+        }
+        .nav-cta:hover { opacity: 0.9; transform: translateY(-1px) !important; }
+
+        /* ── Shared ── */
+        .section { padding: 100px max(20px, calc(50% - 580px)); }
+        .section-label {
+            font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; margin-bottom: 14px;
+            background: linear-gradient(90deg, var(--cyan), var(--blue));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        h2 {
+            font-size: clamp(28px, 5vw, 44px);
+            font-weight: 800; letter-spacing: -0.03em;
+            line-height: 1.15; margin-bottom: 16px;
+        }
+        .sub {
+            font-size: 17px; color: var(--text2); line-height: 1.7;
+            max-width: 540px; margin-bottom: 48px;
+        }
+
+        /* ── Hero ── */
+        .hero {
+            position: relative;
+            padding: 140px max(20px, calc(50% - 580px)) 80px;
+            overflow: hidden;
+            text-align: center;
+        }
+        .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+        .hero-orb {
+            position: absolute; border-radius: 50%;
+            filter: blur(100px); opacity: 0.12;
+            animation: orb-float 20s ease-in-out infinite;
+        }
+        .hero-orb-1 { width: 500px; height: 500px; background: var(--cyan); top: -15%; left: 50%; transform: translateX(-50%); }
+        .hero-orb-2 { width: 350px; height: 350px; background: var(--purple); bottom: 0; right: 10%; animation-delay: -7s; }
+        @keyframes orb-float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -20px) scale(1.05); }
+            66% { transform: translate(-20px, 15px) scale(0.95); }
+        }
+        .hero-content { position: relative; z-index: 1; max-width: 720px; margin: 0 auto; }
+
+        /* Coin visual */
+        .coin-visual {
+            width: 200px; height: 200px;
+            margin: 0 auto 48px;
+            position: relative;
+        }
+        .coin-ring {
+            width: 100%; height: 100%;
+            border-radius: 50%;
+            border: 3px solid;
+            border-color: var(--cyan);
+            position: relative;
+            display: flex; align-items: center; justify-content: center;
+            animation: coin-pulse 3s ease-in-out infinite;
+            box-shadow: 0 0 60px rgba(6,182,212,0.15), inset 0 0 40px rgba(6,182,212,0.05);
+        }
+        .coin-ring::before {
+            content: '';
+            position: absolute; inset: 8px;
+            border-radius: 50%;
+            border: 1px solid rgba(6,182,212,0.2);
+        }
+        .coin-inner {
+            font-size: 14px; font-weight: 600;
+            color: var(--cyan); letter-spacing: 0.08em;
+            text-align: center; line-height: 1.4;
+        }
+        .coin-inner .size { font-size: 36px; font-weight: 800; letter-spacing: -0.02em; display: block; }
+        @keyframes coin-pulse {
+            0%, 100% { box-shadow: 0 0 60px rgba(6,182,212,0.15), inset 0 0 40px rgba(6,182,212,0.05); }
+            50% { box-shadow: 0 0 80px rgba(6,182,212,0.25), inset 0 0 60px rgba(6,182,212,0.1); }
+        }
+
+        /* LED dots orbiting */
+        .led-dots {
+            position: absolute; inset: -12px;
+        }
+        .led-dot {
+            position: absolute;
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            animation: led-orbit 8s linear infinite;
+        }
+        .led-dot:nth-child(1) { background: var(--cyan); animation-delay: 0s; }
+        .led-dot:nth-child(2) { background: var(--blue); animation-delay: -2s; }
+        .led-dot:nth-child(3) { background: var(--purple); animation-delay: -4s; }
+        .led-dot:nth-child(4) { background: var(--green); animation-delay: -6s; }
+        @keyframes led-orbit {
+            0%   { top: 50%; left: -6px; }
+            25%  { top: -6px; left: 50%; }
+            50%  { top: 50%; right: -6px; left: auto; }
+            75%  { top: calc(100% + 6px); left: 50%; }
+            100% { top: 50%; left: -6px; }
+        }
+
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(6,182,212,0.08);
+            border: 1px solid rgba(6,182,212,0.2);
+            color: var(--cyan); font-size: 13px; font-weight: 600;
+            padding: 6px 16px; border-radius: 24px;
+            margin-bottom: 32px;
+        }
+        .hero-badge .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        h1 {
+            font-size: clamp(40px, 8vw, 72px);
+            font-weight: 800; letter-spacing: -0.04em;
+            line-height: 1.05; margin-bottom: 20px;
+        }
+        .h1-grad {
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .h1-accent {
+            background: linear-gradient(135deg, var(--cyan), var(--blue), var(--purple));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero-sub {
+            font-size: clamp(16px, 2.5vw, 20px);
+            color: var(--text2); max-width: 540px; line-height: 1.7;
+            margin: 0 auto 40px;
+        }
+
+        /* ── Price ── */
+        .price-block {
+            display: inline-flex; flex-direction: column; align-items: center;
+            gap: 8px; margin-bottom: 32px;
+        }
+        .price-main {
+            font-size: 48px; font-weight: 800; letter-spacing: -0.03em;
+            background: linear-gradient(135deg, var(--cyan), var(--blue));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .price-label { font-size: 14px; color: var(--cyan); font-weight: 600; }
+        .price-original {
+            font-size: 15px; color: var(--text3);
+            text-decoration: line-through;
+        }
+
+        /* ── CTA button ── */
+        .btn-primary {
+            display: inline-flex; align-items: center; gap: 10px;
+            padding: 18px 40px;
+            background: linear-gradient(135deg, var(--cyan), var(--blue));
+            color: #fff; text-decoration: none;
+            border-radius: 14px; font-weight: 700; font-size: 17px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 24px rgba(6,182,212,0.35);
+            border: none; cursor: pointer;
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(6,182,212,0.45); }
+        .btn-secondary {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 15px 28px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border2);
+            color: var(--text); text-decoration: none;
+            border-radius: 14px; font-weight: 600; font-size: 15px;
+            transition: all 0.2s;
+        }
+        .btn-secondary:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); }
+        .hero-note { font-size: 13px; color: var(--text3); margin-top: 12px; }
+
+        /* ── Specs grid ── */
+        .specs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 16px;
+        }
+        .spec-card {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px;
+            display: flex; flex-direction: column; gap: 8px;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .spec-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+        .spec-icon {
+            width: 40px; height: 40px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 10px; font-size: 20px;
+            background: rgba(6,182,212,0.1);
+        }
+        .spec-card h4 { font-size: 15px; font-weight: 700; }
+        .spec-card p { font-size: 14px; color: var(--text2); line-height: 1.6; }
+
+        /* ── Steps ── */
+        .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+        .step {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 20px; padding: 28px 20px;
+            position: relative; overflow: hidden;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .step:hover { border-color: var(--border2); transform: translateY(-4px); }
+        .step::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, var(--cyan), var(--blue));
+            opacity: 0; transition: opacity 0.3s;
+        }
+        .step:hover::before { opacity: 1; }
+        .step-num {
+            font-size: 40px; font-weight: 800; letter-spacing: -0.04em;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.03));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 12px;
+        }
+        .step-icon {
+            width: 44px; height: 44px;
+            display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, rgba(6,182,212,0.1), rgba(59,130,246,0.1));
+            border-radius: 12px; font-size: 22px; margin-bottom: 14px;
+        }
+        .step h3 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+        .step p { font-size: 13px; color: var(--text2); line-height: 1.7; }
+
+        /* ── ZAMNA section ── */
+        .zamna-section {
+            position: relative; overflow: hidden;
+            background: linear-gradient(135deg, rgba(6,182,212,0.04), rgba(139,92,246,0.04));
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+        .zamna-content {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 64px;
+            align-items: center;
+        }
+        .zamna-info h2 { margin-bottom: 20px; }
+        .zamna-info p { font-size: 16px; color: var(--text2); line-height: 1.8; margin-bottom: 24px; }
+        .zamna-stats {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+        }
+        .zamna-stat {
+            text-align: center; padding: 16px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border); border-radius: 12px;
+        }
+        .zamna-stat .num {
+            font-size: 28px; font-weight: 800; letter-spacing: -0.03em;
+            background: linear-gradient(135deg, var(--cyan), var(--blue));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .zamna-stat .label { font-size: 12px; color: var(--text3); margin-top: 4px; }
+
+        .zamna-visual {
+            display: flex; align-items: center; justify-content: center;
+        }
+        .zamna-mesh {
+            width: 100%; max-width: 360px; aspect-ratio: 1;
+            position: relative;
+        }
+        .zamna-mesh svg { width: 100%; height: 100%; }
+        .mesh-node { fill: var(--s2); stroke: var(--border2); stroke-width: 1.5; }
+        .mesh-node-active { fill: rgba(6,182,212,0.15); stroke: var(--cyan); }
+        .mesh-line {
+            stroke: rgba(6,182,212,0.2); stroke-width: 1;
+            stroke-dasharray: 4 3;
+            animation: dash-flow 1.5s linear infinite;
+        }
+        @keyframes dash-flow { to { stroke-dashoffset: -7; } }
+
+        /* ── LED patterns ── */
+        .led-grid {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+            margin-top: 32px;
+        }
+        .led-pattern {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 12px; padding: 16px; text-align: center;
+            transition: border-color 0.3s;
+        }
+        .led-pattern:hover { border-color: var(--cyan); }
+        .led-preview {
+            height: 32px; margin-bottom: 8px;
+            display: flex; align-items: center; justify-content: center; gap: 4px;
+        }
+        .led-bar {
+            width: 4px; border-radius: 2px;
+            background: var(--cyan);
+            animation: led-bounce 1.2s ease-in-out infinite;
+        }
+        .led-bar:nth-child(1) { height: 12px; animation-delay: 0s; }
+        .led-bar:nth-child(2) { height: 20px; animation-delay: 0.1s; }
+        .led-bar:nth-child(3) { height: 28px; animation-delay: 0.2s; }
+        .led-bar:nth-child(4) { height: 16px; animation-delay: 0.3s; }
+        .led-bar:nth-child(5) { height: 24px; animation-delay: 0.15s; }
+        @keyframes led-bounce {
+            0%, 100% { transform: scaleY(0.4); opacity: 0.4; }
+            50% { transform: scaleY(1); opacity: 1; }
+        }
+        .led-pattern .name { font-size: 12px; color: var(--text2); font-weight: 600; }
+
+        /* ── Preorder CTA ── */
+        .cta-section { text-align: center; }
+        .cta-section h2 { margin-bottom: 12px; }
+        .cta-section .sub { margin: 0 auto 40px; }
+        .cta-actions {
+            display: flex; flex-wrap: wrap; gap: 14px;
+            justify-content: center; margin-bottom: 16px;
+        }
+
+        /* ── Footer ── */
+        .footer-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(6,182,212,0.3), var(--border), transparent);
+        }
+        footer {
+            padding: 40px max(20px, calc(50% - 580px));
+            display: flex; flex-wrap: wrap; align-items: center;
+            justify-content: space-between; gap: 16px;
+        }
+        footer .f-logo { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        footer .f-links { display: flex; gap: 24px; flex-wrap: wrap; }
+        footer .f-links a { font-size: 13px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
+        footer .f-links a:hover { color: var(--text2); }
+        footer .f-copy { font-size: 12px; color: var(--text3); }
+
+        /* ── Responsive ── */
+        @media (max-width: 768px) {
+            .nav-links .hide-sm { display: none; }
+            .steps { grid-template-columns: 1fr 1fr; }
+            .zamna-content { grid-template-columns: 1fr; }
+            .zamna-mesh { max-width: 260px; }
+            .zamna-stats { grid-template-columns: repeat(3, 1fr); }
+            .led-grid { grid-template-columns: repeat(2, 1fr); }
+            .specs-grid { grid-template-columns: 1fr 1fr; }
+            .cta-actions { flex-direction: column; }
+            .btn-primary { width: 100%; justify-content: center; }
+        }
+        @media (max-width: 480px) {
+            .steps { grid-template-columns: 1fr; }
+            .specs-grid { grid-template-columns: 1fr; }
+            .zamna-stats { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(6,182,212,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#3b82f6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/soluna" class="hide-sm">Soluna</a>
+        <a href="/protocol" class="hide-sm">Protocol</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="#preorder" class="nav-cta">予約する</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+    </div>
+    <div class="hero-content">
+        <div class="hero-badge"><span class="dot"></span> 2026年8月出荷予定</div>
+
+        <!-- Coin visual -->
+        <div class="coin-visual">
+            <div class="coin-ring">
+                <div class="coin-inner">
+                    <span class="size">26mm</span>
+                    COIN
+                </div>
+            </div>
+            <div class="led-dots">
+                <div class="led-dot"></div>
+                <div class="led-dot"></div>
+                <div class="led-dot"></div>
+                <div class="led-dot"></div>
+            </div>
+        </div>
+
+        <h1>
+            <span class="h1-grad">Koe </span><span class="h1-accent">COIN</span>
+        </h1>
+        <p class="hero-sub">
+            26mm。音楽メッシュネットワークの最小単位。<br>
+            WiFi に繋ぐだけで、全員がひとつの音でつながる。
+        </p>
+
+        <div class="price-block">
+            <div class="price-label">先行予約価格</div>
+            <div class="price-main">&yen;8,000</div>
+            <div class="price-original">通常価格 &yen;9,800</div>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-bottom:16px">
+            <a href="#preorder" class="btn-primary">先行予約する</a>
+        </div>
+        <p class="hero-note">技適認証済み (201-220017) &middot; USB-C 充電 &middot; 送料無料</p>
+    </div>
+</section>
+
+<!-- Specs -->
+<section class="section" id="specs">
+    <div class="section-label reveal">Specifications</div>
+    <h2 class="reveal">手のひらに収まるメッシュノード</h2>
+    <p class="sub reveal">必要なものは全て 26mm の中に。</p>
+
+    <div class="specs-grid">
+        <div class="spec-card reveal reveal-delay-1">
+            <div class="spec-icon">&#9898;</div>
+            <h4>サイズ</h4>
+            <p>26mm 丸型<br>ポケットに入る超小型設計</p>
+        </div>
+        <div class="spec-card reveal reveal-delay-2">
+            <div class="spec-icon">&#9889;</div>
+            <h4>チップ</h4>
+            <p>ESP32-S3-MINI-1<br>技適認証済み (201-220017)</p>
+        </div>
+        <div class="spec-card reveal reveal-delay-3">
+            <div class="spec-icon">&#128225;</div>
+            <h4>接続</h4>
+            <p>WiFi + Bluetooth<br>自動メッシュネットワーク構築</p>
+        </div>
+        <div class="spec-card reveal reveal-delay-4">
+            <div class="spec-icon">&#128268;</div>
+            <h4>バッテリー</h4>
+            <p>USB-C 充電<br>イベント中ずっと持続</p>
+        </div>
+        <div class="spec-card reveal reveal-delay-1">
+            <div class="spec-icon">&#128161;</div>
+            <h4>LED</h4>
+            <p>音楽と同期して光る<br>8 パターン搭載</p>
+        </div>
+        <div class="spec-card reveal reveal-delay-2">
+            <div class="spec-icon">&#127925;</div>
+            <h4>用途</h4>
+            <p>会場メッシュノード<br>個人リスナーデバイス</p>
+        </div>
+    </div>
+</section>
+
+<!-- How it works -->
+<section class="section" id="how" style="background:linear-gradient(180deg,var(--bg),rgba(6,182,212,0.02),var(--bg))">
+    <div class="section-label reveal">How it works</div>
+    <h2 class="reveal">つなぐ。それだけ。</h2>
+    <p class="sub reveal">セットアップは不要。電源を入れれば、すべてが自動で始まります。</p>
+
+    <div class="steps">
+        <div class="step reveal reveal-delay-1">
+            <div class="step-num">01</div>
+            <div class="step-icon">&#128246;</div>
+            <h3>WiFi に繋ぐ</h3>
+            <p>電源を入れて WiFi に接続。ボタンひとつ、パスワード入力だけ。</p>
+        </div>
+        <div class="step reveal reveal-delay-2">
+            <div class="step-num">02</div>
+            <div class="step-icon">&#127760;</div>
+            <h3>ネットワークに参加</h3>
+            <p>自動的に Soluna ネットワークを検出して接続。設定は不要。</p>
+        </div>
+        <div class="step reveal reveal-delay-3">
+            <div class="step-num">03</div>
+            <div class="step-icon">&#128251;</div>
+            <h3>音楽を中継</h3>
+            <p>周囲の音楽を中継してネットワークに貢献。みんなの体験を広げる。</p>
+        </div>
+        <div class="step reveal reveal-delay-4">
+            <div class="step-num">04</div>
+            <div class="step-icon">&#10024;</div>
+            <h3>LED で光る</h3>
+            <p>音楽と同期して LED が光る。8 パターンから自動選択。会場が一体になる。</p>
+        </div>
+    </div>
+
+    <!-- LED patterns -->
+    <div class="reveal" style="margin-top:64px">
+        <h3 style="font-size:18px;font-weight:700;margin-bottom:8px">LED パターン</h3>
+        <p style="font-size:14px;color:var(--text2);margin-bottom:24px">音楽のジャンルやテンポに合わせて自動で切り替わります。</p>
+        <div class="led-grid">
+            <div class="led-pattern">
+                <div class="led-preview">
+                    <div class="led-bar"></div><div class="led-bar"></div><div class="led-bar"></div><div class="led-bar"></div><div class="led-bar"></div>
+                </div>
+                <div class="name">Pulse</div>
+            </div>
+            <div class="led-pattern">
+                <div class="led-preview">
+                    <div class="led-bar" style="background:var(--purple)"></div><div class="led-bar" style="background:var(--purple)"></div><div class="led-bar" style="background:var(--purple)"></div><div class="led-bar" style="background:var(--purple)"></div><div class="led-bar" style="background:var(--purple)"></div>
+                </div>
+                <div class="name">Wave</div>
+            </div>
+            <div class="led-pattern">
+                <div class="led-preview">
+                    <div class="led-bar" style="background:var(--green)"></div><div class="led-bar" style="background:var(--green)"></div><div class="led-bar" style="background:var(--green)"></div><div class="led-bar" style="background:var(--green)"></div><div class="led-bar" style="background:var(--green)"></div>
+                </div>
+                <div class="name">Breathe</div>
+            </div>
+            <div class="led-pattern">
+                <div class="led-preview">
+                    <div class="led-bar" style="background:var(--amber)"></div><div class="led-bar" style="background:var(--amber)"></div><div class="led-bar" style="background:var(--amber)"></div><div class="led-bar" style="background:var(--amber)"></div><div class="led-bar" style="background:var(--amber)"></div>
+                </div>
+                <div class="name">Strobe</div>
+            </div>
+            <div class="led-pattern">
+                <div class="led-preview">
+                    <div class="led-bar" style="background:var(--pink)"></div><div class="led-bar" style="background:var(--pink)"></div><div class="led-bar" style="background:var(--pink)"></div><div class="led-bar" style="background:var(--pink)"></div><div class="led-bar" style="background:var(--pink)"></div>
+                </div>
+                <div class="name">Rainbow</div>
+            </div>
+            <div class="led-pattern">
+                <div class="led-preview">
+                    <div class="led-bar" style="background:var(--blue)"></div><div class="led-bar" style="background:var(--blue)"></div><div class="led-bar" style="background:var(--blue)"></div><div class="led-bar" style="background:var(--blue)"></div><div class="led-bar" style="background:var(--blue)"></div>
+                </div>
+                <div class="name">Chase</div>
+            </div>
+            <div class="led-pattern">
+                <div class="led-preview">
+                    <div class="led-bar" style="background:#ef4444"></div><div class="led-bar" style="background:#ef4444"></div><div class="led-bar" style="background:#ef4444"></div><div class="led-bar" style="background:#ef4444"></div><div class="led-bar" style="background:#ef4444"></div>
+                </div>
+                <div class="name">Fire</div>
+            </div>
+            <div class="led-pattern">
+                <div class="led-preview">
+                    <div class="led-bar" style="background:#e2e8f0"></div><div class="led-bar" style="background:#e2e8f0"></div><div class="led-bar" style="background:#e2e8f0"></div><div class="led-bar" style="background:#e2e8f0"></div><div class="led-bar" style="background:#e2e8f0"></div>
+                </div>
+                <div class="name">Sync</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ZAMNA Hawaii -->
+<section class="section zamna-section" id="zamna">
+    <div class="zamna-content">
+        <div class="zamna-info reveal">
+            <div class="section-label">ZAMNA Hawaii 2026</div>
+            <h2>9/4 ZAMNA Hawaii で<br>1,000 台導入予定</h2>
+            <p>
+                ハワイ最大級の野外フェスティバルで、来場者全員に Koe COIN を配布。
+                1,000 台のメッシュネットワークが会場を包み、
+                音楽と光がリアルタイムで同期する体験を生み出します。
+            </p>
+            <div class="zamna-stats">
+                <div class="zamna-stat reveal reveal-delay-1">
+                    <div class="num">1,000</div>
+                    <div class="label">台数</div>
+                </div>
+                <div class="zamna-stat reveal reveal-delay-2">
+                    <div class="num">9/4</div>
+                    <div class="label">開催日</div>
+                </div>
+                <div class="zamna-stat reveal reveal-delay-3">
+                    <div class="num">P2P</div>
+                    <div class="label">メッシュ</div>
+                </div>
+            </div>
+        </div>
+        <div class="zamna-visual reveal">
+            <div class="zamna-mesh">
+                <svg viewBox="0 0 360 360" fill="none">
+                    <!-- Mesh lines -->
+                    <line x1="180" y1="60" x2="80" y2="140" class="mesh-line"/>
+                    <line x1="180" y1="60" x2="280" y2="140" class="mesh-line"/>
+                    <line x1="80" y1="140" x2="140" y2="240" class="mesh-line"/>
+                    <line x1="280" y1="140" x2="220" y2="240" class="mesh-line"/>
+                    <line x1="140" y1="240" x2="220" y2="240" class="mesh-line"/>
+                    <line x1="80" y1="140" x2="280" y2="140" class="mesh-line"/>
+                    <line x1="180" y1="60" x2="140" y2="240" class="mesh-line"/>
+                    <line x1="180" y1="60" x2="220" y2="240" class="mesh-line"/>
+                    <line x1="140" y1="240" x2="100" y2="320" class="mesh-line"/>
+                    <line x1="220" y1="240" x2="260" y2="320" class="mesh-line"/>
+                    <line x1="100" y1="320" x2="260" y2="320" class="mesh-line"/>
+                    <line x1="80" y1="140" x2="100" y2="320" class="mesh-line"/>
+                    <line x1="280" y1="140" x2="260" y2="320" class="mesh-line"/>
+                    <!-- Nodes -->
+                    <circle cx="180" cy="60" r="14" class="mesh-node mesh-node-active"/>
+                    <circle cx="80" cy="140" r="10" class="mesh-node"/>
+                    <circle cx="280" cy="140" r="10" class="mesh-node"/>
+                    <circle cx="140" cy="240" r="10" class="mesh-node mesh-node-active"/>
+                    <circle cx="220" cy="240" r="10" class="mesh-node"/>
+                    <circle cx="100" cy="320" r="10" class="mesh-node"/>
+                    <circle cx="260" cy="320" r="10" class="mesh-node mesh-node-active"/>
+                    <circle cx="180" cy="180" r="6" class="mesh-node mesh-node-active"/>
+                    <!-- Labels -->
+                    <text x="180" y="42" text-anchor="middle" fill="#06b6d4" font-size="10" font-weight="600">DJ</text>
+                    <text x="180" y="365" text-anchor="middle" fill="#8b91a8" font-size="9">1,000 nodes mesh</text>
+                </svg>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Preorder CTA -->
+<section class="section cta-section" id="preorder">
+    <div class="reveal">
+        <div class="section-label">Pre-order</div>
+        <h2>Koe COIN を手に入れる</h2>
+        <p class="sub">先行予約価格 &yen;8,000（通常 &yen;9,800）。2026年8月出荷予定。</p>
+    </div>
+
+    <div class="cta-actions reveal">
+        <a href="#" class="btn-primary" onclick="alert('Stripe決済は近日公開予定です。');return false;">
+            先行予約する &mdash; &yen;8,000
+        </a>
+    </div>
+    <p class="hero-note reveal">送料無料 &middot; 2026年8月出荷予定 &middot; 30日間返金保証</p>
+</section>
+
+<div class="footer-divider"></div>
+
+<!-- Footer -->
+<footer>
+    <div class="f-logo">&#9670; Koe COIN</div>
+    <div class="f-links">
+        <a href="https://solun.art">solun.art</a>
+        <a href="/protocol">Protocol</a>
+        <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+        <a href="https://koe.live" target="_blank">koe.live</a>
+    </div>
+    <div class="f-copy">&copy; 2026 Soluna Project</div>
+</footer>
+
+<script>
+/* ── Scroll reveal ── */
+const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.15 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+/* ── Auto language detect ── */
+if (/^en/i.test(navigator.language)) {
+    const map = {
+        '先行予約価格': 'Early bird price',
+        '通常価格': 'Regular price',
+        '先行予約する': 'Pre-order now',
+        '先行予約する \u2014 \u00a58,000': 'Pre-order now \u2014 \u00a58,000',
+        '2026年8月出荷予定': 'Shipping August 2026',
+        '技適認証済み (201-220017)': 'Japan certified (201-220017)',
+        'USB-C 充電': 'USB-C charging',
+        '送料無料': 'Free shipping',
+        '予約する': 'Pre-order',
+        '26mm。音楽メッシュネットワークの最小単位。': '26mm. The smallest unit of the music mesh network.',
+        'WiFi に繋ぐだけで、全員がひとつの音でつながる。': 'Just connect to WiFi. Everyone shares one sound.',
+        '手のひらに収まるメッシュノード': 'A mesh node that fits in your palm',
+        '必要なものは全て 26mm の中に。': 'Everything you need in 26mm.',
+        'サイズ': 'Size',
+        '26mm 丸型': '26mm round',
+        'ポケットに入る超小型設計': 'Ultra-compact pocket-size design',
+        'チップ': 'Chip',
+        '接続': 'Connectivity',
+        'WiFi + Bluetooth': 'WiFi + Bluetooth',
+        '自動メッシュネットワーク構築': 'Auto mesh network formation',
+        'バッテリー': 'Battery',
+        'USB-C 充電': 'USB-C charging',
+        'イベント中ずっと持続': 'Lasts through the event',
+        'LED': 'LED',
+        '音楽と同期して光る': 'Lights sync with music',
+        '8 パターン搭載': '8 patterns built-in',
+        '用途': 'Use cases',
+        '会場メッシュノード': 'Venue mesh node',
+        '個人リスナーデバイス': 'Personal listener device',
+        'つなぐ。それだけ。': 'Connect. That\'s it.',
+        'セットアップは不要。電源を入れれば、すべてが自動で始まります。': 'No setup needed. Power on and everything starts automatically.',
+        'WiFi に繋ぐ': 'Connect to WiFi',
+        '電源を入れて WiFi に接続。ボタンひとつ、パスワード入力だけ。': 'Power on and connect to WiFi. One button, one password.',
+        'ネットワークに参加': 'Join the network',
+        '自動的に Soluna ネットワークを検出して接続。設定は不要。': 'Automatically discovers and joins the Soluna network. No config needed.',
+        '音楽を中継': 'Relay music',
+        '周囲の音楽を中継してネットワークに貢献。みんなの体験を広げる。': 'Relay nearby music to contribute to the network. Expand the experience for everyone.',
+        'LED で光る': 'Light up with LED',
+        '音楽と同期して LED が光る。8 パターンから自動選択。会場が一体になる。': 'LEDs sync with music. 8 auto-selected patterns. The venue becomes one.',
+        'LED パターン': 'LED Patterns',
+        '音楽のジャンルやテンポに合わせて自動で切り替わります。': 'Automatically switches based on genre and tempo.',
+        '9/4 ZAMNA Hawaii で': '1,000 units at',
+        '1,000 台導入予定': 'ZAMNA Hawaii on 9/4',
+        'ハワイ最大級の野外フェスティバルで、来場者全員に Koe COIN を配布。': 'Distributed to all attendees at Hawaii\'s largest outdoor festival.',
+        '1,000 台のメッシュネットワークが会場を包み、': 'A mesh network of 1,000 units covers the venue,',
+        '音楽と光がリアルタイムで同期する体験を生み出します。': 'creating a real-time synced experience of music and light.',
+        '台数': 'Units',
+        '開催日': 'Date',
+        'メッシュ': 'Mesh',
+        'Koe COIN を手に入れる': 'Get your Koe COIN',
+        '先行予約価格 ¥8,000（通常 ¥9,800）。2026年8月出荷予定。': 'Early bird ¥8,000 (regular ¥9,800). Shipping August 2026.',
+        '送料無料 · 2026年8月出荷予定 · 30日間返金保証': 'Free shipping · Shipping Aug 2026 · 30-day money-back guarantee',
+        '30日間返金保証': '30-day money-back guarantee'
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+        const walk = (node) => {
+            if (node.nodeType === 3) {
+                let t = node.textContent.trim();
+                if (map[t]) node.textContent = node.textContent.replace(t, map[t]);
+            } else {
+                node.childNodes.forEach(walk);
+            }
+        };
+        walk(document.body);
+    });
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna Brand Guidelines — Logo, colors, typography, and usage rules for the Soluna identity.">
+    <meta name="theme-color" content="#05060a">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <title>Soluna — Brand Guidelines</title>
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --cyan:   #06b6d4;
+            --green:  #10b981;
+            --purple: #8b5cf6;
+            --amber:  #f59e0b;
+            --pink:   #ec4899;
+            --sol:    #f59e0b;
+            --sol-end:#ec4899;
+            --luna:   #06b6d4;
+            --luna-end:#8b5cf6;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ── Scroll reveal ─────────────────────────────── */
+        .reveal {
+            opacity: 0; transform: translateY(30px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+        }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        /* ── Nav ───────────────────────────────────────── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 max(20px, calc(50% - 580px));
+            height: 60px;
+            background: rgba(5,6,10,0.7);
+            backdrop-filter: blur(24px) saturate(1.8);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-logo {
+            font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+            display: flex; align-items: center; gap: 8px;
+            text-decoration: none; color: var(--text);
+        }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 24px; }
+        .nav-links a {
+            color: var(--text2); text-decoration: none; font-size: 14px;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--text); }
+
+        /* ── Layout ────────────────────────────────────── */
+        .section {
+            padding: 100px max(20px, calc(50% - 580px));
+        }
+        .section-label {
+            font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; margin-bottom: 14px;
+            background: linear-gradient(90deg, var(--cyan), var(--pink));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        h1 {
+            font-size: clamp(40px, 8vw, 72px);
+            font-weight: 800; letter-spacing: -0.04em;
+            line-height: 1.05; margin-bottom: 24px;
+        }
+        h2 {
+            font-size: clamp(28px, 5vw, 44px);
+            font-weight: 800; letter-spacing: -0.03em;
+            line-height: 1.15; margin-bottom: 16px;
+        }
+        h3 {
+            font-size: 20px; font-weight: 700;
+            letter-spacing: -0.01em; margin-bottom: 12px;
+        }
+        .sub {
+            font-size: 17px; color: var(--text2); line-height: 1.7;
+            max-width: 560px;
+        }
+        .divider {
+            border: none; border-top: 1px solid var(--border);
+            margin: 0;
+        }
+
+        /* ── Hero ──────────────────────────────────────── */
+        .hero {
+            position: relative;
+            padding: 160px max(20px, calc(50% - 580px)) 100px;
+            text-align: center; overflow: hidden;
+        }
+        .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+        .hero-orb {
+            position: absolute; border-radius: 50%;
+            filter: blur(120px); opacity: 0.12;
+            animation: orb-float 20s ease-in-out infinite;
+        }
+        .hero-orb-1 { width: 500px; height: 500px; background: var(--cyan); top: -10%; right: 15%; }
+        .hero-orb-2 { width: 400px; height: 400px; background: var(--pink); bottom: -5%; left: 10%; animation-delay: -7s; }
+        .hero-orb-3 { width: 300px; height: 300px; background: var(--amber); top: 30%; left: 45%; animation-delay: -14s; }
+        @keyframes orb-float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -20px) scale(1.05); }
+            66% { transform: translate(-20px, 15px) scale(0.95); }
+        }
+        .hero-content { position: relative; z-index: 1; }
+        .hero-content .sub { margin: 0 auto; }
+        .h1-grad {
+            background: linear-gradient(135deg, #fff, rgba(255,255,255,0.55));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* ── Anchor nav ────────────────────────────────── */
+        .section-nav {
+            display: flex; flex-wrap: wrap; gap: 12px;
+            justify-content: center; margin-top: 40px;
+        }
+        .section-nav a {
+            padding: 8px 20px; border-radius: 10px;
+            background: var(--s2); border: 1px solid var(--border2);
+            color: var(--text2); text-decoration: none;
+            font-size: 14px; font-weight: 500;
+            transition: all 0.2s;
+        }
+        .section-nav a:hover {
+            background: var(--s3); color: var(--text);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        /* ── Logo showcase ─────────────────────────────── */
+        .logo-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px; margin-top: 40px;
+        }
+        .logo-card {
+            border-radius: 20px; border: 1px solid var(--border);
+            padding: 60px 40px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 24px; position: relative; overflow: hidden;
+            transition: border-color 0.3s;
+        }
+        .logo-card:hover { border-color: var(--border2); }
+        .logo-card.dark { background: var(--bg); }
+        .logo-card.light { background: #f5f5f7; }
+        .logo-card.light .logo-card-label { color: #1d1d1f; }
+        .logo-card-label {
+            font-size: 13px; font-weight: 600; color: var(--text3);
+            letter-spacing: 0.06em; text-transform: uppercase;
+        }
+
+        /* ── 6A: Frequency Bars Mark ──────────────────── */
+        .mark-6a {
+            display: flex; align-items: flex-end;
+            gap: 5px; height: 80px;
+        }
+        .mark-6a.large { height: 120px; gap: 7px; }
+        .mark-6a .bar {
+            width: 10px; border-radius: 5px;
+            animation: eq-bounce 1.4s ease-in-out infinite;
+        }
+        .mark-6a.large .bar { width: 14px; border-radius: 7px; }
+        .mark-6a.static .bar { animation: none; }
+        .mark-6a .bar:nth-child(1) { height: 35%; background: var(--cyan); animation-delay: 0s; }
+        .mark-6a .bar:nth-child(2) { height: 55%; background: #22a8d4; animation-delay: 0.15s; }
+        .mark-6a .bar:nth-child(3) { height: 80%; background: #8b5cf6; animation-delay: 0.3s; }
+        .mark-6a .bar:nth-child(4) { height: 100%; background: var(--pink); animation-delay: 0.45s; }
+        .mark-6a .bar:nth-child(5) { height: 70%; background: #f472b6; animation-delay: 0.6s; }
+        .mark-6a .bar:nth-child(6) { height: 50%; background: #f59e0b; animation-delay: 0.75s; }
+        .mark-6a .bar:nth-child(7) { height: 30%; background: #fbbf24; animation-delay: 0.9s; }
+        @keyframes eq-bounce {
+            0%, 100% { transform: scaleY(1); }
+            50% { transform: scaleY(0.4); }
+        }
+
+        /* ── 6D: Circular EQ Mark ─────────────────────── */
+        .mark-6d {
+            position: relative; width: 80px; height: 80px;
+        }
+        .mark-6d.large { width: 120px; height: 120px; }
+        .mark-6d-inner {
+            position: absolute; inset: 0;
+            animation: slow-rotate 12s linear infinite;
+        }
+        .mark-6d.static .mark-6d-inner { animation: none; }
+        .mark-6d .radial-bar {
+            position: absolute; left: 50%; top: 50%;
+            width: 4px; border-radius: 2px;
+            transform-origin: center bottom;
+            animation: radial-pulse 1.6s ease-in-out infinite;
+        }
+        .mark-6d.large .radial-bar { width: 6px; border-radius: 3px; }
+        @keyframes slow-rotate { to { transform: rotate(360deg); } }
+        @keyframes radial-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
+        }
+
+        /* ── Clearspace / sizing ───────────────────────── */
+        .clearspace-demo {
+            display: inline-flex; align-items: center; justify-content: center;
+            border: 2px dashed rgba(236,72,153,0.3);
+            border-radius: 16px; position: relative;
+            margin-top: 40px;
+        }
+        .clearspace-demo::after {
+            content: 'x'; position: absolute; right: -24px; top: 50%;
+            transform: translateY(-50%); color: var(--pink);
+            font-size: 12px; font-weight: 700;
+        }
+        .clearspace-label {
+            position: absolute; font-size: 11px; font-weight: 600;
+            color: var(--pink); letter-spacing: 0.06em;
+        }
+        .clearspace-label.top { top: -20px; left: 50%; transform: translateX(-50%); }
+        .clearspace-label.right { right: -40px; top: 50%; transform: translateY(-50%); }
+        .spec-row {
+            display: flex; gap: 48px; margin-top: 32px;
+            flex-wrap: wrap;
+        }
+        .spec-item { flex: 1; min-width: 180px; }
+        .spec-item .label { font-size: 13px; color: var(--text3); margin-bottom: 4px; }
+        .spec-item .value { font-size: 20px; font-weight: 700; }
+
+        /* ── Usage grid ────────────────────────────────── */
+        .usage-grid {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 24px; margin-top: 40px;
+        }
+        @media (max-width: 700px) { .usage-grid { grid-template-columns: 1fr; } }
+        .usage-card {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 16px; padding: 32px;
+        }
+        .usage-card h4 {
+            font-size: 16px; font-weight: 700; margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .usage-card ul { list-style: none; }
+        .usage-card li {
+            padding: 6px 0; color: var(--text2); font-size: 15px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .usage-card li::before {
+            content: ''; width: 6px; height: 6px; border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .usage-card.primary li::before { background: var(--cyan); }
+        .usage-card.secondary li::before { background: var(--pink); }
+
+        /* ── Do's / Don'ts ─────────────────────────────── */
+        .dos-donts {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px; margin-top: 40px;
+        }
+        .do-dont-card {
+            background: var(--s1); border-radius: 16px;
+            overflow: hidden; border: 1px solid var(--border);
+        }
+        .do-dont-preview {
+            height: 160px; display: flex; align-items: center;
+            justify-content: center; position: relative;
+        }
+        .do-dont-preview.bad { opacity: 0.5; }
+        .do-dont-preview.bad::after {
+            content: ''; position: absolute; inset: 0;
+            background: repeating-linear-gradient(
+                -45deg, transparent, transparent 8px,
+                rgba(239,68,68,0.08) 8px, rgba(239,68,68,0.08) 16px
+            );
+        }
+        .do-dont-label {
+            padding: 16px 20px; font-size: 14px; font-weight: 600;
+            display: flex; align-items: center; gap: 8px;
+            border-top: 1px solid var(--border);
+        }
+        .do-dont-label.do { color: #34d399; }
+        .do-dont-label.dont { color: #f87171; }
+
+        /* ── Color palette ─────────────────────────────── */
+        .palette {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px; margin-top: 40px;
+        }
+        .swatch {
+            border-radius: 16px; overflow: hidden;
+            border: 1px solid var(--border);
+            cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .swatch:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+        .swatch-color {
+            height: 100px; display: flex; align-items: flex-end;
+            padding: 12px 16px;
+        }
+        .swatch-info {
+            padding: 16px; background: var(--s1);
+        }
+        .swatch-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+        .swatch-hex { font-size: 13px; color: var(--text3); font-family: "SF Mono", monospace; }
+        .swatch-toast {
+            position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(20px);
+            background: var(--s3); color: var(--text); padding: 12px 24px;
+            border-radius: 12px; font-size: 14px; font-weight: 600;
+            opacity: 0; transition: all 0.3s ease; pointer-events: none;
+            z-index: 200; border: 1px solid var(--border2);
+        }
+        .swatch-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        /* ── Typography section ─────────────────────────── */
+        .type-specimen {
+            margin-top: 40px;
+        }
+        .type-row {
+            padding: 32px 0; border-bottom: 1px solid var(--border);
+            display: flex; align-items: baseline; gap: 32px;
+            flex-wrap: wrap;
+        }
+        .type-meta {
+            min-width: 160px; font-size: 13px; color: var(--text3);
+        }
+        .type-meta strong { color: var(--text2); display: block; font-size: 14px; margin-bottom: 4px; }
+        .type-sample-xl {
+            font-size: 48px; font-weight: 800; letter-spacing: -0.03em;
+            flex: 1;
+        }
+        .type-sample-lg {
+            font-size: 32px; font-weight: 700; letter-spacing: -0.02em;
+            flex: 1;
+        }
+        .type-sample-md {
+            font-size: 17px; font-weight: 500; color: var(--text2);
+            flex: 1; line-height: 1.6;
+        }
+        .type-sample-sm {
+            font-size: 13px; font-weight: 600; letter-spacing: 0.08em;
+            text-transform: uppercase; color: var(--text3); flex: 1;
+        }
+
+        /* ── Animation showcase ────────────────────────── */
+        .anim-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px; margin-top: 40px;
+        }
+        .anim-card {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 20px; padding: 40px; text-align: center;
+        }
+        .anim-card h4 {
+            font-size: 15px; font-weight: 700; margin-top: 24px; margin-bottom: 8px;
+        }
+        .anim-card p {
+            font-size: 13px; color: var(--text3);
+        }
+        .anim-preview {
+            height: 120px; display: flex; align-items: center;
+            justify-content: center;
+        }
+
+        /* ── Spinner (6D loading) ──────────────────────── */
+        .spinner-6d {
+            width: 48px; height: 48px; position: relative;
+        }
+        .spinner-6d-inner {
+            position: absolute; inset: 0;
+            animation: slow-rotate 1.2s linear infinite;
+        }
+        .spinner-6d .s-bar {
+            position: absolute; left: 50%; top: 50%;
+            width: 3px; border-radius: 1.5px;
+            transform-origin: center bottom;
+            animation: spinner-fade 1.2s linear infinite;
+        }
+
+        @keyframes spinner-fade {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.15; }
+        }
+
+        /* ── Code snippets ─────────────────────────────── */
+        .code-block {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 12px; padding: 20px 24px;
+            margin-top: 16px; overflow-x: auto;
+            font-family: "SF Mono", "Fira Code", monospace;
+            font-size: 13px; line-height: 1.7;
+            color: var(--text2); position: relative;
+        }
+        .code-block .copy-btn {
+            position: absolute; top: 12px; right: 12px;
+            background: var(--s3); border: 1px solid var(--border2);
+            color: var(--text2); padding: 4px 12px;
+            border-radius: 6px; font-size: 12px; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .code-block .copy-btn:hover { background: var(--s2); color: var(--text); }
+
+        /* ── Downloads ─────────────────────────────────── */
+        .download-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px; margin-top: 40px;
+        }
+        .dl-card {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 16px; padding: 32px; text-align: center;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .dl-card:hover {
+            border-color: var(--border2); transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .dl-card .dl-preview {
+            height: 80px; display: flex; align-items: center;
+            justify-content: center; margin-bottom: 16px;
+        }
+        .dl-card .dl-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+        .dl-card .dl-meta { font-size: 13px; color: var(--text3); }
+        .dl-icon {
+            display: inline-flex; align-items: center; gap: 6px;
+            margin-top: 12px; font-size: 13px; font-weight: 600;
+            color: var(--cyan);
+        }
+
+        /* ── Wordmark ──────────────────────────────────── */
+        .wordmark {
+            font-family: "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+            font-weight: 800; letter-spacing: -0.02em;
+        }
+        .wordmark-gradient {
+            background: linear-gradient(135deg, var(--amber), var(--pink), var(--cyan), var(--purple));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; background-size: 300% auto;
+            animation: wordmark-shift 6s ease-in-out infinite;
+        }
+        @keyframes wordmark-shift {
+            0%, 100% { background-position: 0% center; }
+            50% { background-position: 100% center; }
+        }
+        .wordmark-showcase {
+            display: flex; flex-direction: column; gap: 48px;
+            align-items: center; margin-top: 48px;
+        }
+        .wordmark-row {
+            display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* ── Footer ────────────────────────────────────── */
+        footer {
+            padding: 40px max(20px, calc(50% - 580px));
+            border-top: 1px solid var(--border);
+            text-align: center; font-size: 13px; color: var(--text3);
+        }
+        footer a { color: var(--text2); text-decoration: none; }
+        footer a:hover { color: var(--text); }
+
+        @media (max-width: 600px) {
+            .logo-grid { grid-template-columns: 1fr; }
+            .type-row { flex-direction: column; gap: 12px; }
+            .dos-donts { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── Nav ──────────────────────────────────────────────── -->
+<nav>
+    <a href="/" class="nav-logo">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="ng" x1="0" y1="0" x2="32" y2="32">
+                <stop offset="0%" stop-color="#06b6d4"/>
+                <stop offset="100%" stop-color="#8b5cf6"/>
+            </linearGradient></defs>
+            <circle cx="16" cy="16" r="14" stroke="url(#ng)" stroke-width="2" fill="none"/>
+            <path d="M10 16 C10 10, 22 10, 22 16 C22 22, 10 22, 10 16" stroke="url(#ng)" stroke-width="2" fill="rgba(6,182,212,0.15)"/>
+        </svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/guide">Guide</a>
+        <a href="/for-developers">Developers</a>
+    </div>
+</nav>
+
+<!-- ── Hero ─────────────────────────────────────────────── -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+        <div class="hero-orb hero-orb-3"></div>
+    </div>
+    <div class="hero-content">
+        <div class="section-label">Brand Guidelines</div>
+        <h1><span class="h1-grad">The Soluna Identity</span></h1>
+        <p class="sub" style="margin-bottom: 0;">
+            A complete guide to using the Soluna brand. Logos, colors, typography, animations, and assets for consistent, beautiful representation across every touchpoint.
+        </p>
+        <div class="section-nav">
+            <a href="#logo">Logo</a>
+            <a href="#usage">Usage</a>
+            <a href="#colors">Colors</a>
+            <a href="#typography">Typography</a>
+            <a href="#animations">Animations</a>
+            <a href="#downloads">Downloads</a>
+            <a href="#wordmark">Wordmark</a>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     Section 1: Logo
+     ══════════════════════════════════════════════════════════ -->
+<section id="logo" class="section">
+    <div class="reveal">
+        <div class="section-label">01 / Logo</div>
+        <h2>Logo Marks</h2>
+        <p class="sub">Soluna uses two distinct marks. Each serves a specific purpose and context. Never interchange them arbitrarily.</p>
+    </div>
+
+    <!-- Primary Mark: 6A -->
+    <div class="reveal reveal-delay-1" style="margin-top: 48px;">
+        <h3>Primary Mark &mdash; 6A Frequency Bars</h3>
+        <p class="sub" style="margin-bottom: 0;">Seven vertical equalizer bars in a cyan-to-pink-to-amber gradient. The default representation of Soluna.</p>
+    </div>
+    <div class="logo-grid reveal reveal-delay-2">
+        <div class="logo-card dark">
+            <div class="mark-6a large">
+                <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+            </div>
+            <span class="logo-card-label">Dark background</span>
+        </div>
+        <div class="logo-card light">
+            <div class="mark-6a large">
+                <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+            </div>
+            <span class="logo-card-label">Light background</span>
+        </div>
+    </div>
+
+    <!-- Secondary Mark: 6D -->
+    <div class="reveal reveal-delay-1" style="margin-top: 64px;">
+        <h3>Secondary Mark &mdash; 6D Circular EQ</h3>
+        <p class="sub" style="margin-bottom: 0;">Twelve radial bars arranged in a circle with a pink-to-amber gradient. Ideal for motion contexts.</p>
+    </div>
+    <div class="logo-grid reveal reveal-delay-2">
+        <div class="logo-card dark">
+            <div class="mark-6d large" id="mark6d-dark"></div>
+            <span class="logo-card-label">Dark background</span>
+        </div>
+        <div class="logo-card light">
+            <div class="mark-6d large" id="mark6d-light"></div>
+            <span class="logo-card-label">Light background</span>
+        </div>
+    </div>
+
+    <!-- Clearspace & minimum size -->
+    <div class="reveal" style="margin-top: 64px;">
+        <h3>Clear Space &amp; Minimum Size</h3>
+        <p class="sub">Maintain clear space equal to the height of one bar (denoted as <strong>x</strong>) on all sides. This ensures the mark breathes and retains its impact.</p>
+        <div style="display: flex; gap: 64px; flex-wrap: wrap; align-items: flex-start; margin-top: 32px;">
+            <div style="text-align: center;">
+                <div class="clearspace-demo" style="padding: 32px;">
+                    <div class="mark-6a static">
+                        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                        <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                    </div>
+                </div>
+                <p style="font-size: 13px; color: var(--text3); margin-top: 12px;">Clear space = 1x on every side</p>
+            </div>
+        </div>
+        <div class="spec-row">
+            <div class="spec-item">
+                <div class="label">Minimum size (6A)</div>
+                <div class="value">24px</div>
+            </div>
+            <div class="spec-item">
+                <div class="label">Minimum size (6D)</div>
+                <div class="value">20px</div>
+            </div>
+            <div class="spec-item">
+                <div class="label">Clear space ratio</div>
+                <div class="value">1x</div>
+            </div>
+            <div class="spec-item">
+                <div class="label">Safe zone (print)</div>
+                <div class="value">5mm</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<hr class="divider">
+
+<!-- ══════════════════════════════════════════════════════════
+     Section 2: Usage
+     ══════════════════════════════════════════════════════════ -->
+<section id="usage" class="section">
+    <div class="reveal">
+        <div class="section-label">02 / Usage</div>
+        <h2>When to Use Each Mark</h2>
+        <p class="sub">The two marks serve distinct purposes. Choose based on context and medium.</p>
+    </div>
+
+    <div class="usage-grid reveal reveal-delay-1">
+        <div class="usage-card primary">
+            <h4>
+                <div class="mark-6a" style="height: 20px; gap: 2px;">
+                    <div class="bar" style="width: 4px; border-radius: 2px;"></div>
+                    <div class="bar" style="width: 4px; border-radius: 2px;"></div>
+                    <div class="bar" style="width: 4px; border-radius: 2px;"></div>
+                    <div class="bar" style="width: 4px; border-radius: 2px;"></div>
+                    <div class="bar" style="width: 4px; border-radius: 2px;"></div>
+                    <div class="bar" style="width: 4px; border-radius: 2px;"></div>
+                    <div class="bar" style="width: 4px; border-radius: 2px;"></div>
+                </div>
+                6A &mdash; Primary Mark
+            </h4>
+            <ul>
+                <li>App icon and favicon</li>
+                <li>Website header and navigation</li>
+                <li>Print materials and business cards</li>
+                <li>Merchandise and apparel</li>
+                <li>Press kits and editorial use</li>
+                <li>Splash screens</li>
+            </ul>
+        </div>
+        <div class="usage-card secondary">
+            <h4>
+                <div class="mark-6d" style="width: 20px; height: 20px;" id="mark6d-usage"></div>
+                6D &mdash; Secondary Mark
+            </h4>
+            <ul>
+                <li>Loading and buffering indicator</li>
+                <li>In-app badge and achievement icon</li>
+                <li>Animated transitions</li>
+                <li>Social media profile picture</li>
+                <li>Watermark on audio visualizations</li>
+                <li>Animated stickers and emoji</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Do's and Don'ts -->
+    <div class="reveal" style="margin-top: 64px;">
+        <h3>Do's and Don'ts</h3>
+    </div>
+    <div class="dos-donts reveal reveal-delay-1">
+        <div class="do-dont-card">
+            <div class="do-dont-preview" style="background: var(--bg);">
+                <div class="mark-6a" style="height: 48px; gap: 3px;">
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                </div>
+            </div>
+            <div class="do-dont-label do">&#10003; Use on dark backgrounds</div>
+        </div>
+        <div class="do-dont-card">
+            <div class="do-dont-preview" style="background: #f5f5f7;">
+                <div class="mark-6a" style="height: 48px; gap: 3px;">
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                </div>
+            </div>
+            <div class="do-dont-label do">&#10003; Use on light backgrounds</div>
+        </div>
+        <div class="do-dont-card">
+            <div class="do-dont-preview bad" style="background: var(--bg);">
+                <div class="mark-6a static" style="height: 48px; gap: 3px; transform: rotate(45deg);">
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                </div>
+            </div>
+            <div class="do-dont-label dont">&#10007; Don't rotate the mark</div>
+        </div>
+        <div class="do-dont-card">
+            <div class="do-dont-preview bad" style="background: var(--bg);">
+                <div class="mark-6a static" style="height: 48px; gap: 3px; filter: grayscale(1);">
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                </div>
+            </div>
+            <div class="do-dont-label dont">&#10007; Don't desaturate or recolor</div>
+        </div>
+        <div class="do-dont-card">
+            <div class="do-dont-preview bad" style="background: linear-gradient(135deg, #e74c3c, #8e44ad);">
+                <div class="mark-6a static" style="height: 48px; gap: 3px;">
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                </div>
+            </div>
+            <div class="do-dont-label dont">&#10007; Don't place on clashing gradients</div>
+        </div>
+        <div class="do-dont-card">
+            <div class="do-dont-preview bad" style="background: var(--bg);">
+                <div class="mark-6a static" style="height: 48px; gap: 3px; transform: scaleX(1.8);">
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                </div>
+            </div>
+            <div class="do-dont-label dont">&#10007; Don't stretch or distort</div>
+        </div>
+    </div>
+</section>
+
+<hr class="divider">
+
+<!-- ══════════════════════════════════════════════════════════
+     Section 3: Colors
+     ══════════════════════════════════════════════════════════ -->
+<section id="colors" class="section">
+    <div class="reveal">
+        <div class="section-label">03 / Colors</div>
+        <h2>Color Palette</h2>
+        <p class="sub">The Soluna palette captures the full arc from warm sunlight to cool moonlight. Click any swatch to copy its hex value.</p>
+    </div>
+
+    <div class="palette reveal reveal-delay-1">
+        <div class="swatch" onclick="copySwatch('#f59e0b','Sol (Amber)')">
+            <div class="swatch-color" style="background: #f59e0b;"></div>
+            <div class="swatch-info">
+                <div class="swatch-name">Sol (Amber)</div>
+                <div class="swatch-hex">#f59e0b</div>
+            </div>
+        </div>
+        <div class="swatch" onclick="copySwatch('#ec4899','Sol End (Pink)')">
+            <div class="swatch-color" style="background: #ec4899;"></div>
+            <div class="swatch-info">
+                <div class="swatch-name">Sol End (Pink)</div>
+                <div class="swatch-hex">#ec4899</div>
+            </div>
+        </div>
+        <div class="swatch" onclick="copySwatch('#06b6d4','Luna (Cyan)')">
+            <div class="swatch-color" style="background: #06b6d4;"></div>
+            <div class="swatch-info">
+                <div class="swatch-name">Luna (Cyan)</div>
+                <div class="swatch-hex">#06b6d4</div>
+            </div>
+        </div>
+        <div class="swatch" onclick="copySwatch('#8b5cf6','Luna End (Purple)')">
+            <div class="swatch-color" style="background: #8b5cf6;"></div>
+            <div class="swatch-info">
+                <div class="swatch-name">Luna End (Purple)</div>
+                <div class="swatch-hex">#8b5cf6</div>
+            </div>
+        </div>
+        <div class="swatch" onclick="copySwatch('#05060a','Background')">
+            <div class="swatch-color" style="background: #05060a; border-bottom: 1px solid var(--border);"></div>
+            <div class="swatch-info">
+                <div class="swatch-name">Background</div>
+                <div class="swatch-hex">#05060a</div>
+            </div>
+        </div>
+        <div class="swatch" onclick="copySwatch('#12151f','Surface')">
+            <div class="swatch-color" style="background: #12151f; border-bottom: 1px solid var(--border);"></div>
+            <div class="swatch-info">
+                <div class="swatch-name">Surface</div>
+                <div class="swatch-hex">#12151f</div>
+            </div>
+        </div>
+        <div class="swatch" onclick="copySwatch('#e8eaf2','Text')">
+            <div class="swatch-color" style="background: #e8eaf2;"></div>
+            <div class="swatch-info">
+                <div class="swatch-name">Text</div>
+                <div class="swatch-hex">#e8eaf2</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gradient examples -->
+    <div class="reveal" style="margin-top: 48px;">
+        <h3>Brand Gradients</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 24px;">
+            <div style="height: 80px; border-radius: 16px; background: linear-gradient(135deg, #06b6d4, #ec4899, #f59e0b); display: flex; align-items: center; justify-content: center;">
+                <span style="font-size: 13px; font-weight: 600; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.3);">Luna &rarr; Sol End &rarr; Sol</span>
+            </div>
+            <div style="height: 80px; border-radius: 16px; background: linear-gradient(135deg, #f59e0b, #ec4899, #8b5cf6); display: flex; align-items: center; justify-content: center;">
+                <span style="font-size: 13px; font-weight: 600; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.3);">Sol &rarr; Sol End &rarr; Luna End</span>
+            </div>
+            <div style="height: 80px; border-radius: 16px; background: linear-gradient(135deg, #06b6d4, #8b5cf6); display: flex; align-items: center; justify-content: center;">
+                <span style="font-size: 13px; font-weight: 600; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.3);">Luna &rarr; Luna End</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<hr class="divider">
+
+<!-- ══════════════════════════════════════════════════════════
+     Section 4: Typography
+     ══════════════════════════════════════════════════════════ -->
+<section id="typography" class="section">
+    <div class="reveal">
+        <div class="section-label">04 / Typography</div>
+        <h2>Type System</h2>
+        <p class="sub">A clean, modern type hierarchy that prioritizes readability across all platforms and sizes.</p>
+    </div>
+
+    <div class="type-specimen reveal reveal-delay-1">
+        <div class="type-row">
+            <div class="type-meta">
+                <strong>Display</strong>
+                SF Pro Rounded / 800<br>
+                Headlines, hero text
+            </div>
+            <div class="type-sample-xl" style="font-family: 'SF Pro Rounded', -apple-system, sans-serif;">
+                Sound travels.
+            </div>
+        </div>
+        <div class="type-row">
+            <div class="type-meta">
+                <strong>Heading</strong>
+                SF Pro / Inter / 700<br>
+                Section titles
+            </div>
+            <div class="type-sample-lg">
+                Every frequency matters.
+            </div>
+        </div>
+        <div class="type-row">
+            <div class="type-meta">
+                <strong>Body</strong>
+                SF Pro / Inter / 500<br>
+                Paragraphs, descriptions
+            </div>
+            <div class="type-sample-md">
+                Soluna transforms how audio travels between devices. Broadcast to anyone, anywhere, with sub-millisecond latency and studio-grade fidelity.
+            </div>
+        </div>
+        <div class="type-row">
+            <div class="type-meta">
+                <strong>Label</strong>
+                SF Pro / Inter / 600<br>
+                Tags, section labels
+            </div>
+            <div class="type-sample-sm">
+                Now Playing &middot; Live Channel &middot; Fan Rank
+            </div>
+        </div>
+    </div>
+
+    <div class="reveal" style="margin-top: 48px;">
+        <h3>Font Stack</h3>
+        <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre style="margin:0;">font-family: -apple-system, BlinkMacSystemFont,
+  "SF Pro", "Inter", "Segoe UI", sans-serif;
+
+/* Display / Wordmark */
+font-family: "SF Pro Rounded",
+  -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+
+/* Weights */
+--font-bold: 800;    /* Headlines */
+--font-medium: 500;  /* Body text */
+--font-semi: 600;    /* Labels, UI */</pre>
+        </div>
+    </div>
+</section>
+
+<hr class="divider">
+
+<!-- ══════════════════════════════════════════════════════════
+     Section 5: Animations
+     ══════════════════════════════════════════════════════════ -->
+<section id="animations" class="section">
+    <div class="reveal">
+        <div class="section-label">05 / Animations</div>
+        <h2>Motion Language</h2>
+        <p class="sub">Motion brings the Soluna marks to life. Each animation is purposeful, smooth, and never distracting.</p>
+    </div>
+
+    <div class="anim-grid reveal reveal-delay-1">
+        <!-- Animated 6A -->
+        <div class="anim-card">
+            <div class="anim-preview">
+                <div class="mark-6a large">
+                    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                    <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                </div>
+            </div>
+            <h4>6A Equalizer Bounce</h4>
+            <p>Bars bounce independently to simulate a live equalizer.</p>
+        </div>
+
+        <!-- Animated 6D -->
+        <div class="anim-card">
+            <div class="anim-preview">
+                <div class="mark-6d large" id="mark6d-anim"></div>
+            </div>
+            <h4>6D Circular Pulse</h4>
+            <p>Slow rotation with pulsing radial bars. Hypnotic and ambient.</p>
+        </div>
+
+        <!-- Spinner -->
+        <div class="anim-card">
+            <div class="anim-preview">
+                <div class="spinner-6d" id="spinner-6d"></div>
+            </div>
+            <h4>6D Loading Spinner</h4>
+            <p>Fast rotation, staggered fade. Use for buffering and loading states.</p>
+        </div>
+    </div>
+
+    <!-- Code snippets -->
+    <div class="reveal" style="margin-top: 48px;">
+        <h3>6A Bounce Animation (CSS)</h3>
+        <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre style="margin:0;">@keyframes eq-bounce {
+  0%, 100% { transform: scaleY(1); }
+  50%      { transform: scaleY(0.4); }
+}
+
+.bar {
+  width: 10px;
+  border-radius: 5px;
+  animation: eq-bounce 1.4s ease-in-out infinite;
+}
+
+/* Stagger each bar */
+.bar:nth-child(1) { animation-delay: 0s; }
+.bar:nth-child(2) { animation-delay: 0.15s; }
+.bar:nth-child(3) { animation-delay: 0.3s; }
+.bar:nth-child(4) { animation-delay: 0.45s; }
+.bar:nth-child(5) { animation-delay: 0.6s; }
+.bar:nth-child(6) { animation-delay: 0.75s; }
+.bar:nth-child(7) { animation-delay: 0.9s; }</pre>
+        </div>
+    </div>
+
+    <div class="reveal" style="margin-top: 32px;">
+        <h3>6D Circular Pulse (CSS)</h3>
+        <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre style="margin:0;">@keyframes slow-rotate {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes radial-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+.mark-6d-inner {
+  animation: slow-rotate 12s linear infinite;
+}
+
+.radial-bar {
+  animation: radial-pulse 1.6s ease-in-out infinite;
+}
+
+/* Stagger each of the 12 bars */
+.radial-bar:nth-child(n) {
+  animation-delay: calc(var(--i) * 0.13s);
+}</pre>
+        </div>
+    </div>
+
+    <div class="reveal" style="margin-top: 32px;">
+        <h3>6D Loading Spinner (CSS)</h3>
+        <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre style="margin:0;">@keyframes spinner-fade {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.15; }
+}
+
+.spinner-6d-inner {
+  animation: slow-rotate 1.2s linear infinite;
+}
+
+.s-bar {
+  animation: spinner-fade 1.2s linear infinite;
+  animation-delay: calc(var(--i) * 0.1s);
+}</pre>
+        </div>
+    </div>
+</section>
+
+<hr class="divider">
+
+<!-- ══════════════════════════════════════════════════════════
+     Section 6: Downloads
+     ══════════════════════════════════════════════════════════ -->
+<section id="downloads" class="section">
+    <div class="reveal">
+        <div class="section-label">06 / Downloads</div>
+        <h2>Assets</h2>
+        <p class="sub">Download production-ready SVG files for both marks. All assets are vector and scale to any resolution.</p>
+    </div>
+
+    <div class="download-grid reveal reveal-delay-1">
+        <div class="dl-card" onclick="download6A('dark')">
+            <div class="dl-preview" style="background: var(--bg); border-radius: 12px;">
+                <div class="mark-6a static" style="height: 48px; gap: 3px;">
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                </div>
+            </div>
+            <div class="dl-name">6A Primary &mdash; Dark</div>
+            <div class="dl-meta">SVG &middot; Vector</div>
+            <div class="dl-icon">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                Download SVG
+            </div>
+        </div>
+        <div class="dl-card" onclick="download6A('light')">
+            <div class="dl-preview" style="background: #f5f5f7; border-radius: 12px;">
+                <div class="mark-6a static" style="height: 48px; gap: 3px;">
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                    <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                </div>
+            </div>
+            <div class="dl-name">6A Primary &mdash; Light</div>
+            <div class="dl-meta">SVG &middot; Vector</div>
+            <div class="dl-icon">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                Download SVG
+            </div>
+        </div>
+        <div class="dl-card" onclick="download6D('dark')">
+            <div class="dl-preview" style="background: var(--bg); border-radius: 12px;">
+                <div class="mark-6d static" style="width: 48px; height: 48px;" id="mark6d-dl-dark"></div>
+            </div>
+            <div class="dl-name">6D Secondary &mdash; Dark</div>
+            <div class="dl-meta">SVG &middot; Vector</div>
+            <div class="dl-icon">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                Download SVG
+            </div>
+        </div>
+        <div class="dl-card" onclick="download6D('light')">
+            <div class="dl-preview" style="background: #f5f5f7; border-radius: 12px;">
+                <div class="mark-6d static" style="width: 48px; height: 48px;" id="mark6d-dl-light"></div>
+            </div>
+            <div class="dl-name">6D Secondary &mdash; Light</div>
+            <div class="dl-meta">SVG &middot; Vector</div>
+            <div class="dl-icon">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                Download SVG
+            </div>
+        </div>
+    </div>
+</section>
+
+<hr class="divider">
+
+<!-- ══════════════════════════════════════════════════════════
+     Section 7: Wordmark
+     ══════════════════════════════════════════════════════════ -->
+<section id="wordmark" class="section">
+    <div class="reveal">
+        <div class="section-label">07 / Wordmark</div>
+        <h2>The Soluna Wordmark</h2>
+        <p class="sub">The wordmark uses SF Pro Rounded at 800 weight with the Sol-to-Luna gradient. It can be used with or without the logo mark.</p>
+    </div>
+
+    <div class="wordmark-showcase reveal reveal-delay-1">
+        <!-- Wordmark alone -->
+        <div style="text-align: center;">
+            <div class="wordmark wordmark-gradient" style="font-size: clamp(48px, 10vw, 96px);">SOLUNA</div>
+            <p style="font-size: 13px; color: var(--text3); margin-top: 12px;">Standalone wordmark with gradient</p>
+        </div>
+
+        <!-- Wordmark + 6A -->
+        <div class="wordmark-row" style="background: var(--s1); padding: 40px 48px; border-radius: 20px; border: 1px solid var(--border);">
+            <div class="mark-6a" style="height: 40px; gap: 3px;">
+                <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+                <div class="bar" style="width: 6px; border-radius: 3px;"></div>
+            </div>
+            <div class="wordmark wordmark-gradient" style="font-size: 36px;">SOLUNA</div>
+        </div>
+        <p style="font-size: 13px; color: var(--text3);">6A mark + wordmark lockup</p>
+
+        <!-- Wordmark + 6D -->
+        <div class="wordmark-row" style="background: var(--s1); padding: 40px 48px; border-radius: 20px; border: 1px solid var(--border);">
+            <div class="mark-6d" style="width: 40px; height: 40px;" id="mark6d-wordmark"></div>
+            <div class="wordmark wordmark-gradient" style="font-size: 36px;">SOLUNA</div>
+        </div>
+        <p style="font-size: 13px; color: var(--text3);">6D mark + wordmark lockup</p>
+
+        <!-- White wordmark -->
+        <div class="wordmark-row" style="background: var(--s1); padding: 40px 48px; border-radius: 20px; border: 1px solid var(--border);">
+            <div class="wordmark" style="font-size: 36px; color: var(--text);">SOLUNA</div>
+        </div>
+        <p style="font-size: 13px; color: var(--text3);">Monochrome wordmark for single-color contexts</p>
+    </div>
+</section>
+
+<!-- ── Toast ────────────────────────────────────────────── -->
+<div class="swatch-toast" id="toast"></div>
+
+<!-- ── Footer ──────────────────────────────────────────── -->
+<footer>
+    <p>&copy; Soluna Project. These guidelines are provided to help partners and contributors represent Soluna accurately.</p>
+    <p style="margin-top: 8px;">
+        <a href="/">Home</a> &middot;
+        <a href="https://github.com/yukihamada/opensonic">GitHub</a> &middot;
+        <a href="/for-developers">Developers</a>
+    </p>
+</footer>
+
+<script>
+// ── Build 6D marks programmatically ──────────────────────
+function build6D(container, barCount, size) {
+    const inner = document.createElement('div');
+    inner.className = 'mark-6d-inner';
+    const r = size / 2;
+    const colors = ['#ec4899','#e8458e','#e44c83','#e05378','#dc5a6d','#d86162','#d46857','#d06f4c','#cc7641','#c87d36','#c4842b','#f59e0b'];
+    for (let i = 0; i < barCount; i++) {
+        const angle = (i / barCount) * 360;
+        const bar = document.createElement('div');
+        bar.className = 'radial-bar';
+        const h = r * (0.25 + Math.random() * 0.25);
+        bar.style.cssText = `
+            height: ${h}px;
+            background: ${colors[i % colors.length]};
+            transform: translate(-50%, -100%) rotate(${angle}deg);
+            margin-top: -${r * 0.15}px;
+            animation-delay: ${i * 0.13}s;
+        `;
+        inner.appendChild(bar);
+    }
+    container.appendChild(inner);
+}
+
+document.querySelectorAll('.mark-6d').forEach(el => {
+    const size = el.classList.contains('large') ? 120 :
+                 parseInt(el.style.width) || 80;
+    build6D(el, 12, size);
+});
+
+// ── Build spinner ────────────────────────────────────────
+function buildSpinner(container) {
+    const inner = document.createElement('div');
+    inner.className = 'spinner-6d-inner';
+    const colors = ['#ec4899','#e44c83','#dc5a6d','#d46857','#cc7641','#f59e0b',
+                    '#ec4899','#e44c83','#dc5a6d','#d46857','#cc7641','#f59e0b'];
+    for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * 360;
+        const bar = document.createElement('div');
+        bar.className = 's-bar';
+        bar.style.cssText = `
+            height: 10px;
+            background: ${colors[i]};
+            transform: translate(-50%, -100%) rotate(${angle}deg);
+            margin-top: -4px;
+            animation-delay: ${i * 0.1}s;
+        `;
+        inner.appendChild(bar);
+    }
+    container.appendChild(inner);
+}
+
+const spinner = document.getElementById('spinner-6d');
+if (spinner) buildSpinner(spinner);
+
+// ── Scroll reveal ────────────────────────────────────────
+const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+
+// ── Copy swatch color ────────────────────────────────────
+function copySwatch(hex, name) {
+    navigator.clipboard.writeText(hex).then(() => {
+        const t = document.getElementById('toast');
+        t.textContent = `Copied ${hex} (${name})`;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 2000);
+    });
+}
+
+// ── Copy code block ──────────────────────────────────────
+function copyCode(btn) {
+    const pre = btn.parentElement.querySelector('pre');
+    navigator.clipboard.writeText(pre.textContent).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+}
+
+// ── SVG generation & download ────────────────────────────
+function generate6ASVG(theme) {
+    const bg = theme === 'dark' ? '#05060a' : '#f5f5f7';
+    const bars = [
+        { h: 28, color: '#06b6d4' },
+        { h: 44, color: '#22a8d4' },
+        { h: 64, color: '#8b5cf6' },
+        { h: 80, color: '#ec4899' },
+        { h: 56, color: '#f472b6' },
+        { h: 40, color: '#f59e0b' },
+        { h: 24, color: '#fbbf24' },
+    ];
+    let rects = '';
+    bars.forEach((b, i) => {
+        const x = 16 + i * 18;
+        const y = 90 - b.h;
+        rects += `  <rect x="${x}" y="${y}" width="12" height="${b.h}" rx="6" fill="${b.color}"/>\n`;
+    });
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 100" width="160" height="100">\n  <rect width="160" height="100" rx="16" fill="${bg}"/>\n${rects}</svg>`;
+}
+
+function generate6DSVG(theme) {
+    const bg = theme === 'dark' ? '#05060a' : '#f5f5f7';
+    const cx = 80, cy = 80, r = 60;
+    const colors = ['#ec4899','#e8458e','#e44c83','#e05378','#dc5a6d','#d86162','#d46857','#d06f4c','#cc7641','#c87d36','#c4842b','#f59e0b'];
+    let bars = '';
+    for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2 - Math.PI / 2;
+        const len = 14 + (i % 3) * 6;
+        const x1 = cx + Math.cos(angle) * (r - len);
+        const y1 = cy + Math.sin(angle) * (r - len);
+        const x2 = cx + Math.cos(angle) * r;
+        const y2 = cy + Math.sin(angle) * r;
+        bars += `  <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${colors[i]}" stroke-width="6" stroke-linecap="round"/>\n`;
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">\n  <rect width="160" height="160" rx="16" fill="${bg}"/>\n${bars}</svg>`;
+}
+
+function downloadSVG(svg, filename) {
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function download6A(theme) {
+    downloadSVG(generate6ASVG(theme), `soluna-6a-${theme}.svg`);
+}
+
+function download6D(theme) {
+    downloadSVG(generate6DSVG(theme), `soluna-6d-${theme}.svg`);
+}
+</script>
+</body>
+</html>

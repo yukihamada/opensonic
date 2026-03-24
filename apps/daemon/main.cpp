@@ -3208,10 +3208,10 @@ static int run_tx(DaemonConfig cfg) {
     cfg.low_latency = (cfg.latency_profile == LatencyProfile::LowLatency ||
                        cfg.latency_profile == LatencyProfile::UltraLow);
 
-    // Encode channel count in stream_id upper 4 bits: [4bit ch][12bit stream]
-    // 0x0xxx = legacy (assume 2ch for backward compat)
-    // 0x1xxx = 1ch, 0x2xxx = 2ch, 0x6xxx = 5.1ch, 0x8xxx = 7.1ch
-    cfg.stream_id = static_cast<uint16_t>((cfg.channels << 12) | (cfg.stream_id & 0x0FFF));
+    // Encode stream_id: [2bit deck_id][4bit ch_count][10bit stream_idx]
+    // deck_id=0 default, ch: 0=legacy(2ch), 1=1ch, 2=2ch, 6=5.1ch, 8=7.1ch
+    uint16_t deck_id = 0; // TODO: make configurable
+    cfg.stream_id = static_cast<uint16_t>((deck_id << 14) | (cfg.channels << 10) | (cfg.stream_id & 0x03FF));
 
     // Expose config so ws_handle can use it for monitor
     g_cfg_channels    = cfg.channels;

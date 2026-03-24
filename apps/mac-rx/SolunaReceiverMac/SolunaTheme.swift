@@ -17,6 +17,14 @@ extension Color {
     static let solunaSurface       = Color(red: 0.08, green: 0.08, blue: 0.12)
     static let solunaSurface2      = Color(red: 0.12, green: 0.12, blue: 0.17)
     static let solunaMic           = Color(red: 0.95, green: 0.30, blue: 0.35)
+
+    // Sol (Sun) — warm tones
+    static let solunaSol    = Color(red: 0.96, green: 0.62, blue: 0.04)    // Amber #f59e0b
+    static let solunaSolEnd = Color(red: 0.93, green: 0.29, blue: 0.60)    // Pink #ec4899
+
+    // Luna (Moon) — cool tones
+    static let solunaLuna    = Color(red: 0.02, green: 0.71, blue: 0.83)   // Cyan #06b6d4
+    static let solunaLunaEnd = Color(red: 0.55, green: 0.36, blue: 0.96)   // Purple #8b5cf6
 }
 
 // MARK: - Gradient Presets
@@ -31,6 +39,18 @@ extension LinearGradient {
             Color.solunaGradientStart.opacity(0.15),
             Color.solunaGradientEnd.opacity(0.08)
         ],
+        startPoint: .topLeading, endPoint: .bottomTrailing
+    )
+    static let solGradient = LinearGradient(
+        colors: [.solunaSol, .solunaSolEnd],
+        startPoint: .topLeading, endPoint: .bottomTrailing
+    )
+    static let lunaGradient = LinearGradient(
+        colors: [.solunaLuna, .solunaLunaEnd],
+        startPoint: .topLeading, endPoint: .bottomTrailing
+    )
+    static let solLunaGradient = LinearGradient(
+        colors: [.solunaSol, .solunaSolEnd, .solunaLuna, .solunaLunaEnd],
         startPoint: .topLeading, endPoint: .bottomTrailing
     )
     static let solunaBg = LinearGradient(

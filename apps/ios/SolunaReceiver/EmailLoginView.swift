@@ -1,6 +1,6 @@
 //
 //  EmailLoginView.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Passwordless email login flow (request code → verify)
 //

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna プライバシーポリシー / Privacy Policy">
+    <meta name="theme-color" content="#05060a">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Privacy Policy — Soluna</title>
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --cyan:   #06b6d4;
+            --purple: #8b5cf6;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.8;
+            overflow-x: hidden;
+        }
+
+        /* ── Nav ── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 max(20px, calc(50% - 580px));
+            height: 60px;
+            background: rgba(5,6,10,0.85);
+            backdrop-filter: blur(24px) saturate(1.8);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-logo {
+            font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+            text-decoration: none; color: var(--text);
+        }
+        .lang-toggle {
+            padding: 6px 14px;
+            background: var(--s2);
+            border: 1px solid var(--border2);
+            border-radius: 8px;
+            color: var(--text2);
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+        .lang-toggle:hover { background: var(--s3); color: var(--text); }
+
+        /* ── Content ── */
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 100px 20px 80px;
+        }
+        h1 {
+            font-size: clamp(28px, 5vw, 40px);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .last-updated {
+            font-size: 13px;
+            color: var(--text3);
+            margin-bottom: 48px;
+        }
+        h2 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-top: 48px;
+            margin-bottom: 12px;
+            color: var(--text);
+        }
+        h2::before {
+            content: '';
+            display: inline-block;
+            width: 4px; height: 20px;
+            background: linear-gradient(180deg, var(--blue), var(--purple));
+            border-radius: 2px;
+            margin-right: 10px;
+            vertical-align: text-bottom;
+        }
+        p, li {
+            color: var(--text2);
+            font-size: 15px;
+            margin-bottom: 12px;
+        }
+        ul {
+            padding-left: 20px;
+            margin-bottom: 16px;
+        }
+        li { margin-bottom: 6px; }
+        a { color: var(--blue); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin: 16px 0;
+        }
+        .card p:last-child { margin-bottom: 0; }
+        .footer-links {
+            margin-top: 64px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            font-size: 13px;
+            color: var(--text3);
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/" class="nav-logo">Soluna</a>
+    <button class="lang-toggle" onclick="toggleLang()">English</button>
+</nav>
+
+<!-- ===== Japanese ===== -->
+<div id="ja" class="container">
+    <h1>プライバシーポリシー</h1>
+    <p class="last-updated">最終更新日: 2026年3月19日</p>
+
+    <p>株式会社イネブラ（以下「当社」）は、Solunaアプリおよび関連サービス（以下「本サービス」）におけるお客様の個人情報の取り扱いについて、以下のとおりプライバシーポリシーを定めます。</p>
+
+    <h2>1. 収集する情報</h2>
+    <p>当社は、本サービスの提供にあたり、以下の情報を収集することがあります。</p>
+    <ul>
+        <li><strong>メールアドレス</strong>（任意 — アカウント作成時に登録いただいた場合のみ）</li>
+        <li><strong>視聴履歴</strong>（Proof of Listening / ファンランク算出に使用）</li>
+        <li><strong>デバイス情報</strong>（OS種別、アプリバージョン、デバイスモデル）</li>
+        <li><strong>IPアドレス</strong>（接続先リレーサーバの選択・不正利用防止の目的）</li>
+    </ul>
+
+    <h2>2. 収集しない情報</h2>
+    <div class="card">
+        <p>当社は以下の情報を<strong>収集しません</strong>。</p>
+        <ul>
+            <li>氏名・住所・電話番号などの本人確認情報</li>
+            <li>クレジットカード番号・決済情報（サブスクリプション決済はApple / Google が処理します）</li>
+            <li>正確な位置情報（GPS）</li>
+        </ul>
+    </div>
+
+    <h2>3. 情報の利用目的</h2>
+    <ul>
+        <li>本サービスの提供・運営・改善</li>
+        <li>Proof of Listening（視聴証明）に基づくファンランクの算出</li>
+        <li>ENAIポイントの付与・管理</li>
+        <li>お問い合わせへの対応</li>
+        <li>不正利用の検知・防止</li>
+    </ul>
+
+    <h2>4. ENAIポイントについて</h2>
+    <p>ENAIポイントはアプリ内でのみ使用可能なポイントであり、金銭的価値を持ちません。ポイントの現金化、譲渡、換金はできません。</p>
+
+    <h2>5. ブロックチェーンとプライバシー</h2>
+    <p>本サービスではSolanaブロックチェーンを利用しますが、記録されるのは視聴データの<strong>Merkle Rootハッシュ値のみ</strong>です。個人情報や視聴履歴の詳細がブロックチェーン上に記録されることはありません。ハッシュ値から元の個人情報を復元することは技術的に不可能です。</p>
+
+    <h2>6. 第三者への情報提供</h2>
+    <ul>
+        <li><strong>Apple Inc. / Google LLC</strong> — サブスクリプション決済の処理（各社のプライバシーポリシーが適用されます）</li>
+        <li><strong>Solanaブロックチェーン</strong> — 匿名化されたハッシュ値の記録のみ</li>
+    </ul>
+    <p>上記を除き、法令に基づく場合を除いて、お客様の個人情報を第三者に提供することはありません。</p>
+
+    <h2>7. データの保管期間</h2>
+    <p>お客様の情報は、アカウントが削除されるまで保管されます。アカウント削除のご依頼は、アプリ内の設定画面または下記お問い合わせ先にて承ります。</p>
+
+    <h2>8. お子様のプライバシー</h2>
+    <p>本サービスは13歳未満のお子様を対象としていません。13歳未満の方が個人情報を提供されたことが判明した場合、速やかに当該情報を削除いたします。</p>
+
+    <h2>9. プライバシーポリシーの変更</h2>
+    <p>当社は、必要に応じて本ポリシーを変更することがあります。重要な変更がある場合は、アプリ内通知またはウェブサイト上でお知らせいたします。</p>
+
+    <h2>10. お問い合わせ</h2>
+    <div class="card">
+        <p><strong>株式会社イネブラ</strong></p>
+        <p>メール: <a href="mailto:mail@yukihamada.jp">mail@yukihamada.jp</a></p>
+    </div>
+
+    <div class="footer-links">
+        <a href="/">Soluna トップページ</a>
+        <a href="/terms.html">利用規約</a>
+    </div>
+</div>
+
+<!-- ===== English ===== -->
+<div id="en" class="container hidden">
+    <h1>Privacy Policy</h1>
+    <p class="last-updated">Last updated: March 19, 2026</p>
+
+    <p>Inebra Inc. ("we", "us", or "the Company") operates the Soluna app and related services (the "Service"). This Privacy Policy explains how we collect, use, and protect your information.</p>
+
+    <h2>1. Information We Collect</h2>
+    <ul>
+        <li><strong>Email address</strong> (optional — only if you register an account)</li>
+        <li><strong>Listening history</strong> (used for Proof of Listening / Fan Rank calculation)</li>
+        <li><strong>Device information</strong> (OS type, app version, device model)</li>
+        <li><strong>IP address</strong> (for relay server routing and abuse prevention)</li>
+    </ul>
+
+    <h2>2. Information We Do NOT Collect</h2>
+    <div class="card">
+        <ul>
+            <li>Real name, address, or phone number</li>
+            <li>Credit card or payment information (subscriptions are processed by Apple / Google)</li>
+            <li>Precise location data (GPS)</li>
+        </ul>
+    </div>
+
+    <h2>3. How We Use Your Information</h2>
+    <ul>
+        <li>Providing, operating, and improving the Service</li>
+        <li>Calculating Fan Rank based on Proof of Listening</li>
+        <li>Managing ENAI point distribution</li>
+        <li>Responding to support inquiries</li>
+        <li>Detecting and preventing fraudulent use</li>
+    </ul>
+
+    <h2>4. ENAI Points</h2>
+    <p>ENAI points are in-app only and hold no monetary value. They cannot be converted to cash, transferred, or exchanged.</p>
+
+    <h2>5. Blockchain and Privacy</h2>
+    <p>The Service uses the Solana blockchain, but only <strong>Merkle Root hashes</strong> of aggregated listening data are recorded on-chain. No personal information or detailed listening history is ever written to the blockchain. It is technically impossible to reconstruct personal data from these hash values.</p>
+
+    <h2>6. Third-Party Services</h2>
+    <ul>
+        <li><strong>Apple Inc. / Google LLC</strong> — subscription payment processing (their respective privacy policies apply)</li>
+        <li><strong>Solana blockchain</strong> — anonymous hash recording only</li>
+    </ul>
+    <p>We do not share your personal information with any other third parties except as required by law.</p>
+
+    <h2>7. Data Retention</h2>
+    <p>Your data is retained until you delete your account. You can request account deletion from the app settings or by contacting us at the address below.</p>
+
+    <h2>8. Children's Privacy</h2>
+    <p>The Service is not intended for children under 13. If we become aware that a child under 13 has provided personal information, we will promptly delete it.</p>
+
+    <h2>9. Changes to This Policy</h2>
+    <p>We may update this Privacy Policy from time to time. Significant changes will be communicated via in-app notification or on our website.</p>
+
+    <h2>10. Contact Us</h2>
+    <div class="card">
+        <p><strong>Inebra Inc.</strong> (&#26666;&#24335;&#20250;&#31038;&#12452;&#12493;&#12502;&#12521;)</p>
+        <p>Email: <a href="mailto:mail@yukihamada.jp">mail@yukihamada.jp</a></p>
+    </div>
+
+    <div class="footer-links">
+        <a href="/">Soluna Home</a>
+        <a href="/terms.html">Terms of Service</a>
+    </div>
+</div>
+
+<script>
+function toggleLang() {
+    const ja = document.getElementById('ja');
+    const en = document.getElementById('en');
+    const btn = document.querySelector('.lang-toggle');
+    if (ja.classList.contains('hidden')) {
+        ja.classList.remove('hidden');
+        en.classList.add('hidden');
+        btn.textContent = 'English';
+        document.documentElement.lang = 'ja';
+    } else {
+        ja.classList.add('hidden');
+        en.classList.remove('hidden');
+        btn.textContent = '日本語';
+        document.documentElement.lang = 'en';
+    }
+}
+</script>
+</body>
+</html>

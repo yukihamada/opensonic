@@ -58,8 +58,8 @@ static void load_default_config(sol_config_t* cfg) {
     cfg->rtp_port = SOL_PORT_RTP;
     cfg->ssrc = SOL_SSRC_DEFAULT;
     strncpy(cfg->device_name, "soluna-esp32", sizeof(cfg->device_name) - 1);
-    strncpy(cfg->wifi_ssid, "SolunaAudio", sizeof(cfg->wifi_ssid) - 1);
-    cfg->wifi_pass[0] = '\0';  /* Open network by default */
+    strncpy(cfg->wifi_ssid, "Hama-Fi-IoT", sizeof(cfg->wifi_ssid) - 1);
+    strncpy(cfg->wifi_pass, "sushiramen", sizeof(cfg->wifi_pass) - 1);  /* Open network by default */
     cfg->fec_enabled = 1;
     cfg->target_latency_ms = 8.0f;
 }

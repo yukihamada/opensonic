@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna 利用規約 / Terms of Service">
+    <meta name="theme-color" content="#05060a">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Terms of Service — Soluna</title>
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --cyan:   #06b6d4;
+            --purple: #8b5cf6;
+            --amber:  #f59e0b;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.8;
+            overflow-x: hidden;
+        }
+
+        /* ── Nav ── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 max(20px, calc(50% - 580px));
+            height: 60px;
+            background: rgba(5,6,10,0.85);
+            backdrop-filter: blur(24px) saturate(1.8);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-logo {
+            font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+            text-decoration: none; color: var(--text);
+        }
+        .lang-toggle {
+            padding: 6px 14px;
+            background: var(--s2);
+            border: 1px solid var(--border2);
+            border-radius: 8px;
+            color: var(--text2);
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+        .lang-toggle:hover { background: var(--s3); color: var(--text); }
+
+        /* ── Content ── */
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 100px 20px 80px;
+        }
+        h1 {
+            font-size: clamp(28px, 5vw, 40px);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .last-updated {
+            font-size: 13px;
+            color: var(--text3);
+            margin-bottom: 48px;
+        }
+        h2 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-top: 48px;
+            margin-bottom: 12px;
+            color: var(--text);
+        }
+        h2::before {
+            content: '';
+            display: inline-block;
+            width: 4px; height: 20px;
+            background: linear-gradient(180deg, var(--blue), var(--purple));
+            border-radius: 2px;
+            margin-right: 10px;
+            vertical-align: text-bottom;
+        }
+        p, li {
+            color: var(--text2);
+            font-size: 15px;
+            margin-bottom: 12px;
+        }
+        ul, ol {
+            padding-left: 20px;
+            margin-bottom: 16px;
+        }
+        li { margin-bottom: 6px; }
+        a { color: var(--blue); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .card {
+            background: var(--s1);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin: 16px 0;
+        }
+        .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            color: var(--text);
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            background: var(--s1);
+        }
+        td { color: var(--text2); }
+        tr:last-child td { border-bottom: none; }
+        .plan-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .plan-free { background: rgba(16,185,129,0.15); color: #10b981; }
+        .plan-pro { background: rgba(59,130,246,0.15); color: #3b82f6; }
+        .plan-studio { background: rgba(139,92,246,0.15); color: #8b5cf6; }
+        .footer-links {
+            margin-top: 64px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            font-size: 13px;
+            color: var(--text3);
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/" class="nav-logo">Soluna</a>
+    <button class="lang-toggle" onclick="toggleLang()">English</button>
+</nav>
+
+<!-- ===== Japanese ===== -->
+<div id="ja" class="container">
+    <h1>利用規約</h1>
+    <p class="last-updated">最終更新日: 2026年3月19日</p>
+
+    <p>本利用規約（以下「本規約」）は、株式会社イネブラ（以下「当社」）が提供するSolunaアプリおよび関連サービス（以下「本サービス」）の利用条件を定めるものです。本サービスを利用することにより、お客様は本規約に同意したものとみなされます。</p>
+
+    <h2>1. サブスクリプションプラン</h2>
+    <p>本サービスは以下のプランを提供します。</p>
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>プラン</th>
+                    <th>月額料金</th>
+                    <th>主な内容</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="plan-badge plan-free">Free</span></td>
+                    <td>無料</td>
+                    <td>基本視聴・ファンランク</td>
+                </tr>
+                <tr>
+                    <td><span class="plan-badge plan-pro">Pro</span></td>
+                    <td>¥500 / 月</td>
+                    <td>高音質・優先リレー・上位ファンランク特典</td>
+                </tr>
+                <tr>
+                    <td><span class="plan-badge plan-studio">Studio</span></td>
+                    <td>¥2,000 / 月</td>
+                    <td>チャンネル配信・アナリティクス・プロDJ機能</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <p>有料プランの料金はApple App StoreまたはGoogle Play Store経由で課金されます。料金は変更される場合があり、変更時は事前に通知いたします。</p>
+
+    <h2>2. ENAIポイント</h2>
+    <ul>
+        <li>ENAIポイントはアプリ内でのみ使用可能であり、<strong>金銭的価値を持ちません</strong>。</li>
+        <li>ポイントの現金化、他のユーザーへの譲渡、交換はできません。</li>
+        <li>ポイントの払い戻しは行いません。</li>
+        <li>当社は、不正行為が認められた場合、ポイントを取り消す権利を留保します。</li>
+    </ul>
+
+    <h2>3. ファンランク</h2>
+    <ul>
+        <li>ファンランクは、Proof of Listening（視聴証明）に基づいて算出される<strong>装飾的・体験的な指標</strong>です。</li>
+        <li>ファンランクにより、限定コンテンツへのアクセスやバッジの表示など、コスメティック/アクセス特典が付与されることがあります。</li>
+        <li>ファンランクは<strong>金銭的リターン、配当、投資利益を保証するものではありません</strong>。</li>
+    </ul>
+
+    <h2>4. コンテンツとチャンネル</h2>
+    <ul>
+        <li>ユーザーは自身のチャンネルを作成し、音声コンテンツを配信できます。</li>
+        <li>公開チャンネルで著作権のある楽曲を使用する場合、ユーザーはJASRACその他の著作権管理団体の規定を遵守する責任を負います。</li>
+        <li>当社は、本規約に違反するコンテンツを事前の通知なく削除する権利を有します。</li>
+        <li>ユーザーが作成したコンテンツの著作権はユーザーに帰属しますが、本サービス上での配信に必要な範囲で当社に非独占的ライセンスを許諾するものとします。</li>
+    </ul>
+
+    <h2>5. 禁止行為</h2>
+    <p>以下の行為を禁止します。</p>
+    <ul>
+        <li>ボット、スクリプト等による自動視聴（ボットファーミング）</li>
+        <li>再生回数・視聴時間の不正操作</li>
+        <li>他のユーザーへのなりすまし</li>
+        <li>本サービスへの不正アクセス・リバースエンジニアリング</li>
+        <li>他のユーザーの利用を妨げる行為</li>
+        <li>法令または公序良俗に反する行為</li>
+    </ul>
+    <p>違反が確認された場合、当社はアカウントの停止・削除、ENAIポイントの取消を行うことがあります。</p>
+
+    <h2>6. サブスクリプションの解約</h2>
+    <p>有料プランはいつでも解約できます。解約はApple App StoreまたはGoogle Play Storeのサブスクリプション管理画面から行ってください。解約後も、課金期間の終了まで有料機能をご利用いただけます。日割り返金は行いません。</p>
+
+    <h2>7. 免責事項</h2>
+    <ul>
+        <li>本サービスは「現状有姿」で提供されます。</li>
+        <li>当社は、本サービスの中断、データの消失、第三者による不正アクセス等について、法令で許容される範囲で責任を負いません。</li>
+        <li>ユーザーが配信するコンテンツに起因する著作権侵害等については、当該ユーザーが責任を負うものとします。</li>
+    </ul>
+
+    <h2>8. 規約の変更</h2>
+    <p>当社は、必要に応じて本規約を変更することがあります。重要な変更がある場合は、アプリ内通知またはウェブサイト上でお知らせいたします。変更後に本サービスを継続して利用された場合、変更後の規約に同意したものとみなされます。</p>
+
+    <h2>9. 準拠法・管轄</h2>
+    <p>本規約は日本法に準拠し、日本法に従って解釈されます。本規約に関連する紛争は、東京地方裁判所を第一審の専属的合意管轄裁判所とします。</p>
+
+    <h2>10. お問い合わせ</h2>
+    <div class="card">
+        <p><strong>株式会社イネブラ</strong></p>
+        <p>メール: <a href="mailto:mail@yukihamada.jp">mail@yukihamada.jp</a></p>
+    </div>
+
+    <div class="footer-links">
+        <a href="/">Soluna トップページ</a>
+        <a href="/privacy.html">プライバシーポリシー</a>
+    </div>
+</div>
+
+<!-- ===== English ===== -->
+<div id="en" class="container hidden">
+    <h1>Terms of Service</h1>
+    <p class="last-updated">Last updated: March 19, 2026</p>
+
+    <p>These Terms of Service ("Terms") govern your use of the Soluna app and related services ("Service") provided by Inebra Inc. ("we", "us", or "the Company"). By using the Service, you agree to these Terms.</p>
+
+    <h2>1. Subscription Plans</h2>
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Plan</th>
+                    <th>Price</th>
+                    <th>Features</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="plan-badge plan-free">Free</span></td>
+                    <td>Free</td>
+                    <td>Basic listening, Fan Rank</td>
+                </tr>
+                <tr>
+                    <td><span class="plan-badge plan-pro">Pro</span></td>
+                    <td>¥500 / month</td>
+                    <td>Hi-fi audio, priority relay, Fan Rank perks</td>
+                </tr>
+                <tr>
+                    <td><span class="plan-badge plan-studio">Studio</span></td>
+                    <td>¥2,000 / month</td>
+                    <td>Channel broadcasting, analytics, pro DJ tools</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <p>Paid plans are billed through the Apple App Store or Google Play Store. Prices are subject to change with prior notice.</p>
+
+    <h2>2. ENAI Points</h2>
+    <ul>
+        <li>ENAI points are usable only within the app and <strong>hold no monetary value</strong>.</li>
+        <li>Points cannot be converted to cash, transferred to other users, or exchanged.</li>
+        <li>Points are non-refundable.</li>
+        <li>We reserve the right to revoke points in cases of fraudulent activity.</li>
+    </ul>
+
+    <h2>3. Fan Rank</h2>
+    <ul>
+        <li>Fan Rank is a <strong>cosmetic and experiential metric</strong> calculated from Proof of Listening data.</li>
+        <li>Fan Rank may grant access to exclusive content, badges, and other cosmetic/access perks.</li>
+        <li>Fan Rank <strong>does not guarantee any financial returns, dividends, or investment gains</strong>.</li>
+    </ul>
+
+    <h2>4. Content and Channels</h2>
+    <ul>
+        <li>Users may create channels and broadcast audio content.</li>
+        <li>When using copyrighted music on public channels, users are responsible for compliance with JASRAC and other applicable copyright management organizations.</li>
+        <li>We reserve the right to remove content that violates these Terms without prior notice.</li>
+        <li>Copyright of user-created content remains with the user, but you grant us a non-exclusive license to the extent necessary to distribute the content through the Service.</li>
+    </ul>
+
+    <h2>5. Prohibited Conduct</h2>
+    <ul>
+        <li>Automated listening via bots, scripts, or similar tools (bot farming)</li>
+        <li>Manipulation of play counts or listening time</li>
+        <li>Impersonating other users</li>
+        <li>Unauthorized access to the Service or reverse engineering</li>
+        <li>Interfering with other users' access to the Service</li>
+        <li>Any activity that violates applicable laws or public order</li>
+    </ul>
+    <p>Violations may result in account suspension or termination and revocation of ENAI points.</p>
+
+    <h2>6. Cancellation</h2>
+    <p>You may cancel your paid subscription at any time through the Apple App Store or Google Play Store subscription settings. After cancellation, you retain access to paid features until the end of the current billing period. No prorated refunds are provided.</p>
+
+    <h2>7. Disclaimer</h2>
+    <ul>
+        <li>The Service is provided "as is" without warranties of any kind.</li>
+        <li>To the extent permitted by law, we are not liable for service interruptions, data loss, or unauthorized third-party access.</li>
+        <li>Users are solely responsible for copyright infringement arising from content they distribute.</li>
+    </ul>
+
+    <h2>8. Changes to These Terms</h2>
+    <p>We may update these Terms from time to time. Significant changes will be communicated via in-app notification or on our website. Continued use of the Service after changes constitutes acceptance of the updated Terms.</p>
+
+    <h2>9. Governing Law</h2>
+    <p>These Terms are governed by and construed in accordance with the laws of Japan. Any disputes arising from these Terms shall be subject to the exclusive jurisdiction of the Tokyo District Court as the court of first instance.</p>
+
+    <h2>10. Contact Us</h2>
+    <div class="card">
+        <p><strong>Inebra Inc.</strong> (&#26666;&#24335;&#20250;&#31038;&#12452;&#12493;&#12502;&#12521;)</p>
+        <p>Email: <a href="mailto:mail@yukihamada.jp">mail@yukihamada.jp</a></p>
+    </div>
+
+    <div class="footer-links">
+        <a href="/">Soluna Home</a>
+        <a href="/privacy.html">Privacy Policy</a>
+    </div>
+</div>
+
+<script>
+function toggleLang() {
+    const ja = document.getElementById('ja');
+    const en = document.getElementById('en');
+    const btn = document.querySelector('.lang-toggle');
+    if (ja.classList.contains('hidden')) {
+        ja.classList.remove('hidden');
+        en.classList.add('hidden');
+        btn.textContent = 'English';
+        document.documentElement.lang = 'ja';
+    } else {
+        ja.classList.add('hidden');
+        en.classList.remove('hidden');
+        btn.textContent = '日本語';
+        document.documentElement.lang = 'en';
+    }
+}
+</script>
+</body>
+</html>

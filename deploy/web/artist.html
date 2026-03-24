@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <script>if(!sessionStorage.getItem('lang-set')&&/^en/i.test(navigator.language)){document.documentElement.lang='en'}</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna Artist Profile — アーティストの音楽をリアルタイムで聴こう。ファンランクを上げて特別な体験を。">
+    <meta name="theme-color" content="#05060a">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Artist — Soluna</title>
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --cyan:   #06b6d4;
+            --green:  #10b981;
+            --purple: #8b5cf6;
+            --amber:  #f59e0b;
+            --pink:   #ec4899;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ── Scroll reveal ── */
+        .reveal {
+            opacity: 0; transform: translateY(30px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+        }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+
+        /* ── Nav ── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 max(20px, calc(50% - 580px));
+            height: 60px;
+            background: rgba(5,6,10,0.7);
+            backdrop-filter: blur(24px) saturate(1.8);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-logo {
+            font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+            display: flex; align-items: center; gap: 8px;
+            text-decoration: none; color: var(--text);
+        }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 24px; }
+        .nav-links a {
+            color: var(--text2); text-decoration: none; font-size: 14px;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--text); font-weight: 600; }
+        .nav-cta {
+            padding: 8px 18px;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            color: #fff !important;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 13px !important;
+            transition: opacity 0.2s, transform 0.2s !important;
+            box-shadow: 0 2px 12px rgba(59,130,246,0.3);
+        }
+        .nav-cta:hover { opacity: 0.9; transform: translateY(-1px) !important; }
+
+        /* ── Hero Banner ── */
+        .artist-hero {
+            position: relative;
+            padding: 160px max(20px, calc(50% - 580px)) 60px;
+            overflow: hidden;
+        }
+        .artist-hero-bg {
+            position: absolute; inset: 0; z-index: 0;
+            overflow: hidden;
+        }
+        .artist-hero-bg .orb {
+            position: absolute; border-radius: 50%;
+            filter: blur(120px); opacity: 0.18;
+            animation: orb-float 20s ease-in-out infinite;
+        }
+        .orb-1 { width: 600px; height: 600px; background: var(--purple); top: -20%; right: -5%; }
+        .orb-2 { width: 400px; height: 400px; background: var(--blue); bottom: -15%; left: 10%; animation-delay: -7s !important; }
+        .orb-3 { width: 300px; height: 300px; background: var(--pink); top: 20%; left: 50%; animation-delay: -14s !important; }
+        @keyframes orb-float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -20px) scale(1.05); }
+            66% { transform: translate(-20px, 15px) scale(0.95); }
+        }
+        .artist-hero-content {
+            position: relative; z-index: 1;
+            display: flex; align-items: flex-end; gap: 32px;
+            flex-wrap: wrap;
+        }
+        .artist-avatar {
+            width: 140px; height: 140px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            display: flex; align-items: center; justify-content: center;
+            font-size: 56px; flex-shrink: 0;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            border: 3px solid rgba(255,255,255,0.1);
+        }
+        .artist-info { flex: 1; min-width: 240px; }
+        .artist-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+            text-transform: uppercase; margin-bottom: 12px;
+            color: #60a5fa;
+        }
+        .artist-badge svg { width: 14px; height: 14px; }
+        .artist-name {
+            font-size: clamp(32px, 6vw, 56px);
+            font-weight: 800; letter-spacing: -0.03em;
+            line-height: 1.1; margin-bottom: 16px;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.6) 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .artist-actions {
+            display: flex; gap: 12px; flex-wrap: wrap;
+        }
+        .btn-primary {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 28px;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            color: #fff; text-decoration: none;
+            border-radius: 14px; font-weight: 600; font-size: 15px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 24px rgba(59,130,246,0.35);
+            border: none; cursor: pointer;
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(59,130,246,0.45); }
+        .btn-secondary {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 28px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border2);
+            color: var(--text); text-decoration: none;
+            border-radius: 14px; font-weight: 600; font-size: 15px;
+            transition: all 0.2s; cursor: pointer;
+        }
+        .btn-secondary:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); }
+
+        /* ── Section ── */
+        .section {
+            padding: 80px max(20px, calc(50% - 580px));
+        }
+        .section-label {
+            font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; margin-bottom: 14px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        h2 {
+            font-size: clamp(24px, 4vw, 36px);
+            font-weight: 800; letter-spacing: -0.03em;
+            line-height: 1.15; margin-bottom: 16px;
+        }
+
+        /* ── Stats ── */
+        .stats-row {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px; margin-bottom: 0;
+        }
+        .stat-card {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px;
+            transition: border-color 0.2s;
+        }
+        .stat-card:hover { border-color: var(--border2); }
+        .stat-value {
+            font-size: 32px; font-weight: 800;
+            letter-spacing: -0.02em; margin-bottom: 4px;
+        }
+        .stat-value.blue { color: var(--blue); }
+        .stat-value.green { color: var(--green); }
+        .stat-value.purple { color: var(--purple); }
+        .stat-value.amber { color: var(--amber); }
+        .stat-label { font-size: 14px; color: var(--text2); }
+
+        /* ── Fan Rank ── */
+        .rank-section { padding-top: 0; }
+        .rank-grid {
+            display: flex; flex-direction: column; gap: 14px;
+            max-width: 600px;
+        }
+        .rank-row {
+            display: flex; align-items: center; gap: 14px;
+        }
+        .rank-label {
+            width: 100px; font-size: 14px; font-weight: 600;
+            display: flex; align-items: center; gap: 8px;
+            flex-shrink: 0;
+        }
+        .rank-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .rank-bar-wrap {
+            flex: 1; height: 10px; background: var(--s2);
+            border-radius: 6px; overflow: hidden;
+        }
+        .rank-bar {
+            height: 100%; border-radius: 6px;
+            transition: width 1s ease;
+        }
+        .rank-count {
+            font-size: 13px; color: var(--text2);
+            width: 48px; text-align: right; flex-shrink: 0;
+        }
+
+        /* ── Revenue ── */
+        .revenue-card {
+            background: linear-gradient(135deg, rgba(16,185,129,0.06), rgba(6,182,212,0.06));
+            border: 1px solid rgba(16,185,129,0.15);
+            border-radius: 20px; padding: 40px;
+            display: flex; gap: 32px; align-items: center;
+            flex-wrap: wrap;
+        }
+        .revenue-icon {
+            width: 64px; height: 64px; border-radius: 16px;
+            background: rgba(16,185,129,0.1);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px; flex-shrink: 0;
+        }
+        .revenue-text { flex: 1; min-width: 240px; }
+        .revenue-text h3 {
+            font-size: 20px; font-weight: 700; margin-bottom: 8px;
+        }
+        .revenue-text p { font-size: 15px; color: var(--text2); line-height: 1.7; }
+        .revenue-pct {
+            font-size: 48px; font-weight: 800; color: var(--green);
+            letter-spacing: -0.03em; flex-shrink: 0;
+        }
+
+        /* ── Tracks ── */
+        .track-list {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 16px; overflow: hidden;
+        }
+        .track-item {
+            display: flex; align-items: center; gap: 16px;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+        }
+        .track-item:last-child { border-bottom: none; }
+        .track-item:hover { background: rgba(255,255,255,0.02); }
+        .track-num {
+            font-size: 14px; color: var(--text3);
+            width: 28px; text-align: center; flex-shrink: 0;
+        }
+        .track-info { flex: 1; }
+        .track-title { font-size: 15px; font-weight: 600; }
+        .track-meta { font-size: 13px; color: var(--text3); }
+        .track-coming {
+            padding: 40px; text-align: center;
+            color: var(--text3); font-size: 15px;
+        }
+
+        /* ── CTA ── */
+        .cta-section {
+            text-align: center;
+            padding: 80px max(20px, calc(50% - 580px));
+        }
+        .cta-card {
+            background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(236,72,153,0.08));
+            border: 1px solid rgba(139,92,246,0.15);
+            border-radius: 24px; padding: 64px 40px;
+        }
+        .cta-card h2 { margin-bottom: 16px; }
+        .cta-card p {
+            font-size: 16px; color: var(--text2);
+            max-width: 480px; margin: 0 auto 32px; line-height: 1.7;
+        }
+
+        /* ── Footer ── */
+        .footer-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(59,130,246,0.3), var(--border), transparent);
+        }
+        footer {
+            padding: 40px max(20px, calc(50% - 580px));
+            display: flex; flex-wrap: wrap; align-items: center;
+            justify-content: space-between; gap: 16px;
+        }
+        footer .f-logo { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        footer .f-links { display: flex; gap: 24px; }
+        footer .f-links a { font-size: 13px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
+        footer .f-links a:hover { color: var(--text2); }
+        footer .f-copy { font-size: 12px; color: var(--text3); }
+
+        /* ── Responsive ── */
+        @media (max-width: 768px) {
+            .nav-links .hide-sm { display: none; }
+            .artist-avatar { width: 100px; height: 100px; font-size: 40px; }
+            .artist-hero-content { gap: 20px; }
+            .revenue-card { padding: 28px; }
+            .revenue-pct { font-size: 36px; }
+            .cta-card { padding: 40px 24px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/soluna" class="hide-sm">Home</a>
+        <a href="/channels" class="hide-sm">Channels</a>
+        <a href="/protocol" class="hide-sm">Protocol</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/dashboard" class="nav-cta">ダッシュボード</a>
+    </div>
+</nav>
+
+<!-- Artist Hero -->
+<section class="artist-hero">
+    <div class="artist-hero-bg">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+    <div class="artist-hero-content">
+        <div class="artist-avatar" id="artist-avatar">&#127925;</div>
+        <div class="artist-info">
+            <div class="artist-badge">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                <span id="badge-label">認証済みアーティスト</span>
+            </div>
+            <h1 class="artist-name" id="artist-name">Artist</h1>
+            <div class="artist-actions">
+                <a href="/dashboard" class="btn-primary" id="listen-btn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <span id="listen-label">聴く</span>
+                </a>
+                <button class="btn-secondary" id="follow-btn" onclick="this.textContent='フォロー中 ✓';this.style.borderColor='var(--green)';this.style.color='var(--green)'">
+                    <span id="follow-label">フォローする</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Stats -->
+<section class="section reveal">
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-value blue" id="stat-listens">12,480</div>
+            <div class="stat-label" id="label-listens">総再生回数</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value green" id="stat-fans">342</div>
+            <div class="stat-label" id="label-fans">ファン</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value purple" id="stat-channels">3</div>
+            <div class="stat-label" id="label-channels">アクティブチャンネル</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value amber" id="stat-hours">1,280</div>
+            <div class="stat-label" id="label-hours">配信時間</div>
+        </div>
+    </div>
+</section>
+
+<!-- Fan Rank Distribution -->
+<section class="section rank-section reveal">
+    <div class="section-label" id="rank-section-label">Fan Ranks</div>
+    <h2 id="rank-title">ファンランク分布</h2>
+    <p style="color:var(--text2);margin-bottom:32px;max-width:480px" id="rank-desc">
+        聴けば聴くほどランクが上がります。上位ランクではライブ優先入場などの特典も。
+    </p>
+    <div class="rank-grid">
+        <div class="rank-row">
+            <div class="rank-label"><span class="rank-dot" style="background:#cd7f32"></span> Bronze</div>
+            <div class="rank-bar-wrap"><div class="rank-bar" style="width:65%;background:linear-gradient(90deg,#cd7f32,#daa06d)"></div></div>
+            <div class="rank-count">218</div>
+        </div>
+        <div class="rank-row">
+            <div class="rank-label"><span class="rank-dot" style="background:#c0c0c0"></span> Silver</div>
+            <div class="rank-bar-wrap"><div class="rank-bar" style="width:40%;background:linear-gradient(90deg,#a8a8a8,#d0d0d0)"></div></div>
+            <div class="rank-count">78</div>
+        </div>
+        <div class="rank-row">
+            <div class="rank-label"><span class="rank-dot" style="background:#ffd700"></span> Gold</div>
+            <div class="rank-bar-wrap"><div class="rank-bar" style="width:22%;background:linear-gradient(90deg,#daa520,#ffd700)"></div></div>
+            <div class="rank-count">32</div>
+        </div>
+        <div class="rank-row">
+            <div class="rank-label"><span class="rank-dot" style="background:#e5e4e2"></span> Platinum</div>
+            <div class="rank-bar-wrap"><div class="rank-bar" style="width:8%;background:linear-gradient(90deg,#c0c5ce,#e8e8e8)"></div></div>
+            <div class="rank-count">11</div>
+        </div>
+        <div class="rank-row">
+            <div class="rank-label"><span class="rank-dot" style="background:#b9f2ff"></span> Diamond</div>
+            <div class="rank-bar-wrap"><div class="rank-bar" style="width:3%;background:linear-gradient(90deg,#76d7ea,#b9f2ff)"></div></div>
+            <div class="rank-count">3</div>
+        </div>
+    </div>
+</section>
+
+<!-- Revenue Transparency -->
+<section class="section reveal" style="padding-top:0">
+    <div class="revenue-card">
+        <div class="revenue-icon">&#127911;</div>
+        <div class="revenue-text">
+            <h3 id="revenue-title">アーティストに直接届く</h3>
+            <p id="revenue-desc">サブスクリプション収益の70%がアーティストに還元されます。あなたが聴くだけで、好きなアーティストを支えられます。</p>
+        </div>
+        <div class="revenue-pct">70%</div>
+    </div>
+</section>
+
+<!-- Track List -->
+<section class="section reveal" style="padding-top:0">
+    <div class="section-label" id="tracks-label">Tracks</div>
+    <h2 id="tracks-title">トラックリスト</h2>
+    <div class="track-list" style="margin-top:24px">
+        <div class="track-coming" id="tracks-coming">
+            Coming soon &mdash; アーティストがトラックを追加すると、ここに表示されます。
+        </div>
+    </div>
+</section>
+
+<!-- Become an Artist CTA -->
+<section class="cta-section">
+    <div class="cta-card reveal">
+        <h2 id="cta-title">アーティストとして参加しよう</h2>
+        <p id="cta-desc">あなたの音楽をリアルタイムで世界に届けましょう。チャンネルを作成して、ファンとつながる新しい体験を。</p>
+        <a href="/dashboard" class="btn-primary" id="cta-btn">はじめる</a>
+    </div>
+</section>
+
+<div class="footer-divider"></div>
+
+<footer style="flex-direction:column;align-items:stretch;gap:32px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:32px">
+        <div>
+            <div class="f-logo" style="margin-bottom:12px">&#9670; Soluna</div>
+            <p style="font-size:13px;color:var(--text3);line-height:1.6;max-width:240px">
+                オープンソースのネットワークオーディオ。あなたの音楽を、世界中のスピーカーへ。
+            </p>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">プロダクト</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="/dashboard">Dashboard</a>
+                <a href="/channels">Channels</a>
+                <a href="/guide">セットアップガイド</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">Technology</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="/protocol">OSTP プロトコル仕様</a>
+                <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+            </div>
+        </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-top:1px solid var(--border);padding-top:24px">
+        <div class="f-copy">&copy; 2024-2026 Soluna Project &middot; MIT License &middot; Open Source</div>
+    </div>
+</footer>
+
+<script>
+// Get artist name from URL
+const params = new URLSearchParams(window.location.search);
+const artistName = params.get('name') || 'Unknown Artist';
+const displayName = artistName.charAt(0).toUpperCase() + artistName.slice(1);
+
+// Set page title and artist name
+document.title = displayName + ' — Soluna';
+document.getElementById('artist-name').textContent = displayName;
+
+// Set avatar based on name
+const avatarMap = {
+    'yuki': '&#127928;',
+    'soluna': '&#9670;',
+    'bjj': '&#129354;',
+    'jazz': '&#127927;',
+    'chill': '&#127754;',
+    'lofi': '&#127911;',
+    'dance': '&#128165;',
+};
+const avatar = document.getElementById('artist-avatar');
+if (avatarMap[artistName.toLowerCase()]) {
+    avatar.innerHTML = avatarMap[artistName.toLowerCase()];
+}
+
+// Set "Listen Now" link to artist channel
+document.getElementById('listen-btn').href = '/dashboard?channel=' + encodeURIComponent(artistName.toLowerCase());
+
+// Scroll reveal
+const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// Animate rank bars on scroll
+const rankObserver = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+        if (e.isIntersecting) {
+            e.target.querySelectorAll('.rank-bar').forEach(bar => {
+                const w = bar.style.width;
+                bar.style.width = '0';
+                requestAnimationFrame(() => { bar.style.width = w; });
+            });
+            rankObserver.unobserve(e.target);
+        }
+    });
+}, { threshold: 0.3 });
+const rankGrid = document.querySelector('.rank-grid');
+if (rankGrid) rankObserver.observe(rankGrid);
+
+// Auto-detect English
+if (/^en/i.test(navigator.language) && !sessionStorage.getItem('lang-set')) {
+    document.getElementById('badge-label').textContent = 'Verified Artist';
+    document.getElementById('listen-label').textContent = 'Listen Now';
+    document.getElementById('follow-label').textContent = 'Follow';
+    document.getElementById('label-listens').textContent = 'Total Listens';
+    document.getElementById('label-fans').textContent = 'Fans';
+    document.getElementById('label-channels').textContent = 'Active Channels';
+    document.getElementById('label-hours').textContent = 'Hours Streamed';
+    document.getElementById('rank-section-label').textContent = 'Fan Ranks';
+    document.getElementById('rank-title').textContent = 'Fan Rank Distribution';
+    document.getElementById('rank-desc').textContent = 'The more you listen, the higher your rank. Top ranks unlock exclusive perks like priority live access.';
+    document.getElementById('revenue-title').textContent = 'Direct to Artists';
+    document.getElementById('revenue-desc').textContent = '70% of subscription revenue goes directly to artists. Just by listening, you support the artists you love.';
+    document.getElementById('tracks-label').textContent = 'Tracks';
+    document.getElementById('tracks-title').textContent = 'Track List';
+    document.getElementById('tracks-coming').innerHTML = 'Coming soon &mdash; Tracks will appear here once the artist adds them.';
+    document.getElementById('cta-title').textContent = 'Become an Artist';
+    document.getElementById('cta-desc').textContent = 'Share your music with the world in real time. Create a channel and connect with fans in a whole new way.';
+    document.getElementById('cta-btn').textContent = 'Get Started';
+    document.getElementById('follow-btn').onclick = function() {
+        this.textContent = 'Following ✓';
+        this.style.borderColor = 'var(--green)';
+        this.style.color = 'var(--green)';
+    };
+}
+</script>
+
+</body>
+</html>

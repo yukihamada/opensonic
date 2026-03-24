@@ -1,158 +1,225 @@
-# Soluna iOS — 新機能実装計画
+# Soluna Web Audio Receiver — 5 Improvements
 
 ## 概要
-4つの機能を優先順に実装する。
-1. @username をメインUIに目立つ表示
-2. @mention 着信通知（電話ライクなコール）
-3. 受信音声の自動録音
-4. Apple Speech による自動文字起こし
-
----
+ブラウザ音声受信パイプラインに5つの改善を実施する。
+ワンタップ再生ページ、SharedArrayBuffer零コピーバッファ、Opus WASMフォールバック、
+WASM-in-AudioWorklet統合、WebTransportサポート。
 
 ## 調査結果
 
-### 既存コード把握
-- `AuthManager.swift`: `username` プロパティ (@Published) 既にあり。`setUsername` / `checkUsername` API 実装済み。
-- `EmailLoginView.swift`: ログイン後にusername設定フローあり。ただしSettings画面経由でしか開けない。
-- `ContentView.swift` `headerBar`: HStack に globe/qrcode/gear ボタンのみ。@username 表示なし。
-- `SettingsView.swift`: `showLogin` state あり、Auth section は settings 内のみ。
-- `SolunaReceiverApp.swift`: AVAudioSession は `.playback` のみ。録音 (`.record` or `.playAndRecord`) は未設定。
-- relay `main.cpp`: `/api/auth/*` 全実装済み。@mention 用の push notification エンドポイントは**未実装**。
-- Push 通知: `SolunaReceiverApp.swift` に APNs 登録コードなし。Info.plist / Entitlements 要確認。
+### 現行アーキテクチャ
 
-### 注意点
-- 録音を追加する場合は `AVAudioSession` category を `.playAndRecord` に変更が必要（SolunaReceiverApp.swift）
-- @mention 通知はリレー側に新 API エンドポイント (`POST /api/notify/mention`) + APNs 連携が必要
-- Speech framework は iOS 17 以降 on-device 推論が安定。認可 (`NSSpeechRecognitionUsageDescription`) が Info.plist 必要
-- CallKit を使うと電話ライクな UI になるが、VoIP entitlement が必要 → 初期は UNUserNotificationCenter の critical alert で代替可能
+```
+WebSocket (wss://relay.solun.art/ws/audio?channel=xxx)
+  ↓ ArrayBuffer (OSTP/RTP binary)
+Main Thread (soluna-audio.js)
+  ├─ SolunaPlayer (WASM) — push_packet → pull_audio (L/R Float32Array)
+  ├─ SolunaOpusBridge (WebCodecs) — PT_OPUS → AudioDecoder → push_decoded_opus
+  └─ postMessage({ type:'audio', l, r }) ← structured clone (コピー発生)
+       ↓
+AudioWorklet (soluna-worklet.js / wasm/soluna-worklet.js)
+  └─ 内部 Float32Array リングバッファ → process() で出力
+       ↓
+GainNode → AnalyserNode → destination
+```
 
----
+### 関連ファイル
 
-## 優先順位と実装ステップ
+| ファイル | 役割 | 行数 |
+|---------|------|------|
+| `web/wasm/soluna-audio.js` | WASM ローダー + SolunaAudio API | 481 |
+| `web/wasm/soluna-worklet.js` | AudioWorklet (WASM dashboard用, stereo) | 64 |
+| `web/soluna-worklet.js` | AudioWorklet (listen.js用, mono) | 59 |
+| `web/wasm/soluna-opus-bridge.js` | WebCodecs Opus encode/decode | 281 |
+| `web/listen.js` | ラジオプレーヤー (S24 直デコード, 非WASM) | 475 |
+| `web/listen.html` | ラジオ UI (タップオーバーレイ付き) | ~500 |
+| `web/app.js` | ダッシュボード (WASM使用) | 154K |
+| `crates/soluna-wasm/src/lib.rs` | Rust WASM コア (RX/TX + ring buffer) | ~600 |
+| `crates/soluna-wasm/Cargo.toml` | wasm-bindgen + soluna-core | 20 |
+| `crates/soluna-quic-relay/` | QUIC↔UDP ブリッジ (quinn) | ~300 |
+| `apps/relay/main.cpp` | C++ リレーサーバー (WebSocket `/ws/audio`) | ~10K |
 
----
+### 既存パターン・注意点
 
-### Feature 1: @username をメインUIに目立つ表示（優先度: 高・工数: 小）
-
-**目標**: ログイン済みなら headerBar に `@username` バッジを表示。未ログイン/未設定なら「ログイン」ボタンを表示。
-
-#### 変更ファイル
-- `ContentView.swift` — `headerBar` に username/login ボタン追加
-- `ContentView.swift` — `@StateObject private var auth = AuthManager.shared` を追加
-- `ContentView.swift` — `@State private var showLogin = false` + `.sheet(isPresented: $showLogin) { EmailLoginView(auth: auth) }` 追加
-
-#### ステップ
-- [ ] Step 1: ContentView に `@StateObject private var auth = AuthManager.shared` を追加（小）
-- [ ] Step 2: `headerBar` の先頭（SOLUNA title の右下）に条件分岐ボタンを配置（小）
-  - `auth.username != nil` → `@username` capsule ボタン（タップで EmailLoginView ログイン情報表示）
-  - `auth.isAuthenticated && auth.username == nil` → `@ユーザー名を設定` ボタン
-  - `!auth.isAuthenticated` → `ログイン` ボタン
-- [ ] Step 3: `.sheet(isPresented: $showLogin)` で EmailLoginView を呼び出せるようにする（小）
-
----
-
-### Feature 2: @mention 着信通知（優先度: 高・工数: 大）
-
-**目標**: 誰かが `@yourname` チャンネルに接続すると、iPhoneに電話ライクな通知が届く。
-
-#### 変更ファイル（iOS側）
-- `SolunaReceiverApp.swift` — APNs デバイストークン登録処理追加
-- `AuthManager.swift` — `registerPushToken(_ token: String)` メソッド追加（`POST /api/auth/register-push`）
-- 新規 `NotificationManager.swift` — UNUserNotificationCenter + APNs トークン管理
-
-#### 変更ファイル（リレー側）
-- `apps/relay/main.cpp` — 2つの新 API エンドポイント追加:
-  1. `POST /api/auth/register-push` — デバイスの APNs トークンを users テーブルに保存
-  2. チャンネル接続イベントのフック — channel に `@` prefix があれば対象ユーザーを検索し APNs 送信
-
-#### ステップ
-- [ ] Step 1: `NotificationManager.swift` 新規作成（小）
-  - `UNUserNotificationCenter.current().requestAuthorization`
-  - `UIApplication.shared.registerForRemoteNotifications()`
-  - `didRegisterForRemoteNotificationsWithDeviceToken` → hex string 変換
-- [ ] Step 2: `SolunaReceiverApp.swift` に `AppDelegate` または `onReceive(NotificationCenter...)` で APNs トークン受信処理追加（小）
-- [ ] Step 3: `AuthManager.swift` に `registerPushToken` 追加（小）
-- [ ] Step 4: リレー `main.cpp` に `POST /api/auth/register-push` エンドポイント追加（中）
-  - UserRecord に `apns_token: string` フィールド追加
-  - `users_save` / `users_load` に apns_token を含める
-- [ ] Step 5: リレーの channel join ロジックに @mention 検出フック追加（中）
-  - チャンネル名が `@` で始まる場合、`g_username_to_email` で検索 → APNs 送信
-  - APNs HTTP/2 送信は libcurl + APNs 認証鍵で実装（または既存の libcurl があれば流用）
-- [ ] Step 6: Info.plist に `UNNotificationDefaultActionIdentifier` と Push Notifications capability 追加（小）
-- [ ] Step 7: Xcode で Push Notifications entitlement を有効化（小）
-
-#### リスク
-- APNs 証明書/鍵の管理が必要（.p8 ファイル + key_id + team_id を relay secrets に登録）
-- リレーは C++ で HTTP/2 の APNs API を叩く必要あり → 複雑。初期は Firebase FCM 経由も検討余地あり
+- **2つのワークレット**: `web/soluna-worklet.js`(listen.js用, mono, `soluna-processor`)と `web/wasm/soluna-worklet.js`(app.js用, stereo, `soluna-wasm`)が別々に存在
+- **listen.js は WASM 非使用**: S24-in-S32LE を JS で直接デコード。app.js は WASM (SolunaPlayer) 経由
+- **Opus デコード**: WebCodecs API (Chrome 94+/Safari 16.4+) 依存。非対応ブラウザでは Opus 無効
+- **データ転送**: postMessage + structured clone でバッファコピーが発生 (毎フレーム)
+- **QUIC bridge**: `soluna-quic-relay` が quinn ベースで :5101 に QUIC front-end を提供済み。ただし WebTransport 未対応
+- **deploy 手順**: `cp -r web/* deploy/web/ && cd deploy && fly deploy -a soluna-web`
 
 ---
 
-### Feature 3: 受信音声の自動録音（優先度: 中・工数: 中）
+## 実装ステップ
 
-**目標**: 受信中に自動で m4a / wav ファイルとして Documents に保存。
+### Feature 1: `/c/<channel>` ワンタップ再生ページ（推定: 小）
 
-#### 変更ファイル
-- `SolunaReceiverApp.swift` — AVAudioSession を `.playAndRecord` に変更（録音許可も取得）
-- `AudioReceiver.swift` — 録音開始/停止 API 追加
-- 新規 `AudioRecorder.swift` — AVAudioFile / AVAudioEngine tap による録音ロジック
-- `ContentView.swift` — 録音中インジケーター + 設定トグル
-- `SettingsView.swift` — 「自動録音を有効にする」トグル追加
+既存の `listen.html` + `listen.js` に `/c/<channel>` パスが既に一部対応している
+(`getChannelFromURL()` で `/c/jazz` パースあり)。専用の軽量ページを作成する。
 
-#### ステップ
-- [ ] Step 1: `AudioRecorder.swift` 新規作成（中）
-  - `AVAudioEngine` の output node に `installTap` で PCM バッファをキャプチャ
-  - `AVAudioFile` で Documents/Recordings/`YYYYMMDD-HHmmss.m4a` に書き込み
-  - `startRecording()` / `stopRecording()` / `@Published var isRecording: Bool`
-- [ ] Step 2: `SolunaReceiverApp.swift` の AVAudioSession category を `.playAndRecord` に変更（小）
-  - options: `[.defaultToSpeaker, .allowBluetooth]`
-  - Info.plist に `NSMicrophoneUsageDescription` 追加（録音許可要求のため必須）
-- [ ] Step 3: `AudioReceiver.swift` に `audioRecorder: AudioRecorder?` を持たせ、state が `.receiving` になったら自動録音開始（中）
-- [ ] Step 4: `SettingsView.swift` に `@AppStorage("autoRecord")` トグル追加（小）
-- [ ] Step 5: `ContentView.swift` に録音中を示すインジケーター（赤い REC バッジ）追加（小）
+- [ ] **1-1**: `web/c.html` を作成 — 最小 HTML (インラインCSS/JS、外部依存なし)
+  - チャンネル名表示 + 再生/停止ボタン + 音量スライダー + ビジュアライザー
+  - URL: `/c/jazz` → nginx/Fly.io で `c.html` にルーティング
+  - iOS Safari の autoplay 制約対応: タップオーバーレイ必須
+  - `<meta name="apple-mobile-web-app-capable" content="yes">` でホーム画面対応
+  - Open Graph タグ: チャンネル名動的埋め込み
+- [ ] **1-2**: JS 部分 — `listen.js` から OSTP デコード + WebSocket 接続を抽出して `c.html` にインライン
+  - AudioWorklet (`soluna-worklet.js`) をインラインで `Blob URL` から読み込み
+  - S24-in-S32LE デコードロジックをそのまま移植
+  - 200ms prefill → 自動再生開始
+- [ ] **1-3**: Fly.io nginx 設定更新 — `/c/<channel>` → `c.html` にルーティング
+  - `deploy/` の Dockerfile / nginx.conf を確認・更新
+- [ ] **1-4**: `listen.html` から `/c/<channel>` へのリンクを各チャンネルボタンに追加
 
-#### 注意
-- `.playAndRecord` に変更すると、バックグラウンド再生時の挙動を再テストが必要
-- iOS のサンドボックス制限: 保存先は `FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)` のみ
+### Feature 2: SharedArrayBuffer 零コピーリングバッファ（推定: 中）
+
+現在 postMessage で Float32Array をコピー転送している。SharedArrayBuffer を使い
+メインスレッド ↔ AudioWorklet 間で零コピーにする。
+
+- [ ] **2-1**: COOP/COEP ヘッダー追加
+  - `Cross-Origin-Opener-Policy: same-origin`
+  - `Cross-Origin-Embedder-Policy: require-corp`
+  - Fly.io nginx 設定 or HTML `<meta>` で設定
+  - **注意**: COEP により外部リソース (CDN画像等) が読めなくなる。`credentialless` も検討
+- [ ] **2-2**: `web/wasm/soluna-worklet-sab.js` を新規作成
+  - SharedArrayBuffer ベースの SPSC リングバッファ
+  - 構造: `[writeIdx: Int32 | readIdx: Int32 | L[131072]: Float32 | R[131072]: Float32]`
+  - `Atomics.load/store` で writeIdx/readIdx を同期
+  - `process()`: Atomics.load(readIdx) で読み取り可能量を判定 → 直接 SharedArrayBuffer から出力にコピー
+- [ ] **2-3**: `soluna-audio.js` を更新
+  - AudioContext 生成時に SharedArrayBuffer を確保 (crossOriginIsolated チェック)
+  - AudioWorkletNode 生成時に `processorOptions.sharedBuffer` で SAB を渡す
+  - `_handlePacket()`: pull_audio 結果を SAB に直接書き込み (postMessage 不要)
+  - フォールバック: `crossOriginIsolated === false` の場合は従来の postMessage パス
+- [ ] **2-4**: `listen.js` にも SAB パスを追加 (同じ原理)
+
+### Feature 3: Opus WASM フォールバックデコーダ（推定: 大）
+
+WebCodecs 非対応ブラウザ (Firefox等) で Opus デコードを有効にする。
+libopus を WASM にコンパイルし、`soluna-opus-bridge.js` のフォールバックとして使う。
+
+- [ ] **3-1**: libopus を Emscripten でビルド
+  - `web/wasm/opus/` ディレクトリ作成
+  - libopus 1.5.x ソースから `emcc` でビルド
+  - エクスポート関数: `opus_decoder_create`, `opus_decode_float`, `opus_decoder_destroy`
+  - 出力: `opus-decoder.wasm` + `opus-decoder.js` (ES module)
+  - ビルドスクリプト: `scripts/build-opus-wasm.sh`
+- [ ] **3-2**: `web/wasm/soluna-opus-fallback.js` を新規作成
+  - WASM libopus をロードし、`soluna-opus-bridge.js` と同じインターフェースを提供
+  - `on_opus_packet(data, seq, timestamp, channels)` → `opus_decode_float` → `push_decoded_opus`
+  - デコーダ状態管理 (チャンネル数変更時に再生成)
+- [ ] **3-3**: `soluna-opus-bridge.js` を更新
+  - `isSupported()` が `false` の場合、動的に `soluna-opus-fallback.js` をロード
+  - フォールバックが有効になったら `set_opus_bridge_available(1)` を呼ぶ
+  - ログ: `[SolunaOpusBridge] Using WASM Opus fallback (no WebCodecs)`
+- [ ] **3-4**: `soluna-audio.js` の `init()` を更新
+  - WebCodecs 失敗時に fallback を試行するフロー追加
+- [ ] **3-5**: Cargo.toml に `opus` feature を追加検討
+  - Rust 側で libopus を静的リンクする方が効率的かもしれないが、WASM バイナリサイズが増大する
+  - 判断: JS 側フォールバックの方が既存 WASM を壊さないため安全 → JS 側で実装
+
+### Feature 4: WASM を AudioWorklet スレッドに移動（推定: 大）
+
+現在: Main Thread で WASM パケット処理 → postMessage → AudioWorklet で再生。
+改善: AudioWorklet 内で WASM をロードし、パケット受信 → デコード → 再生を audio thread で完結させる。
+
+- [ ] **4-1**: `web/wasm/soluna-worklet-wasm.js` を新規作成
+  - AudioWorkletProcessor 内で `WebAssembly.instantiate()` を呼び WASM をロード
+  - `port.onmessage` で生パケット (Uint8Array) を受け取り、WASM `push_packet()` を呼ぶ
+  - `process()` で WASM `pull_audio()` を呼び出力バッファに直接書き込み
+  - WASM メモリから直接 Float32Array ビューを作成 → 出力にコピー (1回のみ)
+- [ ] **4-2**: WASM バイナリの WorkerScope でのロード
+  - AudioWorklet は `fetch()` 可能だが制約あり
+  - `processorOptions.wasmBytes` で ArrayBuffer を渡す方式 (メインスレッドで fetch → worklet に転送)
+  - または `processorOptions.wasmUrl` で URL を渡し worklet 内で fetch
+- [ ] **4-3**: Opus デコード統合
+  - AudioWorklet 内では WebCodecs API が使えない (Worker scope 制限)
+  - 選択肢A: Feature 3 の WASM libopus を worklet 内でもロード → 完全 audio thread 内デコード
+  - 選択肢B: Opus パケットだけ postMessage でメインスレッドに投げ、WebCodecs デコード後に戻す
+  - → 選択肢A が理想。Feature 3 と組み合わせて WASM libopus を worklet 内で使う
+- [ ] **4-4**: `soluna-audio.js` を更新
+  - 新しい worklet モード: `_handlePacket()` で生パケットを postMessage (デコード済み audio ではなく)
+  - worklet 側が全処理を担当
+  - フォールバック: WASM worklet ロード失敗時は従来の main-thread デコードに戻る
+- [ ] **4-5**: Feature 2 (SAB) との統合
+  - SAB 対応時: メインスレッドが WebSocket からパケットを受け取り SAB に書き込み → worklet が SAB から読み取り
+  - worklet 内 WASM が SAB から直接パケットを読む設計も可能だが、WebSocket は main thread 専用なので main→SAB→worklet の流れは変わらない
+
+### Feature 5: WebTransport サポート（推定: 大）
+
+WebSocket の代わりに HTTP/3 + QUIC unreliable datagrams でブラウザに音声配信。
+HOL blocking 回避、低レイテンシ。
+
+- [ ] **5-1**: リレーサーバーに WebTransport エンドポイント追加
+  - 既存 `soluna-quic-relay` (Rust/quinn) を拡張
+  - quinn の `Connection::accept_datagram()` / `send_datagram()` はすでに対応
+  - WebTransport は HTTP/3 CONNECT over QUIC。`h3-quinn` + `h3-webtransport` crate を使用
+  - エンドポイント: `https://relay.solun.art:5102/wt/audio?channel=<name>`
+  - TLS 証明書: Let's Encrypt (自己署名だとブラウザが拒否)
+- [ ] **5-2**: `crates/soluna-quic-relay/Cargo.toml` に依存追加
+  ```toml
+  h3 = "0.0.6"
+  h3-quinn = "0.0.7"
+  h3-webtransport = "0.1"
+  ```
+- [ ] **5-3**: `crates/soluna-quic-relay/src/webtransport.rs` を新規作成
+  - WebTransport セッション受け入れ → channel 名パース → UDP relay に転送
+  - Unreliable datagram: 音声パケット (OSTP/RTP)
+  - Reliable stream: 制御メッセージ (JOIN/LEAVE/SYNC)
+  - 既存の `main.rs` の QUIC datagram ハンドリングパターンを踏襲
+- [ ] **5-4**: `web/wasm/soluna-webtransport.js` を新規作成
+  - `WebTransport` API (Chrome 97+) を使った接続マネージャー
+  - `transport.datagrams.readable` → ReadableStream → パケット取得
+  - `soluna-audio.js` の `SolunaAudio.connect()` と同じインターフェース
+  - フォールバック: WebTransport 非対応時は WebSocket にフォールバック
+- [ ] **5-5**: `soluna-audio.js` に WebTransport パスを追加
+  - `connect(url)` で `wss://` なら WebSocket、`https://` なら WebTransport を試行
+  - transport 層の抽象化: `{ send(data), close(), onmessage, onclose }` インターフェース
+  - `_handlePacket()` はどちらの transport でも同じパスを通る
+- [ ] **5-6**: Let's Encrypt 証明書の設定
+  - relay.solun.art に certbot 設定 (既存のHTTPサーバーで ACME challenge)
+  - QUIC bridge に証明書パスを環境変数で渡す: `TLS_CERT_PATH`, `TLS_KEY_PATH`
+  - 現在の自己署名証明書 (`generate_self_signed_cert`) からの切り替え
 
 ---
 
-### Feature 4: Apple Speech による自動文字起こし（優先度: 低・工数: 中）
+## 実装順序 (依存関係考慮)
 
-**目標**: 録音ファイルまたはリアルタイム音声ストリームを Speech framework で文字起こし。
+```
+Feature 1 (/c/ page)  ← 独立、最初に実装可能
+    ↓ (なし)
+Feature 2 (SAB)       ← 独立、Feature 1 と並行可能
+    ↓
+Feature 3 (Opus WASM) ← 独立、Feature 2 と並行可能
+    ↓
+Feature 4 (WASM in Worklet) ← Feature 2 + Feature 3 に依存
+    ↓
+Feature 5 (WebTransport)    ← 独立だがサーバー側変更が大きい、最後に実施
+```
 
-#### 変更ファイル
-- 新規 `TranscriptionManager.swift` — SFSpeechRecognizer ラッパー
-- `AudioReceiver.swift` または `AudioRecorder.swift` — バッファを TranscriptionManager に渡す
-- `ContentView.swift` — 文字起こしテキスト表示エリア
-- `SettingsView.swift` — 「自動文字起こし」トグル + 言語選択
-- `Info.plist` — `NSSpeechRecognitionUsageDescription` 追加
+推奨順: **1 → 2 → 3 → 4 → 5**
 
-#### ステップ
-- [ ] Step 1: `TranscriptionManager.swift` 新規作成（中）
-  - `SFSpeechRecognizer(locale: Locale(identifier: "ja-JP"))` をデフォルト
-  - `SFSpeechAudioBufferRecognitionRequest` でリアルタイム認識
-  - `@Published var transcript: String`
-  - `requestAuthorization()` — 初回起動時に許可要求
-- [ ] Step 2: Feature 3 の `AudioRecorder` が書き込んだバッファを `TranscriptionManager` にも流す（小）
-- [ ] Step 3: `SettingsView.swift` にトグルと言語選択 Picker 追加（小）
-- [ ] Step 4: `ContentView.swift` に `transcriptSection` を追加（receiving 中かつ transcription 有効時のみ表示）（小）
-- [ ] Step 5: Info.plist に `NSSpeechRecognitionUsageDescription` を追加（小）
+## テスト方針
 
-#### 注意
-- SFSpeechRecognizer はオンデバイス認識 (iOS 13+) だが長時間連続認識には1分ごとのリクエスト再生成が必要
-- Feature 3（録音）が前提。Feature 3 実装後に着手する
+- [ ] Feature 1: `/c/jazz` にアクセス → タップ → 音声再生確認 (iOS Safari, Chrome, Firefox)
+- [ ] Feature 2: Chrome DevTools Performance タブで postMessage コピーが消えていることを確認。`crossOriginIsolated === true` を確認
+- [ ] Feature 3: Firefox (WebCodecs 未対応) で Opus チャンネルが再生されることを確認
+- [ ] Feature 4: Chrome DevTools → Performance → Main thread の audio 処理負荷が減少していることを確認
+- [ ] Feature 5: Chrome 97+ で WebTransport 接続 → 音声再生。WebSocket フォールバックも確認
 
----
+## リスク
+
+1. **COOP/COEP ヘッダー (Feature 2)**: 外部リソース (画像CDN等) がブロックされる可能性。`/c/` ページは自己完結なので影響小だが、`app.html` には慎重に適用
+2. **AudioWorklet 内の WASM (Feature 4)**: ブラウザによって WorkletGlobalScope での WebAssembly サポートが異なる。Chrome は対応、Safari は要確認
+3. **WebTransport (Feature 5)**: h3-webtransport crate がまだ不安定 (0.x)。API 変更リスクあり。Let's Encrypt 証明書の自動更新も必要
+4. **libopus WASM (Feature 3)**: Emscripten ビルド環境のセットアップが必要。WASM バイナリサイズ ~300KB 追加
+5. **Firefox の SharedArrayBuffer (Feature 2)**: COOP/COEP が正しく設定されていないと `SharedArrayBuffer is not defined` になる
 
 ## 完了条件
-- [ ] @username が ContentView の headerBar に表示される（未ログイン時は「ログイン」ボタン）
-- [ ] @mention チャンネル接続時に iOS 通知が届く（APNs 経由）
-- [ ] `autoRecord=true` の場合、受信開始と同時に Documents に録音ファイルが生成される
-- [ ] `autoTranscribe=true` の場合、受信中にリアルタイム文字起こしが ContentView に表示される
-- [ ] ビルドエラーなし / TestFlight で動作確認済み
 
-## 実装順序
-1. Feature 1（小・即効性高）
-2. Feature 3（中・Feature 4 の前提）
-3. Feature 4（Feature 3 完了後）
-4. Feature 2（最も工数大・リレー側変更も必要）
+1. `/c/jazz` でワンタップ再生ができる (iOS Safari + Chrome + Firefox)
+2. SharedArrayBuffer 有効時に postMessage コピーが発生しない
+3. Firefox (WebCodecs 非対応) で Opus 音声が再生できる
+4. AudioWorklet 内で WASM パケット処理 + デコードが完結する
+5. WebTransport 経由で音声受信できる (Chrome 97+)
+6. 全 Feature でフォールバックパスが動作する (レガシーブラウザ対応)

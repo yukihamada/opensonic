@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg5" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#08080f"/>
+      <stop offset="100%" stop-color="#12101f"/>
+    </linearGradient>
+    <linearGradient id="s5" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="50%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg5)"/>
+  <!-- Minimal S letterform as audio wave -->
+  <path d="M380 320 C380 320 480 280 560 340 C640 400 540 460 512 480 C484 500 384 560 464 620 C544 680 644 640 644 640"
+    fill="none" stroke="url(#s5)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Subtle glow -->
+  <path d="M380 320 C380 320 480 280 560 340 C640 400 540 460 512 480 C484 500 384 560 464 620 C544 680 644 640 644 640"
+    fill="none" stroke="url(#s5)" stroke-width="60" stroke-linecap="round" opacity="0.08"/>
+</svg>

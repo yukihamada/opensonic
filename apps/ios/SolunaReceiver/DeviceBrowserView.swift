@@ -1,6 +1,6 @@
 //
 //  DeviceBrowserView.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Discover nearby solunad devices via Bonjour and connect directly.
 //

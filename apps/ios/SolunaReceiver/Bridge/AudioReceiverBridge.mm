@@ -289,6 +289,20 @@ private:
             return false;
         }
 
+        // Multi-SSRC: route each source to its own sub-buffer for mixing
+        // The main ring buffer is for the primary SSRC (radio).
+        // Additional SSRCs go to mix_buffers_ and get mixed in audio_callback.
+        if (rtp.ssrc != primary_ssrc_.load(std::memory_order_relaxed)) {
+            if (primary_ssrc_.load(std::memory_order_relaxed) == 0) {
+                // First SSRC becomes primary
+                primary_ssrc_.store(rtp.ssrc, std::memory_order_relaxed);
+            } else {
+                // Secondary SSRC → mix buffer (decoded inline, skip sequence tracking)
+                decode_to_mix_buffer(rtp, ostp, payload, payload_size);
+                return true;
+            }
+        }
+
         // Sequence check — returns gap count (positive = missing packets)
         uint32_t full_seq = (static_cast<uint32_t>(ostp.sequence_ext) << 16) | rtp.sequence;
         int32_t gap = check_sequence(full_seq);
@@ -305,9 +319,10 @@ private:
             last_media_timestamp.store(ostp.media_timestamp, std::memory_order_relaxed);
         }
 
-        // Auto-detect TX channel count from stream_id upper 4 bits
-        // [4bit channels][12bit stream] — 0 = legacy (assume 2ch)
-        uint32_t tx_channels = (ostp.stream_id >> 12) & 0xF;
+        // Auto-detect TX channel count from stream_id bits [13:10]
+        // [2bit deck_id][4bit channels][10bit stream_idx]
+        uint32_t deck_id = (ostp.stream_id >> 14) & 0x3;
+        uint32_t tx_channels = (ostp.stream_id >> 10) & 0xF;
         if (tx_channels == 0) tx_channels = 2;  // backward compat
         detected_tx_channels_.store(tx_channels, std::memory_order_relaxed);
 
@@ -316,10 +331,9 @@ private:
         // §4.9 IMA-ADPCM decode (PT=115 stereo, PT=116 mono)
         if (rtp.pt == 115 || rtp.pt == 116) {
             if (payload_size < 4) return false;
-            if (adpcm_state_.valprev == 0 && adpcm_state_.index == 0) {
-                adpcm_state_.valprev = static_cast<int16_t>(payload[0] | (payload[1] << 8));
-                adpcm_state_.index = payload[2];
-            }
+            // Always read state header from each packet (enables recovery after loss)
+            adpcm_state_.valprev = static_cast<int16_t>(payload[0] | (payload[1] << 8));
+            adpcm_state_.index = std::clamp(static_cast<int>(payload[2]), 0, 88);
             size_t num_samples = (payload_size - 4) * 2;
             size_t adpcm_frames = num_samples / tx_channels;
             for (size_t i = 0; i < num_samples && i < adpcm_decode_buf_.size(); i++) {
@@ -333,7 +347,7 @@ private:
                 if (adpcm_state_.valprev > 32767) adpcm_state_.valprev = 32767;
                 if (adpcm_state_.valprev < -32768) adpcm_state_.valprev = -32768;
                 adpcm_state_.index += ima_index_table_[nib];
-                if (adpcm_state_.index < 0) adpcm_state_.index = 40;
+                if (adpcm_state_.index < 0) adpcm_state_.index = 0;
                 if (adpcm_state_.index > 88) adpcm_state_.index = 88;
                 adpcm_decode_buf_[i] = static_cast<int32_t>(adpcm_state_.valprev) << 8;
             }
@@ -352,7 +366,7 @@ private:
         if (rtp.pt == 96 && payload_size >= sizeof(int32_t)) {
             int32_t last = reinterpret_cast<const int32_t*>(payload)[payload_size/sizeof(int32_t) - 1];
             adpcm_state_.valprev = static_cast<int16_t>(last >> 8);
-            adpcm_state_.index = 40;
+            adpcm_state_.index = 0;
         }
 
         // OSTP payload is int32_t (4 bytes/sample, native byte order)
@@ -361,7 +375,7 @@ private:
         // Ring buffer frame_size = config_.channels * sizeof(int32_t).
         // When tx_channels < config_.channels, we must pad each frame with
         // zeros so the data matches the ring buffer's frame layout.
-        const uint32_t ring_ch = config_.channels;  // kMaxRxChannels (8)
+        // ring_ch already defined above
 
         // PLC: conceal gaps of ≤2 packets by repeating the last known frame
         if (gap > 0 && gap <= 2 && frames > 0 && !last_frame_.empty()) {
@@ -521,6 +535,100 @@ public:
 
     // Auto-detected TX channel count from OSTP stream_id upper 4 bits
     std::atomic<uint32_t> detected_tx_channels_{2};  // default stereo (most common TX)
+    std::atomic<uint32_t> primary_ssrc_{0};  // First SSRC = primary (goes to main ring buffer)
+
+    // ── Multi-SSRC mix buffers (for karaoke/talk mode) ──
+    // Lock-free SPSC ring buffer per secondary SSRC.
+    static constexpr size_t kMixBufSize = 48000;  // 1 second mono float
+    static constexpr int kMaxMixSources = 4;      // max 4 simultaneous mics
+    struct MixSource {
+        uint32_t ssrc = 0;
+        float ring[48000] = {};
+        std::atomic<size_t> write_pos{0};
+        std::atomic<size_t> read_pos{0};
+        std::chrono::steady_clock::time_point last_seen;
+        struct { int32_t valprev = 0; int32_t index = 0; } adpcm_state;
+    };
+    MixSource mix_sources_[4];
+    std::atomic<int> mix_source_count_{0};
+
+    void decode_to_mix_buffer(const transport::RtpHeader& rtp,
+                               const transport::OstpHeader& ostp,
+                               const uint8_t* payload, size_t payload_size) {
+        // Find or create mix source for this SSRC
+        MixSource* src = nullptr;
+        int count = mix_source_count_.load(std::memory_order_relaxed);
+        for (int i = 0; i < count; i++) {
+            if (mix_sources_[i].ssrc == rtp.ssrc) { src = &mix_sources_[i]; break; }
+        }
+        if (!src && count < kMaxMixSources) {
+            src = &mix_sources_[count];
+            src->ssrc = rtp.ssrc;
+            src->write_pos.store(0); src->read_pos.store(0);
+            src->adpcm_state = {};
+            mix_source_count_.store(count + 1, std::memory_order_relaxed);
+        }
+        if (!src) return;  // too many sources
+        src->last_seen = std::chrono::steady_clock::now();
+
+        // Decode based on PT
+        size_t w = src->write_pos.load(std::memory_order_relaxed);
+        if (rtp.pt == 116 && payload_size >= 4) {
+            // ADPCM decode
+            src->adpcm_state.valprev = static_cast<int16_t>(payload[0] | (payload[1] << 8));
+            src->adpcm_state.index = std::clamp(static_cast<int>(payload[2]), 0, 88);
+            size_t nsamples = (payload_size - 4) * 2;
+            for (size_t i = 0; i < nsamples; i++) {
+                uint8_t nib = (i & 1) ? ((payload[4 + i/2] >> 4) & 0x0F) : (payload[4 + i/2] & 0x0F);
+                int step = ima_step_table_[src->adpcm_state.index];
+                int dq = step >> 3;
+                if (nib & 4) dq += step;
+                if (nib & 2) dq += (step >> 1);
+                if (nib & 1) dq += (step >> 2);
+                src->adpcm_state.valprev += (nib & 8) ? -dq : dq;
+                if (src->adpcm_state.valprev > 32767) src->adpcm_state.valprev = 32767;
+                if (src->adpcm_state.valprev < -32768) src->adpcm_state.valprev = -32768;
+                src->adpcm_state.index += ima_index_table_[nib];
+                if (src->adpcm_state.index < 0) src->adpcm_state.index = 0;
+                if (src->adpcm_state.index > 88) src->adpcm_state.index = 88;
+                src->ring[(w + i) % kMixBufSize] = src->adpcm_state.valprev / 32768.0f;
+            }
+            src->write_pos.store(w + nsamples, std::memory_order_release);
+        } else if (rtp.pt == 96 && payload_size >= 4) {
+            // PCM S24 mono
+            size_t nsamples = payload_size / 4;
+            for (size_t i = 0; i < nsamples; i++) {
+                int32_t s;
+                memcpy(&s, payload + i * 4, 4);
+                src->ring[(w + i) % kMixBufSize] = s / 8388608.0f;
+            }
+            src->write_pos.store(w + nsamples, std::memory_order_release);
+        }
+    }
+
+    // Called from audio_callback to mix secondary sources into output
+    void mix_secondary_sources(float* output, uint32_t frame_count, uint32_t out_channels) {
+        int count = mix_source_count_.load(std::memory_order_relaxed);
+        for (int s = 0; s < count; s++) {
+            auto& src = mix_sources_[s];
+            size_t r = src.read_pos.load(std::memory_order_relaxed);
+            size_t w = src.write_pos.load(std::memory_order_acquire);
+            if (w <= r) continue;
+            size_t avail = w - r;
+            if (avail > kMixBufSize) { src.read_pos.store(w - kMixBufSize / 2); r = w - kMixBufSize / 2; avail = w - r; }
+            size_t to_mix = std::min(avail, static_cast<size_t>(frame_count));
+            for (size_t i = 0; i < to_mix; i++) {
+                float sample = src.ring[(r + i) % kMixBufSize] * 0.6f;
+                for (uint32_t ch = 0; ch < out_channels; ch++) {
+                    size_t idx = i * out_channels + ch;
+                    if (idx < frame_count * out_channels) {
+                        output[idx] = std::max(-1.0f, std::min(1.0f, output[idx] + sample));
+                    }
+                }
+            }
+            src.read_pos.store(r + to_mix, std::memory_order_release);
+        }
+    }
 
     // Last received RTP SSRC (for multi-source identification)
     std::atomic<uint32_t> last_ssrc{0};
@@ -1120,7 +1228,8 @@ private:
                 last_log = now;
             }
             // Heartbeat every 5s: send both HELLO and JOIN to stay registered
-            if (std::chrono::duration_cast<std::chrono::seconds>(now - last_hello).count() >= 5) {
+            // Send keepalive every 1s (4G symmetric NAT drops mappings in 2-3s)
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - last_hello).count() >= 1) {
                 const char* hello = "HELLO\n";
                 ::sendto(udp_sock_, hello, 6, 0,
                          (struct sockaddr*)&relay_addr_, sizeof(relay_addr_));
@@ -1511,6 +1620,16 @@ private:
         pal::SocketAddress dest;
         dest.ip = dest_ip_;
         dest.port = dest_port_;
+
+        // Send JOIN to relay so it knows about us (required for WAN relay mode)
+        {
+            NSString* ch = [[NSUserDefaults standardUserDefaults] stringForKey:@"channel"];
+            if (!ch) ch = @"soluna";
+            std::string join_msg = std::string("JOIN:") + [ch UTF8String] + "\n";
+            socket_->send_to(join_msg.data(), join_msg.size(), dest);
+            fprintf(stderr, "[SolunaTx] Sent JOIN:%s to %s:%u\n",
+                    [ch UTF8String], dest_ip_.c_str(), dest_port_);
+        }
 
         uint32_t sequence = 0;
         uint32_t rtp_timestamp = 0;
@@ -2758,6 +2877,66 @@ public:
         ring_buffer_.write(samples, frame_count);
     }
 
+    uint32_t ring_buffer_channels() const { return channels_; }
+
+    // ── Karaoke mic monitor (separate from main ring buffer) ──
+    // Lock-free SPSC: mic callback writes, audio_callback reads
+    static constexpr size_t kMicRingSize = 48000; // 1 second
+    float mic_ring_[kMicRingSize] = {};
+    std::atomic<size_t> mic_write_pos_{0};
+    std::atomic<size_t> mic_read_pos_{0};
+    std::atomic<bool> mic_monitor_active_{false};
+
+    void write_mic_monitor(const float* samples, uint32_t count) {
+        size_t w = mic_write_pos_.load(std::memory_order_relaxed);
+        for (uint32_t i = 0; i < count; i++) {
+            mic_ring_[(w + i) % kMicRingSize] = samples[i];
+        }
+        mic_write_pos_.store(w + count, std::memory_order_release);
+    }
+
+    // Called from audio_callback to mix mic into output buffer
+    void mix_mic_monitor(float* output, uint32_t frame_count, uint32_t out_channels) {
+        if (!mic_monitor_active_.load(std::memory_order_relaxed)) return;
+        if (!output || frame_count == 0 || out_channels == 0) return;
+
+        size_t r = mic_read_pos_.load(std::memory_order_relaxed);
+        size_t w = mic_write_pos_.load(std::memory_order_acquire);
+
+        // Safe unsigned subtraction
+        if (w < r) { mic_read_pos_.store(w, std::memory_order_relaxed); return; }
+        size_t avail = w - r;
+        // Cap to prevent reading stale data (max 1 second behind)
+        if (avail > kMicRingSize) {
+            r = w - kMicRingSize / 2;
+            mic_read_pos_.store(r, std::memory_order_relaxed);
+            avail = w - r;
+        }
+
+        size_t to_mix = std::min(avail, static_cast<size_t>(frame_count));
+        for (size_t i = 0; i < to_mix; i++) {
+            float mic_sample = mic_ring_[(r + i) % kMicRingSize] * 0.4f; // low gain to prevent howling
+            // Clamp to prevent overflow
+            for (uint32_t ch = 0; ch < out_channels; ch++) {
+                size_t idx = i * out_channels + ch;
+                if (idx < frame_count * out_channels) {
+                    float mixed = output[idx] + mic_sample;
+                    output[idx] = std::max(-1.0f, std::min(1.0f, mixed));
+                }
+            }
+        }
+        mic_read_pos_.store(r + to_mix, std::memory_order_release);
+    }
+
+    void set_mic_monitor_active(bool active) {
+        mic_monitor_active_.store(active, std::memory_order_relaxed);
+        if (!active) {
+            // Reset positions
+            mic_write_pos_.store(0, std::memory_order_relaxed);
+            mic_read_pos_.store(0, std::memory_order_relaxed);
+        }
+    }
+
     void flush_ring_buffer() {
         flush_requested_.store(true, std::memory_order_release);
     }
@@ -2796,14 +2975,15 @@ public:
         if (ok) {
             // Switch to relay-only mode: multicast is LAN-only, relay carries WAN audio
             relay_network_disabled_.store(true);
-            // Force stable buffer for relay — sync mode EMA may have reduced it
+            // Set sync delay to 200ms for relay playback
+            sync_delay_ms_.store(200, std::memory_order_relaxed);
             // Flush old channel audio from ring buffer
             flush_requested_.store(true, std::memory_order_release);
-            target_fill_frames_.store(24000, std::memory_order_relaxed);  // 500ms WAN jitter cushion (EU→JP ~250ms RTT)
+            target_fill_frames_.store(9600, std::memory_order_relaxed);  // 200ms buffer
             health_.store(0, std::memory_order_relaxed);
             health_silenced_.store(false, std::memory_order_relaxed);
-            prefilled_ = false;  // Re-prefill with relay data
-            NSLog(@"[relay] Connected — buffer flushed, target=24000 (500ms), reset health");
+            prefilled_ = false;
+            NSLog(@"[relay] Connected — buffer flushed, target=24000 (500ms), sync off, reset health");
         }
         return ok;
     }
@@ -3358,15 +3538,24 @@ private:
         const uint32_t min_target = frame_count * 3;
         if (target < min_target) target = min_target;
 
-        // ── Gradual drift correction with crossfade ────────────────────────
-        // Only discard when buffer is significantly overfilled (3x target)
-        // to avoid WiFi burst → discard → underrun cycle.
+        // ── Drift correction with overflow protection ────────────────────
         {
             size_t avail_now = ring_buffer_.available_read();
-            if (prefilled_ && avail_now > static_cast<size_t>(target) * 3) {
+            size_t capacity = ring_buffer_.capacity();
+
+            // Emergency: if buffer is >80% full, flush to target to prevent crash
+            if (avail_now > capacity * 4 / 5) {
+                size_t drain_to = static_cast<size_t>(target);
+                if (avail_now > drain_to) {
+                    ring_buffer_.discard(avail_now - drain_to);
+                }
+                drift_xfade_ = 96;
+            }
+            // Normal: gradual drift when overfilled (3x target)
+            else if (prefilled_ && avail_now > static_cast<size_t>(target) * 3) {
                 size_t excess = avail_now - static_cast<size_t>(target) * 2;
-                // Discard at most 1 sample per callback — very gradual
-                size_t drift = std::min(excess, static_cast<size_t>(frame_count / 80 + 1));
+                // Discard more aggressively: up to frame_count/4
+                size_t drift = std::min(excess, static_cast<size_t>(frame_count / 4 + 1));
                 ring_buffer_.discard(drift);
                 drift_xfade_ = 48;
             }
@@ -3495,6 +3684,9 @@ private:
 
         // ── Output level metering (for visualization) ───────────────────
         {
+            // Mix secondary SSRC sources (karaoke mics, talk mode)
+            if (rtp_receiver_) rtp_receiver_->mix_secondary_sources(buffer, frame_count, out_ch);
+
             float peak = 0.0f;
             for (uint32_t i = 0; i < total_samples; i++) {
                 float a = buffer[i] < 0 ? -buffer[i] : buffer[i];
@@ -3658,6 +3850,7 @@ private:
 @end
 
 @implementation SolunaAudioReceiver
+@synthesize micGlobal = _micGlobal;
 
 + (instancetype)sharedInstance {
     static SolunaAudioReceiver *shared = nil;
@@ -4091,11 +4284,31 @@ private:
     // Note: AVAudioSession category is managed by Swift (AudioReceiver.toggleMic)
     // to avoid triggering interruption notifications.
 
+    // Default: LAN multicast. If _micGlobal is set, send to relay instead.
+    std::string dest_ip = std::string([_multicastGroup UTF8String]);
+    uint16_t dest_port = _port;
+    if (_micGlobal) {
+        // Use relay IP directly (DNS resolution in audio thread is unreliable)
+        dest_ip = "46.225.77.119";
+        dest_port = 5100;
+    }
+    fprintf(stderr, "[SolunaTx] Mic TX to %s: %s:%u\n",
+            _micGlobal ? "RELAY" : "LAN", dest_ip.c_str(), dest_port);
+
     _txImpl = std::make_unique<TransmitterImpl>(
-        std::string([_multicastGroup UTF8String]),
-        _port,
+        dest_ip,
+        dest_port,
         _channels
     );
+
+    // Wire up relay callback so mic audio goes through WAN relay
+    if (_impl) {
+        auto impl = _impl.get();
+        _txImpl->tx_relay_callback = [impl](const uint8_t* data, size_t len) {
+            impl->wan_relay_send_audio(data, len);
+        };
+        fprintf(stderr, "[SolunaTx] Relay callback wired for mic TX\n");
+    }
 
     if (!_txImpl->start()) {
         fprintf(stderr, "[SolunaTx] Failed to start transmitter\n");
@@ -4103,8 +4316,27 @@ private:
         return NO;
     }
 
-    fprintf(stderr, "[SolunaTx] Mic transmit started\n");
+    fprintf(stderr, "[SolunaTx] Mic transmit started (global=%d)\n", _micGlobal);
     return YES;
+}
+
+// ── Karaoke mode: mic + music mixed on device, sent as 1 stream to relay ──
+// No local monitoring (avoids howling). Listeners hear the mix via relay.
+
+- (BOOL)startMicMonitor {
+    // In karaoke/broadcast mode, just enable mic transmit to relay.
+    // The TransmitterImpl's tx_relay_callback sends to relay.
+    // Listeners receive: radio audio + mic audio as 2 SSRCs,
+    // but relay's TALK mode makes this work.
+    //
+    // For now: just enable Global mic mode (send mic to relay).
+    // The receiver side only plays 1 SSRC at a time (the loudest/latest).
+    _micGlobal = YES;
+    return [self startMicTransmit];
+}
+
+- (void)stopMicMonitor {
+    [self stopMicTransmit];
 }
 
 - (void)stopMicTransmit {

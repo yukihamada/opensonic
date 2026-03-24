@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna — 音で、つながる。ライブ・フェス・日常のBGMをリアルタイム共有する音声プラットフォーム。Mac / iOS / Web 対応。">
+    <meta property="og:title" content="Soluna — 音で、つながる。">
+    <meta property="og:description" content="ライブ・フェス・日常のBGMをリアルタイム共有。Mac / iOS / Web 対応の音声プラットフォーム。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/app">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="ja_JP">
+    <meta name="theme-color" content="#05060a">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Soluna — 音で、つながる。">
+    <meta name="twitter:description" content="ライブ・フェス・日常のBGMをリアルタイム共有する音声プラットフォーム。">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+    <link rel="canonical" href="https://solun.art/app">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Soluna — 音で、つながる。</title>
+    <style>
+        :root {
+            --bg: #05060a; --s1: #0c0e16; --s2: #12151f; --s3: #1a1e2e;
+            --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.12);
+            --text: #e8eaf2; --text2: #8b91a8; --text3: #50566e;
+            --blue: #3b82f6; --cyan: #06b6d4; --green: #10b981;
+            --purple: #8b5cf6; --amber: #f59e0b; --pink: #ec4899;
+            font-synthesis: none; -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+
+        .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+
+        nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 0 max(20px, calc(50% - 580px)); height: 60px; background: rgba(5,6,10,0.7); backdrop-filter: blur(24px) saturate(1.8); border-bottom: 1px solid var(--border); }
+        .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .nav-links a { color: var(--text2); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--green); }
+        .nav-cta { padding: 8px 18px; background: linear-gradient(135deg, var(--green), var(--cyan)); color: #fff !important; border-radius: 10px; font-weight: 600; font-size: 13px !important; box-shadow: 0 2px 12px rgba(16,185,129,0.3); }
+
+        .section { padding: 100px max(20px, calc(50% - 580px)); }
+        .section-label { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; background: linear-gradient(90deg, var(--green), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        h1 { font-size: clamp(40px, 8vw, 72px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.05; margin-bottom: 28px; }
+        h2 { font-size: clamp(28px, 5vw, 44px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 16px; }
+        .h1-grad { background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .h1-accent { background: linear-gradient(135deg, var(--green), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 200% auto; animation: grad-shift 4s ease-in-out infinite; }
+        @keyframes grad-shift { 0%, 100% { background-position: 0% center; } 50% { background-position: 100% center; } }
+        .sub { font-size: 17px; color: var(--text2); line-height: 1.7; max-width: 560px; margin-bottom: 48px; }
+
+        .hero { position: relative; padding: 160px max(20px, calc(50% - 580px)) 100px; overflow: hidden; text-align: center; }
+        .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+        .hero-orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.15; animation: orb-float 20s ease-in-out infinite; }
+        .hero-orb-1 { width: 500px; height: 500px; background: var(--green); top: -10%; right: 10%; }
+        .hero-orb-2 { width: 400px; height: 400px; background: var(--cyan); bottom: -5%; left: 5%; animation-delay: -7s; }
+        .hero-orb-3 { width: 300px; height: 300px; background: var(--purple); top: 30%; left: 40%; animation-delay: -14s; }
+        @keyframes orb-float { 0%, 100% { transform: translate(0, 0) scale(1); } 33% { transform: translate(30px, -20px) scale(1.05); } 66% { transform: translate(-20px, 15px) scale(0.95); } }
+        .hero-content { position: relative; z-index: 1; }
+        .hero .sub { margin: 0 auto 48px; }
+
+        .btn-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; justify-content: center; }
+        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 12px; font-size: 15px; font-weight: 600; text-decoration: none; transition: transform 0.2s, opacity 0.2s; }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-primary { background: linear-gradient(135deg, var(--green), var(--cyan)); color: #fff; box-shadow: 0 4px 20px rgba(16,185,129,0.3); }
+        .btn-secondary { background: var(--s2); color: var(--text); border: 1px solid var(--border2); }
+
+        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; margin-top: 48px; }
+        .feature-card { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 28px; transition: border-color 0.2s, transform 0.2s; }
+        .feature-card:hover { border-color: rgba(16,185,129,0.3); transform: translateY(-3px); }
+        .feature-card .icon { font-size: 32px; margin-bottom: 12px; }
+        .feature-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+        .feature-card p { font-size: 14px; color: var(--text2); line-height: 1.6; }
+
+        .download-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-top: 48px; }
+        .dl-card { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 28px; text-align: center; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; display: block; }
+        .dl-card:hover { border-color: var(--green); transform: translateY(-3px); }
+        .dl-card .dl-icon { font-size: 36px; margin-bottom: 14px; }
+        .dl-card .dl-name { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+        .dl-card .dl-desc { font-size: 13px; color: var(--text2); margin-bottom: 12px; }
+        .dl-card .dl-tag { display: inline-block; font-size: 11px; padding: 3px 10px; border-radius: 6px; background: rgba(16,185,129,0.08); color: var(--green); border: 1px solid rgba(16,185,129,0.15); }
+
+        .compat-section { margin-top: 48px; }
+        .compat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 24px; }
+        .compat-card { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 28px; text-decoration: none; color: var(--text); display: block; transition: border-color 0.2s; }
+        .compat-card:hover { border-color: rgba(16,185,129,0.3); }
+        .compat-card .compat-icon { font-size: 28px; margin-bottom: 12px; }
+        .compat-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+        .compat-card p { font-size: 14px; color: var(--text2); line-height: 1.6; }
+
+        .cta-section { text-align: center; padding: 120px max(20px, calc(50% - 580px)); background: radial-gradient(ellipse at center, rgba(16,185,129,0.06) 0%, transparent 70%); }
+        .cta-section h2 { margin-bottom: 16px; }
+        .cta-section .sub { margin: 0 auto 48px; }
+
+        footer { padding: 60px max(20px, calc(50% - 580px)) 40px; border-top: 1px solid var(--border); }
+        .footer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 32px; margin-bottom: 40px; }
+        .footer-col h4 { font-size: 13px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 16px; }
+        .footer-col a { display: block; color: var(--text2); text-decoration: none; font-size: 14px; padding: 4px 0; transition: color 0.2s; }
+        .footer-col a:hover { color: var(--text); }
+        .footer-bottom { display: flex; justify-content: space-between; align-items: center; color: var(--text3); font-size: 13px; flex-wrap: wrap; gap: 12px; }
+
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .hero { padding-top: 120px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/app" class="hide-sm active">App</a>
+        <a href="/sdk" class="hide-sm">SDK</a>
+        <a href="/demo" class="hide-sm">Demo</a>
+        <a href="/for-developers" class="hide-sm">Developers</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/dashboard" class="nav-cta">Dashboard</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+        <div class="hero-orb hero-orb-3"></div>
+    </div>
+    <div class="hero-content">
+        <h1><span class="h1-grad">Soluna</span></h1>
+        <p style="font-size: clamp(20px, 4vw, 32px); font-weight: 700; margin-bottom: 16px; background: linear-gradient(135deg, var(--green), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">&#38899;&#12391;&#12289;&#12388;&#12394;&#12364;&#12427;&#12290;</p>
+        <p class="sub">&#12521;&#12452;&#12502;&#12539;&#12501;&#12455;&#12473;&#12539;&#26085;&#24120;&#12398;BGM&#12434;&#12522;&#12450;&#12523;&#12479;&#12452;&#12512;&#20849;&#26377;&#12377;&#12427;&#38899;&#22768;&#12503;&#12521;&#12483;&#12488;&#12501;&#12457;&#12540;&#12512;&#12290;<br>Mac&#12398;&#38899;&#27005;&#12434;iPhone&#12539;&#12502;&#12521;&#12454;&#12470;&#12539;&#12473;&#12500;&#12540;&#12459;&#12540;&#12408;&#21363;&#23626;&#12369;&#12290;</p>
+        <div class="btn-row">
+            <a href="#download" class="btn btn-primary">&#12480;&#12454;&#12531;&#12525;&#12540;&#12489;</a>
+            <a href="/demo" class="btn btn-secondary">&#12502;&#12521;&#12454;&#12470;&#12391;&#20307;&#39443;</a>
+        </div>
+    </div>
+</section>
+
+<!-- What is Soluna -->
+<section class="section">
+    <div class="reveal">
+        <div class="section-label">What is Soluna</div>
+        <h2>Soluna &#12392;&#12399;</h2>
+        <p class="sub">&#12521;&#12452;&#12502;&#12539;&#12501;&#12455;&#12473;&#12539;&#26085;&#24120;&#12398;BGM&#12434;&#12522;&#12450;&#12523;&#12479;&#12452;&#12512;&#20849;&#26377;&#12377;&#12427;&#38899;&#22768;&#12503;&#12521;&#12483;&#12488;&#12501;&#12457;&#12540;&#12512;&#12290;Mac&#12363;&#12425;&#38899;&#27005;&#12434;&#37197;&#20449;&#12375;&#12289;&#19990;&#30028;&#20013;&#12398;iPhone&#12539;&#12502;&#12521;&#12454;&#12470;&#12539;&#12473;&#12500;&#12540;&#12459;&#12540;&#12391;&#21463;&#20449;&#12290;&#12458;&#12540;&#12503;&#12531;&#12477;&#12540;&#12473;&#65288;MIT&#12521;&#12452;&#12475;&#12531;&#12473;&#65289;&#12290;</p>
+    </div>
+    <div class="feature-grid">
+        <div class="feature-card reveal reveal-delay-1">
+            <div class="icon">&#128266;</div>
+            <h3>&#12522;&#12450;&#12523;&#12479;&#12452;&#12512;&#38899;&#22768;&#37197;&#20449;</h3>
+            <p>Mac&#12363;&#12425;&#38899;&#27005;&#12434;&#37197;&#20449;&#12289;&#12393;&#12371;&#12391;&#12418;&#21463;&#20449;&#12290;P2P&#12513;&#12483;&#12471;&#12517; + WAN&#12522;&#12524;&#12540;&#12391;&#20302;&#36933;&#24310;&#37197;&#20449;&#12290;</p>
+        </div>
+        <div class="feature-card reveal reveal-delay-2">
+            <div class="icon">&#127925;</div>
+            <h3>&#12481;&#12515;&#12531;&#12493;&#12523;</h3>
+            <p>66&#12481;&#12515;&#12531;&#12493;&#12523;&#12289;646&#26354;&#12398;&#12503;&#12524;&#12452;&#12522;&#12473;&#12488;&#12290;sunset-chill&#12289;tokyo-nights&#12289;deep-focus&#12394;&#12393;&#12289;&#12471;&#12540;&#12531;&#12395;&#21512;&#12431;&#12379;&#12390;&#36984;&#25246;&#12290;</p>
+        </div>
+        <div class="feature-card reveal reveal-delay-3">
+            <div class="icon">&#127760;</div>
+            <h3>P2P + WAN</h3>
+            <p>&#12525;&#12540;&#12459;&#12523;&#12493;&#12483;&#12488;&#12527;&#12540;&#12463;&#12418;&#12452;&#12531;&#12479;&#12540;&#12493;&#12483;&#12488;&#36234;&#12360;&#12418;&#12290;relay.solun.art &#32076;&#30001;&#12391;&#19990;&#30028;&#20013;&#12363;&#12425;&#21463;&#20449;&#21487;&#33021;&#12290;</p>
+        </div>
+        <div class="feature-card reveal reveal-delay-1">
+            <div class="icon">&#128296;</div>
+            <h3>SDK</h3>
+            <p>&#12354;&#12394;&#12383;&#12398;&#12450;&#12503;&#12522;&#12395;&#12418;&#32068;&#12415;&#36796;&#12417;&#12427;&#12290;Swift SDK&#12391;iOS / macOS&#12450;&#12503;&#12522;&#12395;&#38899;&#22768;&#21463;&#20449;&#27231;&#33021;&#12434;&#36861;&#21152;&#12290;</p>
+        </div>
+    </div>
+</section>
+
+<!-- Download -->
+<section class="section" style="background: var(--s1);" id="download">
+    <div class="reveal">
+        <div class="section-label">Download</div>
+        <h2>&#12480;&#12454;&#12531;&#12525;&#12540;&#12489;</h2>
+        <p class="sub">&#12377;&#12409;&#12390;&#12398;&#12503;&#12521;&#12483;&#12488;&#12501;&#12457;&#12540;&#12512;&#12395;&#23550;&#24540;&#12290;&#12458;&#12540;&#12503;&#12531;&#12477;&#12540;&#12473;&#12391;&#23436;&#20840;&#28961;&#26009;&#12290;</p>
+    </div>
+    <div class="download-grid">
+        <a href="https://github.com/yukihamada/opensonic/releases/latest" class="dl-card reveal reveal-delay-1" target="_blank">
+            <div class="dl-icon">&#128187;</div>
+            <div class="dl-name">Soluna for Mac</div>
+            <div class="dl-desc">macOS 12&#20197;&#38477;&#12290;&#12471;&#12473;&#12486;&#12512;&#12458;&#12540;&#12487;&#12451;&#12458;&#12434;&#12461;&#12515;&#12503;&#12481;&#12515;&#12375;&#12390;&#37197;&#20449;&#12290;</div>
+            <span class="dl-tag">PKG / DMG</span>
+        </a>
+        <a href="https://testflight.apple.com/join/PYbefDSE" class="dl-card reveal reveal-delay-2" target="_blank">
+            <div class="dl-icon">&#128241;</div>
+            <div class="dl-name">Soluna for iPhone</div>
+            <div class="dl-desc">iPhone / iPad&#12290;&#12481;&#12515;&#12531;&#12493;&#12523;&#12434;&#36984;&#12435;&#12391;&#12377;&#12368;&#21463;&#20449;&#12290;</div>
+            <span class="dl-tag">TestFlight</span>
+        </a>
+        <a href="https://app.koe.live/" class="dl-card reveal reveal-delay-3" target="_blank">
+            <div class="dl-icon">&#127908;</div>
+            <div class="dl-name">Koe &#8212; &#22768;&#12391;&#26360;&#12367;</div>
+            <div class="dl-desc">Soluna&#20869;&#34101;&#12398;&#38899;&#22768;&#20837;&#21147;&#12450;&#12503;&#12522;&#12290;Soluna&#12479;&#12502;&#12391;&#38899;&#27005;&#21463;&#20449;&#12290;</div>
+            <span class="dl-tag">Web / Mac / iOS</span>
+        </a>
+        <a href="/demo" class="dl-card reveal reveal-delay-1">
+            <div class="dl-icon">&#127760;</div>
+            <div class="dl-name">&#12502;&#12521;&#12454;&#12470;&#12391;&#20307;&#39443;</div>
+            <div class="dl-desc">&#12452;&#12531;&#12473;&#12488;&#12540;&#12523;&#19981;&#35201;&#12290;WebSocket&#12391;&#21363;&#21463;&#20449;&#12290;</div>
+            <span class="dl-tag">Demo</span>
+        </a>
+        <a href="/sdk" class="dl-card reveal reveal-delay-2">
+            <div class="dl-icon">&#128296;</div>
+            <div class="dl-name">&#38283;&#30330;&#32773;&#21521;&#12369;</div>
+            <div class="dl-desc">Swift SDK&#12391;&#12354;&#12394;&#12383;&#12398;&#12450;&#12503;&#12522;&#12395;&#32068;&#12415;&#36796;&#12417;&#12427;&#12290;</div>
+            <span class="dl-tag">SDK</span>
+        </a>
+    </div>
+</section>
+
+<!-- Compatible Apps -->
+<section class="section">
+    <div class="reveal">
+        <div class="section-label">Compatible Apps</div>
+        <h2>Soluna SDK &#23550;&#24540;&#12450;&#12503;&#12522;</h2>
+        <p class="sub">Koe&#12392;Soluna&#12399;&#12393;&#12385;&#12425;&#12418;SolunaSDK&#12434;&#20351;&#29992;&#12290;&#21516;&#12376;&#12481;&#12515;&#12531;&#12493;&#12523;&#12434;&#20849;&#26377;&#12391;&#12365;&#12414;&#12377;&#12290;</p>
+    </div>
+    <div class="compat-grid">
+        <a href="https://app.koe.live/" class="compat-card reveal reveal-delay-1" target="_blank">
+            <div class="compat-icon">&#127908;</div>
+            <h3>Koe</h3>
+            <p>&#22768;&#12391;&#26360;&#12367;&#12290;&#38899;&#22768;&#20837;&#21147;&#12450;&#12503;&#12522;&#12395;Soluna&#12479;&#12502;&#12434;&#25645;&#36617;&#12290;&#19990;&#30028;&#20013;&#12398;&#38899;&#27005;&#12481;&#12515;&#12531;&#12493;&#12523;&#12434;&#12522;&#12450;&#12523;&#12479;&#12452;&#12512;&#12391;&#21463;&#20449;&#12290;</p>
+        </a>
+        <a href="/soluna" class="compat-card reveal reveal-delay-2">
+            <div class="compat-icon">&#127926;</div>
+            <h3>Soluna</h3>
+            <p>&#38899;&#12391;&#12289;&#12388;&#12394;&#12364;&#12427;&#12290;Mac&#12363;&#12425;&#38899;&#27005;&#12434;&#37197;&#20449;&#12375;&#12289;iPhone&#12539;&#12502;&#12521;&#12454;&#12470;&#12391;&#21463;&#20449;&#12290;&#12501;&#12455;&#12473;&#12539;&#12521;&#12452;&#12502;&#12539;&#26085;&#24120;&#12398;BGM&#12395;&#12290;</p>
+        </a>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+    <div class="reveal">
+        <h2><span class="h1-grad">&#38899;&#12391;&#12289;&#12388;&#12394;&#12364;&#12429;&#12358;&#12290;</span></h2>
+        <p class="sub">Soluna&#12399;&#12458;&#12540;&#12503;&#12531;&#12477;&#12540;&#12473;&#12290;&#35504;&#12391;&#12418;&#28961;&#26009;&#12391;&#20351;&#12360;&#12427;&#12290;</p>
+        <div class="btn-row">
+            <a href="#download" class="btn btn-primary">&#12480;&#12454;&#12531;&#12525;&#12540;&#12489;</a>
+            <a href="https://github.com/yukihamada/opensonic" class="btn btn-secondary" target="_blank">GitHub</a>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="footer-grid">
+        <div class="footer-col">
+            <h4>Soluna</h4>
+            <a href="/">&#12513;&#12452;&#12531;&#12469;&#12452;&#12488;</a>
+            <a href="/app">App</a>
+            <a href="https://github.com/yukihamada/opensonic">GitHub</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">TestFlight</a>
+        </div>
+        <div class="footer-col">
+            <h4>&#27963;&#29992;&#12471;&#12540;&#12531;&#21029;</h4>
+            <a href="/for-djs">DJ</a>
+            <a href="/for-venues">&#24215;&#33303;</a>
+            <a href="/for-events">&#12452;&#12505;&#12531;&#12488;</a>
+            <a href="/for-developers">&#38283;&#30330;&#32773;</a>
+        </div>
+        <div class="footer-col">
+            <h4>&#12480;&#12454;&#12531;&#12525;&#12540;&#12489;</h4>
+            <a href="https://github.com/yukihamada/opensonic/releases/latest">Mac (.pkg)</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">iOS (TestFlight)</a>
+            <a href="/demo">&#12502;&#12521;&#12454;&#12470; Demo</a>
+            <a href="/sdk">SDK</a>
+        </div>
+    </div>
+    <div class="footer-bottom">
+        <span>&#9670; Soluna &mdash; Open Source Network Audio</span>
+        <span>MIT License</span>
+    </div>
+</footer>
+
+<script>
+const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.15 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+</script>
+</body>
+</html>

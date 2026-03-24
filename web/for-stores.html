@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna Studio — お店のBGMを、もっとスマートに。USENの半額以下で、来客のスマホにも届く次世代BGMサービス。30日間無料トライアル。">
+    <meta property="og:title" content="Soluna Studio — お店のBGMを、もっとスマートに。">
+    <meta property="og:description" content="USENの半額以下。来客のスマホにも届く、次世代BGMサービス。30日間無料トライアル。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/for-stores">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="ja_JP">
+    <meta name="keywords" content="店舗BGM,USEN代替,カフェBGM,レストランBGM,美容室BGM,ジムBGM,著作権クリア,JASRAC,音楽配信,Soluna">
+    <meta name="author" content="Soluna Project">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#05060a">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Soluna Studio — お店のBGMを、もっとスマートに。">
+    <meta name="twitter:description" content="USENの半額以下。来客のスマホにも届く、次世代BGMサービス。30日間無料トライアル。">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+    <link rel="canonical" href="https://solun.art/for-stores">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Soluna Studio — お店のBGMを、もっとスマートに。</title>
+    <style>
+        :root {
+            --bg: #05060a; --s1: #0c0e16; --s2: #12151f; --s3: #1a1e2e;
+            --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.12);
+            --text: #e8eaf2; --text2: #8b91a8; --text3: #50566e;
+            --blue: #3b82f6; --cyan: #06b6d4; --green: #10b981;
+            --purple: #8b5cf6; --amber: #f59e0b; --pink: #ec4899;
+            font-synthesis: none; -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+
+        /* ── Scroll reveal ── */
+        .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        /* ── Nav ── */
+        nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 0 max(20px, calc(50% - 580px)); height: 60px; background: rgba(5,6,10,0.7); backdrop-filter: blur(24px) saturate(1.8); border-bottom: 1px solid var(--border); }
+        .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; }
+        .nav-logo .diamond { color: var(--cyan); font-size: 20px; }
+        .nav-links { display: flex; align-items: center; gap: 24px; }
+        .nav-links a { color: var(--text2); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--text); }
+        .nav-cta { padding: 8px 18px; background: linear-gradient(135deg, var(--green), var(--cyan)); color: #fff !important; border-radius: 10px; font-weight: 600; font-size: 13px !important; transition: opacity 0.2s, transform 0.2s !important; box-shadow: 0 2px 12px rgba(16,185,129,0.3); }
+        .nav-cta:hover { opacity: 0.9; transform: translateY(-1px) !important; }
+
+        /* ── Shared ── */
+        .section { padding: 100px max(20px, calc(50% - 580px)); }
+        .section-label { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; background: linear-gradient(90deg, var(--green), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        h2 { font-size: clamp(28px, 5vw, 44px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 16px; }
+        .sub { font-size: 17px; color: var(--text2); line-height: 1.7; max-width: 540px; margin-bottom: 48px; }
+        .h1-grad { background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+        /* ── Hero ── */
+        .hero { position: relative; padding: 160px max(20px, calc(50% - 580px)) 100px; overflow: hidden; }
+        .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+        .hero-orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.15; animation: orb-float 20s ease-in-out infinite; }
+        .hero-orb-1 { width: 500px; height: 500px; background: var(--green); top: -10%; right: 10%; }
+        .hero-orb-2 { width: 400px; height: 400px; background: var(--cyan); bottom: -5%; left: 5%; animation-delay: -7s; }
+        .hero-orb-3 { width: 300px; height: 300px; background: var(--blue); top: 30%; left: 40%; animation-delay: -14s; }
+        @keyframes orb-float { 0%, 100% { transform: translate(0, 0) scale(1); } 33% { transform: translate(30px, -20px) scale(1.05); } 66% { transform: translate(-20px, 15px) scale(0.95); } }
+        .hero-content { position: relative; z-index: 1; }
+        .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); color: #34d399; font-size: 13px; font-weight: 600; padding: 6px 16px; border-radius: 24px; margin-bottom: 32px; animation: badge-in 0.6s ease both; }
+        .hero-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
+        @keyframes badge-in { from { opacity: 0; transform: translateY(10px); } }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        h1 { font-size: clamp(36px, 7vw, 68px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.1; margin-bottom: 28px; }
+        .hero-sub { font-size: clamp(16px, 2.5vw, 20px); color: var(--text2); max-width: 560px; line-height: 1.7; margin-bottom: 40px; }
+        .hero-actions { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-bottom: 16px; }
+        .btn-primary { display: inline-flex; align-items: center; gap: 8px; padding: 15px 28px; background: linear-gradient(135deg, var(--green), var(--cyan)); color: #fff; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 15px; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 24px rgba(16,185,129,0.35); }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(16,185,129,0.45); }
+        .btn-secondary { display: inline-flex; align-items: center; gap: 8px; padding: 15px 28px; background: rgba(255,255,255,0.04); border: 1px solid var(--border2); color: var(--text); text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 15px; transition: all 0.2s; }
+        .btn-secondary:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); }
+        .hero-note { font-size: 13px; color: var(--text3); }
+
+        /* ── Comparison table ── */
+        .comparison-table { width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 16px; overflow: hidden; border: 1px solid var(--border2); }
+        .comparison-table th, .comparison-table td { padding: 16px 20px; text-align: left; border-bottom: 1px solid var(--border); }
+        .comparison-table thead th { background: var(--s2); font-size: 14px; font-weight: 700; color: var(--text2); letter-spacing: 0.02em; }
+        .comparison-table tbody td { background: var(--s1); font-size: 15px; }
+        .comparison-table tbody tr:last-child td { border-bottom: none; }
+        .comparison-table .highlight-col { background: rgba(16,185,129,0.06) !important; }
+        .comparison-table thead .highlight-col { background: rgba(16,185,129,0.12) !important; color: var(--green); }
+        .price-tag { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; }
+        .price-tag small { font-size: 14px; font-weight: 500; color: var(--text2); }
+        .tag-good { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; background: rgba(16,185,129,0.12); color: var(--green); }
+        .tag-warn { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; background: rgba(245,158,11,0.12); color: var(--amber); }
+        .tag-bad { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; background: rgba(239,68,68,0.12); color: #ef4444; }
+        .check { color: var(--green); font-weight: 700; }
+        .cross { color: var(--text3); }
+
+        /* ── Feature cards ── */
+        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+        .feature-card { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 32px 28px; transition: border-color 0.3s, transform 0.3s; }
+        .feature-card:hover { border-color: var(--border2); transform: translateY(-4px); }
+        .feature-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 20px; }
+        .feature-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
+        .feature-card p { font-size: 14px; color: var(--text2); line-height: 1.7; }
+
+        /* ── How it works ── */
+        .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; counter-reset: step; }
+        .step { position: relative; background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 32px 24px; counter-increment: step; }
+        .step::before { content: counter(step); position: absolute; top: -14px; left: 24px; width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--green), var(--cyan)); color: #fff; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+        .step h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; margin-top: 4px; }
+        .step p { font-size: 14px; color: var(--text2); line-height: 1.7; }
+
+        /* ── Use cases ── */
+        .use-cases { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+        .use-case { background: var(--s1); border: 1px solid var(--border); border-radius: 14px; padding: 24px; text-align: center; transition: border-color 0.3s; }
+        .use-case:hover { border-color: var(--border2); }
+        .use-case-icon { font-size: 36px; margin-bottom: 12px; }
+        .use-case h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+        .use-case p { font-size: 13px; color: var(--text2); }
+
+        /* ── CTA section ── */
+        .cta-section { text-align: center; padding: 100px max(20px, calc(50% - 580px)); }
+        .cta-section h2 { margin-bottom: 16px; }
+        .cta-section .sub { margin: 0 auto 40px; }
+        .btn-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+
+        /* ── FAQ ── */
+        .faq-list { max-width: 680px; display: flex; flex-direction: column; gap: 12px; }
+        .faq-item { background: var(--s1); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+        .faq-item summary { padding: 20px 24px; font-size: 15px; font-weight: 600; cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; transition: color 0.2s; }
+        .faq-item summary:hover { color: var(--cyan); }
+        .faq-item summary::-webkit-details-marker { display: none; }
+        .faq-item summary span:last-child { transition: transform 0.3s; font-size: 18px; color: var(--text3); }
+        .faq-item[open] summary span:last-child { transform: rotate(45deg); }
+        .faq-item .faq-body { padding: 0 24px 20px; font-size: 14px; color: var(--text2); line-height: 1.7; }
+
+        /* ── Footer ── */
+        .footer-divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(16,185,129,0.3), var(--border), transparent); }
+        footer { padding: 40px max(20px, calc(50% - 580px)); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+        footer .f-logo { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        footer .f-links { display: flex; gap: 24px; }
+        footer .f-links a { font-size: 13px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
+        footer .f-links a:hover { color: var(--text2); }
+        footer .f-copy { font-size: 12px; color: var(--text3); }
+        .footer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 32px; width: 100%; }
+        .footer-col { display: flex; flex-direction: column; gap: 8px; }
+        .footer-col h4 { font-size: 12px; font-weight: 700; color: var(--text2); letter-spacing: 0.06em; margin-bottom: 4px; }
+        .footer-col a { font-size: 13px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
+        .footer-col a:hover { color: var(--text2); }
+        .footer-bottom { width: 100%; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 24px; margin-top: 8px; font-size: 12px; color: var(--text3); }
+
+        /* ── Mobile ── */
+        @media (max-width: 768px) {
+            .hero { padding: 120px 20px 60px; }
+            .section { padding: 60px 20px; }
+            .cta-section { padding: 60px 20px; }
+            .nav-links { gap: 12px; }
+            .nav-links a:not(.nav-cta) { display: none; }
+            .comparison-table { font-size: 13px; }
+            .comparison-table th, .comparison-table td { padding: 12px 10px; }
+            .price-tag { font-size: 22px; }
+            .footer-bottom { flex-direction: column; gap: 8px; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+    <a href="/" class="nav-logo"><span class="diamond">&#9670;</span> Soluna</a>
+    <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/for-venues">Venues</a>
+        <a href="/for-djs">DJs</a>
+        <a href="#trial" class="nav-cta">30日間無料で試す</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+        <div class="hero-orb hero-orb-3"></div>
+    </div>
+    <div class="hero-content">
+        <div class="hero-badge"><span class="dot"></span> 30日間無料トライアル実施中</div>
+        <h1><span class="h1-grad">お店のBGMを、<br>もっとスマートに。</span></h1>
+        <p class="hero-sub">USENの半額以下。来客のスマホにも届く、次世代BGMサービス。</p>
+        <div class="hero-actions">
+            <a href="#trial" class="btn-primary">30日間無料で試す</a>
+            <a href="#comparison" class="btn-secondary">料金を比較する</a>
+        </div>
+        <p class="hero-note">クレジットカード不要 / 契約期間の縛りなし / いつでもキャンセル可能</p>
+    </div>
+</section>
+
+<!-- Use cases -->
+<section class="section">
+    <div class="section-label reveal">こんなお店に選ばれています</div>
+    <div class="use-cases">
+        <div class="use-case reveal reveal-delay-1">
+            <div class="use-case-icon">&#127860;</div>
+            <h3>レストラン・カフェ</h3>
+            <p>落ち着いたジャズやボサノバで上質な食事体験を</p>
+        </div>
+        <div class="use-case reveal reveal-delay-2">
+            <div class="use-case-icon">&#128135;</div>
+            <h3>美容室・サロン</h3>
+            <p>施術中のリラックスタイムに最適なBGMを</p>
+        </div>
+        <div class="use-case reveal reveal-delay-3">
+            <div class="use-case-icon">&#127947;</div>
+            <h3>ジム・フィットネス</h3>
+            <p>モチベーションが上がるワークアウトミュージック</p>
+        </div>
+        <div class="use-case reveal reveal-delay-4">
+            <div class="use-case-icon">&#127866;</div>
+            <h3>バー・ラウンジ</h3>
+            <p>時間帯に合わせて雰囲気を自動で切り替え</p>
+        </div>
+    </div>
+</section>
+
+<!-- Comparison -->
+<section class="section" id="comparison">
+    <div class="section-label reveal">料金比較</div>
+    <h2 class="reveal"><span class="h1-grad">USENの半額以下で、もっと多機能。</span></h2>
+    <p class="sub reveal">シンプルな月額制。初期費用・工事費・専用機器はすべて不要です。</p>
+
+    <div class="reveal" style="overflow-x:auto">
+        <table class="comparison-table">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th class="highlight-col">Soluna Studio</th>
+                    <th>USEN</th>
+                    <th>Spotify for Business</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="font-weight:600">月額料金</td>
+                    <td class="highlight-col"><span class="price-tag">&#165;2,000<small>/月</small></span></td>
+                    <td><span class="price-tag">&#165;5,000<small>~/月</small></span></td>
+                    <td><span class="price-tag">&#165;0</span><br><span class="tag-bad">規約違反リスク</span></td>
+                </tr>
+                <tr>
+                    <td style="font-weight:600">初期費用</td>
+                    <td class="highlight-col"><span class="tag-good">無料</span></td>
+                    <td><span class="tag-warn">&#165;30,000~</span></td>
+                    <td><span class="tag-good">無料</span></td>
+                </tr>
+                <tr>
+                    <td style="font-weight:600">著作権</td>
+                    <td class="highlight-col"><span class="check">&#10003;</span> JASRAC包括契約</td>
+                    <td><span class="check">&#10003;</span> クリア</td>
+                    <td><span class="cross">&#10007;</span> 商用利用不可</td>
+                </tr>
+                <tr>
+                    <td style="font-weight:600">専用機器</td>
+                    <td class="highlight-col"><span class="tag-good">不要</span>（スマホ/PC/タブレット）</td>
+                    <td><span class="tag-warn">必要</span>（専用チューナー）</td>
+                    <td><span class="tag-good">不要</span></td>
+                </tr>
+                <tr>
+                    <td style="font-weight:600">来客のスマホ配信</td>
+                    <td class="highlight-col"><span class="check">&#10003;</span> QRコードで参加</td>
+                    <td><span class="cross">&#10007;</span></td>
+                    <td><span class="cross">&#10007;</span></td>
+                </tr>
+                <tr>
+                    <td style="font-weight:600">再生アナリティクス</td>
+                    <td class="highlight-col"><span class="check">&#10003;</span> 時間帯別レポート</td>
+                    <td><span class="cross">&#10007;</span></td>
+                    <td><span class="cross">&#10007;</span></td>
+                </tr>
+                <tr>
+                    <td style="font-weight:600">契約期間</td>
+                    <td class="highlight-col"><span class="tag-good">縛りなし</span></td>
+                    <td><span class="tag-warn">2年契約</span></td>
+                    <td>なし</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="section" style="padding-top:60px">
+    <div class="section-label reveal">主な機能</div>
+    <h2 class="reveal"><span class="h1-grad">ただのBGMサービスではありません。</span></h2>
+    <p class="sub reveal">お店の体験を一段上げる、次世代の機能が揃っています。</p>
+
+    <div class="feature-grid">
+        <div class="feature-card reveal reveal-delay-1">
+            <div class="feature-icon" style="background:rgba(6,182,212,0.1)">&#128241;</div>
+            <h3>来客のスマホにも届く</h3>
+            <p>店内に設置したQRコードをスキャンするだけで、お客様のスマホにもBGMが同期再生。ヘッドフォンで静かに楽しむことも可能です。</p>
+        </div>
+        <div class="feature-card reveal reveal-delay-2">
+            <div class="feature-icon" style="background:rgba(16,185,129,0.1)">&#9989;</div>
+            <h3>著作権クリア</h3>
+            <p>JASRAC包括契約に対応。面倒な著作権手続きは一切不要。安心してBGMを流せます。</p>
+        </div>
+        <div class="feature-card reveal reveal-delay-3">
+            <div class="feature-icon" style="background:rgba(139,92,246,0.1)">&#128200;</div>
+            <h3>アナリティクス</h3>
+            <p>何時にどのジャンルが人気か、曜日ごとの再生傾向をダッシュボードで可視化。データに基づいてBGMを最適化できます。</p>
+        </div>
+        <div class="feature-card reveal reveal-delay-4">
+            <div class="feature-icon" style="background:rgba(245,158,11,0.1)">&#128276;</div>
+            <h3>30日間無料トライアル</h3>
+            <p>クレジットカード登録不要で、すべての機能を30日間お試しいただけます。お気に召さなければ、そのまま終了するだけ。</p>
+        </div>
+    </div>
+</section>
+
+<!-- How it works -->
+<section class="section" style="padding-top:60px">
+    <div class="section-label reveal">導入はかんたん</div>
+    <h2 class="reveal"><span class="h1-grad">最短5分でBGMスタート。</span></h2>
+    <p class="sub reveal">専用機器の設置や工事は一切不要。今あるデバイスですぐに始められます。</p>
+
+    <div class="steps">
+        <div class="step reveal reveal-delay-1">
+            <h3>アカウント登録</h3>
+            <p>メールアドレスだけで登録完了。クレジットカードは不要です。</p>
+        </div>
+        <div class="step reveal reveal-delay-2">
+            <h3>チャンネルを選ぶ</h3>
+            <p>ジャズ、ローファイ、チル、ダンスなど業種に合ったチャンネルを選択。</p>
+        </div>
+        <div class="step reveal reveal-delay-3">
+            <h3>再生開始</h3>
+            <p>スマホ・タブレット・PCからワンタップで再生。お手持ちのスピーカーに接続するだけ。</p>
+        </div>
+    </div>
+</section>
+
+<!-- FAQ -->
+<section class="section">
+    <div class="section-label reveal">よくある質問</div>
+    <h2 class="reveal" style="margin-bottom:32px"><span class="h1-grad">FAQ</span></h2>
+
+    <div class="faq-list">
+        <details class="faq-item reveal">
+            <summary><span>USENから乗り換えるのは大変ですか？</span><span>+</span></summary>
+            <div class="faq-body">いいえ。専用機器の返却以外に必要な手続きはありません。Solunaはお手持ちのスマホやタブレットですぐに使えるため、最短5分で移行できます。</div>
+        </details>
+        <details class="faq-item reveal reveal-delay-1">
+            <summary><span>著作権は本当に問題ありませんか？</span><span>+</span></summary>
+            <div class="faq-body">はい。Soluna Studioの楽曲はJASRAC包括契約のもとでライセンスされています。店舗での商用利用に対応しているため、安心してご利用いただけます。</div>
+        </details>
+        <details class="faq-item reveal reveal-delay-2">
+            <summary><span>どんな機器が必要ですか？</span><span>+</span></summary>
+            <div class="faq-body">スマートフォン、タブレット、またはPCがあればOKです。Bluetooth接続やAUXケーブルで既存のスピーカーに繋ぐだけ。専用チューナーのような追加機器は不要です。</div>
+        </details>
+        <details class="faq-item reveal reveal-delay-3">
+            <summary><span>無料トライアル後はどうなりますか？</span><span>+</span></summary>
+            <div class="faq-body">30日間の無料トライアル後、自動で課金されることはありません。続けたい場合のみ、有料プラン（月額2,000円）にお申し込みください。</div>
+        </details>
+        <details class="faq-item reveal reveal-delay-4">
+            <summary><span>来客のスマホ配信はどう使いますか？</span><span>+</span></summary>
+            <div class="faq-body">ダッシュボードから専用QRコードを生成し、店内に掲示するだけです。お客様がスマホでスキャンすると、ブラウザ上でBGMが同期再生されます。アプリのインストールは不要です。</div>
+        </details>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" id="trial">
+    <div class="reveal">
+        <h2><span class="h1-grad">今すぐ、お店のBGMを変えよう。</span></h2>
+        <p class="sub">30日間の無料トライアル。クレジットカード不要。いつでもキャンセル可能。</p>
+        <div class="btn-row">
+            <a href="/dashboard" class="btn-primary" style="font-size:17px;padding:16px 32px">30日間無料で試す</a>
+            <a href="#comparison" class="btn-secondary" style="font-size:17px;padding:16px 32px">料金を比較する</a>
+        </div>
+    </div>
+</section>
+
+<div class="footer-divider"></div>
+
+<!-- Footer -->
+<footer style="flex-direction:column;align-items:stretch;gap:32px">
+    <div class="footer-grid">
+        <div class="footer-col">
+            <h4>Soluna</h4>
+            <a href="/">メインサイト</a>
+            <a href="https://github.com/yukihamada/opensonic">GitHub</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">TestFlight</a>
+        </div>
+        <div class="footer-col">
+            <h4>活用シーン別</h4>
+            <a href="/for-stores">店舗BGM</a>
+            <a href="/for-venues">Venues</a>
+            <a href="/for-djs">DJs</a>
+            <a href="/for-events">Events</a>
+        </div>
+        <div class="footer-col">
+            <h4>リソース</h4>
+            <a href="/guide">セットアップガイド</a>
+            <a href="/dashboard">ダッシュボード</a>
+            <a href="/for-developers">開発者向け</a>
+        </div>
+    </div>
+    <div class="footer-bottom">
+        <span>&#9670; Soluna &mdash; Open Source Network Audio</span>
+        <span>&copy; 2024-2026 Soluna Project &middot; MIT License</span>
+    </div>
+</footer>
+
+<script>
+const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+</script>
+</body>
+</html>

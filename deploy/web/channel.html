@@ -855,7 +855,7 @@
                     // But network delay cancels out since both receive from same relay
                     var targetMs = 315; // match iOS/Mac: 300ms prefill + ~15ms output
                     var targetFrames = Math.round(targetMs * 48);
-                    workletNode.port.postMessage({ type: 'setTarget', frames: targetFrames });
+                    if (workletNode) workletNode.port.postMessage({ type: 'setTarget', frames: targetFrames });
                 }
             };
             // Poll buffer level every 2s for adaptive sync

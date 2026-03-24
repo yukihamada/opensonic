@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg4" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#05060a"/>
+      <stop offset="100%" stop-color="#0f1020"/>
+    </linearGradient>
+    <linearGradient id="line4" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg4)"/>
+  <!-- Mesh network nodes -->
+  <!-- Center node (large) -->
+  <circle cx="512" cy="480" r="40" fill="url(#line4)"/>
+  <!-- Ring 1 nodes -->
+  <circle cx="380" cy="360" r="20" fill="#06b6d4" opacity="0.9"/>
+  <circle cx="644" cy="360" r="20" fill="#8b5cf6" opacity="0.9"/>
+  <circle cx="380" cy="600" r="20" fill="#10b981" opacity="0.9"/>
+  <circle cx="644" cy="600" r="20" fill="#ec4899" opacity="0.9"/>
+  <!-- Ring 2 nodes (smaller) -->
+  <circle cx="280" cy="480" r="12" fill="#06b6d4" opacity="0.6"/>
+  <circle cx="744" cy="480" r="12" fill="#8b5cf6" opacity="0.6"/>
+  <circle cx="512" cy="280" r="12" fill="#f59e0b" opacity="0.6"/>
+  <circle cx="512" cy="680" r="12" fill="#10b981" opacity="0.6"/>
+  <!-- Connection lines -->
+  <line x1="512" y1="480" x2="380" y2="360" stroke="url(#line4)" stroke-width="3" opacity="0.5"/>
+  <line x1="512" y1="480" x2="644" y2="360" stroke="url(#line4)" stroke-width="3" opacity="0.5"/>
+  <line x1="512" y1="480" x2="380" y2="600" stroke="url(#line4)" stroke-width="3" opacity="0.5"/>
+  <line x1="512" y1="480" x2="644" y2="600" stroke="url(#line4)" stroke-width="3" opacity="0.5"/>
+  <line x1="380" y1="360" x2="280" y2="480" stroke="#06b6d4" stroke-width="2" opacity="0.3"/>
+  <line x1="644" y1="360" x2="744" y2="480" stroke="#8b5cf6" stroke-width="2" opacity="0.3"/>
+  <line x1="380" y1="360" x2="512" y2="280" stroke="#06b6d4" stroke-width="2" opacity="0.3"/>
+  <line x1="644" y1="360" x2="512" y2="280" stroke="#8b5cf6" stroke-width="2" opacity="0.3"/>
+  <line x1="380" y1="600" x2="512" y2="680" stroke="#10b981" stroke-width="2" opacity="0.3"/>
+  <line x1="644" y1="600" x2="512" y2="680" stroke="#ec4899" stroke-width="2" opacity="0.3"/>
+  <!-- Cross connections -->
+  <line x1="380" y1="360" x2="644" y2="600" stroke="white" stroke-width="1" opacity="0.1"/>
+  <line x1="644" y1="360" x2="380" y2="600" stroke="white" stroke-width="1" opacity="0.1"/>
+  <!-- Pulse ring around center -->
+  <circle cx="512" cy="480" r="70" fill="none" stroke="url(#line4)" stroke-width="2" opacity="0.3"/>
+</svg>

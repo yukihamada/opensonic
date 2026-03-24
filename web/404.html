@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <meta name="theme-color" content="#05060a">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <title>404 — Soluna</title>
+    <style>
+        :root {
+            --bg: #05060a; --s1: #0c0e16; --s2: #12151f; --s3: #1a1e2e;
+            --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.12);
+            --text: #e8eaf2; --text2: #8b91a8; --text3: #50566e;
+            --blue: #3b82f6; --cyan: #06b6d4; --green: #10b981;
+            --purple: #8b5cf6; --amber: #f59e0b; --pink: #ec4899;
+            font-synthesis: none; -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; display: flex; flex-direction: column; }
+
+        /* Nav */
+        nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 0 max(20px, calc(50% - 580px)); height: 60px; background: rgba(5,6,10,0.7); backdrop-filter: blur(24px) saturate(1.8); border-bottom: 1px solid var(--border); }
+        .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .nav-links a { color: var(--text2); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--text); }
+        .nav-cta { padding: 8px 18px; background: linear-gradient(135deg, var(--green), var(--cyan)); color: #fff !important; border-radius: 10px; font-weight: 600; font-size: 13px !important; box-shadow: 0 2px 12px rgba(16,185,129,0.3); }
+
+        /* Equalizer background */
+        .eq-bg { position: fixed; inset: 0; z-index: 0; display: flex; align-items: flex-end; justify-content: center; gap: 3px; padding: 0 5%; opacity: 0.07; pointer-events: none; }
+        .eq-bar { width: 4px; border-radius: 2px 2px 0 0; background: linear-gradient(to top, var(--green), var(--cyan)); animation: eq-bounce var(--dur) ease-in-out infinite alternate; transform-origin: bottom; }
+        @keyframes eq-bounce {
+            0% { height: var(--h1); }
+            25% { height: var(--h2); }
+            50% { height: var(--h3); }
+            75% { height: var(--h2); }
+            100% { height: var(--h1); }
+        }
+
+        /* Main content */
+        .content-404 { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; z-index: 1; text-align: center; padding: 80px 20px 40px; }
+
+        /* Glitch 404 */
+        .num-404 {
+            font-size: clamp(100px, 25vw, 220px);
+            font-weight: 900;
+            letter-spacing: -0.04em;
+            line-height: 1;
+            position: relative;
+            background: linear-gradient(135deg, var(--green), var(--cyan), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            background-size: 300% 100%;
+            animation: grad-sweep 6s ease-in-out infinite;
+        }
+        @keyframes grad-sweep {
+            0%, 100% { background-position: 0% center; }
+            50% { background-position: 100% center; }
+        }
+        .num-404::before, .num-404::after {
+            content: '404';
+            position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+            background: inherit; -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .num-404::before {
+            animation: glitch-1 3s infinite linear;
+            clip-path: polygon(0 0, 100% 0, 100% 33%, 0 33%);
+        }
+        .num-404::after {
+            animation: glitch-2 3s infinite linear;
+            clip-path: polygon(0 66%, 100% 66%, 100% 100%, 0 100%);
+        }
+        @keyframes glitch-1 {
+            0%, 92%, 100% { transform: translate(0); }
+            93% { transform: translate(-8px, -2px); }
+            94% { transform: translate(6px, 1px); }
+            95% { transform: translate(-3px, 0); }
+            96% { transform: translate(0); }
+        }
+        @keyframes glitch-2 {
+            0%, 95%, 100% { transform: translate(0); }
+            96% { transform: translate(5px, 2px); }
+            97% { transform: translate(-7px, -1px); }
+            98% { transform: translate(4px, 0); }
+            99% { transform: translate(0); }
+        }
+
+        /* Waveform animation around the number */
+        .waveform {
+            width: min(600px, 90vw);
+            height: 60px;
+            margin: 24px 0 32px;
+            position: relative;
+            overflow: hidden;
+        }
+        .waveform svg { width: 100%; height: 100%; }
+        .wave-path {
+            fill: none;
+            stroke-width: 1.5;
+            stroke-linecap: round;
+            animation: wave-draw 2s ease-in-out infinite alternate;
+        }
+        .wave-path-1 { stroke: var(--green); opacity: 0.6; }
+        .wave-path-2 { stroke: var(--cyan); opacity: 0.4; animation-delay: -0.5s; }
+        .wave-path-3 { stroke: var(--purple); opacity: 0.3; animation-delay: -1s; }
+        @keyframes wave-draw {
+            0% { stroke-dashoffset: 0; }
+            100% { stroke-dashoffset: 80; }
+        }
+
+        .subtitle-ja { font-size: clamp(18px, 4vw, 28px); font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: 0.02em; }
+        .subtitle-en { font-size: clamp(14px, 2.5vw, 18px); color: var(--text2); margin-bottom: 48px; font-weight: 400; }
+
+        .link-row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+        .link-row a {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 28px; border-radius: 12px; font-size: 15px;
+            font-weight: 600; text-decoration: none; transition: transform 0.2s, border-color 0.2s;
+            background: var(--s2); color: var(--text); border: 1px solid var(--border2);
+        }
+        .link-row a:hover { transform: translateY(-2px); border-color: rgba(16,185,129,0.4); }
+        .link-row a.primary {
+            background: linear-gradient(135deg, var(--green), var(--cyan));
+            color: #fff; border: none;
+            box-shadow: 0 4px 20px rgba(16,185,129,0.3);
+        }
+
+        /* Floating orbs */
+        .orb { position: fixed; border-radius: 50%; filter: blur(100px); opacity: 0.1; pointer-events: none; z-index: 0; }
+        .orb-1 { width: 400px; height: 400px; background: var(--green); top: 10%; right: -5%; animation: orb-f 18s ease-in-out infinite; }
+        .orb-2 { width: 350px; height: 350px; background: var(--purple); bottom: 5%; left: -5%; animation: orb-f 22s ease-in-out infinite reverse; }
+        .orb-3 { width: 250px; height: 250px; background: var(--cyan); top: 40%; left: 30%; animation: orb-f 15s ease-in-out infinite; animation-delay: -5s; }
+        @keyframes orb-f { 0%, 100% { transform: translate(0,0) scale(1); } 33% { transform: translate(30px,-25px) scale(1.08); } 66% { transform: translate(-20px,20px) scale(0.92); } }
+
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .eq-bg { gap: 2px; }
+            .eq-bar { width: 3px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/app">App</a>
+        <a href="/sdk">SDK</a>
+        <a href="/demo">Demo</a>
+        <a href="/for-developers">Developers</a>
+        <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+        <a href="/dashboard" class="nav-cta">Dashboard</a>
+    </div>
+</nav>
+
+<!-- Floating orbs -->
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<!-- Equalizer bars background -->
+<div class="eq-bg" id="eqBg"></div>
+
+<main class="content-404">
+    <div class="num-404">404</div>
+
+    <!-- Animated waveform -->
+    <div class="waveform">
+        <svg viewBox="0 0 600 60" preserveAspectRatio="none">
+            <path class="wave-path wave-path-1" d="" stroke-dasharray="4 4" />
+            <path class="wave-path wave-path-2" d="" stroke-dasharray="6 3" />
+            <path class="wave-path wave-path-3" d="" stroke-dasharray="3 5" />
+        </svg>
+    </div>
+
+    <p class="subtitle-ja">この音は、まだ存在しない。</p>
+    <p class="subtitle-en">This sound doesn't exist yet.</p>
+
+    <div class="link-row">
+        <a href="/" class="primary">Home</a>
+        <a href="/sdk">SDK</a>
+        <a href="/for-developers">Developers</a>
+    </div>
+</main>
+
+<script>
+// Generate equalizer bars
+(function() {
+    const bg = document.getElementById('eqBg');
+    const count = Math.floor(window.innerWidth / 7);
+    for (let i = 0; i < count; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'eq-bar';
+        const h1 = 5 + Math.random() * 25;
+        const h2 = 10 + Math.random() * 50;
+        const h3 = 5 + Math.random() * 35;
+        const dur = 1.5 + Math.random() * 2.5;
+        bar.style.setProperty('--h1', h1 + '%');
+        bar.style.setProperty('--h2', h2 + '%');
+        bar.style.setProperty('--h3', h3 + '%');
+        bar.style.setProperty('--dur', dur + 's');
+        bar.style.animationDelay = (-Math.random() * dur) + 's';
+        bg.appendChild(bar);
+    }
+})();
+
+// Generate animated waveform paths
+(function() {
+    const paths = document.querySelectorAll('.wave-path');
+    function genWave(amplitude, freq, phase) {
+        let d = 'M 0 30';
+        for (let x = 0; x <= 600; x += 3) {
+            const y = 30 + amplitude * Math.sin((x * freq / 600) * Math.PI * 2 + phase);
+            d += ` L ${x} ${y.toFixed(1)}`;
+        }
+        return d;
+    }
+    let t = 0;
+    function animate() {
+        t += 0.02;
+        paths[0].setAttribute('d', genWave(18, 3, t));
+        paths[1].setAttribute('d', genWave(14, 4.5, t * 1.3 + 1));
+        paths[2].setAttribute('d', genWave(10, 6, t * 0.8 + 2.5));
+        requestAnimationFrame(animate);
+    }
+    animate();
+})();
+</script>
+</body>
+</html>

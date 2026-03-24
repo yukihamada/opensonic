@@ -1,6 +1,6 @@
 //
 //  ChannelPurchaseView.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  UI for purchasing a custom channel name via StoreKit 2
 //

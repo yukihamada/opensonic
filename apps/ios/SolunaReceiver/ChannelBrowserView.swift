@@ -1,6 +1,6 @@
 //
 //  ChannelBrowserView.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Preset channel browser — shared design for iOS & Mac
 //
@@ -18,10 +18,12 @@ struct SolunaChannel: Identifiable {
 }
 
 let presetChannels: [SolunaChannel] = [
-    SolunaChannel(id: "lofi",    label: "Lo-Fi",    icon: "headphones",          color: .purple,  description: "Chill beats to relax"),
-    SolunaChannel(id: "jazz",    label: "Jazz",     icon: "pianokeys",           color: .orange,  description: "Smooth jazz piano"),
-    SolunaChannel(id: "ambient", label: "Ambient",  icon: "leaf.fill",           color: .teal,    description: "Atmospheric soundscapes"),
-    SolunaChannel(id: "soluna",  label: "BJJ",      icon: "figure.martial.arts", color: .blue,    description: "BJJ training beats"),
+    SolunaChannel(id: "soluna",  label: "Soluna",   icon: "sun.and.horizon.fill",  color: .solunaSol,           description: "The flagship mix"),
+    SolunaChannel(id: "jazz",    label: "Jazz",     icon: "pianokeys",             color: .orange,              description: "Smooth jazz piano"),
+    SolunaChannel(id: "lofi",    label: "Lo-Fi",    icon: "headphones",            color: .purple,              description: "Chill beats to relax"),
+    SolunaChannel(id: "chill",   label: "Chill",    icon: "leaf.fill",             color: .solunaLuna,          description: "Easy listening vibes"),
+    SolunaChannel(id: "dance",   label: "Dance",    icon: "bolt.heart.fill",       color: .solunaSolEnd,        description: "High-energy grooves"),
+    SolunaChannel(id: "bjj",     label: "BJJ",      icon: "figure.martial.arts",   color: .solunaGradientMid,   description: "Training beats"),
 ]
 
 // MARK: - Channel Browser View

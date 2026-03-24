@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <script>if(!sessionStorage.getItem('lang-set')&&/^en/i.test(navigator.language)){location.replace('/en/')}</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna Community — DJランキング、ファンランク、リクエスト。音楽でつながるコミュニティ。">
+    <meta name="theme-color" content="#05060a">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Community — Soluna</title>
+
+    <meta property="og:title" content="Community — Soluna">
+    <meta property="og:description" content="DJランキング、ファンランク、リクエスト。音楽でつながるコミュニティ。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/community">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --cyan:   #06b6d4;
+            --green:  #10b981;
+            --purple: #8b5cf6;
+            --amber:  #f59e0b;
+            --pink:   #ec4899;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg); color: var(--text);
+            line-height: 1.6; overflow-x: hidden;
+        }
+
+        .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+
+        /* ── Nav ── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 max(20px, calc(50% - 580px)); height: 60px;
+            background: rgba(5,6,10,0.7); backdrop-filter: blur(24px) saturate(1.8);
+            border-bottom: 1px solid var(--border); transition: background 0.3s;
+        }
+        .nav-logo {
+            font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+            display: flex; align-items: center; gap: 8px;
+            text-decoration: none; color: var(--text);
+        }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 24px; }
+        .nav-links a { color: var(--text2); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--text); font-weight: 600; }
+        .nav-cta {
+            padding: 8px 18px; background: linear-gradient(135deg, var(--blue), var(--purple));
+            color: #fff !important; border-radius: 10px; font-weight: 600; font-size: 13px !important;
+            transition: opacity 0.2s, transform 0.2s !important;
+            box-shadow: 0 2px 12px rgba(59,130,246,0.3);
+        }
+        .nav-cta:hover { opacity: 0.9; transform: translateY(-1px) !important; }
+
+        .section { padding: 100px max(20px, calc(50% - 580px)); }
+        .section-label {
+            font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; margin-bottom: 14px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        h2 { font-size: clamp(28px, 5vw, 44px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 16px; }
+        .sub { font-size: 17px; color: var(--text2); line-height: 1.7; max-width: 540px; margin-bottom: 48px; }
+
+        /* ── Hero ── */
+        .hero {
+            position: relative; padding: 160px max(20px, calc(50% - 580px)) 100px;
+            overflow: hidden; text-align: center;
+        }
+        .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+        .hero-orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.15; animation: orb-float 20s ease-in-out infinite; }
+        .hero-orb-1 { width: 500px; height: 500px; background: var(--purple); top: -10%; right: 10%; }
+        .hero-orb-2 { width: 400px; height: 400px; background: var(--blue); bottom: -5%; left: 5%; animation-delay: -7s; }
+        .hero-orb-3 { width: 300px; height: 300px; background: var(--green); top: 30%; left: 40%; animation-delay: -14s; }
+        @keyframes orb-float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -20px) scale(1.05); }
+            66% { transform: translate(-20px, 15px) scale(0.95); }
+        }
+        .hero-content { position: relative; z-index: 1; }
+        h1 { font-size: clamp(40px, 8vw, 72px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.05; margin-bottom: 28px; }
+        .h1-grad { background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .h1-accent { background: linear-gradient(135deg, var(--purple), var(--cyan), var(--green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 200% auto; animation: grad-shift 4s ease-in-out infinite; }
+        @keyframes grad-shift { 0%, 100% { background-position: 0% center; } 50% { background-position: 100% center; } }
+        .hero-sub { font-size: clamp(16px, 2.5vw, 20px); color: var(--text2); max-width: 560px; line-height: 1.7; margin: 0 auto 40px; }
+
+        .btn-primary {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 15px 28px; background: linear-gradient(135deg, var(--blue), var(--purple));
+            color: #fff; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 15px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 24px rgba(59,130,246,0.35); border: none; cursor: pointer;
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(59,130,246,0.45); }
+        .btn-secondary {
+            display: inline-flex; align-items: center; gap: 8px; padding: 15px 28px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border2);
+            color: var(--text); text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 15px;
+            transition: all 0.2s;
+        }
+        .btn-secondary:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); }
+
+        /* ── Discord CTA ── */
+        .discord-card {
+            max-width: 600px; margin: 0 auto;
+            background: var(--s1); border: 1px solid rgba(88,101,242,0.3);
+            border-radius: 24px; padding: 40px; text-align: center;
+            position: relative; overflow: hidden;
+        }
+        .discord-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, #5865F2, var(--purple));
+        }
+        .discord-card h3 { font-size: 24px; font-weight: 800; margin-bottom: 12px; }
+        .discord-card p { font-size: 15px; color: var(--text2); line-height: 1.7; margin-bottom: 24px; }
+
+        /* ── Leaderboard ── */
+        .leaderboard {
+            max-width: 640px; margin: 0 auto;
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 20px; overflow: hidden;
+        }
+        .lb-header {
+            padding: 20px 24px; border-bottom: 1px solid var(--border);
+            font-size: 14px; font-weight: 700; color: var(--text2);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .lb-row {
+            display: flex; align-items: center; gap: 16px;
+            padding: 16px 24px; border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
+        }
+        .lb-row:last-child { border-bottom: none; }
+        .lb-row:hover { background: rgba(255,255,255,0.02); }
+        .lb-rank {
+            width: 32px; height: 32px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 800; flex-shrink: 0;
+        }
+        .lb-rank.gold { background: rgba(245,158,11,0.15); color: var(--amber); }
+        .lb-rank.silver { background: rgba(192,192,192,0.15); color: #c0c0c0; }
+        .lb-rank.bronze { background: rgba(205,127,50,0.15); color: #cd7f32; }
+        .lb-rank.normal { background: var(--s2); color: var(--text3); }
+        .lb-name { font-size: 15px; font-weight: 600; flex: 1; }
+        .lb-stat { font-size: 13px; color: var(--text2); text-align: right; }
+        .lb-stat small { color: var(--text3); }
+
+        /* ── Channels grid ── */
+        .channels-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;
+        }
+        .channel-card {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px;
+            display: flex; flex-direction: column; gap: 12px;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .channel-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+        .channel-header { display: flex; align-items: center; gap: 12px; }
+        .channel-icon {
+            width: 44px; height: 44px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px; flex-shrink: 0;
+        }
+        .channel-icon.blue { background: rgba(59,130,246,0.1); }
+        .channel-icon.purple { background: rgba(139,92,246,0.1); }
+        .channel-icon.green { background: rgba(16,185,129,0.1); }
+        .channel-icon.amber { background: rgba(245,158,11,0.1); }
+        .channel-name { font-size: 16px; font-weight: 700; }
+        .channel-meta { font-size: 12px; color: var(--text3); }
+        .channel-card p { font-size: 13px; color: var(--text2); line-height: 1.6; }
+        .live-indicator {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 11px; font-weight: 700; color: var(--green);
+        }
+        .live-indicator .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green); animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        /* ── Request form ── */
+        .request-card {
+            max-width: 560px; margin: 0 auto;
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 20px; padding: 32px;
+        }
+        .request-card h3 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+        .request-card > p { font-size: 14px; color: var(--text2); margin-bottom: 24px; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label {
+            display: block; font-size: 13px; font-weight: 600;
+            color: var(--text2); margin-bottom: 6px;
+        }
+        .form-group input, .form-group textarea {
+            width: 100%; padding: 12px 16px;
+            background: var(--s2); border: 1px solid var(--border2);
+            border-radius: 10px; color: var(--text); font-size: 14px;
+            font-family: inherit; outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus, .form-group textarea:focus { border-color: var(--blue); }
+        .form-group textarea { resize: vertical; min-height: 80px; }
+
+        /* ── Fan Ranks ── */
+        .ranks-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px;
+        }
+        .rank-card {
+            background: var(--s1); border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px; text-align: center;
+            transition: border-color 0.3s, transform 0.3s;
+        }
+        .rank-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+        .rank-icon { font-size: 40px; margin-bottom: 12px; }
+        .rank-name { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+        .rank-req { font-size: 12px; color: var(--text3); margin-bottom: 8px; }
+        .rank-perks { font-size: 13px; color: var(--text2); line-height: 1.6; }
+
+        /* ── CTA ── */
+        .cta-section { text-align: center; padding: 100px max(20px, calc(50% - 580px)); }
+        .cta-section h2 { font-size: clamp(28px, 5vw, 48px); margin-bottom: 20px; }
+        .cta-section .sub { margin: 0 auto 40px; text-align: center; }
+
+        /* ── Footer ── */
+        .footer-divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(59,130,246,0.3), var(--border), transparent); }
+        footer {
+            padding: 40px max(20px, calc(50% - 580px));
+            display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;
+        }
+        footer .f-logo { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        footer .f-links { display: flex; gap: 24px; }
+        footer .f-links a { font-size: 13px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
+        footer .f-links a:hover { color: var(--text2); }
+        footer .f-copy { font-size: 12px; color: var(--text3); }
+
+        @media (max-width: 768px) {
+            .nav-links .hide-sm { display: none; }
+            .ranks-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/live" class="hide-sm">Live</a>
+        <a href="/community" class="active hide-sm">Community</a>
+        <a href="/blog" class="hide-sm">Blog</a>
+        <a href="/for-developers" class="hide-sm">Developers</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/dashboard" class="nav-cta">ダッシュボード</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+        <div class="hero-orb hero-orb-3"></div>
+    </div>
+    <div class="hero-content">
+        <h1>
+            <span class="h1-accent">Community</span>
+        </h1>
+        <p class="hero-sub">
+            聴いて、つながって、ランクアップ。<br>
+            音楽で世界とつながるコミュニティ。
+        </p>
+        <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
+            <a href="#" class="btn-primary" style="background:#5865F2;box-shadow:0 4px 24px rgba(88,101,242,0.35)">
+                Discord に参加
+            </a>
+            <a href="/dashboard" class="btn-secondary">チャンネルを探す</a>
+        </div>
+    </div>
+</section>
+
+<!-- Discord -->
+<section class="section" style="padding-top:0">
+    <div class="discord-card reveal">
+        <div style="font-size:48px;margin-bottom:16px">&#128172;</div>
+        <h3>Soluna Discord</h3>
+        <p>
+            DJの配信情報、新機能のアナウンス、リクエスト受付、<br>
+            開発者ディスカッション ―― すべてここで。
+        </p>
+        <a href="#" class="btn-primary" style="background:#5865F2;box-shadow:0 4px 24px rgba(88,101,242,0.35)">
+            Discordを開く
+        </a>
+    </div>
+</section>
+
+<!-- Top DJs -->
+<section class="section">
+    <div class="section-label reveal">Leaderboard</div>
+    <h2 class="reveal">Top DJs</h2>
+    <p class="sub reveal">今月の配信時間ランキング。</p>
+    <div class="leaderboard reveal">
+        <div class="lb-header">
+            <span>DJ</span>
+            <span>配信時間</span>
+        </div>
+        <div class="lb-row">
+            <div class="lb-rank gold">1</div>
+            <div class="lb-name">DJ SORA</div>
+            <div class="lb-stat">128h <small>/ 3,420 listeners</small></div>
+        </div>
+        <div class="lb-row">
+            <div class="lb-rank silver">2</div>
+            <div class="lb-name">Yuki.wav</div>
+            <div class="lb-stat">96h <small>/ 2,180 listeners</small></div>
+        </div>
+        <div class="lb-row">
+            <div class="lb-rank bronze">3</div>
+            <div class="lb-name">Luna Beats</div>
+            <div class="lb-stat">82h <small>/ 1,950 listeners</small></div>
+        </div>
+        <div class="lb-row">
+            <div class="lb-rank normal">4</div>
+            <div class="lb-name">chill_master</div>
+            <div class="lb-stat">71h <small>/ 1,440 listeners</small></div>
+        </div>
+        <div class="lb-row">
+            <div class="lb-rank normal">5</div>
+            <div class="lb-name">TokyoNight</div>
+            <div class="lb-stat">65h <small>/ 1,210 listeners</small></div>
+        </div>
+    </div>
+</section>
+
+<!-- Featured Channels -->
+<section class="section" style="background:var(--s1)">
+    <div class="section-label reveal">Featured Channels</div>
+    <h2 class="reveal">今週の注目チャンネル</h2>
+    <p class="sub reveal">エディター厳選のチャンネルをチェック。</p>
+    <div class="channels-grid">
+        <div class="channel-card reveal reveal-delay-1">
+            <div class="channel-header">
+                <div class="channel-icon purple">&#127926;</div>
+                <div>
+                    <div class="channel-name">lofi</div>
+                    <div class="channel-meta"><span class="live-indicator"><span class="dot"></span> LIVE</span> &middot; 342 listeners</div>
+                </div>
+            </div>
+            <p>24/7 lo-fi beats for study and relax. 勉強や作業のお供に。</p>
+        </div>
+        <div class="channel-card reveal reveal-delay-2">
+            <div class="channel-header">
+                <div class="channel-icon amber">&#127927;</div>
+                <div>
+                    <div class="channel-name">jazz</div>
+                    <div class="channel-meta"><span class="live-indicator"><span class="dot"></span> LIVE</span> &middot; 189 listeners</div>
+                </div>
+            </div>
+            <p>スムースジャズからフリージャズまで。夜のバー気分。</p>
+        </div>
+        <div class="channel-card reveal reveal-delay-3">
+            <div class="channel-header">
+                <div class="channel-icon blue">&#128165;</div>
+                <div>
+                    <div class="channel-name">dance</div>
+                    <div class="channel-meta"><span class="live-indicator"><span class="dot"></span> LIVE</span> &middot; 567 listeners</div>
+                </div>
+            </div>
+            <p>EDM, House, Techno — クラブの熱気を配信中。</p>
+        </div>
+        <div class="channel-card reveal reveal-delay-3">
+            <div class="channel-header">
+                <div class="channel-icon green">&#129337;</div>
+                <div>
+                    <div class="channel-name">bjj</div>
+                    <div class="channel-meta">128 listeners</div>
+                </div>
+            </div>
+            <p>ブラジリアン柔術ジム向けBGM。トレーニングのモチベに。</p>
+        </div>
+    </div>
+</section>
+
+<!-- Request a Song -->
+<section class="section">
+    <div class="section-label reveal">Request</div>
+    <h2 class="reveal">リクエストを送る</h2>
+    <p class="sub reveal">聴きたい曲やジャンルをDJにリクエスト。</p>
+    <div class="request-card reveal">
+        <h3>&#127925; Song Request</h3>
+        <p>配信中のDJにリクエストを送ろう。</p>
+        <div class="form-group">
+            <label>チャンネル名</label>
+            <input type="text" placeholder="例: lofi, jazz, dance..." />
+        </div>
+        <div class="form-group">
+            <label>曲名 / アーティスト</label>
+            <input type="text" placeholder="例: Nujabes - Feather" />
+        </div>
+        <div class="form-group">
+            <label>メッセージ (任意)</label>
+            <textarea placeholder="DJへのメッセージ..."></textarea>
+        </div>
+        <button class="btn-primary" style="width:100%;justify-content:center" onclick="alert('Coming soon!')">
+            リクエストを送信
+        </button>
+    </div>
+</section>
+
+<!-- Fan Ranks -->
+<section class="section" style="background:var(--s1)">
+    <div class="section-label reveal">Fan Rank System</div>
+    <h2 class="reveal">ファンランク</h2>
+    <p class="sub reveal">聴くほどランクアップ。特別な体験がアンロックされる。</p>
+    <div class="ranks-grid">
+        <div class="rank-card reveal">
+            <div class="rank-icon">&#127793;</div>
+            <div class="rank-name" style="color:var(--green)">Sprout</div>
+            <div class="rank-req">0 - 10 時間</div>
+            <div class="rank-perks">基本機能の利用<br>チャンネル視聴</div>
+        </div>
+        <div class="rank-card reveal reveal-delay-1">
+            <div class="rank-icon">&#127775;</div>
+            <div class="rank-name" style="color:var(--cyan)">Star</div>
+            <div class="rank-req">10 - 50 時間</div>
+            <div class="rank-perks">リクエスト送信<br>カスタムプロフィール</div>
+        </div>
+        <div class="rank-card reveal reveal-delay-1">
+            <div class="rank-icon">&#128142;</div>
+            <div class="rank-name" style="color:var(--blue)">Crystal</div>
+            <div class="rank-req">50 - 200 時間</div>
+            <div class="rank-perks">優先リクエスト<br>限定チャンネル</div>
+        </div>
+        <div class="rank-card reveal reveal-delay-2">
+            <div class="rank-icon">&#128293;</div>
+            <div class="rank-name" style="color:var(--amber)">Flame</div>
+            <div class="rank-req">200 - 500 時間</div>
+            <div class="rank-perks">DJチャット<br>イベント早期アクセス</div>
+        </div>
+        <div class="rank-card reveal reveal-delay-2">
+            <div class="rank-icon">&#128081;</div>
+            <div class="rank-name" style="color:var(--purple)">Crown</div>
+            <div class="rank-req">500 - 1,000 時間</div>
+            <div class="rank-perks">VIPラウンジ<br>限定グッズ抽選</div>
+        </div>
+        <div class="rank-card reveal reveal-delay-3">
+            <div class="rank-icon">&#9734;</div>
+            <div class="rank-name" style="background:linear-gradient(135deg,var(--amber),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Legend</div>
+            <div class="rank-req">1,000+ 時間</div>
+            <div class="rank-perks">殿堂入り<br>ネームカラー変更<br>全特典解放</div>
+        </div>
+    </div>
+</section>
+
+<!-- Join CTA -->
+<section class="cta-section">
+    <h2 class="reveal"><span class="h1-accent">Join the Movement</span></h2>
+    <p class="sub reveal" style="margin-left:auto;margin-right:auto;text-align:center">
+        世界中のリスナーとDJが集まるコミュニティ。<br>
+        あなたも参加しよう。
+    </p>
+    <div class="reveal" style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
+        <a href="https://testflight.apple.com/join/PYbefDSE" class="btn-primary">アプリで参加</a>
+        <a href="/dashboard" class="btn-secondary">ブラウザで聴く</a>
+    </div>
+</section>
+
+<div class="footer-divider"></div>
+
+<!-- Footer -->
+<footer style="flex-direction:column;align-items:stretch;gap:32px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:32px">
+        <div>
+            <div class="f-logo" style="margin-bottom:12px">&#9670; Soluna</div>
+            <p style="font-size:13px;color:var(--text3);line-height:1.6;max-width:240px">
+                オープンソースのネットワークオーディオ。あなたの音楽を、世界中のスピーカーへ。
+            </p>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">プロダクト</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="/app">App</a>
+                <a href="/dashboard">Dashboard</a>
+                <a href="/guide">セットアップガイド</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">ページ</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="/live">Live Events</a>
+                <a href="/community">Community</a>
+                <a href="/blog">Blog</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">リソース</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+                <a href="/for-developers">開発者向け</a>
+                <a href="/protocol">OSTP プロトコル仕様</a>
+            </div>
+        </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-top:1px solid var(--border);padding-top:24px">
+        <div class="f-copy">&copy; 2024-2026 Soluna Project &middot; MIT License &middot; Open Source</div>
+        <div style="display:flex;gap:16px;align-items:center">
+            <a href="https://github.com/yukihamada/opensonic" target="_blank" style="color:var(--text3);transition:color 0.2s" title="GitHub">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            </a>
+        </div>
+    </div>
+</footer>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+        if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); }
+    });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+window.addEventListener('scroll', () => {
+    const nav = document.querySelector('nav');
+    nav.style.background = window.scrollY > 80 ? 'rgba(5,6,10,0.92)' : 'rgba(5,6,10,0.7)';
+}, { passive: true });
+</script>
+</body>
+</html>

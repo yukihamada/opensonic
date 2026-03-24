@@ -1,6 +1,6 @@
 //
 //  PeerRelayManager.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Discovery-first P2P audio relay using MultipeerConnectivity.
 //

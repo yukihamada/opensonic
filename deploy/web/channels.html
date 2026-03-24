@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <script>if(!sessionStorage.getItem('lang-set')&&/^en/i.test(navigator.language)){document.documentElement.lang='en'}</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna Channels — お気に入りの音楽チャンネルを見つけよう。BJJ、Jazz、Lo-Fi、Chill、Danceなど多彩なジャンルをライブ配信。">
+    <meta name="theme-color" content="#05060a">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Channels — Soluna</title>
+    <style>
+        :root {
+            --bg:     #05060a;
+            --s1:     #0c0e16;
+            --s2:     #12151f;
+            --s3:     #1a1e2e;
+            --border: rgba(255,255,255,0.06);
+            --border2:rgba(255,255,255,0.12);
+            --text:   #e8eaf2;
+            --text2:  #8b91a8;
+            --text3:  #50566e;
+            --blue:   #3b82f6;
+            --cyan:   #06b6d4;
+            --green:  #10b981;
+            --purple: #8b5cf6;
+            --amber:  #f59e0b;
+            --pink:   #ec4899;
+            font-synthesis: none;
+            -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* ── Scroll reveal ── */
+        .reveal {
+            opacity: 0; transform: translateY(30px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+        }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        /* ── Nav ── */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 max(20px, calc(50% - 580px));
+            height: 60px;
+            background: rgba(5,6,10,0.7);
+            backdrop-filter: blur(24px) saturate(1.8);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-logo {
+            font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+            display: flex; align-items: center; gap: 8px;
+            text-decoration: none; color: var(--text);
+        }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 24px; }
+        .nav-links a {
+            color: var(--text2); text-decoration: none; font-size: 14px;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--text); font-weight: 600; }
+        .nav-cta {
+            padding: 8px 18px;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            color: #fff !important;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 13px !important;
+            transition: opacity 0.2s, transform 0.2s !important;
+            box-shadow: 0 2px 12px rgba(59,130,246,0.3);
+        }
+        .nav-cta:hover { opacity: 0.9; transform: translateY(-1px) !important; }
+
+        /* ── Shared ── */
+        .section {
+            padding: 100px max(20px, calc(50% - 580px));
+        }
+        .section-label {
+            font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; margin-bottom: 14px;
+            background: linear-gradient(90deg, var(--blue), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        h2 {
+            font-size: clamp(28px, 5vw, 44px);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
+            margin-bottom: 16px;
+        }
+
+        /* ── Hero ── */
+        .hero {
+            position: relative;
+            padding: 140px max(20px, calc(50% - 580px)) 80px;
+            overflow: hidden;
+            text-align: center;
+        }
+        .hero-bg {
+            position: absolute; inset: 0; z-index: 0;
+            overflow: hidden;
+        }
+        .hero-orb {
+            position: absolute; border-radius: 50%;
+            filter: blur(100px); opacity: 0.12;
+            animation: orb-float 20s ease-in-out infinite;
+        }
+        .hero-orb-1 { width: 500px; height: 500px; background: var(--purple); top: -15%; right: 15%; }
+        .hero-orb-2 { width: 400px; height: 400px; background: var(--blue); bottom: -10%; left: 10%; }
+        @keyframes orb-float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -20px) scale(1.05); }
+            66% { transform: translate(-20px, 15px) scale(0.95); }
+        }
+        .hero-content { position: relative; z-index: 1; }
+        .hero h1 {
+            font-size: clamp(36px, 7vw, 68px);
+            font-weight: 800; letter-spacing: -0.04em;
+            line-height: 1.1; margin-bottom: 24px;
+        }
+        .h1-grad {
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* ── Search ── */
+        .search-wrap {
+            max-width: 520px; margin: 0 auto 24px;
+            position: relative;
+        }
+        .search-wrap svg {
+            position: absolute; left: 18px; top: 50%; transform: translateY(-50%);
+            width: 20px; height: 20px; color: var(--text3);
+        }
+        .search-wrap input {
+            width: 100%; padding: 16px 20px 16px 50px;
+            background: var(--s2); border: 1px solid var(--border2);
+            border-radius: 14px; color: var(--text); font-size: 16px;
+            outline: none; transition: border-color 0.2s;
+        }
+        .search-wrap input::placeholder { color: var(--text3); }
+        .search-wrap input:focus { border-color: var(--blue); }
+
+        .hero-sub {
+            font-size: 16px; color: var(--text2); max-width: 480px;
+            margin: 0 auto; line-height: 1.7;
+        }
+
+        /* ── Category tabs ── */
+        .cat-tabs {
+            display: flex; gap: 8px; flex-wrap: wrap;
+            justify-content: center; margin-bottom: 48px;
+        }
+        .cat-tab {
+            padding: 8px 20px; border-radius: 24px;
+            font-size: 14px; font-weight: 600;
+            background: var(--s2); border: 1px solid var(--border);
+            color: var(--text2); cursor: pointer;
+            transition: all 0.2s; text-decoration: none;
+        }
+        .cat-tab:hover, .cat-tab.active {
+            background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.3);
+            color: #60a5fa;
+        }
+
+        /* ── Channel grid ── */
+        .channel-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 20px; margin-bottom: 80px;
+        }
+        .channel-card {
+            position: relative; border-radius: 16px;
+            overflow: hidden; text-decoration: none;
+            transition: transform 0.25s, box-shadow 0.25s;
+            display: flex; flex-direction: column;
+        }
+        .channel-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+        }
+        .card-visual {
+            aspect-ratio: 1; display: flex;
+            flex-direction: column; justify-content: flex-end;
+            padding: 20px; position: relative;
+        }
+        .card-visual::after {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 60%);
+        }
+        .card-icon {
+            font-size: 48px; position: absolute;
+            top: 20px; left: 20px; z-index: 1;
+            filter: drop-shadow(0 2px 8px rgba(0,0,0,0.3));
+        }
+        .live-badge {
+            position: absolute; top: 16px; right: 16px; z-index: 1;
+            padding: 4px 10px; border-radius: 6px;
+            background: rgba(16,185,129,0.9); color: #fff;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+            display: flex; align-items: center; gap: 5px;
+        }
+        .live-badge::before {
+            content: ''; width: 6px; height: 6px; border-radius: 50%;
+            background: #fff; animation: pulse-dot 2s ease-in-out infinite;
+        }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .card-name {
+            font-size: 20px; font-weight: 700; color: #fff;
+            position: relative; z-index: 1; margin-bottom: 4px;
+        }
+        .card-desc {
+            font-size: 13px; color: rgba(255,255,255,0.7);
+            position: relative; z-index: 1; line-height: 1.5;
+        }
+        .card-meta {
+            padding: 14px 20px;
+            background: var(--s1); border: 1px solid var(--border);
+            border-top: none; border-radius: 0 0 16px 16px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .card-listeners {
+            font-size: 13px; color: var(--text2);
+            display: flex; align-items: center; gap: 6px;
+        }
+        .card-listeners svg { width: 14px; height: 14px; }
+        .card-genre {
+            font-size: 11px; font-weight: 600; padding: 3px 8px;
+            border-radius: 4px; background: rgba(59,130,246,0.08);
+            color: #60a5fa;
+        }
+
+        /* ── CTA ── */
+        .cta-section {
+            text-align: center;
+            padding: 80px max(20px, calc(50% - 580px));
+        }
+        .cta-card {
+            background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.08));
+            border: 1px solid rgba(59,130,246,0.15);
+            border-radius: 24px; padding: 64px 40px;
+        }
+        .cta-card h2 {
+            font-size: clamp(24px, 4vw, 36px);
+            margin-bottom: 16px;
+        }
+        .cta-card p {
+            font-size: 16px; color: var(--text2);
+            max-width: 480px; margin: 0 auto 32px; line-height: 1.7;
+        }
+        .btn-primary {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 15px 28px;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            color: #fff; text-decoration: none;
+            border-radius: 14px; font-weight: 600; font-size: 15px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 24px rgba(59,130,246,0.35);
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(59,130,246,0.45); }
+
+        /* ── Footer ── */
+        .footer-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(59,130,246,0.3), var(--border), transparent);
+        }
+        footer {
+            padding: 40px max(20px, calc(50% - 580px));
+            display: flex; flex-wrap: wrap; align-items: center;
+            justify-content: space-between; gap: 16px;
+        }
+        footer .f-logo { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        footer .f-links { display: flex; gap: 24px; }
+        footer .f-links a { font-size: 13px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
+        footer .f-links a:hover { color: var(--text2); }
+        footer .f-copy { font-size: 12px; color: var(--text3); }
+
+        /* ── Responsive ── */
+        @media (max-width: 768px) {
+            .nav-links .hide-sm { display: none; }
+            .channel-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+            .card-icon { font-size: 36px; }
+            .card-name { font-size: 17px; }
+            .cta-card { padding: 40px 24px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/soluna" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/soluna" class="hide-sm">Home</a>
+        <a href="/channels" class="active hide-sm">Channels</a>
+        <a href="/protocol" class="hide-sm">Protocol</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/dashboard" class="nav-cta">ダッシュボード</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+    </div>
+    <div class="hero-content">
+        <h1><span class="h1-grad" id="hero-title">Channels</span></h1>
+        <div class="search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="search" placeholder="チャンネルを検索..." autocomplete="off">
+        </div>
+        <p class="hero-sub" id="hero-sub">お気に入りの音楽をリアルタイムで。ワンタップで参加できます。</p>
+    </div>
+</section>
+
+<!-- Category Tabs -->
+<section class="section" style="padding-top:0;padding-bottom:0">
+    <div class="cat-tabs reveal">
+        <span class="cat-tab active" data-cat="all">すべて</span>
+        <span class="cat-tab" data-cat="featured">注目</span>
+        <span class="cat-tab" data-cat="genre">ジャンル</span>
+        <span class="cat-tab" data-cat="artist">アーティスト</span>
+        <span class="cat-tab" data-cat="event">イベント</span>
+    </div>
+</section>
+
+<!-- Channel Grid -->
+<section class="section" style="padding-top:32px">
+    <div class="channel-grid" id="channel-grid">
+        <!-- Populated by JS -->
+    </div>
+</section>
+
+<!-- Create Channel CTA -->
+<section class="cta-section">
+    <div class="cta-card reveal">
+        <h2 id="cta-title">あなたのチャンネルを作ろう</h2>
+        <p id="cta-desc">DJセット、お店のBGM、イベントの音楽をリアルタイムで届けましょう。Proプランで世界中のリスナーに配信。</p>
+        <a href="/dashboard" class="btn-primary" id="cta-btn">チャンネルを作成</a>
+    </div>
+</section>
+
+<div class="footer-divider"></div>
+
+<footer style="flex-direction:column;align-items:stretch;gap:32px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:32px">
+        <div>
+            <div class="f-logo" style="margin-bottom:12px">&#9670; Soluna</div>
+            <p style="font-size:13px;color:var(--text3);line-height:1.6;max-width:240px">
+                オープンソースのネットワークオーディオ。あなたの音楽を、世界中のスピーカーへ。
+            </p>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">プロダクト</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="/dashboard">Dashboard</a>
+                <a href="/channels">Channels</a>
+                <a href="/guide">セットアップガイド</a>
+            </div>
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.06em;margin-bottom:12px">Technology</div>
+            <div class="f-links" style="flex-direction:column;gap:8px">
+                <a href="/protocol">OSTP プロトコル仕様</a>
+                <a href="https://github.com/yukihamada/opensonic" target="_blank">GitHub</a>
+            </div>
+        </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-top:1px solid var(--border);padding-top:24px">
+        <div class="f-copy">&copy; 2024-2026 Soluna Project &middot; MIT License &middot; Open Source</div>
+    </div>
+</footer>
+
+<script>
+// Channel data
+const channels = [
+    { id:'soluna', name:'Soluna', icon:'&#9670;', desc:'Solunaオリジナルミックス', genre:'Original', cat:['featured','genre'], grad:'linear-gradient(135deg,#3b82f6,#8b5cf6)', listeners:42, live:true },
+    { id:'bjj', name:'BJJ', icon:'&#129354;', desc:'ブラジリアン柔術のBGM', genre:'Sports', cat:['featured','genre'], grad:'linear-gradient(135deg,#f59e0b,#ef4444)', listeners:18, live:true },
+    { id:'jazz', name:'Jazz', icon:'&#127927;', desc:'スムーズジャズ & ビバップ', genre:'Jazz', cat:['genre'], grad:'linear-gradient(135deg,#f59e0b,#8b5cf6)', listeners:31, live:true },
+    { id:'chill', name:'Chill', icon:'&#127754;', desc:'リラックスできるアンビエント', genre:'Ambient', cat:['featured','genre'], grad:'linear-gradient(135deg,#06b6d4,#10b981)', listeners:56, live:true },
+    { id:'lofi', name:'Lo-Fi', icon:'&#127911;', desc:'Lo-Fi ヒップホップ & ビーツ', genre:'Lo-Fi', cat:['genre'], grad:'linear-gradient(135deg,#ec4899,#8b5cf6)', listeners:73, live:true },
+    { id:'dance', name:'Dance', icon:'&#128165;', desc:'エレクトロ & ハウスミュージック', genre:'Electronic', cat:['genre','event'], grad:'linear-gradient(135deg,#ef4444,#f59e0b)', listeners:27, live:true },
+    { id:'yuki', name:'Yuki', icon:'&#127928;', desc:'Yukiのパーソナルステーション', genre:'Mix', cat:['artist'], grad:'linear-gradient(135deg,#8b5cf6,#ec4899)', listeners:12, live:false },
+    { id:'cafe', name:'Cafe BGM', icon:'&#9749;', desc:'カフェで流れる穏やかな音楽', genre:'Acoustic', cat:['genre','featured'], grad:'linear-gradient(135deg,#92400e,#f59e0b)', listeners:38, live:false },
+    { id:'workout', name:'Workout', icon:'&#128170;', desc:'トレーニングを加速するビート', genre:'EDM', cat:['genre'], grad:'linear-gradient(135deg,#ef4444,#ec4899)', listeners:21, live:false },
+    { id:'focus', name:'Focus', icon:'&#127793;', desc:'集中力を高めるサウンド', genre:'Ambient', cat:['genre'], grad:'linear-gradient(135deg,#10b981,#06b6d4)', listeners:44, live:false },
+    { id:'zamna', name:'ZAMNA Hawaii', icon:'&#127965;', desc:'2026.9.4 ライブ配信予定', genre:'Event', cat:['event','featured'], grad:'linear-gradient(135deg,#06b6d4,#3b82f6)', listeners:0, live:false },
+    { id:'night', name:'Night Drive', icon:'&#127747;', desc:'夜のドライブに最適なミックス', genre:'Synthwave', cat:['genre'], grad:'linear-gradient(135deg,#1e1b4b,#3b82f6)', listeners:15, live:false },
+];
+
+const grid = document.getElementById('channel-grid');
+const search = document.getElementById('search');
+let activeTab = 'all';
+
+function renderChannels(filter) {
+    let items = channels;
+    if (filter && filter !== 'all') {
+        items = items.filter(c => c.cat.includes(filter));
+    }
+    const q = search.value.toLowerCase();
+    if (q) {
+        items = items.filter(c =>
+            c.name.toLowerCase().includes(q) ||
+            c.desc.toLowerCase().includes(q) ||
+            c.genre.toLowerCase().includes(q)
+        );
+    }
+    grid.innerHTML = items.map((c, i) => `
+        <a href="/dashboard?channel=${c.id}" class="channel-card reveal reveal-delay-${(i % 4) + 1}">
+            <div class="card-visual" style="background:${c.grad}">
+                <span class="card-icon">${c.icon}</span>
+                ${c.live ? '<span class="live-badge">LIVE</span>' : ''}
+                <div class="card-name">${c.name}</div>
+                <div class="card-desc">${c.desc}</div>
+            </div>
+            <div class="card-meta">
+                <span class="card-listeners">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    ${c.listeners > 0 ? c.listeners + ' リスナー' : '準備中'}
+                </span>
+                <span class="card-genre">${c.genre}</span>
+            </div>
+        </a>
+    `).join('');
+    // Re-trigger reveal
+    requestAnimationFrame(() => {
+        document.querySelectorAll('.channel-card.reveal').forEach(el => {
+            el.classList.add('visible');
+        });
+    });
+}
+
+// Tab clicks
+document.querySelectorAll('.cat-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.cat-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        activeTab = tab.dataset.cat;
+        renderChannels(activeTab);
+    });
+});
+
+// Search
+search.addEventListener('input', () => renderChannels(activeTab));
+
+// Initial render
+renderChannels('all');
+
+// Scroll reveal
+const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// Auto-detect English
+if (/^en/i.test(navigator.language) && !sessionStorage.getItem('lang-set')) {
+    document.getElementById('hero-title').textContent = 'Channels';
+    document.getElementById('hero-sub').textContent = 'Discover your favorite music in real time. Join with a single tap.';
+    document.getElementById('cta-title').textContent = 'Create Your Channel';
+    document.getElementById('cta-desc').textContent = 'Share your DJ sets, store BGM, and event music in real time. Go Pro to reach listeners worldwide.';
+    document.getElementById('cta-btn').textContent = 'Create Channel';
+    search.placeholder = 'Search channels...';
+}
+</script>
+
+</body>
+</html>

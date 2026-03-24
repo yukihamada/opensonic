@@ -1,6 +1,6 @@
 //
 //  PlayerModel.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Manages music player state: file upload, WebSocket file transfer,
 //  AVPlayer local playback, animated spectrum visualizer, queue system,

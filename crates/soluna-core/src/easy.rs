@@ -1,9 +1,12 @@
 //! # OSTP Easy API — 3行で音声メッシュに参加
 //!
-//! ```rust
-//! let node = soluna::easy::Node::join("my-channel")?;
-//! node.send_audio(&pcm_f32_48khz);          // マイク音声を全員に送信
-//! let audio = node.recv_audio();              // 他のノードの音声を受信
+//! ```rust,no_run
+//! use soluna_core::easy::Node;
+//! let node = Node::join("my-channel")?;
+//! node.send_audio(&[0.0f32; 240]);
+//! let mut buf = [0.0f32; 240];
+//! let _n = node.recv_audio(&mut buf);
+//! # Ok::<(), std::io::Error>(())
 //! ```
 //!
 //! # Features
@@ -76,8 +79,10 @@ struct NodeInner {
 impl Node {
     /// チャンネルに参加 (デフォルト設定)
     ///
-    /// ```rust
+    /// ```rust,no_run
+    /// use soluna_core::easy::Node;
     /// let node = Node::join("my-channel")?;
+    /// # Ok::<(), std::io::Error>(())
     /// ```
     pub fn join(channel: &str) -> io::Result<Self> {
         Self::join_with_config(channel, Config::default())
@@ -125,7 +130,7 @@ impl Node {
     /// オーディオコールバックから直接呼べる (lock-free)。
     /// 内部でOSTP/RTPパケットに変換してUDPマルチキャスト送信。
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// // オーディオコールバック内:
     /// node.send_audio(&output_buffer);
     /// ```
@@ -155,7 +160,7 @@ impl Node {
     /// `out` バッファにコピー。利用可能なサンプル数を返す。
     /// オーディオコールバックから直接呼べる (lock-free)。
     ///
-    /// ```rust
+    /// ```rust,ignore
     /// let mut buf = [0.0f32; 256];
     /// let n = node.recv_audio(&mut buf);
     /// // buf[..n] に音声データ
@@ -179,6 +184,186 @@ impl Node {
     /// 切断
     pub fn leave(&self) {
         self.inner.running.store(false, Ordering::Relaxed);
+    }
+}
+
+// ── QUIC Relay Node ──
+
+/// QUIC経由でWANリレーに接続するノード。
+///
+/// LAN内のUDPマルチキャストではなく、インターネット越しにリレーサーバーを介して
+/// 音声を送受信する。QUIC Unreliable Datagram (RFC 9221) で音声パケットを運び、
+/// 制御メッセージはreliable streamで送る。
+///
+/// ```rust,no_run
+/// # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+/// use soluna_core::easy::RelayNode;
+/// let node = RelayNode::join("relay.solun.art:5100", "my-channel").await?;
+/// node.send_audio(&[0.0f32; 240]);
+/// let mut buf = [0.0f32; 240];
+/// let n = node.recv_audio(&mut buf);
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(feature = "quic")]
+#[derive(Clone)]
+pub struct RelayNode {
+    inner: Arc<RelayNodeInner>,
+}
+
+#[cfg(feature = "quic")]
+struct RelayNodeInner {
+    connection: quinn::Connection,
+    rx_buf: RingBuffer,
+    running: AtomicBool,
+    ssrc: u32,
+    seq: AtomicU32,
+    channel: String,
+    config: Config,
+}
+
+#[cfg(feature = "quic")]
+impl RelayNode {
+    /// QUICでリレーサーバーに接続してチャンネルに参加。
+    ///
+    /// `relay_addr` は `"host:port"` 形式。
+    pub async fn join(relay_addr: &str, channel: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Self::join_with_config(relay_addr, channel, Config::default()).await
+    }
+
+    /// カスタム設定でリレーに接続。
+    pub async fn join_with_config(
+        relay_addr: &str,
+        channel: &str,
+        config: Config,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        use std::net::ToSocketAddrs;
+
+        let addr = relay_addr
+            .to_socket_addrs()?
+            .next()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "cannot resolve relay address"))?;
+
+        let mut transport = crate::quic::QuicTransportBuilder::new(addr)
+            .skip_cert_verify(true)
+            .connect()
+            .await?;
+
+        // Send JOIN message via reliable stream
+        let join_msg = format!("JOIN:{}\n", channel);
+        transport.send_control(join_msg.as_bytes()).await?;
+
+        let connection = transport.connection.clone();
+        let ssrc = rand_u32();
+        let rx_buf = RingBuffer::new(config.jitter_frames, config.channels as usize);
+
+        let inner = Arc::new(RelayNodeInner {
+            connection,
+            rx_buf,
+            running: AtomicBool::new(true),
+            ssrc,
+            seq: AtomicU32::new(0),
+            channel: channel.to_string(),
+            config,
+        });
+
+        // Spawn QUIC datagram receive thread (bridges async → lock-free ring buffer)
+        let inner_clone = inner.clone();
+        let mut audio_transport = transport;
+        std::thread::Builder::new()
+            .name("soluna-quic-rx".to_string())
+            .spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(async {
+                    let own_ssrc = inner_clone.ssrc;
+                    while inner_clone.running.load(Ordering::Relaxed) {
+                        match tokio::time::timeout(
+                            std::time::Duration::from_millis(100),
+                            audio_transport.recv_audio(),
+                        ).await {
+                            Ok(Some(data)) => {
+                                if data.len() < 24 { continue; }
+                                if let Some(packet) = ostp::parse(&data) {
+                                    if packet.rtp.ssrc == own_ssrc { continue; }
+                                    let samples = payload_to_f32(packet.payload, packet.rtp.payload_type);
+                                    inner_clone.rx_buf.write(&samples);
+                                }
+                            }
+                            Ok(None) => break, // Connection closed
+                            Err(_) => continue, // Timeout, try again
+                        }
+                    }
+                });
+            })?;
+
+        // Spawn heartbeat thread
+        let conn_clone = inner.connection.clone();
+        let running_flag = Arc::clone(&inner);
+        std::thread::Builder::new()
+            .name("soluna-quic-hb".to_string())
+            .spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(async {
+                    while running_flag.running.load(Ordering::Relaxed) {
+                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                        if let Ok(mut send) = conn_clone.open_uni().await {
+                            let _ = send.write_all(b"HELLO\n").await;
+                            let _ = send.finish();
+                        }
+                    }
+                });
+            })?;
+
+        Ok(RelayNode { inner })
+    }
+
+    /// 音声を送信 (QUIC Unreliable Datagram)。
+    ///
+    /// オーディオコールバックから直接呼べる (lock-free, 非async)。
+    #[inline]
+    pub fn send_audio(&self, samples: &[f32]) {
+        if !self.inner.running.load(Ordering::Relaxed) { return; }
+
+        let spp = self.inner.config.samples_per_packet;
+        let channels = self.inner.config.channels as usize;
+
+        for chunk in samples.chunks(spp * channels) {
+            let seq = self.inner.seq.fetch_add(1, Ordering::Relaxed) as u16;
+            let ts = seq as u32 * spp as u32;
+            let packet = build_rtp_packet(seq, ts, self.inner.ssrc, chunk);
+
+            // Send as QUIC unreliable datagram (fire-and-forget, like UDP)
+            let _ = self.inner.connection.send_datagram(packet.into());
+        }
+    }
+
+    /// 他のノードの音声を受信 (f32 PCM)。lock-free。
+    #[inline]
+    pub fn recv_audio(&self, out: &mut [f32]) -> usize {
+        self.inner.rx_buf.read(out)
+    }
+
+    /// 受信バッファに溜まっているサンプル数
+    #[inline]
+    pub fn available(&self) -> usize {
+        self.inner.rx_buf.available()
+    }
+
+    /// チャンネル名
+    pub fn channel(&self) -> &str {
+        &self.inner.channel
+    }
+
+    /// 切断
+    pub fn leave(&self) {
+        self.inner.running.store(false, Ordering::Relaxed);
+        self.inner.connection.close(0u32.into(), b"leave");
     }
 }
 
@@ -225,8 +410,8 @@ fn rx_loop(inner: Arc<NodeInner>) {
 // ── パケット構築 ──
 
 fn build_rtp_packet(seq: u16, timestamp: u32, ssrc: u32, samples: &[f32]) -> Vec<u8> {
-    // RTP Header (12 bytes) + OSTP Extension (12 bytes) + Payload
-    let mut packet = Vec::with_capacity(24 + samples.len() * 4);
+    // RTP Header (12 bytes) + OSTP Extension (12 bytes) + Payload + CRC (4 bytes)
+    let mut packet = Vec::with_capacity(24 + samples.len() * 4 + 4);
 
     // RTP Header
     let b0: u8 = 0x90; // V=2, P=0, X=1 (extension), CC=0
@@ -247,9 +432,14 @@ fn build_rtp_packet(seq: u16, timestamp: u32, ssrc: u32, samples: &[f32]) -> Vec
     packet.extend_from_slice(&timestamp.to_be_bytes()); // media_timestamp
 
     // Payload (f32 LE)
+    let payload_start = packet.len();
     for &s in samples {
         packet.extend_from_slice(&s.to_le_bytes());
     }
+
+    // CRC-32 trailer (over payload only, big-endian)
+    let crc = ostp::crc32_ieee(&packet[payload_start..]);
+    packet.extend_from_slice(&crc.to_be_bytes());
 
     packet
 }
@@ -282,11 +472,12 @@ fn payload_to_f32(payload: &[u8], pt: u8) -> Vec<f32> {
 }
 
 fn rand_u32() -> u32 {
-    // Simple non-crypto random from thread ID + time
+    // Simple non-crypto random from time + address entropy
     let t = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
-    (t.as_nanos() as u32) ^ (std::thread::current().id().as_u64().get() as u32)
+    let addr_entropy = &t as *const _ as u32;
+    (t.as_nanos() as u32) ^ addr_entropy
 }
 
 // ── テスト ──
@@ -299,7 +490,7 @@ mod tests {
     fn test_build_rtp_packet() {
         let samples = [0.5f32, -0.5, 0.25, -0.25];
         let packet = build_rtp_packet(1, 0, 12345, &samples);
-        assert_eq!(packet.len(), 24 + 16); // header + 4 samples * 4 bytes
+        assert_eq!(packet.len(), 24 + 16 + 4); // header + 4 samples * 4 bytes + CRC
 
         // Check RTP version
         assert_eq!(packet[0] >> 6, 2);

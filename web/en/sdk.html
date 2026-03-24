@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script>sessionStorage.setItem('lang-set','1')</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Soluna SDK — Just a few lines of code to turn your app into a live audio platform. Swift SDK for iOS / macOS.">
+    <meta property="og:title" content="Soluna SDK — Bring sound to your app.">
+    <meta property="og:description" content="Just a few lines of code to turn your app into a live audio platform. Real-time audio streaming/receiving SDK.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://solun.art/en/sdk">
+    <meta property="og:image" content="https://solun.art/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="Soluna">
+    <meta property="og:locale" content="en_US">
+    <meta name="keywords" content="SDK,Swift,iOS,macOS,real-time audio,OSTP,RTP,open source,Soluna,SwiftUI">
+    <meta name="author" content="Soluna Project">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#05060a">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Soluna SDK — Bring sound to your app.">
+    <meta name="twitter:description" content="Just a few lines of code to turn your app into a live audio platform. Real-time audio streaming/receiving SDK.">
+    <meta name="twitter:image" content="https://solun.art/og-image.png">
+    <link rel="canonical" href="https://solun.art/en/sdk">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <title>Soluna SDK — Bring sound to your app.</title>
+    <style>
+        :root {
+            --bg: #05060a; --s1: #0c0e16; --s2: #12151f; --s3: #1a1e2e;
+            --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.12);
+            --text: #e8eaf2; --text2: #8b91a8; --text3: #50566e;
+            --blue: #3b82f6; --cyan: #06b6d4; --green: #10b981;
+            --purple: #8b5cf6; --amber: #f59e0b; --pink: #ec4899;
+            font-synthesis: none; -webkit-font-smoothing: antialiased;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+
+        .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+
+        nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 0 max(20px, calc(50% - 580px)); height: 60px; background: rgba(5,6,10,0.7); backdrop-filter: blur(24px) saturate(1.8); border-bottom: 1px solid var(--border); }
+        .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; }
+        .nav-logo svg { width: 24px; height: 24px; }
+        .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .nav-links a { color: var(--text2); text-decoration: none; font-size: 13px; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a.active { color: var(--green); }
+        .nav-cta { padding: 8px 18px; background: linear-gradient(135deg, var(--green), var(--cyan)); color: #fff !important; border-radius: 10px; font-weight: 600; font-size: 13px !important; box-shadow: 0 2px 12px rgba(16,185,129,0.3); }
+
+        .section { padding: 100px max(20px, calc(50% - 580px)); }
+        .section-label { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; background: linear-gradient(90deg, var(--green), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        h1 { font-size: clamp(40px, 8vw, 72px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.05; margin-bottom: 28px; }
+        h2 { font-size: clamp(28px, 5vw, 44px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 16px; }
+        .h1-grad { background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .h1-accent { background: linear-gradient(135deg, var(--green), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 200% auto; animation: grad-shift 4s ease-in-out infinite; }
+        @keyframes grad-shift { 0%, 100% { background-position: 0% center; } 50% { background-position: 100% center; } }
+        .sub { font-size: 17px; color: var(--text2); line-height: 1.7; max-width: 560px; margin-bottom: 48px; }
+
+        .hero { position: relative; padding: 160px max(20px, calc(50% - 580px)) 100px; overflow: hidden; }
+        .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+        .hero-orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.15; animation: orb-float 20s ease-in-out infinite; }
+        .hero-orb-1 { width: 500px; height: 500px; background: var(--green); top: -10%; right: 10%; }
+        .hero-orb-2 { width: 400px; height: 400px; background: var(--cyan); bottom: -5%; left: 5%; animation-delay: -7s; }
+        @keyframes orb-float { 0%, 100% { transform: translate(0, 0) scale(1); } 33% { transform: translate(30px, -20px) scale(1.05); } 66% { transform: translate(-20px, 15px) scale(0.95); } }
+        .hero-content { position: relative; z-index: 1; }
+        .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); color: #34d399; font-size: 13px; font-weight: 600; padding: 6px 16px; border-radius: 24px; margin-bottom: 32px; }
+        .hero-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .btn-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 12px; font-size: 15px; font-weight: 600; text-decoration: none; transition: transform 0.2s, opacity 0.2s; }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-primary { background: linear-gradient(135deg, var(--green), var(--cyan)); color: #fff; box-shadow: 0 4px 20px rgba(16,185,129,0.3); }
+        .btn-secondary { background: var(--s2); color: var(--text); border: 1px solid var(--border2); }
+
+        .code-block { background: var(--s1); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-top: 16px; overflow-x: auto; font-family: "SF Mono", "Fira Code", "Consolas", monospace; font-size: 13px; line-height: 1.7; color: var(--text2); }
+        .code-block .comment { color: var(--text3); }
+        .code-block .keyword { color: var(--purple); }
+        .code-block .string { color: var(--green); }
+        .code-block .func { color: var(--cyan); }
+        .code-block .num { color: var(--amber); }
+        .code-block .type { color: var(--pink); }
+        .code-block .attr { color: var(--amber); }
+        .code-label { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; color: var(--text3); text-transform: uppercase; margin-bottom: 8px; margin-top: 32px; }
+
+        .tech-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 24px; margin-top: 48px; }
+        .tech-card { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 28px; transition: border-color 0.2s, transform 0.2s; }
+        .tech-card:hover { border-color: rgba(16,185,129,0.3); transform: translateY(-3px); }
+        .tech-card .icon { font-size: 28px; margin-bottom: 12px; }
+        .tech-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+        .tech-card p { font-size: 14px; color: var(--text2); line-height: 1.6; }
+        .tech-card .tag-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+        .tech-card .tech-tag { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: rgba(16,185,129,0.08); color: var(--green); border: 1px solid rgba(16,185,129,0.15); }
+
+        .arch-diagram { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 40px; text-align: center; font-family: "SF Mono", "Fira Code", monospace; font-size: 13px; color: var(--text2); line-height: 2.2; }
+        .arch-diagram .layer { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin: 8px 0; }
+        .arch-diagram .box { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border2); background: var(--s2); }
+        .arch-diagram .box.highlight { border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.05); color: var(--green); }
+        .arch-diagram .arrow { color: var(--text3); font-size: 18px; }
+
+        .app-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 48px; }
+        .app-card { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 32px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; display: block; }
+        .app-card:hover { border-color: rgba(16,185,129,0.3); transform: translateY(-3px); }
+        .app-card .app-icon { font-size: 36px; margin-bottom: 16px; }
+        .app-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+        .app-card p { font-size: 14px; color: var(--text2); line-height: 1.6; }
+        .app-card .app-link { display: inline-block; margin-top: 12px; font-size: 13px; color: var(--green); font-weight: 600; }
+
+        .cta-section { text-align: center; padding: 120px max(20px, calc(50% - 580px)); background: radial-gradient(ellipse at center, rgba(16,185,129,0.06) 0%, transparent 70%); }
+        .cta-section h2 { margin-bottom: 16px; }
+        .cta-section .sub { margin: 0 auto 48px; }
+        .cta-section .btn-row { justify-content: center; }
+
+        footer { padding: 60px max(20px, calc(50% - 580px)) 40px; border-top: 1px solid var(--border); }
+        .footer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 32px; margin-bottom: 40px; }
+        .footer-col h4 { font-size: 13px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 16px; }
+        .footer-col a { display: block; color: var(--text2); text-decoration: none; font-size: 14px; padding: 4px 0; transition: color 0.2s; }
+        .footer-col a:hover { color: var(--text); }
+        .footer-bottom { display: flex; justify-content: space-between; align-items: center; color: var(--text3); font-size: 13px; flex-wrap: wrap; gap: 12px; }
+
+        .intro-block { background: var(--s1); border: 1px solid var(--border); border-radius: 16px; padding: 40px; margin-top: 32px; }
+        .intro-block p { font-size: 15px; color: var(--text2); line-height: 1.8; margin-bottom: 12px; }
+        .intro-block p:last-child { margin-bottom: 0; }
+        .intro-block .highlight-text { color: var(--text); font-weight: 600; }
+
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .hero { padding-top: 120px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/en/" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="url(#navGrad)" stroke-width="1.5" fill="none"/><path d="M8 12 C8 8, 16 8, 16 12 C16 16, 8 16, 8 12" stroke="url(#navGrad)" stroke-width="1.5" fill="rgba(59,130,246,0.1)"/><defs><linearGradient id="navGrad" x1="0" y1="0" x2="24" y2="24"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>
+        Soluna
+    </a>
+    <div class="nav-links">
+        <a href="/app" class="hide-sm">App</a>
+        <a href="/en/sdk" class="hide-sm active">SDK</a>
+        <a href="/demo" class="hide-sm">Demo</a>
+        <a href="/en/for-developers" class="hide-sm">Developers</a>
+        <a href="https://github.com/yukihamada/opensonic" class="hide-sm" target="_blank">GitHub</a>
+        <a href="/sdk" class="hide-sm" onclick="sessionStorage.removeItem('lang-set')" style="font-size:12px;opacity:0.6">JP</a>
+        <a href="/dashboard" class="nav-cta">Dashboard</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-bg">
+        <div class="hero-orb hero-orb-1"></div>
+        <div class="hero-orb hero-orb-2"></div>
+    </div>
+    <div class="hero-content">
+        <div class="hero-badge"><span class="dot"></span> Swift SDK</div>
+        <h1><span class="h1-grad">Soluna SDK</span></h1>
+        <p class="sub" style="font-size: 22px; font-weight: 600; color: var(--text); margin-bottom: 24px;">Bring sound to your app.</p>
+        <p class="sub">Add real-time audio streaming and receiving to your app with just a few lines of code.<br>Low-latency communication via BSD Socket + OSTP/RTP protocol.<br>Fully open source under the MIT License.</p>
+        <div class="btn-row">
+            <a href="https://github.com/yukihamada/opensonic" class="btn btn-primary" target="_blank">View on GitHub</a>
+            <a href="#quickstart" class="btn btn-secondary">Quick Start</a>
+        </div>
+    </div>
+</section>
+
+<!-- What is Soluna SDK? -->
+<section class="section">
+    <div class="reveal">
+        <div class="section-label">OVERVIEW</div>
+        <h2>What is Soluna SDK?</h2>
+        <p class="sub">Just a few lines of code to turn your app into a live audio platform.</p>
+    </div>
+    <div class="intro-block reveal">
+        <p>A battle-tested SDK used in both the <span class="highlight-text">Koe</span> app and the <span class="highlight-text">Soluna</span> app. Proven reliability in production environments.</p>
+        <p>Uses BSD Sockets directly with OSTP/RTP protocol for low-latency real-time audio communication. By adopting raw UDP sockets instead of NWConnection, full protocol-level compatibility is guaranteed.</p>
+        <p>Supports SwiftUI's <span class="highlight-text">@ObservableObject</span>. Connection state and receiving status are reactively reflected in the UI with a modern Swift design.</p>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="section" style="background: var(--s1);">
+    <div class="reveal">
+        <div class="section-label">FEATURES</div>
+        <h2>Features</h2>
+    </div>
+    <div class="tech-grid">
+        <div class="tech-card reveal reveal-delay-1">
+            <div class="icon">&#128266;</div>
+            <h3>Real-Time Audio Receiving</h3>
+            <p>Receive audio from anywhere in the world via WAN relay. Just specify a channel name and audio from the other side of the globe arrives in real time.</p>
+            <div class="tag-row">
+                <span class="tech-tag">UDP</span>
+                <span class="tech-tag">WAN Relay</span>
+                <span class="tech-tag">P2P</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-2">
+            <div class="icon">&#127925;</div>
+            <h3>High-Quality Audio</h3>
+            <p>48kHz / stereo playback. OSTP/RTP protocol with ADPCM compression balances high quality and low bandwidth.</p>
+            <div class="tag-row">
+                <span class="tech-tag">48kHz</span>
+                <span class="tech-tag">Stereo</span>
+                <span class="tech-tag">ADPCM</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-3">
+            <div class="icon">&#128241;</div>
+            <h3>Multi-Platform</h3>
+            <p>Supports iOS 16+ / macOS 13+. Easily add to your project with Swift Package Manager.</p>
+            <div class="tag-row">
+                <span class="tech-tag">iOS 16+</span>
+                <span class="tech-tag">macOS 13+</span>
+                <span class="tech-tag">SPM</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-1">
+            <div class="icon">&#128275;</div>
+            <h3>Open Source</h3>
+            <p>Published under the MIT License. Fork, modify, use commercially — all freely. Anyone can contribute on GitHub.</p>
+            <div class="tag-row">
+                <span class="tech-tag">MIT License</span>
+                <span class="tech-tag">GitHub</span>
+                <span class="tech-tag">OSS</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Quick Start -->
+<section class="section" id="quickstart">
+    <div class="reveal">
+        <div class="section-label">QUICK START</div>
+        <h2>Get Started in 5 Lines</h2>
+        <p class="sub">Import and connect. That's all it takes to receive audio.</p>
+    </div>
+    <div class="code-block reveal">
+        <span class="keyword">import</span> <span class="type">SolunaSDK</span><br><br>
+        <span class="keyword">let</span> client = <span class="func">SolunaClient</span>()<br><br>
+        <span class="comment">// Connect to a channel</span><br>
+        client.<span class="func">connect</span>(channel: <span class="string">"my-channel"</span>)<br><br>
+        <span class="comment">// Switch channels</span><br>
+        client.<span class="func">setChannel</span>(<span class="string">"sunset-chill"</span>)<br><br>
+        <span class="comment">// Disconnect</span><br>
+        client.<span class="func">disconnect</span>()
+    </div>
+</section>
+
+<!-- SwiftUI Integration -->
+<section class="section" style="background: var(--s1);">
+    <div class="reveal">
+        <div class="section-label">SWIFTUI</div>
+        <h2>SwiftUI Integration</h2>
+        <p class="sub">Simply declare as @StateObject and connection state is reactively reflected in the UI.</p>
+    </div>
+    <div class="code-block reveal">
+        <span class="keyword">import</span> <span class="type">SwiftUI</span><br>
+        <span class="keyword">import</span> <span class="type">SolunaSDK</span><br><br>
+        <span class="keyword">struct</span> <span class="type">MyPlayerView</span>: <span class="type">View</span> {<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="attr">@StateObject</span> <span class="keyword">private var</span> soluna = <span class="func">SolunaClient</span>()<br><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">var</span> body: <span class="keyword">some</span> <span class="type">View</span> {<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="type">VStack</span> {<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="type">Text</span>(soluna.isConnected ? <span class="string">"Connected"</span> : <span class="string">"Offline"</span>)<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="type">Text</span>(soluna.isReceivingAudio ? <span class="string">"&#9835; Playing"</span> : <span class="string">"Silent"</span>)<br><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="type">Button</span>(soluna.isConnected ? <span class="string">"Stop"</span> : <span class="string">"Play"</span>) {<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">if</span> soluna.isConnected {<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;soluna.<span class="func">disconnect</span>()<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;} <span class="keyword">else</span> {<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;soluna.<span class="func">connect</span>(channel: <span class="string">"soluna"</span>)<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+        }
+    </div>
+</section>
+
+<!-- Installation -->
+<section class="section" id="install">
+    <div class="reveal">
+        <div class="section-label">INSTALLATION</div>
+        <h2>Installation</h2>
+        <p class="sub">Add via Swift Package Manager. Also available through Xcode's File > Add Package Dependencies.</p>
+    </div>
+    <div class="code-label reveal">Package.swift (Remote)</div>
+    <div class="code-block reveal">
+        <span class="comment">// Package.swift</span><br>
+        dependencies: [<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;.<span class="func">package</span>(url: <span class="string">"https://github.com/yukihamada/opensonic.git"</span>, from: <span class="string">"0.3.0"</span>)<br>
+        ]
+    </div>
+    <div class="code-label reveal">Package.swift (Local Monorepo)</div>
+    <div class="code-block reveal">
+        .<span class="func">package</span>(path: <span class="string">"../opensonic/sdk/swift"</span>)
+    </div>
+    <div class="code-label reveal">Add to Target</div>
+    <div class="code-block reveal">
+        .target(<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;name: <span class="string">"MyApp"</span>,<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;dependencies: [<span class="string">"SolunaSDK"</span>]<br>
+        )
+    </div>
+</section>
+
+<!-- Architecture -->
+<section class="section" style="background: var(--s1);">
+    <div class="reveal">
+        <div class="section-label">ARCHITECTURE</div>
+        <h2>Architecture</h2>
+        <p class="sub">The flow from your app through the relay server to the audio source.</p>
+    </div>
+    <div class="arch-diagram reveal">
+        <div class="layer">
+            <div class="box">Music / Audio Source</div>
+        </div>
+        <div class="arrow">&#8595;</div>
+        <div class="layer">
+            <div class="box">solunad (Mac TX)</div>
+        </div>
+        <div class="arrow">&#8595;</div>
+        <div class="layer">
+            <div class="box highlight">relay.solun.art (WAN Relay)</div>
+        </div>
+        <div class="arrow">&#8595;</div>
+        <div class="layer">
+            <div class="box highlight">SolunaSDK</div>
+        </div>
+        <div class="arrow">&#8595;</div>
+        <div class="layer">
+            <div class="box">Your App</div>
+        </div>
+    </div>
+</section>
+
+<!-- API Reference -->
+<section class="section">
+    <div class="reveal">
+        <div class="section-label">API REFERENCE</div>
+        <h2>Key APIs</h2>
+        <p class="sub">Properties and methods provided by SolunaClient.</p>
+    </div>
+    <div class="tech-grid">
+        <div class="tech-card reveal reveal-delay-1">
+            <h3><code style="color: var(--cyan);">isConnected</code></h3>
+            <p>Connection state to the relay server. Bindable to SwiftUI via @Published.</p>
+            <div class="tag-row">
+                <span class="tech-tag">@Published</span>
+                <span class="tech-tag">Bool</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-2">
+            <h3><code style="color: var(--cyan);">isReceivingAudio</code></h3>
+            <p>Whether audio packets are being received. Use for playback state display in the UI.</p>
+            <div class="tag-row">
+                <span class="tech-tag">@Published</span>
+                <span class="tech-tag">Bool</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-3">
+            <h3><code style="color: var(--cyan);">channel</code></h3>
+            <p>The currently connected channel name. Auto-updated on connect and switch.</p>
+            <div class="tag-row">
+                <span class="tech-tag">@Published</span>
+                <span class="tech-tag">String</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-1">
+            <h3><code style="color: var(--cyan);">connect(channel:)</code></h3>
+            <p>Connect to a channel and start receiving audio. Custom host / port can also be specified.</p>
+            <div class="tag-row">
+                <span class="tech-tag">Method</span>
+                <span class="tech-tag">@MainActor</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-2">
+            <h3><code style="color: var(--cyan);">setChannel(_:)</code></h3>
+            <p>Switch to a different channel. Automatically executes disconnect then connect internally.</p>
+            <div class="tag-row">
+                <span class="tech-tag">Method</span>
+                <span class="tech-tag">Auto-reconnect</span>
+            </div>
+        </div>
+        <div class="tech-card reveal reveal-delay-3">
+            <h3><code style="color: var(--cyan);">disconnect()</code></h3>
+            <p>Disconnect from the relay and stop audio playback. Safely cleans up resources.</p>
+            <div class="tag-row">
+                <span class="tech-tag">Method</span>
+                <span class="tech-tag">Cleanup</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Used in Apps -->
+<section class="section" style="background: var(--s1);">
+    <div class="reveal">
+        <div class="section-label">USED IN</div>
+        <h2>Apps Using Soluna SDK</h2>
+        <p class="sub">Soluna SDK is already running in production.</p>
+    </div>
+    <div class="app-grid">
+        <a href="https://app.koe.live/" class="app-card reveal reveal-delay-1" target="_blank">
+            <div class="app-icon">&#127908;</div>
+            <h3>Koe</h3>
+            <p>Write with your voice. A voice input app with real-time music channel playback from around the world via the Soluna tab.</p>
+            <span class="app-link">app.koe.live &#8594;</span>
+        </a>
+        <a href="https://solun.art/" class="app-card reveal reveal-delay-2" target="_blank">
+            <div class="app-icon">&#127926;</div>
+            <h3>Soluna</h3>
+            <p>Connected through sound. An audio sharing platform for festivals and live events.</p>
+            <span class="app-link">solun.art &#8594;</span>
+        </a>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+    <div class="reveal">
+        <h2><span class="h1-grad">Bring sound to your app.</span></h2>
+        <p class="sub">Soluna SDK is open source. Issues, PRs, forks — all welcome. Add audio experiences to your app today.</p>
+        <div class="btn-row">
+            <a href="https://github.com/yukihamada/opensonic" class="btn btn-primary" target="_blank">GitHub Repository</a>
+            <a href="/en/for-developers" class="btn btn-secondary">Developer Docs</a>
+        </div>
+        <div class="btn-row" style="margin-top: 0;">
+            <a href="https://app.koe.live/" class="btn btn-secondary" target="_blank">Koe App</a>
+            <a href="https://solun.art/" class="btn btn-secondary" target="_blank">Soluna App</a>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="footer-grid">
+        <div class="footer-col">
+            <h4>Soluna</h4>
+            <a href="/en/">Main Site</a>
+            <a href="https://github.com/yukihamada/opensonic">GitHub</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">TestFlight</a>
+            <a href="https://github.com/yukihamada/opensonic/blob/main/docs/protocol.md">Protocol Spec</a>
+        </div>
+        <div class="footer-col">
+            <h4>Use Cases</h4>
+            <a href="/app">App</a>
+            <a href="/en/sdk">SDK</a>
+            <a href="/demo">Demo</a>
+            <a href="/en/for-developers">Developers</a>
+        </div>
+        <div class="footer-col">
+            <h4>Download</h4>
+            <a href="https://github.com/yukihamada/opensonic/releases/latest">Mac (.pkg)</a>
+            <a href="https://testflight.apple.com/join/PYbefDSE">iOS (TestFlight)</a>
+            <a href="https://github.com/yukihamada/opensonic/releases/latest">Android (.apk)</a>
+        </div>
+    </div>
+    <div class="footer-bottom">
+        <span>&#9670; Soluna &mdash; Open Source Network Audio</span>
+        <span>MIT License</span>
+    </div>
+</footer>
+
+<script>
+const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); } });
+}, { threshold: 0.15 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+</script>
+</body>
+</html>

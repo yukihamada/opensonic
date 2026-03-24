@@ -140,7 +140,8 @@ function ostp_proto.dissector(tvb, pinfo, tree)
     local crc_ok     = (stored_crc == calc_crc)
 
     local codec = CODEC_NAMES[pt] or string.format("PT=%d", pt)
-    local chan_count = ((stream_id >> 12) & 0xF)
+    local deck_id    = ((stream_id >> 14) & 0x3)
+    local chan_count = ((stream_id >> 10) & 0xF)
     if chan_count == 0 then chan_count = 2 end  -- default stereo
 
     -- Column info

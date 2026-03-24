@@ -4,3 +4,8 @@ pub mod convert;
 pub mod downmix;
 pub mod opus;
 pub mod easy;
+pub mod pol;
+pub mod adaptive;
+pub mod verify;
+#[cfg(feature = "quic")]
+pub mod quic;

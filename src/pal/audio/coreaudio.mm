@@ -221,7 +221,7 @@ private:
         UInt32 disable_io = 0;
 
         if (capture) {
-            // HALOutput: Enable input
+            // Enable input bus
             status = AudioUnitSetProperty(audio_unit_,
                                           kAudioOutputUnitProperty_EnableIO,
                                           kAudioUnitScope_Input,
@@ -235,13 +235,16 @@ private:
                 return false;
             }
 
-            // HALOutput: Disable output
+#if TARGET_OS_MAC && !TARGET_OS_IPHONE
+            // macOS HALOutput: Disable output bus (capture-only)
+            // Do NOT disable output on iOS RemoteIO — it breaks the audio unit
             status = AudioUnitSetProperty(audio_unit_,
                                           kAudioOutputUnitProperty_EnableIO,
                                           kAudioUnitScope_Output,
                                           0, // Output bus
                                           &disable_io,
                                           sizeof(disable_io));
+#endif
         }
         // For output (DefaultOutput on macOS / RemoteIO on iOS): no EnableIO needed
 

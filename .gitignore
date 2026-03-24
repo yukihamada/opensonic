@@ -54,3 +54,6 @@ deploy/web/wasm/pkg/.gitignore
 compile_commands.json
 .claude/worktrees/
 *.mp3
+programs/soluna/target/
+programs/soluna/target/
+sdk/swift/.build/

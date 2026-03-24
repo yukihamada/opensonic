@@ -1,6 +1,6 @@
 //
 //  AudioFingerprint.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Computes a 64-bit audio fingerprint from received audio and
 //  reports it to the relay server every 30 seconds.

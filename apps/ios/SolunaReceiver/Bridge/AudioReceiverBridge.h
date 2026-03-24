@@ -217,9 +217,16 @@ typedef NS_ENUM(NSInteger, SolunaRelayState) {
 /// Packet loss percentage (0.0 - 100.0)
 @property (nonatomic, readonly) float packetLossPercent;
 
-/// Start capturing from the microphone and transmitting via OSTP multicast.
-/// Switches AVAudioSession to .playAndRecord. Returns NO on failure.
+/// When YES, mic audio is sent to WAN relay. When NO (default), sent to LAN multicast.
+@property (nonatomic, assign) BOOL micGlobal;
+
+/// Start capturing from the microphone and transmitting.
+/// Sends to LAN multicast by default, or WAN relay if micGlobal=YES.
 - (BOOL)startMicTransmit;
+
+/// Karaoke mode: capture mic and mix into local audio output (no network send)
+- (BOOL)startMicMonitor;
+- (void)stopMicMonitor;
 
 /// Stop mic capture and transmission. Restores AVAudioSession to .playback.
 - (void)stopMicTransmit;

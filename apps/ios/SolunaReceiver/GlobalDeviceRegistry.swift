@@ -1,6 +1,6 @@
 //
 //  GlobalDeviceRegistry.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Query relay for all active TX devices (DJ/Owner) across all groups.
 //

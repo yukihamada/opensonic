@@ -117,8 +117,8 @@ int ostp_parse_packet(
             recv_crc = ntohl(recv_crc);
 
             uint32_t calc_crc = ostp_crc32(payload, payload_size);
-            if (recv_crc != calc_crc) return -2; // CRC mismatch
-            return 0;
+            if (recv_crc == calc_crc) return 0; // CRC valid
+            // CRC mismatch — fall through to no-CRC path (radio bots don't add CRC)
         }
     }
 

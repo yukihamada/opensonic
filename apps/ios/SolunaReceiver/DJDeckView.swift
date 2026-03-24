@@ -1,6 +1,6 @@
 //
 //  DJDeckView.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Dual-deck DJ UI: two decks with progress rings, crossfader, and load buttons.
 //

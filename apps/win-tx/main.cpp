@@ -337,8 +337,9 @@ static size_t build_ostp_packet(
     OstpHeader* ostp = reinterpret_cast<OstpHeader*>(buf + sizeof(RtpHeader));
     ostp->magic[0] = 'O'; ostp->magic[1] = 'S';
     ostp->magic[2] = 'T'; ostp->magic[3] = 'P';
-    // Upper 4 bits of stream_id = channel count
-    ostp->stream_id      = htons((uint16_t)(channels << 12));
+    // stream_id: [2bit deck_id][4bit ch_count][10bit stream_idx]
+    uint16_t deck_id = 0; // TODO: make configurable
+    ostp->stream_id      = htons((uint16_t)((deck_id << 14) | (channels << 10)));
     ostp->sequence_ext   = htons((uint16_t)(seq >> 16)); // extended seq (16-bit here)
     ostp->device_id      = htonl(ssrc);
     ostp->flags          = 0;

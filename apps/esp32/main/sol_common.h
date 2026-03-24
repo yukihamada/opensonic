@@ -18,7 +18,7 @@
 /* Audio parameters */
 #define SOL_SAMPLE_RATE      48000
 #define SOL_BIT_DEPTH        24
-#define SOL_MAX_CHANNELS     8
+#define SOL_MAX_CHANNELS     2
 #define SOL_FRAME_SIZE_SAMPLES 96   /* 2ms at 48kHz */
 #define SOL_FRAME_SIZE_BYTES (SOL_FRAME_SIZE_SAMPLES * sizeof(int32_t))
 
@@ -67,7 +67,7 @@
 
 /* Memory budget */
 #define SOL_STACK_AUDIO   8192  /* increased for drift-correction float math */
-#define SOL_STACK_NET     4096
+#define SOL_STACK_NET     8192
 #define SOL_STACK_PTP     3072
 #define SOL_STACK_CTRL    3072
 

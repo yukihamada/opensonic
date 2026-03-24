@@ -1,6 +1,6 @@
 //
 //  SpeakersController.swift
-//  SolunaReceiver
+//  Soluna
 //
 //  Manages a list of remote speakers (each backed by a DaemonClient WebSocket connection).
 //  Auto-discovers Soluna daemons on the local network via Bonjour (_soluna._tcp).

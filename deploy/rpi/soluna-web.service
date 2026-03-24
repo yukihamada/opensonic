@@ -1,0 +1,12 @@
+[Unit]
+Description=Soluna RPi Web UI (channel / codec / volume control)
+After=network.target soluna-rx.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/soluna-web.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

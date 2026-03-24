@@ -1,1 +1,1 @@
-audio,wifi,streaming,receiver,network,hifi,multiroom,airplay,alternative,lossless
+music,streaming,DJ,BGM,live,audio,festival,ZAMNA,fan,radio,P2P,store,venue
