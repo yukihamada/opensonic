@@ -1,7 +1,4 @@
-Initial release of Soluna Rx for macOS.
-
-- Receive network audio via RTP multicast
-- Support for OSTP and AES67 protocols
-- Adaptive jitter buffer
-- Multi-speaker synchronization
-- Bonjour auto-discovery
+- Stereo audio playback
+- Codec switching: PCM, ADPCM, Opus
+- Improved connection stability
+- Cross-device sync with iPhone and Web

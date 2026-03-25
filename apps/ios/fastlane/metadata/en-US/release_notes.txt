@@ -1,0 +1,4 @@
+- Stereo audio playback support
+- Codec switching: PCM, ADPCM, Opus
+- Improved connection stability (heartbeat fix)
+- Cross-device sync improvements

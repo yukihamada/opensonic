@@ -1326,7 +1326,10 @@
 
     // ── Event listeners ──
     playBtn.addEventListener('click', function() {
-        if (isPlaying) stop(); else play();
+        if (isPlaying) { stop(); return; }
+        ensureAudioContext();
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        play();
     });
 
     volumeSlider.addEventListener('input', function() {
@@ -1337,6 +1340,9 @@
 
     tapOverlay.addEventListener('click', function() {
         tapOverlay.classList.add('hidden');
+        // Must create/resume AudioContext synchronously inside user gesture (mobile requirement)
+        ensureAudioContext();
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         play();
     });
 
