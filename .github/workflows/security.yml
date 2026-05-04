@@ -36,7 +36,8 @@ jobs:
             build-essential \
             cmake \
             ninja-build \
-            libasound2-dev
+            libasound2-dev \
+            libcurl4-openssl-dev
 
       - name: Build for CodeQL
         run: |
@@ -65,6 +66,7 @@ jobs:
             cmake \
             ninja-build \
             libasound2-dev \
+            libcurl4-openssl-dev \
             clang
 
       - name: Build with strict warnings (GCC)
@@ -170,7 +172,8 @@ jobs:
             build-essential \
             cmake \
             ninja-build \
-            libasound2-dev
+            libasound2-dev \
+            libcurl4-openssl-dev
 
       - name: Build with AddressSanitizer
         run: |
@@ -202,7 +205,8 @@ jobs:
             build-essential \
             cmake \
             ninja-build \
-            libasound2-dev
+            libasound2-dev \
+            libcurl4-openssl-dev
 
       - name: Build with ThreadSanitizer
         run: |
@@ -219,3 +223,4 @@ jobs:
           export TSAN_OPTIONS="abort_on_error=1"
           ctest --test-dir build --output-on-failure --parallel 1
         continue-on-error: true
+
