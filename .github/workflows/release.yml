@@ -48,7 +48,7 @@ jobs:
           cd dist && tar -czf soluna-${{ github.ref_name }}-linux-x64.tar.gz soluna-${{ github.ref_name }}-linux-x64
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: linux-x64
           path: |
@@ -91,7 +91,7 @@ jobs:
           cd dist && tar -czf soluna-${{ github.ref_name }}-linux-arm64.tar.gz soluna-${{ github.ref_name }}-linux-arm64
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: linux-arm64
           path: |
@@ -170,7 +170,7 @@ jobs:
             Soluna-mac.pkg
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: macos-universal
           path: |
@@ -201,7 +201,7 @@ jobs:
           cd dist && Compress-Archive -Path soluna-${{ github.ref_name }}-windows-x64 -DestinationPath soluna-${{ github.ref_name }}-windows-x64.zip
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: windows-x64
           path: dist/soluna-${{ github.ref_name }}-windows-x64.zip
